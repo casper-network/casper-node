@@ -25,14 +25,14 @@ build-contract-rs/%:
 	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 build-vm2-contract-rs/%:
-	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) run -p cargo-casper --bin cargo-casper -- build-schema --package $*
+	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) run -p vm2-cargo-casper --bin vm2-cargo-casper -- build-schema --package $*
 	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 .PHONY: build-vm2-contracts-rs
 build-vm2-contracts-rs: $(patsubst %, build-vm2-contract-rs/%, $(VM2_CONTRACTS))
 
 .PHONY: build-all-contracts-rs
-build-all-contracts-rs: $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
+build-all-contracts-rs: build-vm2-contracts-rs $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
 
 .PHONY: build-client-contracts-rs
 build-client-contracts-rs: $(patsubst %, build-contract-rs/%, $(CLIENT_CONTRACTS))

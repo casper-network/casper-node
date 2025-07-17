@@ -133,7 +133,9 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{Effects as ExecutionEffects, ExecutionResult},
+    execution::{
+        CallRestrictedRequest, CallRestrictedResult, Effects as ExecutionEffects, ExecutionResult,
+    },
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -148,14 +150,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
-        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
+    contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -1957,6 +1958,21 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Query { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Requests a restricted contract execution on the Contract Runtime component.
+    pub(crate) async fn execute_restricted(
+        self,
+        request: CallRestrictedRequest,
+    ) -> CallRestrictedResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CallRestricted { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

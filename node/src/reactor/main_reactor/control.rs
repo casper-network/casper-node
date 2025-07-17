@@ -8,9 +8,9 @@ use crate::{
     components::{
         binary_port,
         block_synchronizer::{self, BlockSynchronizerProgress},
-        contract_runtime::ExecutionPreState,
         diagnostics_port, event_stream_server, network, rest_server, upgrade_watcher,
     },
+    contract_runtime::ExecutionPreState,
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::main_reactor::{

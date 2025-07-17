@@ -8,7 +8,11 @@ mod rate_limiter;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
+use std::{
+    convert::TryFrom,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
@@ -42,6 +46,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    execution::CallRestrictedRequest,
     system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
@@ -165,6 +170,7 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
+    call_restricted_request: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -176,6 +182,7 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
+            call_restricted_request: config.try_call_restricted_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -186,12 +193,14 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
+            Command::TryCallRestricted { .. } => self.call_restricted_request,
         }
     }
 }
 
 async fn handle_request<REv>(
     req: Command,
+    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
     metrics: &Metrics,
@@ -229,6 +238,19 @@ where
                 return response;
             }
             try_speculative_execution(effect_builder, transaction).await
+        }
+        Command::TryCallRestricted {
+            call_restricted_request,
+        } => {
+            metrics.binary_port_try_call_restricted_count.inc();
+            let enable_for_peer = config
+                .call_restricted_allowed_ips
+                .iter()
+                .any(|ip| ip == "*" || ip == &peer_ip.to_string());
+            if !enable_for_peer {
+                return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
+            }
+            try_call_restricted_execution(effect_builder, call_restricted_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1475,8 +1497,33 @@ where
     }
 }
 
+async fn try_call_restricted_execution<REv>(
+    effect_builder: EffectBuilder<REv>,
+    call_restricted_request: CallRestrictedRequest,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let result = effect_builder
+        .execute_restricted(call_restricted_request)
+        .await;
+
+    if result.is_success() {
+        // Return the output bytes on success
+        if let Some(output) = result.output() {
+            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, output.to_vec())
+        } else {
+            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, vec![])
+        }
+    } else {
+        // Return error message on failure
+        BinaryResponse::new_error(ErrorCode::CallRestrictedFailed)
+    }
+}
+
 async fn handle_client_loop<REv>(
     stream: TcpStream,
+    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
@@ -1520,7 +1567,7 @@ where
                 let response = if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
                     BinaryResponse::new_error(ErrorCode::RequestThrottled)
                 } else {
-                    handle_payload(effect_builder, payload, &monitor, &life_extensions_config).await
+                    handle_payload(effect_builder, payload, peer_ip, &monitor, &life_extensions_config).await
                 };
                 let _ = &mut codec.encode(binary_message, &mut bytes_buf)?;
                 framed
@@ -1565,6 +1612,7 @@ fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
+    peer_ip: IpAddr,
     connection_terminator: &ConnectionTerminator,
     life_extensions_config: &BinaryRequestTerminationDelayValues,
 ) -> BinaryResponse
@@ -1594,7 +1642,11 @@ where
 
     effect_builder
         .make_request(
-            |responder| Event::HandleRequest { request, responder },
+            |responder| Event::HandleRequest {
+                request,
+                peer_ip,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -1622,8 +1674,10 @@ async fn handle_client<REv>(
 {
     let keep_alive_monitor = ConnectionTerminator::new();
     let life_extensions_config = BinaryRequestTerminationDelayValues::from_config(&config);
+    let peer_ip = addr.ip();
     if let Err(err) = handle_client_loop(
         stream,
+        peer_ip,
         effect_builder,
         config,
         rate_limiter,
@@ -1926,13 +1980,18 @@ where
                     }
                     responder.respond(()).ignore()
                 }
-                Event::HandleRequest { request, responder } => {
+                Event::HandleRequest {
+                    request,
+                    peer_ip,
+                    responder,
+                } => {
                     let config = Arc::clone(&self.config);
                     let metrics = Arc::clone(&self.metrics);
                     let protocol_version = self.chainspec.protocol_version();
                     async move {
                         let response = handle_request(
                             request,
+                            peer_ip,
                             effect_builder,
                             &config,
                             &metrics,

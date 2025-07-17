@@ -611,6 +611,13 @@ impl<'a> TransactionV1Builder<'a> {
         self
     }
 
+    /// Sets the transaction entry point.
+    #[cfg(test)]
+    pub fn with_entry_point(mut self, entry_point: TransactionEntryPoint) -> Self {
+        self.entry_point = entry_point;
+        self
+    }
+
     /// Returns the new transaction, or an error if non-defaulted fields were not set.
     ///
     /// For more info, see [the `TransactionBuilder` documentation](TransactionV1Builder).

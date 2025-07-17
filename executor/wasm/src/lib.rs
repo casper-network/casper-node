@@ -22,7 +22,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
-    ConfigBuilder, GasUsage, VMError, WasmInstance,
+    ConfigBuilder, GasUsage, InternalHostError, VMError, WasmInstance,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{
@@ -31,15 +31,17 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
-    TrackingCopy,
+    AddressGenerator, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
+    bytesrepr,
+    execution::{CallRestrictedError, CallRestrictedRequest, CallRestrictedResult},
+    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
+    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
+    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
+    TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -360,6 +362,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
+            restricted,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -555,6 +558,7 @@ impl ExecutorV2 {
             input,
             block_time,
             message_limits: self.config.message_limits,
+            restricted,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -845,6 +849,56 @@ impl Executor for ExecutorV2 {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
+    }
+
+    fn execute_restricted<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        request: CallRestrictedRequest,
+    ) -> Result<CallRestrictedResult, ExecuteError> {
+        // Convert CallRestrictedRequest to ExecuteRequest with restricted mode enabled
+        let execute_request = ExecuteRequestBuilder::default()
+            .with_initiator(request.initiator)
+            .with_caller_key(Key::Account(request.initiator))
+            .with_gas_limit(request.gas_limit) // Use the provided gas limit for protection
+            .with_target(ExecutionKind::Stored {
+                address: request.contract_address,
+                entry_point: request.entry_point,
+            })
+            .with_input(Bytes::copy_from_slice(request.input.inner_bytes()))
+            .with_transferred_value(0) // Must be 0 for restricted queries
+            .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
+            .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
+            .with_chain_name(request.chain_name)
+            .with_block_time(request.block_time)
+            .with_state_hash(request.state_hash)
+            .with_parent_block_hash(request.parent_block_hash)
+            .with_block_height(request.block_height)
+            .with_restricted(true) // Enable restricted mode
+            .build()
+            .map_err(|_| {
+                ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
+            })?;
+
+        // Execute the query in restricted mode
+        let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
+        let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
+
+        // Convert ExecuteResult to CallRestrictedResult
+        let query_result = CallRestrictedResult {
+            error: execute_result
+                .host_error
+                .map(|call_error| match call_error {
+                    CallError::CalleeReverted => CallRestrictedError::CalleeReverted,
+                    CallError::CalleeTrapped(_) => CallRestrictedError::CalleeTrapped,
+                    CallError::CalleeGasDepleted => CallRestrictedError::CalleeGasDepleted,
+                    CallError::NotCallable => CallRestrictedError::NotCallable,
+                }),
+            output: output_bytes.map(|x| x.into()),
+            gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
+        };
+
+        Ok(query_result)
     }
 }
 
