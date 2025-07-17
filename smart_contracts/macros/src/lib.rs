@@ -877,7 +877,8 @@ fn generate_impl_trait_for_contract(
                 macro_rules! visitor {
                     ($( $vis:vis $name:ident as $export_name:ident => $dispatch:ident , $schema:ident , )*) => {
                         $(
-                            $vis fn $name() {
+                            #[export_name = stringify!($export_name)]
+                            $vis extern "C" fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
                         )*
@@ -1001,9 +1002,9 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     );
                 }
 
-                let export_name = format!("{}_{}", trait_name, func_name_str);
+                let export_name = format!("{trait_name}_{func_name_str}");
 
-                let export_ident = format_ident!("{}", &func_name_str);
+                let export_ident = format_ident!("{trait_name}_{func_name_str}");
 
                 #[cfg(feature = "__abi_generator")]
                 let result = match &func.sig.output {
