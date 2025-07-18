@@ -71,8 +71,8 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
-#[derive(Error, Debug)]
 /// Represents a catastrophic internal host error.
+#[derive(Debug, Error)]
 pub enum InternalHostError {
     #[error("type conversion failure")]
     TypeConversion,
@@ -94,6 +94,8 @@ pub enum InternalHostError {
     AccountRecordNotFound,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
+    #[error("attempted writing in restricted mode")]
+    AttemptWriteInRestricted,
 }
 
 /// The outcome of a call.

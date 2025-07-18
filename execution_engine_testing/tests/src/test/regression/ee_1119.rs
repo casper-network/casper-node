@@ -145,7 +145,7 @@ fn should_slash_validator_and_their_delegators() {
     // Other genesis validator withdraws his bid
     //
 
-    let withdraw_bid_request = ExecuteRequestBuilder::standard(
+    let unbond_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
@@ -155,7 +155,7 @@ fn should_slash_validator_and_their_delegators() {
     )
     .build();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder.exec(unbond_request).expect_success().commit();
 
     let unbond_purses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 2);

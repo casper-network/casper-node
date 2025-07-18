@@ -84,6 +84,12 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
 
     builder
         .exec(combined_bond_and_unbond_request)
-        .expect_success()
+        .expect_failure()
         .commit();
+
+    let err = builder.get_error().expect("should have error");
+    assert_eq!(
+        "ApiError::AuctionError(UnbondTooLarge) [64532]",
+        err.to_string()
+    );
 }

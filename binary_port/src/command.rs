@@ -2,6 +2,7 @@ use core::convert::TryFrom;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    execution::CallRestrictedRequest,
     Transaction,
 };
 
@@ -102,7 +103,6 @@ impl FromBytes for CommandHeader {
 
 /// A request to the binary access interface.
 #[derive(Debug, PartialEq)]
-
 pub enum Command {
     /// Request to get data from the node
     Get(GetRequest),
@@ -116,6 +116,11 @@ pub enum Command {
         /// Transaction to execute.
         transaction: Transaction,
     },
+    /// Request to execute contract in restricted mode.
+    TryCallRestricted {
+        /// A call-restricted read request.
+        call_restricted_request: CallRestrictedRequest,
+    },
 }
 
 impl Command {
@@ -125,6 +130,7 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
+            Command::TryCallRestricted { .. } => CommandTag::TryCallRestricted,
         }
     }
 
@@ -137,6 +143,9 @@ impl Command {
             },
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
+            },
+            CommandTag::TryCallRestricted => Self::TryCallRestricted {
+                call_restricted_request: CallRestrictedRequest::random(rng),
             },
         }
     }
@@ -154,6 +163,9 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
+            Command::TryCallRestricted {
+                call_restricted_request,
+            } => call_restricted_request.write_bytes(writer),
         }
     }
 
@@ -162,6 +174,9 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
+            Command::TryCallRestricted {
+                call_restricted_request,
+            } => call_restricted_request.serialized_length(),
         }
     }
 }
@@ -183,6 +198,15 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
+            CommandTag::TryCallRestricted => {
+                let (call_restricted_request, remainder) = FromBytes::from_bytes(bytes)?;
+                (
+                    Command::TryCallRestricted {
+                        call_restricted_request,
+                    },
+                    remainder,
+                )
+            }
         };
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
@@ -201,16 +225,19 @@ pub enum CommandTag {
     TryAcceptTransaction = 1,
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
+    /// Request to execute a restricted getter on a contract.
+    TryCallRestricted = 3,
 }
 
 impl CommandTag {
     /// Creates a random `CommandTag`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..4) {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
+            3 => CommandTag::TryCallRestricted,
             _ => unreachable!(),
         }
     }
@@ -224,6 +251,7 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
+            3 => Ok(CommandTag::TryCallRestricted),
             _ => Err(InvalidCommandTag),
         }
     }

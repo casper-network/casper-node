@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use casper_types::{
-    execution::TransformKindV2,
-    system::{auction::BidAddr, AUCTION},
-    Deploy, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, U512,
-};
-
 use crate::reactor::main_reactor::tests::{
     configs_override::ConfigsOverride, fixture::TestFixture, initial_stakes::InitialStakes,
     ERA_ONE, ERA_TWO, ONE_MIN, TEN_SECS,
+};
+use casper_types::{
+    execution::{ExecutionResult, TransformKindV2},
+    system::{auction::BidAddr, AUCTION},
+    Deploy, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, U512,
 };
 
 #[tokio::test]
@@ -80,6 +79,68 @@ async fn run_withdraw_bid_network() {
             ONE_MIN * 2,
         )
         .await;
+}
+
+#[tokio::test]
+async fn should_error_on_validator_unbond_to_large() {
+    let alice_stake = 200_000_000_000_u64;
+    let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), 10_000_000_000]);
+
+    let unbonding_delay = 2;
+
+    let mut fixture = TestFixture::new(
+        initial_stakes,
+        Some(ConfigsOverride {
+            unbonding_delay,
+            ..Default::default()
+        }),
+    )
+    .await;
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+
+    // Wait for all nodes to complete block 0.
+    fixture.run_until_block_height(0, ONE_MIN).await;
+
+    // Ensure our post genesis assumption that Alice has a bid is correct.
+    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
+
+    let too_much_stake = alice_stake + 1;
+
+    // Create & sign deploy to withdraw MORE than Alice's full stake.
+    let mut deploy = Deploy::withdraw_bid(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(AUCTION),
+        alice_public_key.clone(),
+        too_much_stake.into(),
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&alice_secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let result = fixture.transaction_execution_result(&txn_hash);
+
+    if let ExecutionResult::V2(exec_result) = result {
+        let msg = exec_result
+            .error_message
+            .expect("error message should not be none");
+
+        assert_eq!(
+            msg, "ApiError::AuctionError(UnbondTooLarge) [64532]",
+            "{}",
+            msg
+        );
+    } else {
+        panic!("unexpected execution result");
+    }
 }
 
 #[tokio::test]
