@@ -7,7 +7,7 @@ use casper_executor_wasm_interface::{
     SandboxedExecutionResult as InnerSandboxedExecutionResult,
 };
 
-/// Transforms inner sandboxed execution request into corresponding binary port request.
+/// Transforms binary port request into corresponding inner sandboxed execution request.
 pub(super) fn map_sandbox_request(
     req: SandboxedExecutionRequest,
 ) -> InnerSandboxedExecutionRequest {
