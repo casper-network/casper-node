@@ -172,6 +172,7 @@ impl TestFixture {
             chain_name,
             gas_hold_balance_handling,
             transaction_v1_override,
+            vm_casper_v2,
             node_config_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
@@ -193,6 +194,7 @@ impl TestFixture {
         chainspec.vacancy_config.lower_threshold = lower_threshold;
         chainspec.transaction_config.block_gas_limit = block_gas_limit;
         chainspec.transaction_config.max_block_size = max_block_size;
+        chainspec.transaction_config.runtime_config.vm_casper_v2 = vm_casper_v2;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
@@ -389,6 +391,7 @@ impl TestFixture {
                 allow_request_get_all_values: true,
                 allow_request_get_trie: true,
                 allow_request_speculative_exec: true,
+                call_restricted_allowed_ips: vec!["127.0.0.1".to_string()],
                 ..Default::default()
             },
             ..Default::default()

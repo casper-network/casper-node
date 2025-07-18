@@ -48,10 +48,6 @@ pub trait Counter {
         self.counter_state().value
     }
 
-    fn get_counter_state(&self) -> CounterState {
-        self.counter_state().clone()
-    }
-
     #[casper(private)]
     fn counter_state(&self) -> &CounterState;
 

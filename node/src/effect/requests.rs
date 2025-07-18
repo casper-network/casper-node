@@ -32,11 +32,13 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::ExecutionResult, system::auction::DelegatorKind, Approval, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2,
-    ChainspecRawBytes, DeployHash, Digest, DisplayIter, EntityAddr, EraId, ExecutionInfo,
-    FinalitySignature, FinalitySignatureId, HashAddr, NextUpgrade, ProtocolUpgradeConfig,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer,
+    execution::{CallRestrictedRequest, CallRestrictedResult, ExecutionResult},
+    system::auction::DelegatorKind,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
+    EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
+    NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -47,14 +49,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
-        contract_runtime::SpeculativeExecutionResult,
+        contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
@@ -777,6 +778,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
+    /// A restricted contract execution request.
+    CallRestricted {
+        /// Restricted execution request,
+        #[serde(skip_serializing)]
+        request: CallRestrictedRequest,
+        /// Responder to call with the query result.
+        responder: Responder<CallRestrictedResult>,
+    },
     /// A query by prefix request.
     QueryByPrefix {
         /// Query by prefix request.
@@ -905,6 +914,9 @@ impl Display for ContractRuntimeRequest {
                 ..
             } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+            ContractRuntimeRequest::CallRestricted { request, .. } => {
+                write!(formatter, "call restricted request: {:?}", request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {
                 write!(formatter, "query by prefix request: {:?}", request)
