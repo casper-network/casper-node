@@ -5,7 +5,6 @@ use casper_contract_sdk::{
 };
 
 pub const ADMIN_ROLE: Role = blake2b256!("ADMIN");
-
 pub const DEFAULT_TIME_INTERVAL: u64 = 7_200_000;
 
 #[derive(Debug, PartialEq)]
@@ -39,6 +38,12 @@ pub struct FaucetState {
     last_distribution_time: u64,
     /// Optional authorized account that can make unlimited distributions
     authorized_account: Option<Entity>,
+}
+
+#[casper(message)]
+struct FaucetTokensTransferred {
+    target: Entity,
+    amount: u64,
 }
 
 #[casper(contract_state)]
@@ -302,6 +307,7 @@ impl FaucetContract {
                 return Err(FaucetError::TransferFailed);
             }
         }
+        casper::emit(FaucetTokensTransferred { target, amount }).unwrap();
         Ok(())
     }
 
@@ -447,16 +453,16 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_flow_installer_has_unlimited_access() {
+    fn test_eligibility_installer_has_unlimited_access() {
         let stub = Environment::new(Default::default(), INSTALLER);
 
         let result = dispatch_with(stub, || {
-            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3_600_000));
 
             // Check that installer has unlimited access
             let eligibility = faucet.can_request_tokens(INSTALLER);
             assert!(eligibility.can_request);
-            assert_eq!(eligibility.amount, 0); // Installer doesn't get fixed amounts
+            assert_eq!(eligibility.amount, 0);
             assert!(eligibility.reason.contains("unlimited access"));
         });
 
@@ -578,7 +584,7 @@ mod tests {
             let future_time = faucet.state.last_distribution_time + 2000;
             let eligibility = faucet.can_request_tokens_at_time(ALICE, future_time);
             assert!(eligibility.can_request);
-            assert_eq!(eligibility.amount, 500_000); // 1_000_000 / 2
+            assert_eq!(eligibility.amount, 500_000);
             assert!(eligibility.reason.contains("after interval reset"));
         });
 
@@ -618,8 +624,8 @@ mod tests {
 
             let info = faucet.get_faucet_info();
             assert_eq!(info.available_amount, 2_000_000);
-            assert_eq!(info.distributions_per_interval, 10); // unchanged
-            assert_eq!(info.time_interval, 3600000); // unchanged
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, 3600000);
         });
 
         assert!(result.is_ok());
@@ -670,7 +676,6 @@ mod tests {
             assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
 
             // Test that the access control system correctly identifies roles
-            // This demonstrates that unauthorized access would be properly blocked
             assert!(faucet.has_role(ALICE, ADMIN_ROLE));
             assert!(!faucet.has_role(BOB, ADMIN_ROLE));
         });
@@ -923,21 +928,6 @@ mod tests {
             // Test regular user after authorized account is set
             let caller_type = faucet.get_caller_privileges(&ALICE);
             assert_eq!(caller_type, CallerType::RegularUser);
-        });
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_access_control_installer_has_roles() {
-        let stub = Environment::new(Default::default(), INSTALLER);
-
-        let result = dispatch_with(stub, || {
-            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
-
-            // Installer should have admin role
-            assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
-            assert!(faucet.has_role(INSTALLER, ADMIN_ROLE));
         });
 
         assert!(result.is_ok());
