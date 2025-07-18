@@ -104,7 +104,7 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -123,7 +123,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     value_size: u32,
 ) -> VMResult<u32> {
     // In restricted mode, writing is not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -241,7 +241,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     key_size: u32,
 ) -> VMResult<u32> {
     // In restricted mode, removing is not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -601,7 +601,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     result_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -859,7 +859,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     cb_ctx: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract calls are not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -1133,7 +1133,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     amount_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, transfers are not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -1294,7 +1294,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     input_size: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract upgrades are not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
@@ -1560,7 +1560,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     payload_size: u32,
 ) -> VMResult<u32> {
     // In restricted mode, emitting messages is not allowed
-    if caller.context().restricted {
+    if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 

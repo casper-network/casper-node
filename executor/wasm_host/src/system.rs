@@ -69,8 +69,6 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
         .runtime_footprint_by_entity_addr(entity_addr)
         .map_err(DispatchError::MissingRuntimeFootprint)?;
 
-    //let config = Config::default();
-
     let access_rights = ContextAccessRights::new(*system_entity_addr, []);
     let address = PublicKey::System.to_account_hash();
 

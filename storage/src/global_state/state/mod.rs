@@ -1199,7 +1199,7 @@ pub trait StateProvider: Send + Sync + Sized {
     ///     * if the request delegator is not of DelegatorKind::PublicKey variant - return empty
     ///     * fetch the Bid entry relevant to the given delegator
     ///     * find the Bid delegators map entry relevant to the public key of the given delegator
-    ///     * remap the [`Delegator`] structure to BidKind::Delegator(delegator)
+    ///     * remap the [`DelegatorBidRequest`] structure to BidKind::Delegator(delegator)
     fn delegator_bids(&self, request: DelegatorBidRequest) -> DelegatorBidsResult {
         let state_hash = request.state_root_hash();
         let mut tc = match self.tracking_copy(state_hash) {

@@ -6,6 +6,18 @@ use std::{
     time::Duration,
 };
 
+use crate::{
+    components::block_accumulator,
+    reactor::{
+        main_reactor::{tests::configs_override::ConfigsOverride, MainEvent, MainReactor},
+        Runner,
+    },
+    testing::{
+        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
+    },
+    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    utils::RESOURCES_PATH,
+};
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
@@ -14,7 +26,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    Uptime, ValueWithProof,
+    SandboxedExecutionRequest, Uptime, ValueWithProof,
 };
 use casper_executor_wasm_common::chain_utils;
 use casper_storage::global_state::state::CommitProvider;
@@ -23,7 +35,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{CallRestrictedRequest, Effects, TransformKindV2, TransformV2},
+    execution::{Effects, TransformKindV2, TransformV2},
     system::auction::DelegatorKind,
     testing::TestRng,
     Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
@@ -39,19 +51,6 @@ use futures::{SinkExt, StreamExt};
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::codec::Framed;
-
-use crate::{
-    components::block_accumulator,
-    reactor::{
-        main_reactor::{tests::configs_override::ConfigsOverride, MainEvent, MainReactor},
-        Runner,
-    },
-    testing::{
-        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
-    },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
-    utils::RESOURCES_PATH,
-};
 
 use crate::reactor::main_reactor::tests::{
     fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE,
@@ -1364,7 +1363,7 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 }
 
 #[tokio::test]
-async fn binary_port_call_restricted_request() {
+async fn binary_port_sandboxed_execution_request() {
     testing::init_logging();
 
     let alice_secret_key =
@@ -1480,7 +1479,7 @@ async fn binary_port_call_restricted_request() {
         (latest_block, state_root_hash)
     };
 
-    let call_restricted_request = CallRestrictedRequest {
+    let request = SandboxedExecutionRequest {
         initiator: alice_public_key.to_account_hash(),
         contract_address,
         entry_point: "get".to_string(),
@@ -1511,9 +1510,7 @@ async fn binary_port_call_restricted_request() {
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
     // Create and send the command
-    let request = Command::TryCallRestricted {
-        call_restricted_request,
-    };
+    let request = Command::TrySandboxedExecution { request };
     let request_bytes = {
         let header = CommandHeader::new(request.tag(), 16);
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
@@ -1538,6 +1535,7 @@ async fn binary_port_call_restricted_request() {
     let binary_response_and_request: BinaryResponseAndRequest =
         bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
     let response_obj = binary_response_and_request.response();
+    println!("{:?}", response_obj);
     assert!(response_obj.is_success());
 
     // The get entrypoint in flipper should return a single boolean value

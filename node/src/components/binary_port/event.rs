@@ -77,7 +77,7 @@ impl Display for Event {
                     )
                 }
 
-                Command::TryCallRestricted { .. } => {
+                Command::TrySandboxedExecution { .. } => {
                     write!(f, "try call restricted from {}", peer_ip)
                 }
             },

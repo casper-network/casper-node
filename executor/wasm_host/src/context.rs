@@ -35,11 +35,11 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub chain_name: Arc<str>,
     pub input: Bytes,
     pub block_time: BlockTime,
-    /// Whether the execution is in restricted mode.
+    /// Whether the execution is in sandboxed mode.
     ///
-    /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
-    /// and no gas is charged for the execution.
-    pub restricted: bool,
+    /// In sandboxed mode, the contract cannot make state changes, call other contracts, emit
+    /// messages, etc. No gas is charged for the execution.
+    pub sandboxed: bool,
     /// Runtime native config.
     pub runtime_native_config: RuntimeNativeConfig,
 }

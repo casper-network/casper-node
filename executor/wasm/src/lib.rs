@@ -22,6 +22,9 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
+    sandboxed_execution::{
+        SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    },
     ConfigBuilder, GasUsage, InternalHostError, VMError, WasmInstance,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
@@ -31,17 +34,15 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr,
-    execution::{CallRestrictedError, CallRestrictedRequest, CallRestrictedResult},
-    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
-    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config,
+    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
+    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
+    StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -362,7 +363,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
-            restricted,
+            sandboxed,
             runtime_native_config,
         } = execute_request;
 
@@ -543,7 +544,7 @@ impl ExecutorV2 {
             input,
             block_time,
             message_limits: self.config.message_limits,
-            restricted,
+            sandboxed,
             runtime_native_config,
         };
 
@@ -837,12 +838,13 @@ impl Executor for ExecutorV2 {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
     }
 
-    fn execute_restricted<R: GlobalStateReader + 'static>(
+    fn execute_sandbox<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        request: CallRestrictedRequest,
-    ) -> Result<CallRestrictedResult, ExecuteError> {
-        // Convert CallRestrictedRequest to ExecuteRequest with restricted mode enabled
+        runtime_native_config: RuntimeNativeConfig,
+        request: SandboxedExecutionRequest,
+    ) -> Result<SandboxedExecutionResult, ExecuteError> {
+        // Convert SandboxedExecutionRequest to ExecuteRequest with sandboxed mode enabled
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(request.initiator)
             .with_caller_key(Key::Account(request.initiator))
@@ -852,7 +854,7 @@ impl Executor for ExecutorV2 {
                 entry_point: request.entry_point,
             })
             .with_input(Bytes::copy_from_slice(request.input.inner_bytes()))
-            .with_transferred_value(0) // Must be 0 for restricted queries
+            .with_transferred_value(0) // Must be 0 for sandboxed queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
             .with_chain_name(request.chain_name)
@@ -860,31 +862,32 @@ impl Executor for ExecutorV2 {
             .with_state_hash(request.state_hash)
             .with_parent_block_hash(request.parent_block_hash)
             .with_block_height(request.block_height)
-            .with_restricted(true) // Enable restricted mode
+            .with_sandboxed(true) // Enable sandboxed mode
+            .with_runtime_native_config(runtime_native_config)
             .build()
             .map_err(|_| {
                 ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
             })?;
 
-        // Execute the query in restricted mode
+        // Execute the query in sandboxed mode
         let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
         let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
-        // Convert ExecuteResult to CallRestrictedResult
-        let query_result = CallRestrictedResult {
+        // Convert ExecuteResult to SandboxedExecutionResult
+        let result = SandboxedExecutionResult {
             error: execute_result
                 .host_error
                 .map(|call_error| match call_error {
-                    CallError::CalleeReverted => CallRestrictedError::CalleeReverted,
-                    CallError::CalleeTrapped(_) => CallRestrictedError::CalleeTrapped,
-                    CallError::CalleeGasDepleted => CallRestrictedError::CalleeGasDepleted,
-                    CallError::NotCallable => CallRestrictedError::NotCallable,
+                    CallError::CalleeReverted => SandboxedExecutionError::CalleeReverted,
+                    CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
+                    CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
+                    CallError::NotCallable => SandboxedExecutionError::NotCallable,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
         };
 
-        Ok(query_result)
+        Ok(result)
     }
 }
 

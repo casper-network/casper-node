@@ -8,15 +8,16 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash,
-    contract_messages::Messages,
-    execution::{CallRestrictedRequest, CallRestrictedResult, Effects},
-    BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
+    account::AccountHash, contract_messages::Messages, execution::Effects, BlockHash, BlockTime,
+    Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
 
-use crate::{CallError, GasUsage, InternalHostError, WasmPreparationError};
+use crate::{
+    CallError, GasUsage, InternalHostError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    WasmPreparationError,
+};
 
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
@@ -53,11 +54,11 @@ pub struct ExecuteRequest {
     pub parent_block_hash: BlockHash,
     /// Block height.
     pub block_height: u64,
-    /// Whether the execution is in restricted mode.
+    /// Whether the execution is in sandboxed mode.
     ///
-    /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
-    /// and no gas is charged for the execution.
-    pub restricted: bool,
+    /// In sandboxed mode, the contract cannot make state changes, call other contracts, emit
+    /// messages, etc. No gas is charged for the execution.
+    pub sandboxed: bool,
     /// Runtime native config.
     pub runtime_native_config: RuntimeNativeConfig,
 }
@@ -78,7 +79,7 @@ pub struct ExecuteRequestBuilder {
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
-    restricted: Option<bool>,
+    sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
 }
 
@@ -199,10 +200,10 @@ impl ExecuteRequestBuilder {
         self
     }
 
-    /// Set the restricted mode.
+    /// Set the sandboxed mode.
     #[must_use]
-    pub fn with_restricted(mut self, restricted: bool) -> Self {
-        self.restricted = Some(restricted);
+    pub fn with_sandboxed(mut self, sandboxed: bool) -> Self {
+        self.sandboxed = Some(sandboxed);
         self
     }
 
@@ -234,7 +235,7 @@ impl ExecuteRequestBuilder {
             .parent_block_hash
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
-        let restricted = self.restricted.unwrap_or(false);
+        let sandboxed = self.sandboxed.unwrap_or(false);
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
@@ -252,7 +253,7 @@ impl ExecuteRequestBuilder {
             state_hash,
             parent_block_hash,
             block_height,
-            restricted,
+            sandboxed,
             runtime_native_config,
         })
     }
@@ -412,13 +413,14 @@ pub trait Executor: Clone + Send {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
 
-    /// Execute a contract in restricted mode.
+    /// Execute a contract in sandboxed mode.
     ///
-    /// This method executes a contract without making any state changes
-    /// or broadcasting the transaction.
-    fn execute_restricted<R: GlobalStateReader + 'static>(
+    /// This method executes a smart contract in a sandbox that cannot call or message outward,
+    /// or mutate state.
+    fn execute_sandbox<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        request: CallRestrictedRequest,
-    ) -> Result<CallRestrictedResult, ExecuteError>;
+        runtime_native_config: RuntimeNativeConfig,
+        request: SandboxedExecutionRequest,
+    ) -> Result<SandboxedExecutionResult, ExecuteError>;
 }
