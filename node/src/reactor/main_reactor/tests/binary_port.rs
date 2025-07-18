@@ -1535,7 +1535,6 @@ async fn binary_port_sandboxed_execution_request() {
     let binary_response_and_request: BinaryResponseAndRequest =
         bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
     let response_obj = binary_response_and_request.response();
-    println!("{:?}", response_obj);
     assert!(response_obj.is_success());
 
     // The get entrypoint in flipper should return a single boolean value
