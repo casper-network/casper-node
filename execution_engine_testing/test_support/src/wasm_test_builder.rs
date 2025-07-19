@@ -41,9 +41,9 @@ use casper_storage::{
         trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    system::runtime_native::TransferConfig,
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator,
+    AddressGenerator, RuntimeNativeConfig,
 };
 
 use casper_types::{
@@ -85,10 +85,10 @@ pub(crate) const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 /// The default value is chosen to be the same as the node itself.
 pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 
-/// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
+/// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`.
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// A wrapper structure that groups an entity alongside its namedkeys.
+/// A wrapper structure that groups an entity alongside its named keys.
 #[derive(Debug)]
 pub struct EntityWithNamedKeys {
     entity: AddressableEntity,
@@ -568,7 +568,10 @@ impl LmdbWasmTestBuilder {
     /// Runs a [`TransferRequest`] and commits the resulting effects.
     pub fn transfer_and_commit(&mut self, mut transfer_request: TransferRequest) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
-        transfer_request.set_state_hash_and_config(pre_state_hash, self.native_runtime_config());
+        transfer_request.set_state_hash_and_config(
+            pre_state_hash,
+            self.runtime_native_config(transfer_request.protocol_version()),
+        );
         let transfer_result = self.data_access_layer.transfer(transfer_request);
         let gas = Gas::new(self.chainspec.system_costs_config.mint_costs().transfer);
         let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas)
@@ -735,7 +738,7 @@ where
     }
 
     /// Queries for the total supply of token.
-    /// # Panics
+    ///
     /// Panics if the total supply can't be found.
     pub fn total_supply(
         &self,
@@ -756,7 +759,6 @@ where
     }
 
     /// Queries for the round seigniorage rate.
-    /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn round_seigniorage_rate(
         &mut self,
@@ -783,7 +785,6 @@ where
     }
 
     /// Queries for the base round reward.
-    /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(
         &mut self,
@@ -831,7 +832,8 @@ where
             U512::from(*config.core_config.validator_credit_cap.denom()),
         );
         let enable_addressable_entity = config.core_config.enable_addressable_entity;
-        let native_runtime_config = casper_storage::system::runtime_native::Config::new(
+        let runtime_native_config = RuntimeNativeConfig::new(
+            protocol_version,
             TransferConfig::Unadministered,
             fee_handling,
             refund_handling,
@@ -849,9 +851,8 @@ where
         );
 
         let bidding_req = BiddingRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             post_state,
-            protocol_version,
             transaction_hash,
             initiator,
             authorization_keys,
@@ -988,7 +989,7 @@ where
         step_result
     }
 
-    fn native_runtime_config(&self) -> NativeRuntimeConfig {
+    fn runtime_native_config(&self, protocol_version: ProtocolVersion) -> RuntimeNativeConfig {
         let administrators: BTreeSet<AccountHash> = self
             .chainspec
             .core_config
@@ -1003,7 +1004,9 @@ where
             U512::from(*self.chainspec.core_config.validator_credit_cap.numer()),
             U512::from(*self.chainspec.core_config.validator_credit_cap.denom()),
         );
-        NativeRuntimeConfig::new(
+
+        RuntimeNativeConfig::new(
+            protocol_version,
             transfer_config,
             self.chainspec.core_config.fee_handling,
             self.chainspec.core_config.refund_handling,
@@ -1028,15 +1031,10 @@ where
         protocol_version: ProtocolVersion,
         block_time: u64,
     ) -> FeeResult {
-        let native_runtime_config = self.native_runtime_config();
+        let runtime_native_config = self.runtime_native_config(protocol_version);
 
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let fee_req = FeeRequest::new(
-            native_runtime_config,
-            pre_state_hash,
-            protocol_version,
-            block_time.into(),
-        );
+        let fee_req = FeeRequest::new(runtime_native_config, pre_state_hash, block_time.into());
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
 
         if let FeeResult::Success {
@@ -1058,11 +1056,10 @@ where
         block_time: u64,
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let native_runtime_config = self.native_runtime_config();
+        let runtime_native_config = self.runtime_native_config(protocol_version);
         let distribute_req = BlockRewardsRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             pre_state_hash,
-            protocol_version,
             BlockTime::new(block_time),
             rewards,
         );
@@ -1089,11 +1086,10 @@ where
         handle_fee_mode: HandleFeeMode,
     ) -> HandleFeeResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let native_runtime_config = self.native_runtime_config();
+        let runtime_native_config = self.runtime_native_config(protocol_version);
         let handle_fee_request = HandleFeeRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             pre_state_hash,
-            protocol_version,
             transaction_hash,
             handle_fee_mode,
         );
@@ -1666,7 +1662,7 @@ where
     /// Assert that last error is the expected one.
     ///
     /// NOTE: we're using string-based representation for checking equality
-    /// as the `Error` type does not implement `Eq` (many of its subvariants don't).
+    /// as the `Error` type does not implement `Eq` (many of the sub-variants do not).
     pub fn assert_error(&self, expected_error: Error) {
         match self.get_error() {
             Some(error) => assert_eq!(format!("{:?}", expected_error), format!("{:?}", error)),
@@ -1873,8 +1869,7 @@ where
 
         let tracking_copy = self
             .data_access_layer
-            .tracking_copy(state_root_hash)
-            .unwrap()
+            .tracking_copy(state_root_hash)?
             .unwrap();
 
         let reader = tracking_copy.reader();
@@ -2007,8 +2002,7 @@ where
     /// Advances eras by num_eras
     pub fn advance_eras_by(&mut self, num_eras: u64) {
         let step_request_builder = StepRequestBuilder::new()
-            .with_protocol_version(ProtocolVersion::V2_0_0)
-            .with_runtime_config(self.native_runtime_config())
+            .with_runtime_config(self.runtime_native_config(ProtocolVersion::V2_0_0))
             .with_run_auction(true);
 
         for _ in 0..num_eras {
@@ -2044,8 +2038,7 @@ where
     pub fn step_request_builder(&mut self) -> StepRequestBuilder {
         StepRequestBuilder::new()
             .with_parent_state_hash(self.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V2_0_0)
-            .with_runtime_config(self.native_runtime_config())
+            .with_runtime_config(self.runtime_native_config(ProtocolVersion::V2_0_0))
     }
 
     /// Returns a trie by hash.

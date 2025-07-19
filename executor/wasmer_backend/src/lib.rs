@@ -448,7 +448,8 @@ where
             input: data.context.input.clone(),
             block_time: data.context.block_time,
             message_limits: data.context.message_limits,
-            restricted: data.context.restricted,
+            sandboxed: data.context.sandboxed,
+            runtime_native_config: data.context.runtime_native_config.clone(),
         }
     }
 }

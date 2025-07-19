@@ -16,9 +16,7 @@ use casper_types::{
     RuntimeArgs, TransactionEntryPoint, TransactionHash, Transfer, URefAddr, U512,
 };
 
-use crate::{
-    system::runtime_native::Config as NativeRuntimeConfig, tracking_copy::TrackingCopyError,
-};
+use crate::{tracking_copy::TrackingCopyError, RuntimeNativeConfig};
 
 /// An error returned when constructing an [`AuctionMethod`].
 #[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
@@ -335,11 +333,9 @@ impl AuctionMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BiddingRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// The protocol version.
-    pub(crate) protocol_version: ProtocolVersion,
     /// The auction method.
     pub(crate) auction_method: AuctionMethod,
     /// Transaction hash.
@@ -354,9 +350,8 @@ impl BiddingRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
@@ -365,7 +360,6 @@ impl BiddingRequest {
         Self {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             initiator,
             authorization_keys,
@@ -374,7 +368,7 @@ impl BiddingRequest {
     }
 
     /// Returns the config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 
@@ -385,7 +379,7 @@ impl BiddingRequest {
 
     /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns the auction method.

@@ -7,6 +7,7 @@ mod metrics;
 mod rate_limiter;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use std::{
     convert::TryFrom,
@@ -22,7 +23,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
     PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    TransactionWithExecutionInfo, ValueWithProof,
+    SandboxedExecutionRequest, TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -46,7 +47,6 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::CallRestrictedRequest,
     system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
@@ -193,7 +193,7 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TryCallRestricted { .. } => self.call_restricted_request,
+            Command::TrySandboxedExecution { .. } => self.call_restricted_request,
         }
     }
 }
@@ -239,8 +239,8 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-        Command::TryCallRestricted {
-            call_restricted_request,
+        Command::TrySandboxedExecution {
+            request: call_restricted_request,
         } => {
             metrics.binary_port_try_call_restricted_count.inc();
             let enable_for_peer = config
@@ -250,7 +250,8 @@ where
             if !enable_for_peer {
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            try_call_restricted_execution(effect_builder, call_restricted_request).await
+            // let request = casper_executor_wasm_interface::Ca
+            try_sandboxed_execution(effect_builder, call_restricted_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -953,7 +954,7 @@ where
     }
 }
 
-/// Returns bids relevant to a given delegator in scope of a validatoe (identified by public key)
+/// Returns bids relevant to a given delegator in scope of a validate (identified by public key)
 async fn get_delegator_bid<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
@@ -1497,27 +1498,29 @@ where
     }
 }
 
-async fn try_call_restricted_execution<REv>(
+async fn try_sandboxed_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    call_restricted_request: CallRestrictedRequest,
+    request: SandboxedExecutionRequest,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder
-        .execute_restricted(call_restricted_request)
+    let inner_request = utils::map_sandbox_request(request);
+    let inner_result = effect_builder
+        .execute_sandboxed_contract(inner_request)
         .await;
+    let result = utils::map_sandbox_result(inner_result);
 
     if result.is_success() {
         // Return the output bytes on success
         if let Some(output) = result.output() {
-            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, output.to_vec())
+            BinaryResponse::from_raw_bytes(ResponseType::SandboxedExecutionResult, output.to_vec())
         } else {
-            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, vec![])
+            BinaryResponse::from_raw_bytes(ResponseType::SandboxedExecutionResult, vec![])
         }
     } else {
         // Return error message on failure
-        BinaryResponse::new_error(ErrorCode::CallRestrictedFailed)
+        BinaryResponse::new_error(ErrorCode::SandboxedExecutionFailed)
     }
 }
 

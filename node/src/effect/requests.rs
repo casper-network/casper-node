@@ -18,6 +18,9 @@ use static_assertions::const_assert;
 use casper_binary_port::{
     ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionRequest, SandboxedExecutionResult,
+};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -32,13 +35,11 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{CallRestrictedRequest, CallRestrictedResult, ExecutionResult},
-    system::auction::DelegatorKind,
-    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
-    EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
-    NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer,
+    execution::ExecutionResult, system::auction::DelegatorKind, Approval, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2,
+    ChainspecRawBytes, DeployHash, Digest, DisplayIter, EntityAddr, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, HashAddr, NextUpgrade, ProtocolUpgradeConfig,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -778,13 +779,13 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
-    /// A restricted contract execution request.
-    CallRestricted {
-        /// Restricted execution request,
+    /// A sandboxed execution request.
+    SandboxedExecution {
+        /// Sandboxed execution request,
         #[serde(skip_serializing)]
-        request: CallRestrictedRequest,
+        request: SandboxedExecutionRequest,
         /// Responder to call with the query result.
-        responder: Responder<CallRestrictedResult>,
+        responder: Responder<SandboxedExecutionResult>,
     },
     /// A query by prefix request.
     QueryByPrefix {
@@ -915,7 +916,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
-            ContractRuntimeRequest::CallRestricted { request, .. } => {
+            ContractRuntimeRequest::SandboxedExecution { request, .. } => {
                 write!(formatter, "call restricted request: {:?}", request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {

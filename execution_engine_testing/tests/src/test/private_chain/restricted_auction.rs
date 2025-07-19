@@ -31,7 +31,6 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         );
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
             .with_next_era_id(builder.get_era().successor())
             .with_era_end_timestamp_millis(timestamp_millis)
             .with_run_auction(true)
@@ -58,7 +57,6 @@ fn should_not_distribute_rewards_but_compute_next_set() {
 
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
         .with_reward_item(RewardItem::new(
             VALIDATOR_1_PUBLIC_KEY.clone(),
             VALIDATOR_1_REWARD_FACTOR,

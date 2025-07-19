@@ -351,7 +351,6 @@ pub trait CommitProvider: StateProvider {
         let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -455,7 +454,6 @@ pub trait CommitProvider: StateProvider {
 
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -541,7 +539,6 @@ pub trait CommitProvider: StateProvider {
         let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1170,7 +1167,7 @@ pub trait StateProvider: Send + Sync + Sized {
     /// This will return either:
     /// * All BidKind state entries which were stored under a key relevant to the validator
     /// * All Bids wrapped in BidKind::Unified which keys match [KeyTag::Bid,
-    ///   ..account_hash_of_public_key_bytes] if no bids were found in step 1
+    ///   account_hash_of_public_key_bytes] if no bids were found in step 1
     fn validator_bids(&self, request: ValidatorBidRequest) -> ValidatorBidsResult {
         let state_hash = request.state_root_hash();
         let mut tc = match self.tracking_copy(state_hash) {
@@ -1199,10 +1196,10 @@ pub trait StateProvider: Send + Sync + Sized {
     /// * All BidKind state entries which were stored under a key relevant to the delegator in scope
     ///   of a validator
     /// * If step 1 yielded no data - we will attempt to retrofit 1.x data into the new schema by:
-    ///     * if the reqeust.delegator is not of DelegatorKind::PublicKey variant - return empty
+    ///     * if the request delegator is not of DelegatorKind::PublicKey variant - return empty
     ///     * fetch the Bid entry relevant to the given delegator
-    ///     * find the Bid.delegators map entry relevant to the public key of the given delegator
-    ///     * remap the [`Delegator`] structure to BidKind::Delegator(delegator)
+    ///     * find the Bid delegators map entry relevant to the public key of the given delegator
+    ///     * remap the [`DelegatorBidRequest`] structure to BidKind::Delegator(delegator)
     fn delegator_bids(&self, request: DelegatorBidRequest) -> DelegatorBidsResult {
         let state_hash = request.state_root_hash();
         let mut tc = match self.tracking_copy(state_hash) {
@@ -1246,7 +1243,6 @@ pub trait StateProvider: Send + Sync + Sized {
         BiddingRequest {
             config,
             state_hash,
-            protocol_version,
             auction_method,
             transaction_hash,
             initiator,
@@ -1263,7 +1259,7 @@ pub trait StateProvider: Send + Sync + Sized {
         let (entity_addr, mut footprint, mut entity_access_rights) = match tc
             .borrow_mut()
             .authorized_runtime_footprint_with_access_rights(
-                protocol_version,
+                config.protocol_version(),
                 source_account_hash,
                 &authorization_keys,
                 &BTreeSet::default(),
@@ -1329,7 +1325,6 @@ pub trait StateProvider: Send + Sync + Sized {
         let minimum_bid_amount = config.minimum_bid_amount();
         let mut runtime = RuntimeNative::new(
             config,
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1474,7 +1469,6 @@ pub trait StateProvider: Send + Sync + Sized {
                 // this runtime uses the system's context
                 match RuntimeNative::new_system_runtime(
                     config,
-                    protocol_version,
                     id,
                     address_generator,
                     Rc::clone(&tc),
@@ -1490,7 +1484,6 @@ pub trait StateProvider: Send + Sync + Sized {
                 // this runtime uses the handle payment contract's context
                 match RuntimeNative::new_system_contract_runtime(
                     config,
-                    protocol_version,
                     id,
                     address_generator,
                     Rc::clone(&tc),
@@ -1712,7 +1705,6 @@ pub trait StateProvider: Send + Sync + Sized {
         HandleFeeRequest {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             handle_fee_mode,
         }: HandleFeeRequest,
@@ -1731,7 +1723,6 @@ pub trait StateProvider: Send + Sync + Sized {
 
         let mut runtime = match RuntimeNative::new_system_runtime(
             config,
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1760,6 +1751,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 source,
                 target,
             } => {
+                let protocol_version = runtime.protocol_version();
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
@@ -1781,6 +1773,7 @@ pub trait StateProvider: Send + Sync + Sized {
                     })
             }
             HandleFeeMode::Burn { source, amount } => {
+                let protocol_version = runtime.protocol_version();
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
@@ -2269,7 +2262,6 @@ pub trait StateProvider: Send + Sync + Sized {
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             config.clone(),
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -2428,7 +2420,6 @@ pub trait StateProvider: Send + Sync + Sized {
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             config.clone(),
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -2919,7 +2910,7 @@ where
 fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tc: &mut TrackingCopy<R>,
     validator_public_key: &PublicKey,
-    delgator_public_key: &PublicKey,
+    delegator_public_key: &PublicKey,
 ) -> Result<Vec<BidKind>, TrackingCopyError> {
     let validator_account_hash = validator_public_key.to_account_hash();
     let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
@@ -2936,11 +2927,11 @@ fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalS
     for key in keys {
         match tc.get(&key)? {
             Some(StoredValue::Bid(bid)) => {
-                if let Some(delegator) = bid.delegators().get(delgator_public_key) {
+                if let Some(delegator) = bid.delegators().get(delegator_public_key) {
                     let delegator_kind = match bid.vesting_schedule() {
                         Some(vesting_schedule) => {
                             let mut delegator_bid = DelegatorBid::locked(
-                                DelegatorKind::PublicKey(delgator_public_key.clone()),
+                                DelegatorKind::PublicKey(delegator_public_key.clone()),
                                 delegator.staked_amount(),
                                 *delegator.bonding_purse(),
                                 validator_public_key.clone(),
@@ -2954,7 +2945,7 @@ fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalS
                             delegator_bid
                         }
                         None => DelegatorBid::unlocked(
-                            DelegatorKind::PublicKey(delgator_public_key.clone()),
+                            DelegatorKind::PublicKey(delegator_public_key.clone()),
                             delegator.staked_amount(),
                             *delegator.bonding_purse(),
                             validator_public_key.clone(),
@@ -2982,7 +2973,7 @@ fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalS
 fn find_contemporary_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tc: &mut TrackingCopy<R>,
     validator_account_hash: &AccountHash,
-    delgator_kind: &DelegatorKind,
+    delegator_kind: &DelegatorKind,
 ) -> Result<Vec<BidKind>, TrackingCopyError> {
     let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
         Ok(account_hash_bytes) => account_hash_bytes,
@@ -2990,7 +2981,7 @@ fn find_contemporary_delegator_bids<R: StateReader<Key, StoredValue, Error = Glo
     };
     let mut bids = vec![];
     let mut keys = BTreeSet::new();
-    match delgator_kind {
+    match delegator_kind {
         DelegatorKind::PublicKey(public_key) => {
             let delegator_account_hash = public_key.to_account_hash();
             let delegator_account_hash_bytes = match delegator_account_hash.to_bytes() {
@@ -3124,8 +3115,8 @@ fn find_historic_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalS
                 };
                 for unbond_key in unbond_keys {
                     match tc.get(&unbond_key) {
-                        Ok(Some(StoredValue::Unbonding(unbondings))) => {
-                            match try_rewrap_unbondings(unbondings) {
+                        Ok(Some(StoredValue::Unbonding(unbonding_purses))) => {
+                            match try_rewrap_unbonding_purses(unbonding_purses) {
                                 Ok(mut unbonding_bid_kinds) => bids.append(&mut unbonding_bid_kinds),
                                 Err(UnbondingRewrapError::AmbiguousValidatorKey) => {
                                     return ValidatorBidsResult::Failure(
@@ -3169,16 +3160,16 @@ fn find_historic_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalS
 enum UnbondingRewrapError {
     AmbiguousValidatorKey,
 }
-fn try_rewrap_unbondings(
-    unbondings: Vec<UnbondingPurse>,
+fn try_rewrap_unbonding_purses(
+    unbonding_purses: Vec<UnbondingPurse>,
 ) -> Result<Vec<BidKind>, UnbondingRewrapError> {
-    let base_validator_public_key = match unbondings.first() {
+    let base_validator_public_key = match unbonding_purses.first() {
         None => return Ok(vec![]),
         Some(purse) => purse.validator_public_key().clone(),
     };
-    let mut unbondings_map: BTreeMap<UnbondKind, Vec<UnbondingPurse>> = BTreeMap::new();
+    let mut unbonding_purses_map: BTreeMap<UnbondKind, Vec<UnbondingPurse>> = BTreeMap::new();
 
-    for unbonding_purse in unbondings {
+    for unbonding_purse in unbonding_purses {
         if !unbonding_purse
             .validator_public_key()
             .eq(&base_validator_public_key)
@@ -3192,7 +3183,7 @@ fn try_rewrap_unbondings(
                 UnbondKind::DelegatedPublicKey(unbonding_purse.unbonder_public_key().clone())
             };
 
-        match unbondings_map.entry(unbond_kind) {
+        match unbonding_purses_map.entry(unbond_kind) {
             std::collections::btree_map::Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(vec![unbonding_purse]);
             }
@@ -3202,7 +3193,7 @@ fn try_rewrap_unbondings(
         }
     }
     let mut bid_kinds = vec![];
-    for (unbonding_kind, purses) in unbondings_map {
+    for (unbonding_kind, purses) in unbonding_purses_map {
         if let Some(purse) = purses.first() {
             let validator_key = purse.validator_public_key().clone();
             let mut eras = vec![];

@@ -133,7 +133,6 @@ fn should_initialize_default_vesting_schedule() {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             )
             .is_success(),
@@ -254,7 +253,6 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -270,7 +268,6 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -333,7 +330,6 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -370,7 +366,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 mod fixture {
     use casper_engine_test_support::{
         utils, StepRequestBuilder, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     };
 
     use crate::lmdb_fixture;
@@ -393,7 +389,6 @@ mod fixture {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             );
         })

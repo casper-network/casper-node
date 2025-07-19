@@ -10,11 +10,12 @@ use serde::Serialize;
 
 use casper_binary_port::{
     BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest, RecordId,
+    SandboxedExecutionRequest,
 };
 
 use casper_types::{
-    execution::CallRestrictedRequest, BlockHeader, Digest, GlobalStateIdentifier, KeyTag,
-    PublicKey, Timestamp, Transaction, TransactionV1,
+    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
+    TransactionV1,
 };
 
 use crate::{
@@ -97,7 +98,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
         call_restricted_allowed_ips: vec!["127.0.0.1".to_string()],
-        request_generator: Either::Left(try_call_restricted_request),
+        request_generator: Either::Left(try_sandboxed_execution),
     };
 
     for test_case in [
@@ -153,7 +154,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
         call_restricted_allowed_ips: Vec::new(),
-        request_generator: Either::Left(try_call_restricted_request),
+        request_generator: Either::Left(try_sandboxed_execution),
     };
 
     for test_case in [
@@ -484,10 +485,10 @@ fn try_speculative_exec_request(rng: &mut TestRng) -> Command {
     }
 }
 
-fn try_call_restricted_request(_rng: &mut TestRng) -> Command {
+fn try_sandboxed_execution(_rng: &mut TestRng) -> Command {
     use casper_types::{account::AccountHash, BlockHash, BlockTime, Digest};
-    Command::TryCallRestricted {
-        call_restricted_request: CallRestrictedRequest {
+    Command::TrySandboxedExecution {
+        request: SandboxedExecutionRequest {
             initiator: AccountHash::new([0; 32]),
             contract_address: [0; 32],
             entry_point: "test".to_string(),

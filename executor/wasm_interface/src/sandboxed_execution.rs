@@ -1,18 +1,45 @@
-use alloc::{string::String, vec::Vec};
-
-use crate::{
+use casper_types::{
     account::AccountHash,
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    bytesrepr,
+    bytesrepr::{Bytes, FromBytes, ToBytes},
     BlockHash, BlockTime, Digest, Gas, HashAddr,
 };
 
-/// A request to execute a restricted getter on a contract.
-///
-/// This allows off-chain querying of contract state without making global state changes
-/// or costing gas. A gas limit must be provided to prevent infinite loops and resource
-/// exhaustion attacks.
+/// Errors that can occur during sandboxed execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SandboxedExecutionError {
+    /// The contract reverted execution.
+    CalleeReverted,
+    /// The contract trapped during execution.
+    CalleeTrapped,
+    /// The contract ran out of gas.
+    CalleeGasDepleted,
+    /// The contract is not callable (missing export).
+    NotCallable,
+    /// The contract code was not found.
+    CodeNotFound,
+    /// An internal host error occurred.
+    InternalHostError,
+}
+
+impl core::fmt::Display for SandboxedExecutionError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            SandboxedExecutionError::CalleeReverted => write!(f, "contract reverted"),
+            SandboxedExecutionError::CalleeTrapped => write!(f, "contract trapped"),
+            SandboxedExecutionError::CalleeGasDepleted => write!(f, "contract gas depleted"),
+            SandboxedExecutionError::NotCallable => write!(f, "contract not callable"),
+            SandboxedExecutionError::CodeNotFound => write!(f, "contract code not found"),
+            SandboxedExecutionError::InternalHostError => write!(f, "internal host error"),
+        }
+    }
+}
+
+/// A request to execute a sandboxed contract. Pure functions, read-only getters, beacons,
+/// sentinels, and similar functionality that does not require invocation of other contracts or
+/// mutation of state are supported.
 #[derive(Debug, PartialEq)]
-pub struct CallRestrictedRequest {
+pub struct SandboxedExecutionRequest {
     /// The address of the account that would initiate the contract call.
     pub initiator: AccountHash,
     /// The address of the contract to query.
@@ -39,7 +66,7 @@ pub struct CallRestrictedRequest {
     pub chain_name: String,
 }
 
-impl ToBytes for CallRestrictedRequest {
+impl ToBytes for SandboxedExecutionRequest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut writer = bytesrepr::allocate_buffer(self)?;
         self.initiator.write_bytes(&mut writer)?;
@@ -55,19 +82,6 @@ impl ToBytes for CallRestrictedRequest {
         Ok(writer)
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.initiator.write_bytes(writer)?;
-        self.contract_address.write_bytes(writer)?;
-        self.entry_point.write_bytes(writer)?;
-        self.input.write_bytes(writer)?;
-        self.gas_limit.write_bytes(writer)?;
-        self.block_time.write_bytes(writer)?;
-        self.state_hash.write_bytes(writer)?;
-        self.parent_block_hash.write_bytes(writer)?;
-        self.block_height.write_bytes(writer)?;
-        self.chain_name.write_bytes(writer)
-    }
-
     fn serialized_length(&self) -> usize {
         self.initiator.serialized_length()
             + self.contract_address.serialized_length()
@@ -80,9 +94,22 @@ impl ToBytes for CallRestrictedRequest {
             + self.block_height.serialized_length()
             + self.chain_name.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.initiator.write_bytes(writer)?;
+        self.contract_address.write_bytes(writer)?;
+        self.entry_point.write_bytes(writer)?;
+        self.input.write_bytes(writer)?;
+        self.gas_limit.write_bytes(writer)?;
+        self.block_time.write_bytes(writer)?;
+        self.state_hash.write_bytes(writer)?;
+        self.parent_block_hash.write_bytes(writer)?;
+        self.block_height.write_bytes(writer)?;
+        self.chain_name.write_bytes(writer)
+    }
 }
 
-impl FromBytes for CallRestrictedRequest {
+impl FromBytes for SandboxedExecutionRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (initiator, remainder) = FromBytes::from_bytes(bytes)?;
         let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
@@ -95,7 +122,7 @@ impl FromBytes for CallRestrictedRequest {
         let (block_height, remainder) = FromBytes::from_bytes(remainder)?;
         let (chain_name, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            CallRestrictedRequest {
+            SandboxedExecutionRequest {
                 initiator,
                 contract_address,
                 entry_point,
@@ -112,71 +139,20 @@ impl FromBytes for CallRestrictedRequest {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
-impl CallRestrictedRequest {
-    /// Generates a random request for testing.
-    pub fn random(rng: &mut crate::testing::TestRng) -> Self {
-        use rand::Rng;
-
-        CallRestrictedRequest {
-            initiator: AccountHash::new(rng.gen()),
-            contract_address: rng.gen(),
-            entry_point: format!("entry_point_{}", rng.gen::<u32>()),
-            input: vec![rng.gen::<u8>(); 32].into(),
-            gas_limit: rng.gen_range(1000..1000000),
-            block_time: BlockTime::new(rng.gen()),
-            state_hash: Digest::random(rng),
-            parent_block_hash: BlockHash::random(rng),
-            block_height: rng.gen(),
-            chain_name: String::default(),
-        }
-    }
-}
-
-/// Errors that can occur during restricted execution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CallRestrictedError {
-    /// The contract reverted execution.
-    CalleeReverted,
-    /// The contract trapped during execution.
-    CalleeTrapped,
-    /// The contract ran out of gas.
-    CalleeGasDepleted,
-    /// The contract is not callable (missing export).
-    NotCallable,
-    /// The contract code was not found.
-    CodeNotFound,
-    /// An internal host error occurred.
-    InternalHostError,
-}
-
-impl core::fmt::Display for CallRestrictedError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            CallRestrictedError::CalleeReverted => write!(f, "contract reverted"),
-            CallRestrictedError::CalleeTrapped => write!(f, "contract trapped"),
-            CallRestrictedError::CalleeGasDepleted => write!(f, "contract gas depleted"),
-            CallRestrictedError::NotCallable => write!(f, "contract not callable"),
-            CallRestrictedError::CodeNotFound => write!(f, "contract code not found"),
-            CallRestrictedError::InternalHostError => write!(f, "internal host error"),
-        }
-    }
-}
-
-/// Result of executing a restricted getter.
+/// Result of a sandboxed execution.
 #[derive(Debug)]
-pub struct CallRestrictedResult {
+pub struct SandboxedExecutionResult {
     /// Error while executing, if any.
-    pub error: Option<CallRestrictedError>,
+    pub error: Option<SandboxedExecutionError>,
     /// Output data returned by the contract.
     pub output: Option<Bytes>,
     /// Gas usage tracked during execution.
     pub gas_usage: Gas,
 }
 
-impl CallRestrictedResult {
+impl SandboxedExecutionResult {
     /// Returns the error if the execution failed.
-    pub fn error(&self) -> Option<&CallRestrictedError> {
+    pub fn error(&self) -> Option<&SandboxedExecutionError> {
         self.error.as_ref()
     }
 
@@ -196,9 +172,9 @@ impl CallRestrictedResult {
     }
 }
 
-/// Builder for `CallRestrictedRequest`.
+/// Builder for `SandboxedExecutionRequest`.
 #[derive(Default)]
-pub struct CallRestrictedRequestBuilder {
+pub struct SandboxedExecutionRequestBuilder {
     initiator: Option<AccountHash>,
     contract_address: Option<HashAddr>,
     entry_point: Option<String>,
@@ -211,7 +187,7 @@ pub struct CallRestrictedRequestBuilder {
     chain_name: Option<String>,
 }
 
-impl CallRestrictedRequestBuilder {
+impl SandboxedExecutionRequestBuilder {
     /// Set the initiator's address.
     #[must_use]
     pub fn with_initiator(mut self, initiator: AccountHash) -> Self {
@@ -282,8 +258,8 @@ impl CallRestrictedRequestBuilder {
         self
     }
 
-    /// Build the `CallRestrictedRequest`.
-    pub fn build(self) -> Result<CallRestrictedRequest, &'static str> {
+    /// Build the `SandboxedExecutionRequest`.
+    pub fn build(self) -> Result<SandboxedExecutionRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
         let contract_address = self.contract_address.ok_or("Contract address is not set")?;
         let entry_point = self.entry_point.ok_or("Entry point is not set")?;
@@ -296,7 +272,7 @@ impl CallRestrictedRequestBuilder {
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
         let chain_name = self.chain_name.ok_or("Chain name is not set")?;
-        Ok(CallRestrictedRequest {
+        Ok(SandboxedExecutionRequest {
             initiator,
             contract_address,
             entry_point,
