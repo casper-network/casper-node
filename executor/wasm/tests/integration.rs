@@ -35,10 +35,7 @@ use casper_storage::{
     AddressGenerator, KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, execution::RetValue, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -1085,7 +1082,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let ret_transform = ret_transform.unwrap();
     match ret_transform.kind() {
-        casper_types::execution::TransformKindV2::Ret(bytes) => {
+        casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
             assert_eq!(
                 bytes.as_slice(),
@@ -1103,4 +1100,50 @@ fn casper_return_writes_to_execution_journal() {
         &expected_key,
         "Ret transform should be under the contract key"
     );
+}
+
+#[test]
+fn argument_size_exceeds_memory_limit() {
+    use casper_executor_wasm_interface::executor::ExecuteError;
+    let executor = {
+        let storage_costs = StorageCosts::new(DEFAULT_GAS_PER_BYTE_COST);
+        let execution_engine_v1 = ExecutionEngineV1::default();
+        // Config with one page of mem (64KiB)
+        let executor_config = ExecutorConfigBuilder::default()
+            .with_memory_limit(1)
+            .with_executor_kind(ExecutorKind::Compiled)
+            .with_wasm_config(WasmV2Config::default())
+            .with_storage_costs(storage_costs)
+            .with_message_limits(MessageLimits::default())
+            .build()
+            .expect("Should build");
+        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+    };
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+    // Create an input larger than 1 page
+    let large_input = Bytes::from(vec![0u8; 70_000]);
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_cep18.wasm")))
+        .with_input(large_input)
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .build()
+        .expect("should build");
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+    match result {
+        Err(ExecuteWithProviderError::Execute(ExecuteError::ArgumentSizeExceedsMemory { argument_size, memory_limit })) => {
+            assert!(argument_size > (memory_limit as usize * 65536));
+        }
+        other => panic!("Expected ArgumentSizeExceedsMemory error, got: {:?}", other),
+    }
 }

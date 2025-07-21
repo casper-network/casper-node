@@ -561,6 +561,15 @@ impl ExecutorV2 {
             restricted,
         };
 
+        // Check that the input argument size does not exceed the VM memory limit
+        let memory_limit_bytes = self.config.memory_limit as usize * 65_536; // 64KiB per page
+        if context.input.len() > memory_limit_bytes {
+            return Err(ExecuteError::ArgumentSizeExceedsMemory {
+                argument_size: context.input.len(),
+                memory_limit: self.config.memory_limit,
+            });
+        }
+
         let wasm_instance_config = ConfigBuilder::new()
             .with_gas_limit(gas_limit)
             .with_memory_limit(self.config.memory_limit)
