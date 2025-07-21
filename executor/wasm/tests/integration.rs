@@ -34,15 +34,15 @@ use casper_storage::{
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::runtime_native::Id,
-    AddressGenerator, KeyPrefix,
+    system::runtime_native::{Config, Id, TransferConfig},
+    AddressGenerator, KeyPrefix, RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, testing::TestRng, BlockHash, Chainspec,
-    ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfig, HoldBalanceHandling,
-    HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase, ProtocolVersion,
-    PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, TransactionHash,
-    TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    ChainspecRegistry, Digest, EntityAddr, FeeHandling, GenesisAccount, GenesisConfig,
+    HoldBalanceHandling, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
+    ProtocolVersion, PublicKey, RefundHandling, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -257,7 +257,48 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     )))
 }
 
-fn base_execute_builder() -> ExecuteRequestBuilder {
+fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfig {
+    let protocol_version = ProtocolVersion::V2_0_0;
+    let transfer_config = TransferConfig::Unadministered;
+    let fee_handling = chainspec_config.core_config.fee_handling;
+    let refund_handling = chainspec_config.core_config.refund_handling;
+    let vesting_schedule_period_millis = chainspec_config
+        .core_config
+        .vesting_schedule_period
+        .millis();
+    let allow_auction_bids = chainspec_config.core_config.allow_auction_bids;
+    let compute_rewards = chainspec_config.core_config.compute_rewards;
+    let max_delegators_per_validator = chainspec_config.core_config.max_delegators_per_validator;
+    let minimum_bid_amount = chainspec_config.core_config.minimum_bid_amount;
+    let minimum_delegation_amount = chainspec_config.core_config.minimum_delegation_amount;
+    let balance_hold_interval = chainspec_config.core_config.gas_hold_interval.millis();
+    let include_credits = chainspec_config.core_config.fee_handling == FeeHandling::NoFee;
+    let credit_cap = Ratio::new_raw(
+        U512::from(*chainspec_config.core_config.validator_credit_cap.numer()),
+        U512::from(*chainspec_config.core_config.validator_credit_cap.denom()),
+    );
+    let enable_addressable_entity = chainspec_config.core_config.enable_addressable_entity;
+    let native_transfer_cost = chainspec_config.system_costs_config.mint_costs().transfer;
+    Config::new(
+        protocol_version,
+        transfer_config,
+        fee_handling,
+        refund_handling,
+        vesting_schedule_period_millis,
+        allow_auction_bids,
+        compute_rewards,
+        max_delegators_per_validator,
+        minimum_bid_amount,
+        minimum_delegation_amount,
+        balance_hold_interval,
+        include_credits,
+        credit_cap,
+        enable_addressable_entity,
+        native_transfer_cost,
+    )
+}
+
+fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteRequestBuilder {
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -268,10 +309,13 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
 }
 
-fn base_install_request_builder() -> InstallContractRequestBuilder {
+fn base_install_request_builder(
+    chainspec_config: &ChainspecConfig,
+) -> InstallContractRequestBuilder {
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -280,12 +324,34 @@ fn base_install_request_builder() -> InstallContractRequestBuilder {
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+}
+
+pub(crate) fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
+    let storage_costs = chainspec_config.storage_costs;
+    let v1_config = EngineConfig::from(chainspec_config.clone());
+    let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
+    let wasm_v2_config = chainspec_config.wasm_config.v2().clone();
+    let memory_limit = wasm_v2_config.max_memory();
+    let message_limits = chainspec_config.wasm_config.messages_limits();
+    let executor_config = ExecutorConfigBuilder::default()
+        .with_memory_limit(memory_limit)
+        .with_executor_kind(ExecutorKind::Compiled)
+        .with_wasm_config(wasm_v2_config)
+        .with_storage_costs(storage_costs)
+        .with_message_limits(message_limits)
+        .build()
+        .expect("Should build");
+    ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
 }
 
 #[test]
 fn harness() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
 
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -298,7 +364,7 @@ fn harness() {
             .map(Bytes::from)
             .unwrap();
 
-        let install_request = base_install_request_builder()
+        let install_request = base_install_request_builder(&chainspec_config)
             .with_wasm_bytes(read_wasm("vm2_cep18.wasm"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_transferred_value(0)
@@ -335,6 +401,7 @@ fn harness() {
         .with_state_hash(state_root_hash)
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"bl0ck")))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .build()
         .expect("should build");
 
@@ -346,30 +413,12 @@ fn harness() {
     );
 }
 
-pub(crate) fn make_executor() -> ExecutorV2 {
+#[test]
+fn cep18() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
-    let storage_costs = chainspec_config.storage_costs;
-    let v1_config = EngineConfig::from(chainspec_config.clone());
-    let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
-    let wasm_v2_config = chainspec_config.wasm_config.v2().clone();
-    let memory_limit = wasm_v2_config.max_memory();
-    let message_limits = chainspec_config.wasm_config.messages_limits();
-    let executor_config = ExecutorConfigBuilder::default()
-        .with_memory_limit(memory_limit)
-        .with_executor_kind(ExecutorKind::Compiled)
-        .with_wasm_config(wasm_v2_config)
-        .with_storage_costs(storage_costs)
-        .with_message_limits(message_limits)
-        .build()
-        .expect("Should build");
-    ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
-}
 
-#[test]
-
-fn cep18() {
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
 
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -381,7 +430,7 @@ fn cep18() {
 
     let block_time_1 = Timestamp::now().into();
 
-    let create_request = base_install_request_builder()
+    let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(read_wasm("vm2_cep18.wasm").clone())
@@ -456,6 +505,7 @@ fn cep18() {
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(2) // TODO: Carry on block height
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .build()
         .expect("should build");
 
@@ -572,10 +622,13 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
 
 #[test]
 fn traits() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
         .with_serialized_input(())
         .with_shared_address_generator(make_address_generator())
@@ -592,7 +645,10 @@ fn traits() {
 
 #[test]
 fn upgradable() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
 
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -603,7 +659,7 @@ fn upgradable() {
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
-        let create_request = base_install_request_builder()
+        let create_request = base_install_request_builder(&chainspec_config)
             .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -628,7 +684,7 @@ fn upgradable() {
     };
 
     let version_before_upgrade = {
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
@@ -653,7 +709,7 @@ fn upgradable() {
 
     {
         // Increment the value
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment".to_string(),
@@ -678,7 +734,7 @@ fn upgradable() {
     let binding = read_wasm("vm2_upgradable_v2.wasm");
     let new_code = binding.as_ref();
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
         .with_target(ExecutionKind::Stored {
             address: upgradable_address,
@@ -700,7 +756,7 @@ fn upgradable() {
         .expect("Should commit");
 
     let version_after_upgrade = {
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
@@ -725,7 +781,7 @@ fn upgradable() {
 
     {
         // Increment the value
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment_by".to_string(),
@@ -860,7 +916,10 @@ fn backwards_compatibility() {
         _ => panic!("Expected counter URef"),
     };
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
     // Calling v1 vm directly by hash is not currently supported (i.e. disabling vm1 runtime, and
@@ -892,7 +951,7 @@ fn backwards_compatibility() {
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
-    let install_request: InstallContractRequest = base_install_request_builder()
+    let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_legacy_counter_proxy.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -917,7 +976,7 @@ fn backwards_compatibility() {
 
     // Call v2 contract
 
-    let call_request = base_execute_builder()
+    let call_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: proxy_address,
             entry_point: "perform_test".to_string(),
@@ -1114,12 +1173,15 @@ fn write_n_bytes_at_limit(
 
 #[test]
 fn non_existing_smart_contract_does_not_panic() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
     let address_generator = make_address_generator();
-    let executor = make_executor();
+    let executor = make_executor(&chainspec_config);
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let non_existing_address = [255; 32];
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: non_existing_address,
             entry_point: "non_existing".to_string(),
@@ -1142,8 +1204,11 @@ fn non_existing_smart_contract_does_not_panic() {
 
 #[test]
 fn casper_return_writes_to_execution_journal() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
     let address_generator = make_address_generator();
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
@@ -1151,7 +1216,7 @@ fn casper_return_writes_to_execution_journal() {
         .map(Bytes::from)
         .unwrap();
 
-    let install_request = base_install_request_builder()
+    let install_request = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_host.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -1171,7 +1236,7 @@ fn casper_return_writes_to_execution_journal() {
     state_root_hash = create_result.post_state_hash();
 
     // Execute the contract to trigger the return
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret".to_string(),
