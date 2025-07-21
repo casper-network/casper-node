@@ -18,6 +18,9 @@ use static_assertions::const_assert;
 use casper_binary_port::{
     ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionRequest, SandboxedExecutionResult,
+};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -47,14 +50,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
-        contract_runtime::SpeculativeExecutionResult,
+        contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
@@ -777,6 +779,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
+    /// A sandboxed execution request.
+    SandboxedExecution {
+        /// Sandboxed execution request,
+        #[serde(skip_serializing)]
+        request: SandboxedExecutionRequest,
+        /// Responder to call with the query result.
+        responder: Responder<SandboxedExecutionResult>,
+    },
     /// A query by prefix request.
     QueryByPrefix {
         /// Query by prefix request.
@@ -905,6 +915,9 @@ impl Display for ContractRuntimeRequest {
                 ..
             } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+            ContractRuntimeRequest::SandboxedExecution { request, .. } => {
+                write!(formatter, "call restricted request: {:?}", request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {
                 write!(formatter, "query by prefix request: {:?}", request)

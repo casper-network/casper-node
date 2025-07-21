@@ -2,6 +2,8 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::{blake2b256, casper};
+#[allow(unused_imports)]
+use casper_contract_sdk::abi::CasperABI;
 use casper_contract_sdk::{
     casper,
     contrib::{
@@ -55,10 +57,6 @@ pub trait Counter {
 
     fn get_counter_value(&self) -> u64 {
         self.counter_state().value
-    }
-
-    fn get_counter_state(&self) -> CounterState {
-        self.counter_state().clone()
     }
 
     #[casper(private)]

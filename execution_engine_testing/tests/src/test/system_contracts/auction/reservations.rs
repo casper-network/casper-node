@@ -28,7 +28,7 @@ use casper_types::{
         ARG_ENTRY_POINT, ARG_PUBLIC_KEY, ARG_RESERVATIONS, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP,
         ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
-    ProtocolVersion, PublicKey, SecretKey, U512,
+    PublicKey, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -171,7 +171,6 @@ fn setup_validator_bid(builder: &mut LmdbWasmTestBuilder, reserved_slots: u32) {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -866,7 +865,6 @@ fn should_distribute_rewards_with_reserved_slots() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();

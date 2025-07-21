@@ -1,4 +1,5 @@
 pub mod executor;
+pub mod sandboxed_execution;
 
 use bytes::Bytes;
 use executor::ExecuteError;
@@ -9,9 +10,15 @@ use casper_executor_wasm_common::{
     flags::ReturnFlags,
 };
 
+#[cfg(test)]
+pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
+pub use sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+};
+
 /// Interface version for the Wasm host functions.
 ///
-/// This defines behavior of the Wasm execution environment i.e. the host behavior, serialiation,
+/// This defines behavior of the Wasm execution environment i.e. the host behavior, serialization,
 /// etc.
 ///
 /// Only the highest `interface_version_X` is taken from the imports table which means Wasm has to
@@ -27,7 +34,7 @@ impl From<u32> for InterfaceVersion {
 
 pub type HostResult = Result<(), CallError>;
 
-/// Converts a host result into a u32.
+/// Converts a host result into the corresponding u32 value.
 #[must_use]
 pub fn u32_from_host_result(result: HostResult) -> u32 {
     match result {
@@ -71,8 +78,8 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
-#[derive(Error, Debug)]
 /// Represents a catastrophic internal host error.
+#[derive(Debug, Error)]
 pub enum InternalHostError {
     #[error("type conversion failure")]
     TypeConversion,
@@ -94,6 +101,8 @@ pub enum InternalHostError {
     AccountRecordNotFound,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
+    #[error("attempted writing in restricted mode")]
+    AttemptWriteInRestricted,
 }
 
 /// The outcome of a call.

@@ -148,14 +148,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
-        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
+    contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -171,6 +170,9 @@ use announcements::{
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionRequest, SandboxedExecutionResult,
 };
 use casper_storage::data_access_layer::EntryPointExistsResult;
 use diagnostics_port::DumpConsensusStateRequest;
@@ -1957,6 +1959,21 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Query { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Requests a sandboxed contract execution.
+    pub(crate) async fn execute_sandboxed_contract(
+        self,
+        request: SandboxedExecutionRequest,
+    ) -> SandboxedExecutionResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::SandboxedExecution { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

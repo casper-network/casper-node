@@ -11,8 +11,7 @@ use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use num_rational::Ratio;
 
 use casper_storage::{
-    data_access_layer::TransferRequest,
-    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    data_access_layer::TransferRequest, system::runtime_native::TransferConfig, RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash,
@@ -30,7 +29,7 @@ use crate::{
 /// Builds a [`TransferRequest`].
 #[derive(Debug)]
 pub struct TransferRequestBuilder {
-    config: NativeRuntimeConfig,
+    config: RuntimeNativeConfig,
     state_hash: Digest,
     block_time: BlockTime,
     protocol_version: ProtocolVersion,
@@ -43,7 +42,8 @@ pub struct TransferRequestBuilder {
 
 impl TransferRequestBuilder {
     /// The default value used for `TransferRequest::config`.
-    pub const DEFAULT_CONFIG: NativeRuntimeConfig = NativeRuntimeConfig::new(
+    pub const DEFAULT_CONFIG: RuntimeNativeConfig = RuntimeNativeConfig::new(
+        DEFAULT_PROTOCOL_VERSION,
         TransferConfig::Unadministered,
         FeeHandling::PayToProposer,
         RefundHandling::Refund {
@@ -97,8 +97,8 @@ impl TransferRequestBuilder {
         }
     }
 
-    /// Sets the native runtime config of the [`TransferRequest`].
-    pub fn with_native_runtime_config(mut self, config: NativeRuntimeConfig) -> Self {
+    /// Sets the runtime native config of the [`TransferRequest`].
+    pub fn with_runtime_native_config(mut self, config: RuntimeNativeConfig) -> Self {
         self.config = config;
         self
     }
@@ -147,7 +147,7 @@ impl TransferRequestBuilder {
         self
     }
 
-    /// Adds the "id" runtime arg, replacing the existing one if it exists..
+    /// Adds the "id" runtime arg, replacing the existing one if it exists.
     pub fn with_transfer_id(mut self, id: u64) -> Self {
         let value = CLValue::from_t(Some(id)).unwrap();
         let _ = self.args.insert(ARG_ID.to_string(), value);

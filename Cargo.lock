@@ -954,6 +954,7 @@ dependencies = [
  "casper-storage",
  "casper-types",
  "parking_lot",
+ "serde",
  "thiserror 2.0.12",
 ]
 
@@ -995,6 +996,7 @@ dependencies = [
  "casper-binary-port",
  "casper-execution-engine",
  "casper-executor-wasm",
+ "casper-executor-wasm-common",
  "casper-executor-wasm-interface",
  "casper-storage",
  "casper-types",
@@ -7233,6 +7235,15 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-faucet"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
+ "serde_json",
 ]
 
 [[package]]

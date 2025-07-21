@@ -122,6 +122,8 @@ pub enum ResponseType {
     AddressableEntityInformation,
     /// Bids information.
     BidsInformation,
+    /// Result of a sandboxed contract execution.
+    SandboxedExecutionResult,
 }
 
 impl ResponseType {
@@ -148,7 +150,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..44)).unwrap()
+        Self::try_from(rng.gen_range(0..45)).unwrap()
     }
 }
 
@@ -232,6 +234,9 @@ impl TryFrom<u8> for ResponseType {
                 Ok(ResponseType::AddressableEntityInformation)
             }
             x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
+            x if x == ResponseType::SandboxedExecutionResult as u8 => {
+                Ok(ResponseType::SandboxedExecutionResult)
+            }
             _ => Err(()),
         }
     }
@@ -297,6 +302,7 @@ impl fmt::Display for ResponseType {
             ResponseType::BidsInformation => {
                 write!(f, "BidsInformation")
             }
+            ResponseType::SandboxedExecutionResult => write!(f, "CallRestrictedResult"),
         }
     }
 }

@@ -241,7 +241,6 @@ fn should_distribute_delegation_rate_zero() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -511,7 +510,6 @@ fn should_withdraw_bids_after_distribute() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(protocol_version)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -1140,7 +1138,6 @@ fn should_distribute_delegation_rate_half() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -1556,7 +1553,6 @@ fn should_distribute_uneven_delegation_rate_zero() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -1859,7 +1855,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -2191,7 +2186,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
