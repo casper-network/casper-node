@@ -7234,6 +7234,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-faucet"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
+ "serde_json",
+]
+
+[[package]]
 name = "vm2-flipper"
 version = "0.1.0"
 dependencies = [

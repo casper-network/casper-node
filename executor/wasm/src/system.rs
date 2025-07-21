@@ -10,14 +10,14 @@ use casper_storage::{
     global_state::GlobalStateReader,
     system::{
         mint::Mint,
-        runtime_native::{Config, Id, RuntimeNative},
+        runtime_native::{Id, RuntimeNative},
     },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
-    ProtocolVersion, PublicKey, SystemHashRegistry, TransactionHash, URef, U512,
+    account::AccountHash, system::MINT, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
+    PublicKey, SystemHashRegistry, TransactionHash, URef, METHOD_TRANSFER, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -39,6 +39,7 @@ enum DispatchError {
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     system_contract: &'static str,
@@ -66,9 +67,6 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         .runtime_footprint_by_entity_addr(entity_addr)
         .map_err(DispatchError::RuntimeFootprint)?;
 
-    let config = Config::default();
-    let protocol_version = ProtocolVersion::V1_0_0;
-
     let access_rights = ContextAccessRights::new(*system_entity_addr, []);
     let address = PublicKey::System.to_account_hash();
 
@@ -79,8 +77,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
 
     let ret = {
         let runtime = RuntimeNative::new(
-            config,
-            protocol_version,
+            runtime_native_config,
             Id::Transaction(transaction_hash),
             address_generator,
             Rc::clone(&forked_tracking_copy),
@@ -112,28 +109,24 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     Ok(ret)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MintArgs {
-    pub(crate) initial_balance: U512,
-}
-
-pub(crate) fn mint_mint<R: GlobalStateReader>(
+pub(crate) fn create_purse<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    args: MintArgs,
 ) -> Result<URef, CallError> {
     let mint_result = match dispatch_system_contract(
         tracking_copy,
+        runtime_native_config,
         transaction_hash,
         address_generator,
-        "mint",
-        |mut runtime| runtime.mint(args.initial_balance),
+        MINT,
+        |mut runtime| runtime.mint(U512::zero()),
     ) {
         Ok(mint_result) => mint_result,
         Err(error) => {
-            error!(%error, ?args, "mint failed");
-            panic!("Mint failed with error {error:?}; aborting");
+            error!(%error, "create purse failed on dispatch");
+            return Err(CallError::CalleeTrapped(TrapCode::NativeDispatchFailure));
         }
     };
 
@@ -142,23 +135,36 @@ pub(crate) fn mint_mint<R: GlobalStateReader>(
         Err(casper_types::system::mint::Error::InsufficientFunds) => Err(CallError::CalleeReverted),
         Err(casper_types::system::mint::Error::GasLimit) => Err(CallError::CalleeGasDepleted),
         Err(mint_error) => {
-            error!(%mint_error, ?args, "mint transfer failed");
-            Err(CallError::CalleeTrapped(TrapCode::UnreachableCodeReached))
+            error!(%mint_error, "create purse failed with error");
+            Err(CallError::CalleeTrapped(TrapCode::NativeError))
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct MintTransferArgs {
-    pub(crate) maybe_to: Option<AccountHash>,
-    pub(crate) source: URef,
-    pub(crate) target: URef,
-    pub(crate) amount: U512,
-    pub(crate) id: Option<u64>,
+    maybe_to: Option<AccountHash>,
+    source: URef,
+    target: URef,
+    amount: U512,
+    id: Option<u64>,
 }
 
-pub(crate) fn mint_transfer<R: GlobalStateReader>(
+impl MintTransferArgs {
+    pub(crate) fn new_simple(source: URef, target: URef, amount: U512) -> Self {
+        MintTransferArgs {
+            source,
+            target,
+            amount,
+            maybe_to: None,
+            id: None,
+        }
+    }
+}
+
+pub(crate) fn transfer<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     id: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintTransferArgs,
@@ -166,9 +172,10 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
     let transfer_result: Result<(), casper_types::system::mint::Error> =
         match dispatch_system_contract(
             tracking_copy,
+            runtime_native_config,
             id,
             address_generator,
-            "mint",
+            MINT,
             |mut runtime| {
                 runtime.transfer(
                     args.maybe_to,
@@ -181,20 +188,20 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
         ) {
             Ok(result) => result,
             Err(error) => {
-                error!(%error, "mint transfer failed");
-                return Err(CallError::CalleeTrapped(TrapCode::UnreachableCodeReached));
+                error!(%error, "transfer failed on dispatch");
+                return Err(CallError::CalleeTrapped(TrapCode::NativeDispatchFailure));
             }
         };
 
-    debug!(?args, ?transfer_result, "transfer");
+    debug!(?args, ?transfer_result, METHOD_TRANSFER);
 
     match transfer_result {
         Ok(()) => Ok(()),
         Err(casper_types::system::mint::Error::InsufficientFunds) => Err(CallError::CalleeReverted),
         Err(casper_types::system::mint::Error::GasLimit) => Err(CallError::CalleeGasDepleted),
         Err(mint_error) => {
-            error!(%mint_error, ?args, "mint transfer failed");
-            Err(CallError::CalleeTrapped(TrapCode::UnreachableCodeReached))
+            error!(%mint_error, ?args, "transfer failed with error");
+            Err(CallError::CalleeTrapped(TrapCode::NativeError))
         }
     }
 }
@@ -213,7 +220,7 @@ mod tests {
             mint::{storage_provider::StorageProvider, Mint},
             runtime_native::Id,
         },
-        AddressGenerator,
+        AddressGenerator, RuntimeNativeConfig,
     };
     use casper_types::{
         ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, StorageCosts,
@@ -276,8 +283,11 @@ mod tests {
             Phase::Session,
         )));
 
+        let runtime_native_config = RuntimeNativeConfig::default();
+
         let ret = dispatch_system_contract(
             &mut tracking_copy,
+            runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
             "mint",
@@ -288,6 +298,7 @@ mod tests {
 
         let ret: Result<Result<U512, _>, _> = dispatch_system_contract(
             &mut tracking_copy,
+            runtime_native_config,
             transaction_hash,
             Arc::clone(&address_generator),
             "mint",

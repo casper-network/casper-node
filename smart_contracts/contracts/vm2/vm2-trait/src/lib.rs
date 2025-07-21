@@ -2,8 +2,9 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::{blake2b256, casper};
+#[allow(unused_imports)]
+use casper_contract_sdk::abi::CasperABI;
 use casper_contract_sdk::{
-    abi::CasperABI,
     casper,
     contrib::{
         access_control::{AccessControl, AccessControlExt, AccessControlState, Role},

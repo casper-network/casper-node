@@ -133,9 +133,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{
-        CallRestrictedRequest, CallRestrictedResult, Effects as ExecutionEffects, ExecutionResult,
-    },
+    execution::{Effects as ExecutionEffects, ExecutionResult},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -172,6 +170,9 @@ use announcements::{
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionRequest, SandboxedExecutionResult,
 };
 use casper_storage::data_access_layer::EntryPointExistsResult;
 use diagnostics_port::DumpConsensusStateRequest;
@@ -1963,16 +1964,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests a restricted contract execution on the Contract Runtime component.
-    pub(crate) async fn execute_restricted(
+    /// Requests a sandboxed contract execution.
+    pub(crate) async fn execute_sandboxed_contract(
         self,
-        request: CallRestrictedRequest,
-    ) -> CallRestrictedResult
+        request: SandboxedExecutionRequest,
+    ) -> SandboxedExecutionResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::CallRestricted { request, responder },
+            |responder| ContractRuntimeRequest::SandboxedExecution { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
