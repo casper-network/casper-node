@@ -35,7 +35,10 @@ use casper_storage::{
     AddressGenerator, KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512
+    account::AccountHash, execution::RetValue, BlockHash, ChainspecRegistry, Digest, EntityAddr,
+    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
+    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -1141,7 +1144,10 @@ fn argument_size_exceeds_memory_limit() {
         .expect("should build");
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
     match result {
-        Err(ExecuteWithProviderError::Execute(ExecuteError::ArgumentSizeExceedsMemory { argument_size, memory_limit })) => {
+        Err(ExecuteWithProviderError::Execute(ExecuteError::ArgumentSizeExceedsMemory {
+            argument_size,
+            memory_limit,
+        })) => {
             assert!(argument_size > (memory_limit as usize * 65536));
         }
         other => panic!("Expected ArgumentSizeExceedsMemory error, got: {:?}", other),
