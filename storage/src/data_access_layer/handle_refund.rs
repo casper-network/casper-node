@@ -1,6 +1,5 @@
 use crate::{
-    data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
-    tracking_copy::TrackingCopyError,
+    data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError, RuntimeNativeConfig,
 };
 use casper_types::{
     execution::Effects, Digest, InitiatorAddr, Phase, ProtocolVersion, TransactionHash, Transfer,
@@ -103,7 +102,7 @@ impl HandleRefundMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleRefundRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
     /// The protocol version.
@@ -117,7 +116,7 @@ pub struct HandleRefundRequest {
 impl HandleRefundRequest {
     /// Creates a new instance.
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -133,7 +132,7 @@ impl HandleRefundRequest {
     }
 
     /// Returns a reference to the config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 

@@ -29,6 +29,9 @@ use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionResult,
+};
 use casper_storage::{
     data_access_layer::{
         bids::{DelegatorBidRequest, ValidatorBidRequest},
@@ -43,12 +46,11 @@ use casper_storage::{
     },
     system::genesis::GenesisError,
     tracking_copy::TrackingCopyError,
+    RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash,
-    execution::{CallRestrictedError, CallRestrictedResult},
-    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key,
-    PublicKey,
+    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
+    EntityAddr, EraId, Gas, Key, PublicKey,
 };
 
 use crate::{
@@ -334,11 +336,14 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::CallRestricted { request, responder } => {
+            ContractRuntimeRequest::SandboxedExecution { request, responder } => {
                 trace!(?request, "call restricted");
                 let metrics = Arc::clone(&self.metrics);
                 let execution_engine_v2 = self.execution_engine_v2.clone();
                 let data_access_layer = Arc::clone(&self.data_access_layer);
+                // TODO: consider adding a singleton field for runtime_native_config to this
+                // component, set during construction.
+                let runtime_native_config = RuntimeNativeConfig::from_chainspec(&self.chainspec);
                 async move {
                     let start = Instant::now();
                     let result = run_intensive_task(move || {
@@ -348,14 +353,17 @@ impl ContractRuntime {
                             .tracking_copy(request.state_hash)
                             .expect("should get tracking copy result")
                             .expect("should create tracking copy");
-
                         // Execute the request
-                        execution_engine_v2.execute_restricted(tracking_copy, request)
+                        execution_engine_v2.execute_sandbox(
+                            tracking_copy,
+                            runtime_native_config,
+                            request,
+                        )
                     })
                     .await;
 
-                    let result = result.unwrap_or(CallRestrictedResult {
-                        error: Some(CallRestrictedError::InternalHostError),
+                    let result = result.unwrap_or(SandboxedExecutionResult {
+                        error: Some(SandboxedExecutionError::InternalHostError),
                         output: None,
                         gas_usage: Gas::new(0),
                     });

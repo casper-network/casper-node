@@ -161,7 +161,6 @@ where
     for era_counter in current_era_id.iter(builder.get_auction_delay() + 1) {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(era_counter)
             // no rewards as default validator is not a validator yet
             .build();

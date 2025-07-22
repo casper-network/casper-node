@@ -22,6 +22,9 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
+    sandboxed_execution::{
+        SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    },
     ConfigBuilder, GasUsage, InternalHostError, VMError, WasmInstance,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
@@ -31,21 +34,19 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr,
-    execution::{CallRestrictedError, CallRestrictedRequest, CallRestrictedResult},
-    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
-    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, U512,
+    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
+    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
+    StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use system::{MintArgs, MintTransferArgs};
+use system::MintTransferArgs;
 use tracing::{error, warn};
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
@@ -179,6 +180,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
+            runtime_native_config,
         } = install_request;
 
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
@@ -239,13 +241,11 @@ impl ExecutorV2 {
             Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
 
         // TODO: abort(str) as an alternative to trap
-        let main_purse: URef = match system::mint_mint(
+        let main_purse: URef = match system::create_purse(
             &mut tracking_copy,
+            runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
-            MintArgs {
-                initial_balance: U512::zero(),
-            },
         ) {
             Ok(uref) => uref,
             Err(mint_error) => {
@@ -291,6 +291,7 @@ impl ExecutorV2 {
                     .with_state_hash(state_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
+                    .with_runtime_native_config(runtime_native_config)
                     .build()
                     .expect("should build");
 
@@ -362,7 +363,8 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
-            restricted,
+            sandboxed,
+            runtime_native_config,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -405,9 +407,8 @@ impl ExecutorV2 {
                             EntityKind::System(_) => todo!(),
                             EntityKind::Account(_) => todo!(),
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1) => {
-                                // We need to short circuit here to execute v1 contracts with legacy
-                                // execut
-
+                                // We need to short circuit here to execute v1 contracts with
+                                // vm1 execute
                                 let block_info = BlockInfo::new(
                                     state_hash,
                                     block_time,
@@ -448,43 +449,28 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
-                            let args = {
-                                let maybe_to = None;
-                                let source = source_purse;
-                                let target = addressable_entity.main_purse();
-                                let amount = transferred_value;
-                                let id = None;
-                                MintTransferArgs {
-                                    maybe_to,
-                                    source,
-                                    target,
-                                    amount: amount.into(),
-                                    id,
-                                }
-                            };
-
-                            match system::mint_transfer(
+                            if let Err(error) = system::transfer(
                                 &mut tracking_copy,
+                                runtime_native_config.clone(),
                                 transaction_hash,
                                 Arc::clone(&address_generator),
-                                args,
+                                MintTransferArgs::new_simple(
+                                    source_purse,
+                                    addressable_entity.main_purse(),
+                                    transferred_value.into(),
+                                ),
                             ) {
-                                Ok(()) => {
-                                    // Transfer succeed, go on
-                                }
-                                Err(error) => {
-                                    return Ok(ExecuteResult {
-                                        host_error: Some(error),
-                                        output: None,
-                                        gas_usage: GasUsage::new(
-                                            gas_limit,
-                                            gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
-                                        ),
-                                        effects: tracking_copy.effects(),
-                                        cache: tracking_copy.cache(),
-                                        messages: tracking_copy.messages(),
-                                    });
-                                }
+                                return Ok(ExecuteResult {
+                                    host_error: Some(error),
+                                    output: None,
+                                    gas_usage: GasUsage::new(
+                                        gas_limit,
+                                        gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                    ),
+                                    effects: tracking_copy.effects(),
+                                    cache: tracking_copy.cache(),
+                                    messages: tracking_copy.messages(),
+                                });
                             }
                         }
 
@@ -558,7 +544,8 @@ impl ExecutorV2 {
             input,
             block_time,
             message_limits: self.config.message_limits,
-            restricted,
+            sandboxed,
+            runtime_native_config,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -673,7 +660,7 @@ impl ExecutorV2 {
         input: &Bytes,
         tracking_copy: &mut TrackingCopy<R>,
         block_info: BlockInfo,
-        transaction_hash: casper_types::TransactionHash,
+        transaction_hash: TransactionHash,
         gas_limit: u64,
     ) -> Result<ExecuteResult, ExecuteError>
     where
@@ -851,12 +838,13 @@ impl Executor for ExecutorV2 {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
     }
 
-    fn execute_restricted<R: GlobalStateReader + 'static>(
+    fn execute_sandbox<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        request: CallRestrictedRequest,
-    ) -> Result<CallRestrictedResult, ExecuteError> {
-        // Convert CallRestrictedRequest to ExecuteRequest with restricted mode enabled
+        runtime_native_config: RuntimeNativeConfig,
+        request: SandboxedExecutionRequest,
+    ) -> Result<SandboxedExecutionResult, ExecuteError> {
+        // Convert SandboxedExecutionRequest to ExecuteRequest with sandboxed mode enabled
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(request.initiator)
             .with_caller_key(Key::Account(request.initiator))
@@ -866,7 +854,7 @@ impl Executor for ExecutorV2 {
                 entry_point: request.entry_point,
             })
             .with_input(Bytes::copy_from_slice(request.input.inner_bytes()))
-            .with_transferred_value(0) // Must be 0 for restricted queries
+            .with_transferred_value(0) // Must be 0 for sandboxed queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
             .with_chain_name(request.chain_name)
@@ -874,38 +862,39 @@ impl Executor for ExecutorV2 {
             .with_state_hash(request.state_hash)
             .with_parent_block_hash(request.parent_block_hash)
             .with_block_height(request.block_height)
-            .with_restricted(true) // Enable restricted mode
+            .with_sandboxed(true) // Enable sandboxed mode
+            .with_runtime_native_config(runtime_native_config)
             .build()
             .map_err(|_| {
                 ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
             })?;
 
-        // Execute the query in restricted mode
+        // Execute the query in sandboxed mode
         let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
         let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
-        // Convert ExecuteResult to CallRestrictedResult
-        let query_result = CallRestrictedResult {
+        // Convert ExecuteResult to SandboxedExecutionResult
+        let result = SandboxedExecutionResult {
             error: execute_result
                 .host_error
                 .map(|call_error| match call_error {
-                    CallError::CalleeReverted => CallRestrictedError::CalleeReverted,
-                    CallError::CalleeTrapped(_) => CallRestrictedError::CalleeTrapped,
-                    CallError::CalleeGasDepleted => CallRestrictedError::CalleeGasDepleted,
-                    CallError::NotCallable => CallRestrictedError::NotCallable,
+                    CallError::CalleeReverted => SandboxedExecutionError::CalleeReverted,
+                    CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
+                    CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
+                    CallError::NotCallable => SandboxedExecutionError::NotCallable,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
         };
 
-        Ok(query_result)
+        Ok(result)
     }
 }
 
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> casper_types::URef {
+) -> URef {
     let stored_value = tracking_copy
         .read(&entity_key)
         .expect("should read account")

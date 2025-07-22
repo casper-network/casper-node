@@ -16,6 +16,7 @@ use tracing::error;
 /// Configuration settings.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
+    protocol_version: ProtocolVersion,
     transfer_config: TransferConfig,
     fee_handling: FeeHandling,
     refund_handling: RefundHandling,
@@ -36,6 +37,7 @@ impl Config {
     /// Ctor.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
+        protocol_version: ProtocolVersion,
         transfer_config: TransferConfig,
         fee_handling: FeeHandling,
         refund_handling: RefundHandling,
@@ -52,6 +54,7 @@ impl Config {
         native_transfer_cost: u32,
     ) -> Self {
         Config {
+            protocol_version,
             transfer_config,
             fee_handling,
             refund_handling,
@@ -71,6 +74,7 @@ impl Config {
 
     /// Ctor from chainspec.
     pub fn from_chainspec(chainspec: &Chainspec) -> Self {
+        let protocol_version = chainspec.protocol_version();
         let transfer_config = TransferConfig::from_chainspec(chainspec);
         let fee_handling = chainspec.core_config.fee_handling;
         let refund_handling = chainspec.core_config.refund_handling;
@@ -89,6 +93,7 @@ impl Config {
         let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
         let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
         Config::new(
+            protocol_version,
             transfer_config,
             fee_handling,
             refund_handling,
@@ -104,6 +109,11 @@ impl Config {
             enable_addressable_entity,
             native_transfer_cost,
         )
+    }
+
+    /// Returns transfer config.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
     }
 
     /// Returns transfer config.
@@ -175,6 +185,7 @@ impl Config {
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
         Config {
             transfer_config,
+            protocol_version: self.protocol_version,
             fee_handling: self.fee_handling,
             refund_handling: self.refund_handling,
             vesting_schedule_period_millis: self.vesting_schedule_period_millis,
@@ -198,7 +209,7 @@ pub enum TransferConfig {
     /// Transfers are affected by the existence of administrative_accounts. This is a
     /// behavior specific to private or managed chains, not a public chain.
     Administered {
-        /// Retrusn the set of account hashes for all administrators.
+        /// Returns the set of account hashes for all administrators.
         administrative_accounts: BTreeSet<AccountHash>,
         /// If true, transfers are unrestricted.
         /// If false, the source and / or target of a transfer must be an administrative account.
@@ -284,7 +295,7 @@ impl TransferConfig {
     }
 }
 
-/// Id for runtime processing.
+/// Identity for runtime processing.
 pub enum Id {
     /// Hash of current transaction.
     Transaction(TransactionHash),
@@ -308,7 +319,6 @@ pub struct RuntimeNative<S> {
 
     id: Id,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    protocol_version: ProtocolVersion,
 
     tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
     address: AccountHash,
@@ -328,7 +338,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -345,7 +354,6 @@ where
 
             id,
             address_generator,
-            protocol_version,
 
             tracking_copy,
             address,
@@ -361,7 +369,6 @@ where
     /// Creates a runtime with elevated permissions for systemic behaviors.
     pub fn new_system_runtime(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -370,7 +377,7 @@ where
         let transfers = vec![];
         let (entity_addr, runtime_footprint, access_rights) = tracking_copy
             .borrow_mut()
-            .system_entity_runtime_footprint(protocol_version)?;
+            .system_entity_runtime_footprint(config.protocol_version())?;
         let address = PublicKey::System.to_account_hash();
         let context_key = if config.enable_addressable_entity {
             Key::AddressableEntity(entity_addr)
@@ -382,7 +389,6 @@ where
             config,
             id,
             address_generator,
-            protocol_version,
 
             tracking_copy,
             address,
@@ -398,7 +404,6 @@ where
     /// Creates a runtime context for a system contract.
     pub fn new_system_contract_runtime(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -432,8 +437,6 @@ where
             config,
             id,
             address_generator,
-            protocol_version,
-
             tracking_copy,
             address,
             context_key,
@@ -462,7 +465,7 @@ where
 
     /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns handle to tracking copy.

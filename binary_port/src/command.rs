@@ -2,11 +2,10 @@ use core::convert::TryFrom;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    execution::CallRestrictedRequest,
     Transaction,
 };
 
-use crate::get_request::GetRequest;
+use crate::{get_request::GetRequest, sandboxed_execution::SandboxedExecutionRequest};
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -23,7 +22,7 @@ pub struct CommandHeader {
 
 impl CommandHeader {
     // Defines the current version of the header, in practice defining the current version of the
-    // binary port protocol. Requests with mismatched header version will be dropped.
+    // binary port protocol. Requests with a mismatched header version will be dropped.
     pub const HEADER_VERSION: u16 = 1;
 
     /// Creates new binary request header.
@@ -72,16 +71,16 @@ impl ToBytes for CommandHeader {
         Ok(buffer)
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.header_version.write_bytes(writer)?;
-        self.type_tag.write_bytes(writer)?;
-        self.id.write_bytes(writer)
-    }
-
     fn serialized_length(&self) -> usize {
         self.header_version.serialized_length()
             + self.type_tag.serialized_length()
             + self.id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.header_version.write_bytes(writer)?;
+        self.type_tag.write_bytes(writer)?;
+        self.id.write_bytes(writer)
     }
 }
 
@@ -116,10 +115,10 @@ pub enum Command {
         /// Transaction to execute.
         transaction: Transaction,
     },
-    /// Request to execute contract in restricted mode.
-    TryCallRestricted {
-        /// A call-restricted read request.
-        call_restricted_request: CallRestrictedRequest,
+    /// Request to execute a sandboxed contract.
+    TrySandboxedExecution {
+        /// A sandboxed execution request.
+        request: SandboxedExecutionRequest,
     },
 }
 
@@ -130,7 +129,7 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
-            Command::TryCallRestricted { .. } => CommandTag::TryCallRestricted,
+            Command::TrySandboxedExecution { .. } => CommandTag::TrySandboxedExecution,
         }
     }
 
@@ -144,8 +143,8 @@ impl Command {
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
             },
-            CommandTag::TryCallRestricted => Self::TryCallRestricted {
-                call_restricted_request: CallRestrictedRequest::random(rng),
+            CommandTag::TrySandboxedExecution => Self::TrySandboxedExecution {
+                request: SandboxedExecutionRequest::random(rng),
             },
         }
     }
@@ -158,25 +157,21 @@ impl ToBytes for Command {
         Ok(buffer)
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            Command::Get(inner) => inner.write_bytes(writer),
-            Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
-            Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::TryCallRestricted {
-                call_restricted_request,
-            } => call_restricted_request.write_bytes(writer),
-        }
-    }
-
     fn serialized_length(&self) -> usize {
         match self {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::TryCallRestricted {
-                call_restricted_request,
-            } => call_restricted_request.serialized_length(),
+            Command::TrySandboxedExecution { request } => request.serialized_length(),
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Command::Get(inner) => inner.write_bytes(writer),
+            Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
+            Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
+            Command::TrySandboxedExecution { request } => request.write_bytes(writer),
         }
     }
 }
@@ -198,14 +193,9 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
-            CommandTag::TryCallRestricted => {
-                let (call_restricted_request, remainder) = FromBytes::from_bytes(bytes)?;
-                (
-                    Command::TryCallRestricted {
-                        call_restricted_request,
-                    },
-                    remainder,
-                )
+            CommandTag::TrySandboxedExecution => {
+                let (request, remainder) = FromBytes::from_bytes(bytes)?;
+                (Command::TrySandboxedExecution { request }, remainder)
             }
         };
         if !remainder.is_empty() {
@@ -225,8 +215,8 @@ pub enum CommandTag {
     TryAcceptTransaction = 1,
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
-    /// Request to execute a restricted getter on a contract.
-    TryCallRestricted = 3,
+    /// Request to execute a sandboxed contract.
+    TrySandboxedExecution = 3,
 }
 
 impl CommandTag {
@@ -237,7 +227,7 @@ impl CommandTag {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
-            3 => CommandTag::TryCallRestricted,
+            3 => CommandTag::TrySandboxedExecution,
             _ => unreachable!(),
         }
     }
@@ -251,7 +241,7 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
-            3 => Ok(CommandTag::TryCallRestricted),
+            3 => Ok(CommandTag::TrySandboxedExecution),
             _ => Err(InvalidCommandTag),
         }
     }
