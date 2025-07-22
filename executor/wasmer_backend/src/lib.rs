@@ -21,7 +21,8 @@ use middleware::{
 use regex::Regex;
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut,
-    Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
+    Instance, Memory, MemoryType, MemoryView, Module, Pages, RuntimeError, Store, StoreMut, Table,
+    TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
@@ -312,9 +313,9 @@ where
 
         let memory = Memory::new(
             &mut store,
-            wasmer_types::MemoryType {
-                minimum: wasmer_types::Pages(17),
-                maximum: None,
+            MemoryType {
+                minimum: Pages(1),
+                maximum: Some(Pages(config.memory_limit())),
                 shared: false,
             },
         )

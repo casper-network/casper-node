@@ -178,7 +178,7 @@ fn base_install_request_builder() -> InstallContractRequestBuilder {
 fn harness() {
     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -200,7 +200,7 @@ fn harness() {
 
         let create_result = run_create_contract(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             install_request,
         );
@@ -231,7 +231,7 @@ fn harness() {
 
     run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -256,7 +256,7 @@ pub(crate) fn make_executor() -> ExecutorV2 {
 fn cep18() {
     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -283,7 +283,7 @@ fn cep18() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         create_request,
     );
@@ -346,7 +346,7 @@ fn cep18() {
 
     let result_2 = run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -362,7 +362,7 @@ fn cep18() {
         panic!("Expected success")
     };
 
-    assert!(matches!(message_topics.get("Transfer"), Some(_)));
+    assert!(message_topics.get("Transfer").is_some());
     assert_ne!(
         message_topics.get("Mint"),
         message_topics.get("Transfer"),
@@ -458,7 +458,7 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
 #[test]
 fn traits() {
     let mut executor = make_executor();
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
@@ -469,7 +469,7 @@ fn traits() {
 
     run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -479,7 +479,7 @@ fn traits() {
 fn upgradable() {
     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -500,7 +500,7 @@ fn upgradable() {
 
         let create_result = run_create_contract(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             create_request,
         );
@@ -526,7 +526,7 @@ fn upgradable() {
             .expect("should build");
         let res = run_wasm_session(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -551,7 +551,7 @@ fn upgradable() {
             .expect("should build");
         let res = run_wasm_session(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -576,7 +576,7 @@ fn upgradable() {
         .expect("should build");
     let res = run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -598,7 +598,7 @@ fn upgradable() {
             .expect("should build");
         let res = run_wasm_session(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -623,7 +623,7 @@ fn upgradable() {
             .expect("should build");
         let res = run_wasm_session(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -665,7 +665,7 @@ fn run_wasm_session(
 
 #[test]
 fn backwards_compatibility() {
-    let (mut global_state, post_state_hash, _temp) = {
+    let (global_state, post_state_hash, _temp) = {
         let fixture_name = "counter_contract";
         // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
         // global_state/data.lmdb
@@ -791,7 +791,7 @@ fn backwards_compatibility() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -817,12 +817,7 @@ fn backwards_compatibility() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        call_request,
-    );
+    run_wasm_session(&mut executor, &global_state, state_root_hash, call_request);
 }
 
 // host function tests
@@ -864,7 +859,7 @@ fn call_dummy_host_fn_by_name(
         ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
     };
 
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -889,17 +884,17 @@ fn call_dummy_host_fn_by_name(
         .build()
         .expect("should build");
 
-    executor.install_contract(state_root_hash, &mut global_state, create_request)
+    executor.install_contract(state_root_hash, &global_state, create_request)
 }
 
 fn assert_consumes_gas(host_function_name: &str) {
     let result = call_dummy_host_fn_by_name(host_function_name, 1);
-    assert!(result.is_err_and(|e| match e {
+    assert!(result.is_err_and(|e| matches!(
+        e,
         InstallContractError::Constructor {
             host_error: CallError::CalleeGasDepleted,
-        } => true,
-        _ => false,
-    }));
+        }
+    )));
 }
 
 #[test]
@@ -957,7 +952,7 @@ fn write_n_bytes_at_limit(
         ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
     };
 
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -980,7 +975,7 @@ fn write_n_bytes_at_limit(
         .build()
         .expect("should build");
 
-    executor.install_contract(state_root_hash, &mut global_state, create_request)
+    executor.install_contract(state_root_hash, &global_state, create_request)
 }
 
 // #[test]
@@ -1001,7 +996,7 @@ fn write_n_bytes_at_limit(
 fn non_existing_smart_contract_does_not_panic() {
     let address_generator = make_address_generator();
     let executor = make_executor();
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let non_existing_address = [255; 32];
     let execute_request = base_execute_builder()
@@ -1017,7 +1012,7 @@ fn non_existing_smart_contract_does_not_panic() {
         .expect("should build");
 
     let result = executor
-        .execute_with_provider(state_root_hash, &mut global_state, execute_request)
+        .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect_err("Failure");
 
     assert!(matches!(
@@ -1029,7 +1024,7 @@ fn non_existing_smart_contract_does_not_panic() {
 fn casper_return_writes_to_execution_journal() {
     let address_generator = make_address_generator();
     let mut executor = make_executor();
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
     let input_data = borsh::to_vec(&("write".to_string(),))
@@ -1047,7 +1042,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -1130,7 +1125,7 @@ fn argument_size_exceeds_memory_limit() {
             .expect("Should build");
         ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
     };
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
     // Create an input larger than 1 page
     let large_input = Bytes::from(vec![0u8; 70_000]);
