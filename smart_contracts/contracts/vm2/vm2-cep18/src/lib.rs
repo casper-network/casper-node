@@ -143,7 +143,6 @@ mod tests {
 
             let constructor = TokenContractRef::new("Foo Token".to_string());
 
-            // casper_call(address, value, selector!("nme"), ());
             let ctor_input_data = constructor.input_data();
             let create_result = casper::create(
                 None,

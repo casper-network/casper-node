@@ -874,8 +874,8 @@ impl Executor for ExecutorV2 {
             .with_sandboxed(true) // Enable sandboxed mode
             .with_runtime_native_config(runtime_native_config)
             .build()
-            .map_err(|_| {
-                ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
+            .map_err(|error| {
+                ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure(error))
             })?;
 
         // Execute the query in sandboxed mode
