@@ -87,8 +87,8 @@ pub enum InternalHostError {
     ContractAlreadyExists,
     #[error("tracking copy error")]
     TrackingCopy,
-    #[error("failed building execution request")]
-    ExecuteRequestBuildFailure,
+    #[error("failed building execution request: {0}")]
+    ExecuteRequestBuildFailure(&'static str),
     #[error("unexpected entity kind")]
     UnexpectedEntityKind,
     #[error("failed reading total balance")]

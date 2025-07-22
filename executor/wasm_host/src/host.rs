@@ -785,8 +785,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
                 .with_block_height(1) // TODO: Carry on block height
                 .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+                .with_runtime_native_config(caller.context().runtime_native_config.clone())
                 .build()
-                .map_err(|_| InternalHostError::ExecuteRequestBuildFailure)?;
+                .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
 
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
@@ -933,8 +934,9 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(1) // TODO: Carry on block height
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_runtime_native_config(caller.context().runtime_native_config.clone())
         .build()
-        .map_err(|_| InternalHostError::ExecuteRequestBuildFailure)?;
+        .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
 
     let (gas_usage, host_result) = match caller
         .context()
@@ -1447,8 +1449,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
             .with_block_height(1) // TODO: Carry on block height
             .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+            .with_runtime_native_config(caller.context().runtime_native_config.clone())
             .build()
-            .map_err(|_| InternalHostError::ExecuteRequestBuildFailure)?;
+            .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
 
         let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
