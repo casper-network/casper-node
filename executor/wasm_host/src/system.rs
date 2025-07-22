@@ -1,12 +1,7 @@
-//! System contract dispatch.
+//! System contract wire up for the new engine.
 //!
-//! System contracts are special contracts that are always available to the system.
-//! They are used to implement core system functionality, such as minting and transferring tokens.
-//! This module provides a way to dispatch calls to system contracts that are implemented under
-//! storage crate.
-//!
-//! The dispatcher provides the necessary information to properly execute system contract's code
-//! within the context of the current execution of the new Wasm host logic.
+//! This module wraps system contract logic into a dispatcher that can be used by the new engine
+//! hiding the complexity of the underlying implementation.
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use casper_executor_wasm_common::error::{CallError, TrapCode};
@@ -21,8 +16,8 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, system::MINT, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
-    PublicKey, SystemHashRegistry, TransactionHash, URef, METHOD_TRANSFER, U512,
+    account::AccountHash, system::SystemEntityType, CLValueError, ContextAccessRights, EntityAddr,
+    Key, Phase, PublicKey, SystemHashRegistry, TransactionHash, URef, METHOD_TRANSFER, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -31,28 +26,29 @@ use tracing::{debug, error};
 #[derive(Debug, Error)]
 enum DispatchError {
     #[error("Tracking copy error: {0}")]
-    Storage(#[from] TrackingCopyError),
+    Storage(TrackingCopyError),
     #[error("CLValue error: {0}")]
     CLValue(CLValueError),
     #[error("Registry not found")]
     RegistryNotFound,
-    #[error("Missing addressable entity")]
-    MissingRuntimeFootprint(TrackingCopyError),
     #[error("Missing system contract: {0}")]
-    MissingSystemContract(&'static str),
+    MissingSystemContract(String),
+    #[error("Runtime footprint")]
+    RuntimeFootprint(TrackingCopyError),
 }
 
-fn dispatch_system_contract<R: GlobalStateReader, Ret>(
+fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     tracking_copy: &mut TrackingCopy<R>,
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    system_contract: &'static str,
+    system_contract: SystemEntityType,
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
 ) -> Result<Ret, DispatchError> {
     let system_entity_registry = {
         let stored_value = tracking_copy
-            .read(&Key::SystemEntityRegistry)?
+            .read(&Key::SystemEntityRegistry)
+            .map_err(DispatchError::Storage)?
             .ok_or(DispatchError::RegistryNotFound)?;
         stored_value
             .into_cl_value()
@@ -60,14 +56,15 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
             .into_t::<SystemHashRegistry>()
             .map_err(DispatchError::CLValue)?
     };
+    let system_entity_name = system_contract.entity_name();
     let system_entity_addr = system_entity_registry
-        .get(system_contract)
-        .ok_or(DispatchError::MissingSystemContract(system_contract))?;
+        .get(&system_entity_name)
+        .ok_or(DispatchError::MissingSystemContract(system_entity_name))?;
     let entity_addr = EntityAddr::new_system(*system_entity_addr);
 
     let runtime_footprint = tracking_copy
         .runtime_footprint_by_entity_addr(entity_addr)
-        .map_err(DispatchError::MissingRuntimeFootprint)?;
+        .map_err(DispatchError::RuntimeFootprint)?;
 
     let access_rights = ContextAccessRights::new(*system_entity_addr, []);
     let address = PublicKey::System.to_account_hash();
@@ -94,8 +91,8 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
         func(runtime)
     };
 
-    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy and
-    // the effects.
+    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy the
+    // effects.
     let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
         .ok()
         .expect("No other references");
@@ -111,7 +108,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     Ok(ret)
 }
 
-pub(crate) fn create_purse<R: GlobalStateReader>(
+pub fn create_purse<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
@@ -122,7 +119,7 @@ pub(crate) fn create_purse<R: GlobalStateReader>(
         runtime_native_config,
         transaction_hash,
         address_generator,
-        MINT,
+        SystemEntityType::Mint,
         |mut runtime| runtime.mint(U512::zero()),
     ) {
         Ok(mint_result) => mint_result,
@@ -144,7 +141,7 @@ pub(crate) fn create_purse<R: GlobalStateReader>(
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct MintTransferArgs {
+pub struct MintTransferArgs {
     maybe_to: Option<AccountHash>,
     source: URef,
     target: URef,
@@ -153,7 +150,7 @@ pub(crate) struct MintTransferArgs {
 }
 
 impl MintTransferArgs {
-    pub(crate) fn new_simple(source: URef, target: URef, amount: U512) -> Self {
+    pub fn new_simple(source: URef, target: URef, amount: U512) -> Self {
         MintTransferArgs {
             source,
             target,
@@ -164,7 +161,7 @@ impl MintTransferArgs {
     }
 }
 
-pub(crate) fn transfer<R: GlobalStateReader>(
+pub fn transfer<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     runtime_native_config: RuntimeNativeConfig,
     id: TransactionHash,
@@ -177,7 +174,7 @@ pub(crate) fn transfer<R: GlobalStateReader>(
             runtime_native_config,
             id,
             address_generator,
-            MINT,
+            SystemEntityType::Mint,
             |mut runtime| {
                 runtime.transfer(
                     args.maybe_to,
@@ -205,5 +202,118 @@ pub(crate) fn transfer<R: GlobalStateReader>(
             error!(%mint_error, ?args, "transfer failed with error");
             Err(CallError::CalleeTrapped(TrapCode::NativeError))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use casper_storage::{
+        data_access_layer::{GenesisRequest, GenesisResult},
+        global_state::{
+            self,
+            state::{CommitProvider, StateProvider},
+        },
+        system::{
+            mint::{storage_provider::StorageProvider, Mint},
+            runtime_native::Id,
+        },
+        AddressGenerator, RuntimeNativeConfig,
+    };
+    use casper_types::{
+        system::SystemEntityType, ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion,
+        StorageCosts, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig,
+        U512,
+    };
+    use parking_lot::RwLock;
+
+    use crate::system::dispatch_system_contract;
+
+    #[test]
+    fn test_system_dispatcher() {
+        let (global_state, initial_root_hash, _tempdir) =
+            global_state::state::lmdb::make_temporary_global_state([]);
+
+        let genesis_config = GenesisConfig::new(
+            vec![],
+            WasmConfig::default(),
+            SystemConfig::default(),
+            10,
+            10,
+            0,
+            Default::default(),
+            14,
+            Timestamp::now().millis(),
+            casper_types::HoldBalanceHandling::Accrued,
+            0,
+            true,
+            StorageCosts::default(),
+        );
+
+        let genesis_request: GenesisRequest = GenesisRequest::new(
+            Digest::hash("foo"),
+            ProtocolVersion::V2_0_0,
+            genesis_config,
+            ChainspecRegistry::new_with_genesis(b"", b""),
+        );
+
+        let root_hash = match global_state.genesis(genesis_request) {
+            GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
+            GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
+            GenesisResult::Success {
+                post_state_hash,
+                effects: _,
+            } => post_state_hash,
+        };
+
+        assert_ne!(
+            root_hash, initial_root_hash,
+            "Genesis should change the root hash"
+        );
+
+        let mut tracking_copy = global_state
+            .tracking_copy(root_hash)
+            .expect("Obtaining root hash succeed")
+            .expect("Root hash exists");
+
+        let transaction_hash_bytes: [u8; 32] = [1; 32];
+        let transaction_hash: TransactionHash =
+            TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
+        let id = Id::Transaction(transaction_hash);
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
+            &id.seed(),
+            Phase::Session,
+        )));
+
+        let runtime_native_config = RuntimeNativeConfig::default();
+
+        let ret = dispatch_system_contract(
+            &mut tracking_copy,
+            runtime_native_config.clone(),
+            transaction_hash,
+            Arc::clone(&address_generator),
+            SystemEntityType::Mint,
+            |mut runtime| runtime.mint(U512::from(1000u64)),
+        );
+
+        let uref = ret.expect("dispatch mint").expect("uref");
+
+        let ret: Result<Result<U512, _>, _> = dispatch_system_contract(
+            &mut tracking_copy,
+            runtime_native_config,
+            transaction_hash,
+            Arc::clone(&address_generator),
+            SystemEntityType::Mint,
+            |mut runtime| runtime.total_balance(uref),
+        );
+
+        assert_eq!(ret.unwrap(), Ok(U512::from(1000u64)));
+
+        let post_root_hash = global_state
+            .commit_effects(root_hash, tracking_copy.effects())
+            .expect("Should apply effect");
+
+        assert_ne!(post_root_hash, root_hash);
     }
 }
