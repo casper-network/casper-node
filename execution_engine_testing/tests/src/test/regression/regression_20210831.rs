@@ -9,7 +9,12 @@ use casper_execution_engine::{
     execution::ExecError,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, runtime_args, system::auction::{self, BidsExt, DelegationRate}, ApiError, CLType, EntityEntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Parameter, PublicKey, RuntimeArgs, SecretKey, U512
+    account::AccountHash,
+    bytesrepr::ToBytes,
+    runtime_args,
+    system::auction::{self, BidsExt, DelegationRate},
+    ApiError, CLType, EntityEntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
+    EntryPoints, Parameter, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
@@ -524,6 +529,5 @@ fn foo() {
 
         entry_points
     };
-dbg!(entry_points.to_bytes());
+    dbg!(entry_points.to_bytes());
 }
-    

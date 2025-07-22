@@ -40,6 +40,8 @@ struct StructMeta {
     /// Message is a special struct that is used to send messages to other contracts.
     #[darling(default)]
     message: bool,
+    #[darling(default)]
+    abi_convention: Option<syn::Path>,
 }
 
 #[derive(Debug, FromMeta)]
@@ -379,7 +381,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     .iter()
                     .map(|(name, ty)| quote! { #name: #ty })
                     .collect();
-
                 // Entry point has &self or &mut self
                 let mut entry_point_requires_state: bool = false;
 
@@ -475,7 +476,32 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
 
                     let input = casper_contract_sdk::prelude::casper::copy_input();
-                    let args: Arguments = casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                    let args: Arguments = {
+                        match <#struct_name as casper_contract_sdk::serializers::AbiConvention>::DEFAULT_ABI_CONVENTION {
+                            casper_contract_sdk::serializers::Convention::Positional => {
+                                casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                            }
+                            casper_contract_sdk::serializers::Convention::Named => {
+                                let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                                    casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+
+                                #(
+                                    let #arg_names: #arg_types = {
+                                        let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                        cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                            panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                        })
+                                    };
+                                )*
+
+                                Arguments {
+                                    #(
+                                        #arg_names,
+                                    )*
+                                }
+                            }
+                        }
+                    }
                 });
 
                 if method_attribute.constructor {
@@ -539,7 +565,17 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 extern_entry_points.push(quote! {
 
                     #[export_name = stringify!(#export_name)]
+                    #[cfg(target_arch = "wasm32")]
                     #vis extern "C" fn #extern_func_name() {
+                        __casper_export_inner();
+                    }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    #vis fn #extern_func_name() {
+                        __casper_export_inner();
+                    }
+
+                    fn __casper_export_inner() {
                         // Set panic hook (assumes std is enabled etc.)
                         #[cfg(target_arch = "wasm32")]
                         {
@@ -1386,6 +1422,23 @@ fn process_casper_contract_state_for_struct(
         quote! {}
     };
 
+    // let convention = struct_meta.abi_convention.unwrap_or(quote! {
+    // #crate_path::serializers::Convention::Positional });
+    let abi_conv = match struct_meta.abi_convention {
+        Some(convention) => {
+            quote! {
+                impl #crate_path::serializers::AbiConvention for #struct_name {
+                    const DEFAULT_ABI_CONVENTION: #crate_path::serializers::Convention = #convention;
+                }
+            }
+        }
+        None => quote! {
+            impl #crate_path::serializers::AbiConvention for #struct_name {
+               const DEFAULT_ABI_CONVENTION: #crate_path::serializers::Convention = #crate_path::serializers::Convention::Positional;
+            }
+        },
+    };
+
     quote! {
         #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
         #[borsh(crate = #borsh_path)]
@@ -1393,6 +1446,8 @@ fn process_casper_contract_state_for_struct(
         #contract_struct
 
         #vis struct #ref_name;
+
+        #abi_conv
 
         impl #crate_path::ContractRef for #ref_name {
             fn new() -> Self {

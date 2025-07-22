@@ -2805,5 +2805,4 @@ mod proptest {
             assert_eq!(key, decoded);
         }
     }
-
 }

@@ -126,13 +126,32 @@ pub fn invoke_export_by_name(name: &str) {
         .filter(|export| export.kind.name() == name)
         .collect();
 
-    assert_eq!(
-        exports_by_name.len(),
-        1,
-        "Expected exactly one export {name} found, but got {exports_by_name:?}"
-    );
+    if exports_by_name.len() != 1 {
+        panic!(
+            "Expected exactly one export {} found, but got {:?}",
+            name, exports_by_name
+        );
+    }
 
-    (exports_by_name[0].fptr)();
+    let result = dispatch_export_call(exports_by_name[0].fptr);
+
+    match result {
+        Ok(()) => {}
+        Err(trap) => {
+            match trap {
+                NativeTrap::Panic(panic_payload) => {
+                    // Re-raise the panic so it can be caught by test's #[should_panic]
+                    std::panic::resume_unwind(panic_payload);
+                }
+                other_trap => {
+                    // For non-panic traps, set them in LAST_TRAP
+                    LAST_TRAP.with(|last_trap| {
+                        last_trap.borrow_mut().replace(other_trap);
+                    });
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

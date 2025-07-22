@@ -831,7 +831,7 @@ mod tests {
 
     #[test]
     fn cltypes() {
-        let mut a= Vec::new();
+        let mut a = Vec::new();
         CLType::U512.append_bytes(&mut a).unwrap();
         dbg!(a);
     }
