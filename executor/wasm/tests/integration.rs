@@ -38,11 +38,10 @@ use casper_storage::{
     AddressGenerator, KeyPrefix, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, testing::TestRng, BlockHash, Chainspec,
-    ChainspecRegistry, Digest, EntityAddr, FeeHandling, GenesisAccount, GenesisConfig,
-    HoldBalanceHandling, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, RefundHandling, SecretKey, StorageCosts, StoredValue, SystemConfig,
-    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, execution::RetValue, BlockHash, Chainspec, ChainspecRegistry, Digest,
+    EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
+    MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue,
+    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -299,6 +298,8 @@ fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfi
 }
 
 fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteRequestBuilder {
+    let chainspec = Chainspec::default();
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -311,11 +312,14 @@ fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteRequestBui
         .with_block_height(1)
         .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
 }
 
 fn base_install_request_builder(
     chainspec_config: &ChainspecConfig,
 ) -> InstallContractRequestBuilder {
+    let chainspec = Chainspec::default();
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -326,6 +330,7 @@ fn base_install_request_builder(
         .with_block_height(1)
         .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
 }
 
 pub(crate) fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
@@ -387,7 +392,7 @@ fn harness() {
             .expect("Should commit")
     };
 
-    let execute_request = ExecuteRequestBuilder::default()
+    let execute_request = base_execute_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -488,7 +493,7 @@ fn cep18() {
     let block_time_2 = (block_time_1.value() + 1).into();
     assert_ne!(block_time_1, block_time_2);
 
-    let execute_request = ExecuteRequestBuilder::default()
+    let execute_request = base_execute_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1046,7 +1051,7 @@ fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = InstallContractRequestBuilder::default()
+    let create_request = base_install_request_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -1273,7 +1278,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let ret_transform = ret_transform.unwrap();
     match ret_transform.kind() {
-        casper_types::execution::TransformKindV2::Ret(bytes) => {
+        casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
             assert_eq!(
                 &bytes.to_bytes().expect("must get to bytes"),
