@@ -1127,6 +1127,8 @@ fn argument_size_exceeds_memory_limit() {
     };
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
+    let chainspec = Chainspec::default();
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
     // Create an input larger than 1 page
     let large_input = Bytes::from(vec![0u8; 70_000]);
     let execute_request = ExecuteRequestBuilder::default()
@@ -1143,6 +1145,7 @@ fn argument_size_exceeds_memory_limit() {
         .with_state_hash(state_root_hash)
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
         .build()
         .expect("should build");
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);

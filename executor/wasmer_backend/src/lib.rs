@@ -1,5 +1,6 @@
 pub(crate) mod imports;
 pub(crate) mod middleware;
+pub(crate) mod tunables;
 
 use std::{
     collections::BinaryHeap,
@@ -20,12 +21,12 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut,
-    Instance, Memory, MemoryType, MemoryView, Module, Pages, RuntimeError, Store, StoreMut, Table,
-    TypedFunction,
+    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, ExternType, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages, RuntimeError, Store, StoreMut, Table, Target, TypedFunction
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
+
+use crate::tunables::memory_limit::MemLimitTunables;
 
 fn from_wasmer_memory_access_error(error: wasmer::MemoryAccessError) -> VMError {
     let trap_code = match error {
@@ -301,10 +302,21 @@ where
             singlepass_compiler
         };
 
-        let engine = Engine::from(engine);
+        let max_mem_pages = Pages(config.memory_limit());
+
+        let base = BaseTunables::for_target(&Target::default());
+        let tunables = MemLimitTunables::new(base, max_mem_pages);
+        let mut engine = Engine::from(engine);
+        engine.set_tunables(tunables);
 
         let module = Module::new(&engine, &wasm_bytes)
             .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
+
+        let mem_import = module
+            .imports()
+            .find(|i| i.module() == "env" && i.name() == "memory")
+            .and_then(|i| if let ExternType::Memory(m) = i.ty() { Some(*m) } else { None })
+            .expect("module must import env.memory");
 
         let mut store = Store::new(engine);
 
@@ -314,8 +326,8 @@ where
         let memory = Memory::new(
             &mut store,
             MemoryType {
-                minimum: Pages(1),
-                maximum: Some(Pages(config.memory_limit())),
+                minimum: mem_import.minimum,
+                maximum: Some(max_mem_pages),
                 shared: false,
             },
         )
