@@ -21,7 +21,9 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, ExternType, Function, FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages, RuntimeError, Store, StoreMut, Table, Target, TypedFunction
+    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, ExternType, Function,
+    FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt,
+    Pages, RuntimeError, Store, StoreMut, Table, Target, TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
@@ -314,9 +316,17 @@ where
 
         let mem_import = module
             .imports()
-            .find(|i| i.module() == "env" && i.name() == "memory")
-            .and_then(|i| if let ExternType::Memory(m) = i.ty() { Some(*m) } else { None })
-            .expect("module must import env.memory");
+            .find(|import| import.module() == "env" && import.name() == "memory")
+            .and_then(|import| {
+                if let ExternType::Memory(memory_type) = import.ty() {
+                    Some(*memory_type)
+                } else {
+                    None
+                }
+            })
+            .ok_or(WasmPreparationError::Compile(
+                "missing memory import".to_string(),
+            ))?;
 
         let mut store = Store::new(engine);
 
