@@ -1,5 +1,4 @@
 pub mod install;
-pub(crate) mod system;
 
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -16,7 +15,10 @@ use casper_executor_wasm_common::{
     error::{CallError, TrapCode},
     flags::ReturnFlags,
 };
-use casper_executor_wasm_host::context::Context;
+use casper_executor_wasm_host::{
+    context::Context,
+    system::{self, MintTransferArgs},
+};
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
@@ -46,7 +48,6 @@ use casper_types::{
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use system::MintTransferArgs;
 use tracing::{error, warn};
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
