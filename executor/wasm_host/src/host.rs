@@ -45,7 +45,7 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, MintTransferArgs},
+    system::{self, DispatchError, MintTransferArgs},
 };
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
@@ -1281,17 +1281,34 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let transaction_hash = caller.context().transaction_hash;
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
+
     let args = MintTransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
 
-    let result = system::transfer(
+    match system::transfer(
         &mut caller.context_mut().tracking_copy,
         runtime_native_config,
         transaction_hash,
         address_generator,
         args,
-    );
+    ) {
+        Ok(()) => Ok(HOST_ERROR_SUCCESS),
+        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
+        Err(DispatchError::Call(call_error)) => {
+            // This is a bug in the EE, as it should have been caught during the preparation phase
+            // when the contract was stored in the global state.
+            error!(?call_error, "Failed to transfer");
+            Ok(call_error.into_u32())
+        }
+        Err(dispatch_error) => {
+            error!(
+                ?dispatch_error,
+                "Failed to dispatch system contract while transferring tokens"
+            );
+            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
+        }
+    }
 
-    Ok(u32_from_host_result(result))
+    // Ok(u32_from_host_result(result))
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(

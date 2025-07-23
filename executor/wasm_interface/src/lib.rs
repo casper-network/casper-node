@@ -103,6 +103,8 @@ pub enum InternalHostError {
     MessageChecksumMissing,
     #[error("attempted writing in restricted mode")]
     AttemptWriteInRestricted,
+    #[error("dispatching system contract failed")]
+    DispatchSystemContract,
 }
 
 /// The outcome of a call.

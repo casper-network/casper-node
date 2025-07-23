@@ -7234,6 +7234,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-escrow"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+]
+
+[[package]]
 name = "vm2-faucet"
 version = "0.1.0"
 dependencies = [

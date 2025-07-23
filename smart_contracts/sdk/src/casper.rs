@@ -458,6 +458,22 @@ impl Entity {
             Entity::Account(addr) | Entity::Contract(addr) => addr,
         }
     }
+
+    #[must_use]
+    pub fn is_account(&self) -> bool {
+        match self {
+            Entity::Account(_) => true,
+            Entity::Contract(_) => false,
+        }
+    }
+
+    #[must_use]
+    pub fn is_contract(&self) -> bool {
+        match self {
+            Entity::Account(_) => false,
+            Entity::Contract(_) => true,
+        }
+    }
 }
 
 impl CasperABI for Entity {

@@ -17,7 +17,7 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_host::{
     context::Context,
-    system::{self, MintTransferArgs},
+    system::{self, DispatchError, MintTransferArgs},
 };
 use casper_executor_wasm_interface::{
     executor::{
@@ -450,7 +450,7 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
-                            if let Err(error) = system::transfer(
+                            match system::transfer(
                                 &mut tracking_copy,
                                 runtime_native_config.clone(),
                                 transaction_hash,
@@ -461,17 +461,36 @@ impl ExecutorV2 {
                                     transferred_value.into(),
                                 ),
                             ) {
-                                return Ok(ExecuteResult {
-                                    host_error: Some(error),
-                                    output: None,
-                                    gas_usage: GasUsage::new(
-                                        gas_limit,
-                                        gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
-                                    ),
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
+                                Ok(()) => {}
+                                Err(DispatchError::Internal(internal_error)) => {
+                                    error!(
+                                        ?internal_error,
+                                        "Internal error while transferring value to the contract's purse",
+                                    );
+                                    return Err(ExecuteError::InternalHost(internal_error));
+                                }
+                                Err(DispatchError::Call(error)) => {
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(error),
+                                        output: None,
+                                        gas_usage: GasUsage::new(
+                                            gas_limit,
+                                            gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                        ),
+                                        effects: tracking_copy.effects(),
+                                        cache: tracking_copy.cache(),
+                                        messages: tracking_copy.messages(),
+                                    });
+                                }
+                                Err(error) => {
+                                    error!(
+                                        ?error,
+                                        "Dispatch error while transferring value to the contract's purse",
+                                    );
+                                    return Err(ExecuteError::InternalHost(
+                                        InternalHostError::DispatchSystemContract,
+                                    ));
+                                }
                             }
                         }
 

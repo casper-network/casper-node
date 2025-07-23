@@ -4,8 +4,8 @@
 //! hiding the complexity of the underlying implementation.
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use casper_executor_wasm_common::error::{CallError, TrapCode};
-use casper_executor_wasm_interface::HostResult;
+use casper_executor_wasm_common::error::CallError;
+use casper_executor_wasm_interface::{InternalHostError, VMError, VMResult};
 use casper_storage::{
     global_state::GlobalStateReader,
     system::{
@@ -24,7 +24,7 @@ use thiserror::Error;
 use tracing::{debug, error};
 
 #[derive(Debug, Error)]
-enum DispatchError {
+pub enum DispatchError {
     #[error("Tracking copy error: {0}")]
     Storage(TrackingCopyError),
     #[error("CLValue error: {0}")]
@@ -35,6 +35,10 @@ enum DispatchError {
     MissingSystemContract(String),
     #[error("Runtime footprint")]
     RuntimeFootprint(TrackingCopyError),
+    #[error("Internal host error: {0}")]
+    Internal(InternalHostError),
+    #[error("Call error: {0}")]
+    Call(CallError),
 }
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
@@ -113,7 +117,7 @@ pub fn create_purse<R: GlobalStateReader>(
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-) -> Result<URef, CallError> {
+) -> VMResult<URef> {
     let mint_result = match dispatch_system_contract(
         tracking_copy,
         runtime_native_config,
@@ -125,17 +129,16 @@ pub fn create_purse<R: GlobalStateReader>(
         Ok(mint_result) => mint_result,
         Err(error) => {
             error!(%error, "create purse failed on dispatch");
-            return Err(CallError::CalleeTrapped(TrapCode::NativeDispatchFailure));
+            return Err(VMError::Internal(InternalHostError::DispatchSystemContract));
         }
     };
 
     match mint_result {
         Ok(uref) => Ok(uref),
-        Err(casper_types::system::mint::Error::InsufficientFunds) => Err(CallError::CalleeReverted),
-        Err(casper_types::system::mint::Error::GasLimit) => Err(CallError::CalleeGasDepleted),
+        Err(casper_types::system::mint::Error::GasLimit) => Err(VMError::OutOfGas),
         Err(mint_error) => {
             error!(%mint_error, "create purse failed with error");
-            Err(CallError::CalleeTrapped(TrapCode::NativeError))
+            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
         }
     }
 }
@@ -167,7 +170,7 @@ pub fn transfer<R: GlobalStateReader>(
     id: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintTransferArgs,
-) -> HostResult {
+) -> Result<(), DispatchError> {
     let transfer_result: Result<(), casper_types::system::mint::Error> =
         match dispatch_system_contract(
             tracking_copy,
@@ -176,19 +179,23 @@ pub fn transfer<R: GlobalStateReader>(
             address_generator,
             SystemEntityType::Mint,
             |mut runtime| {
-                runtime.transfer(
-                    args.maybe_to,
-                    args.source,
-                    args.target,
-                    args.amount,
-                    args.id,
-                )
+                let MintTransferArgs {
+                    maybe_to,
+                    source,
+                    target,
+                    amount,
+                    id,
+                } = args;
+
+                runtime.transfer(maybe_to, source, target, amount, id)
             },
         ) {
             Ok(result) => result,
             Err(error) => {
                 error!(%error, "transfer failed on dispatch");
-                return Err(CallError::CalleeTrapped(TrapCode::NativeDispatchFailure));
+                return Err(DispatchError::Internal(
+                    InternalHostError::DispatchSystemContract,
+                ));
             }
         };
 
@@ -196,11 +203,17 @@ pub fn transfer<R: GlobalStateReader>(
 
     match transfer_result {
         Ok(()) => Ok(()),
-        Err(casper_types::system::mint::Error::InsufficientFunds) => Err(CallError::CalleeReverted),
-        Err(casper_types::system::mint::Error::GasLimit) => Err(CallError::CalleeGasDepleted),
+        Err(casper_types::system::mint::Error::InsufficientFunds) => {
+            Err(DispatchError::Call(CallError::CalleeReverted))
+        }
+        Err(casper_types::system::mint::Error::GasLimit) => {
+            Err(DispatchError::Call(CallError::CalleeGasDepleted))
+        }
         Err(mint_error) => {
             error!(%mint_error, ?args, "transfer failed with error");
-            Err(CallError::CalleeTrapped(TrapCode::NativeError))
+            Err(DispatchError::Internal(
+                InternalHostError::DispatchSystemContract,
+            ))
         }
     }
 }
