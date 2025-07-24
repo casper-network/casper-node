@@ -1096,13 +1096,13 @@ fn should_produce_per_block_message_ordering() {
     assert_last_message_block_index(4); //there are 4 system messaged on contract install
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 5))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
     let expected_message_hash = cryptography::blake2b(
         [
-            0u64.to_bytes().unwrap(),
+            4u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1123,13 +1123,13 @@ fn should_produce_per_block_message_ordering() {
     assert_last_message_block_index(5);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 6))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
     let expected_message_hash = cryptography::blake2b(
         [
-            1u64.to_bytes().unwrap(),
+            5u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1166,16 +1166,16 @@ fn should_produce_per_block_message_ordering() {
         .exec(emit_message_request)
         .expect_success()
         .commit();
-    assert_last_message_block_index(6);
+    assert_last_message_block_index(10);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 11))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
     let expected_message_hash = cryptography::blake2b(
         [
-            2u64.to_bytes().unwrap(),
+            10u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1194,7 +1194,7 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME + 1,
     );
-    assert_last_message_block_index(4);
+    assert_last_message_block_index(0);
     assert_eq!(
         query_message_count(),
         Some((BlockTime::new(DEFAULT_BLOCK_TIME + 1), 1))
