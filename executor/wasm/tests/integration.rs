@@ -38,10 +38,11 @@ use casper_storage::{
     AddressGenerator, KeyPrefix, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
-    MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue,
-    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, testing::TestRng, BlockHash,
+    Chainspec, ChainspecRegistry, Digest, EntityAddr, FeeHandling, GenesisAccount, GenesisConfig,
+    HoldBalanceHandling, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
+    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
+    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -392,7 +393,7 @@ fn harness() {
             .expect("Should commit")
     };
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -493,7 +494,7 @@ fn cep18() {
     let block_time_2 = (block_time_1.value() + 1).into();
     assert_ne!(block_time_1, block_time_2);
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1051,7 +1052,10 @@ fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = base_install_request_builder()
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
