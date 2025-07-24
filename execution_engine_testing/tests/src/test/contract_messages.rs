@@ -86,7 +86,7 @@ fn install_messages_emitter_contract_with_metadata(
             panic!("Not expected key variant: {key}");
         }
     } else {
-        panic!("Stored value is not ana ccount {:?}", account_query_result);
+        panic!("Stored value is not an account {:?}", account_query_result);
     };
 
     let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {

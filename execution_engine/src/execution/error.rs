@@ -198,9 +198,6 @@ pub enum Error {
     /// Ambiguous entity version and unable to determine entity version key.
     #[error("Ambiguous entity version")]
     AmbiguousEntityVersion,
-    /// Missing messaging contract
-    #[error("Missing messaging contract")]
-    MissingMessagingContract,
 }
 
 impl From<PreprocessingError> for Error {
