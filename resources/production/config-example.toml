@@ -532,13 +532,13 @@ validate_and_store_timeout = '1 minute'
 [block_accumulator]
 
 # Block height difference threshold for starting to execute the blocks.
-attempt_execution_threshold = 3
+attempt_execution_threshold = 20
 
 # Accepted time interval for inactivity in block accumulator.
-dead_air_interval = '3 minutes'
+dead_air_interval = '30 seconds'
 
 # Time after which the block acceptors are considered old and can be purged.
-purge_interval = '1 minute'
+purge_interval = '30 seconds'
 
 
 # ================================================
