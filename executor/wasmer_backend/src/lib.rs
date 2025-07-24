@@ -21,9 +21,9 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, ExternType, Function,
-    FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt,
-    Pages, RuntimeError, Store, StoreMut, Table, Target, TypedFunction,
+    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, Function, FunctionEnv,
+    FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages,
+    RuntimeError, Store, StoreMut, Table, Target, TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
@@ -326,7 +326,7 @@ where
 
         let wasmer_env = WasmerEnv::new(context, wasm_bytes, InterfaceVersion::from(1u32));
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
-        
+
         let memory = Memory::new(
             &mut store,
             MemoryType {

@@ -1443,7 +1443,8 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 
 #[test]
 fn should_run_ee_966_should_request_exactly_maximum() {
-    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
+    let session_code =
+        make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
 
     let mut executor = make_executor();
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
@@ -1516,6 +1517,9 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
 
     assert!(matches!(
         result,
-        Ok(ExecuteWithProviderResult { host_error: Some(CallError::CalleeReverted), .. })
+        Ok(ExecuteWithProviderResult {
+            host_error: Some(CallError::CalleeReverted),
+            ..
+        })
     ));
 }
