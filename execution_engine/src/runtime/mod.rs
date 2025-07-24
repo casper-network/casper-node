@@ -76,6 +76,14 @@ pub use wasm_prep::{
     DEFAULT_MAX_TABLE_SIZE,
 };
 
+const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
+const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
+const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
+const MESSAGING_ADDR_ENTITY_CONTRACT_ADDR_TOPIC: &str = "addressable_entity_contract_addr";
+const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
+const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
+const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";
+
 #[derive(Debug)]
 enum CallContractIdentifier {
     Contract {
@@ -2707,6 +2715,39 @@ where
             .metered_write_gs_unsafe(Key::Hash(contract_hash_addr), contract)?;
         self.context
             .metered_write_gs_unsafe(Key::Hash(contract_package_hash.value()), contract_package)?;
+        let system_account_hash = PublicKey::System.to_account_hash().value();
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(contract_package_hash.value())),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_CONTRACT_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(contract_hash_addr)),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(contract_wasm_hash)),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_CONTRACT_VERSION_TOPIC,
+            MessagePayload::String(insert_contract_result.to_string()),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
 
         // set return values to buffer
         {
@@ -2852,6 +2893,40 @@ where
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
                 return Err(ExecError::Interpreter(error.into()));
             }
+        }
+
+        let system_account_hash = PublicKey::System.to_account_hash().value();
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_PACKAGE_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(package_hash.value())),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_ADDR_ENTITY_CONTRACT_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(entity_addr.value())),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
+            MessagePayload::String(hex::encode(byte_code_hash)),
+            true,
+        )? {
+            return Ok(Err(e));
+        }
+        if let Err(e) = self.emit_message_for_entity(
+            EntityAddr::System(system_account_hash),
+            MESSAGING_CONTRACT_VERSION_TOPIC,
+            MessagePayload::String(insert_entity_version_result.to_string()),
+            true,
+        )? {
+            return Ok(Err(e));
         }
 
         Ok(Ok(()))
@@ -4589,10 +4664,19 @@ where
         message: MessagePayload,
     ) -> Result<Result<(), ApiError>, Trap> {
         let entity_addr = self.context.context_key_to_entity_addr()?;
+        let res = self.emit_message_for_entity(entity_addr, topic_name, message, false)?;
+        Ok(res)
+    }
 
+    fn emit_message_for_entity(
+        &mut self,
+        entity_addr: EntityAddr,
+        topic_name: &str,
+        message: MessagePayload,
+        skip_charging: bool,
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let topic_name_hash = cryptography::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
-
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
             self.context.read_gs(&topic_key)?
@@ -4650,6 +4734,7 @@ where
                 topic_message_index,
                 block_message_index,
             ),
+            skip_charging,
         )?;
         Ok(Ok(()))
     }
