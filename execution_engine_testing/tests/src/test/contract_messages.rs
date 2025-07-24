@@ -1093,7 +1093,7 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(0);
+    assert_last_message_block_index(4); //there are 4 system messaged on contract install
     assert_eq!(
         query_message_count(),
         Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
@@ -1120,7 +1120,7 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(1);
+    assert_last_message_block_index(5);
     assert_eq!(
         query_message_count(),
         Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
@@ -1166,7 +1166,7 @@ fn should_produce_per_block_message_ordering() {
         .exec(emit_message_request)
         .expect_success()
         .commit();
-    assert_last_message_block_index(2);
+    assert_last_message_block_index(6);
     assert_eq!(
         query_message_count(),
         Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
@@ -1194,7 +1194,7 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME + 1,
     );
-    assert_last_message_block_index(0);
+    assert_last_message_block_index(4);
     assert_eq!(
         query_message_count(),
         Some((BlockTime::new(DEFAULT_BLOCK_TIME + 1), 1))
