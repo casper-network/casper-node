@@ -989,7 +989,7 @@ where
                     | OutgoingState::Connecting { .. } => {
                         // We should, under normal circumstances, not receive drop notifications for
                         // any of these. Connection failures are handled by the dialer.
-                        warn!("unexpected drop notification");
+                        warn!(%outgoing.state, "unexpected drop notification");
                         None
                     }
                     OutgoingState::Connected { .. } => {

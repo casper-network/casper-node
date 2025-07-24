@@ -112,6 +112,8 @@ pub struct EraSupervisor {
     next_block_height: u64,
     /// The height of the next block to be executed. If this falls too far behind, we pause.
     next_executed_height: u64,
+    /// The last seen added block time.
+    last_block_time: Option<Timestamp>,
     #[data_size(skip)]
     metrics: Metrics,
     /// The path to the folder where unit files will be stored.
@@ -151,6 +153,7 @@ impl EraSupervisor {
             chainspec,
             config,
             next_block_height: 0,
+            last_block_time: None,
             metrics,
             unit_files_folder,
             next_executed_height: 0,
@@ -801,12 +804,33 @@ impl EraSupervisor {
             block_payload,
             block_context,
         } = new_block_payload;
+
         match self.current_era() {
             None => {
                 warn!("new block payload but no initialized era");
                 Effects::new()
             }
             Some(current_era) => {
+                // if proposal is empty, do not send it unless too many increments of block time
+                // have passed. this turns down the volume of empty blocks
+                if block_payload.count(None) == 0 {
+                    if let Some(last_block_time) = self.last_block_time {
+                        let increment = self
+                            .chainspec
+                            .core_config
+                            .minimum_block_time
+                            .saturating_mul(10);
+                        let tolerance = last_block_time.saturating_add(increment);
+                        if tolerance <= Timestamp::now() {
+                            debug!(
+                            era = era_id.value(),
+                            %tolerance,
+                            "empty block payload within tolerance for skipping an empty proposal");
+                            return Effects::new();
+                        }
+                    }
+                }
+
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < current_era
                     || !self.open_eras.contains_key(&era_id)
                 {
@@ -827,6 +851,7 @@ impl EraSupervisor {
         rng: &mut NodeRng,
         block_header: BlockHeader,
     ) -> Effects<Event> {
+        self.last_block_time = Some(block_header.timestamp());
         self.last_progress = Timestamp::now();
         self.next_executed_height = self
             .next_executed_height

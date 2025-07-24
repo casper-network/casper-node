@@ -283,7 +283,7 @@ impl TransactionBuffer {
             .insert(transaction_hash, (expiry_time, Some(footprint)))
         {
             Some(prev) => {
-                warn!(%transaction_hash, ?prev, "TransactionBuffer: transaction upserted");
+                debug!(%transaction_hash, ?prev, "TransactionBuffer: transaction upserted");
             }
             None => {
                 debug!(%transaction_hash, "TransactionBuffer: new transaction buffered");
@@ -667,6 +667,10 @@ where
 {
     type Event = Event;
 
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -805,9 +809,5 @@ where
                 }
             },
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
     }
 }
