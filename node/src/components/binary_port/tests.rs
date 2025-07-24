@@ -61,7 +61,7 @@ struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
     allow_request_speculative_exec: bool,
-    call_restricted_allowed_ips: Vec<String>,
+    sandboxed_execution_allowed_ips: Vec<String>,
     request_generator: Either<fn(&mut TestRng) -> Command, Command>,
 }
 
@@ -73,7 +73,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: ENABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: WHITELIST_EMPTY,
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -81,7 +81,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: ENABLED,
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: WHITELIST_EMPTY,
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -89,7 +89,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: ENABLED,
-        call_restricted_allowed_ips: WHITELIST_EMPTY,
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(try_speculative_exec_request),
     };
 
@@ -97,7 +97,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: vec!["127.0.0.1".to_string()],
+        sandboxed_execution_allowed_ips: vec!["127.0.0.1".to_string()],
         request_generator: Either::Left(try_sandboxed_execution),
     };
 
@@ -129,7 +129,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: DISABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: Vec::new(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -137,7 +137,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: DISABLED,
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: Vec::new(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -145,7 +145,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: DISABLED,
-        call_restricted_allowed_ips: Vec::new(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(try_speculative_exec_request),
     };
 
@@ -153,7 +153,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        call_restricted_allowed_ips: Vec::new(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(try_sandboxed_execution),
     };
 
@@ -189,7 +189,7 @@ async fn should_return_empty_response_when_fetching_empty_key() {
             allow_request_get_all_values: DISABLED,
             allow_request_get_trie: DISABLED,
             allow_request_speculative_exec: DISABLED,
-            call_restricted_allowed_ips: Vec::new(),
+            sandboxed_execution_allowed_ips: Vec::new(),
             request_generator: Either::Right(request),
         })
         .collect();
@@ -217,7 +217,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
-        call_restricted_allowed_ips,
+        sandboxed_execution_allowed_ips,
         request_generator,
     }: TestCase,
     rng: &mut TestRng,
@@ -230,7 +230,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
-        call_restricted_allowed_ips,
+        sandboxed_execution_allowed_ips,
         max_message_size_bytes: 1024,
         max_connections: 2,
         ..Default::default()
