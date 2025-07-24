@@ -15,9 +15,12 @@ use casper_executor_wasm::{
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::executor::{
-    ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
-    ExecuteWithProviderResult, ExecutionKind,
+use casper_executor_wasm_interface::{
+    executor::{
+        ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
+        ExecuteWithProviderResult, ExecutionKind,
+    },
+    WasmPreparationError,
 };
 use casper_storage::{
     data_access_layer::{
@@ -38,8 +41,10 @@ use casper_types::{
     account::AccountHash, execution::RetValue, BlockHash, Chainspec, ChainspecRegistry, Digest,
     EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
     MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue,
-    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
+use casper_wasm::builder;
 use fs_extra::dir;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -53,6 +58,7 @@ static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<casper_types::PublicKey> =
 static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
 
+const CONTRACT_EE_966_REGRESSION: &str = "vm2_ee_966_regression.wasm";
 const CSPR: u64 = 10u64.pow(9);
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -229,7 +235,7 @@ fn harness() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
+    expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -241,7 +247,7 @@ pub(crate) fn make_executor() -> ExecutorV2 {
     let storage_costs = StorageCosts::new(DEFAULT_GAS_PER_BYTE_COST);
     let execution_engine_v1 = ExecutionEngineV1::default();
     let executor_config = ExecutorConfigBuilder::default()
-        .with_memory_limit(17)
+        .with_memory_limit(DEFAULT_WASM_MAX_MEMORY)
         .with_executor_kind(ExecutorKind::Compiled)
         .with_wasm_config(WasmV2Config::default())
         .with_storage_costs(storage_costs)
@@ -344,7 +350,7 @@ fn cep18() {
         .build()
         .expect("should build");
 
-    let result_2 = run_wasm_session(
+    let result_2 = expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -467,7 +473,7 @@ fn traits() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
+    expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -524,7 +530,7 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
             &global_state,
             state_root_hash,
@@ -549,7 +555,7 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
             &global_state,
             state_root_hash,
@@ -574,7 +580,7 @@ fn upgradable() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
-    let res = run_wasm_session(
+    let res = expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -596,7 +602,7 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
             &global_state,
             state_root_hash,
@@ -621,7 +627,7 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
             &global_state,
             state_root_hash,
@@ -646,21 +652,29 @@ fn run_create_contract(
         .expect("Succeed")
 }
 
-fn run_wasm_session(
+fn expect_successful_execution(
     executor: &mut ExecutorV2,
     global_state: &LmdbGlobalState,
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
 ) -> ExecuteWithProviderResult {
-    let result = executor
-        .execute_with_provider(pre_state_hash, global_state, execute_request)
-        .expect("Succeed");
+    let result =
+        run_wasm_session(executor, global_state, pre_state_hash, execute_request).expect("Succeed");
 
     if let Some(host_error) = result.host_error {
         panic!("Host error: {host_error:?}")
     }
 
     result
+}
+
+fn run_wasm_session(
+    executor: &mut ExecutorV2,
+    global_state: &LmdbGlobalState,
+    pre_state_hash: Digest,
+    execute_request: ExecuteRequest,
+) -> Result<ExecuteWithProviderResult, ExecuteWithProviderError> {
+    executor.execute_with_provider(pre_state_hash, global_state, execute_request)
 }
 
 #[test]
@@ -817,7 +831,7 @@ fn backwards_compatibility() {
         .build()
         .expect("should build");
 
-    run_wasm_session(&mut executor, &global_state, state_root_hash, call_request);
+    expect_successful_execution(&mut executor, &global_state, state_root_hash, call_request);
 }
 
 // host function tests
@@ -849,7 +863,7 @@ fn call_dummy_host_fn_by_name(
             },
         );
         let executor_config = ExecutorConfigBuilder::default()
-            .with_memory_limit(17)
+            .with_memory_limit(DEFAULT_WASM_MAX_MEMORY)
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(wasm_config)
             .with_storage_costs(StorageCosts::default())
@@ -1063,7 +1077,7 @@ fn casper_return_writes_to_execution_journal() {
         .build()
         .expect("should build");
 
-    let execute_result = run_wasm_session(
+    let execute_result = expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -1158,4 +1172,350 @@ fn argument_size_exceeds_memory_limit() {
         }
         other => panic!("Expected ArgumentSizeExceedsMemory error, got: {:?}", other),
     }
+}
+
+fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32>) -> Bytes {
+    let module = builder::module()
+        .function()
+        // A signature with 0 params and no return type
+        .signature()
+        .build()
+        .body()
+        .build()
+        .build()
+        // Export above function
+        .export()
+        .field("call")
+        .build()
+        // Memory section is mandatory
+        .memory()
+        // Produces entry `(memory (0) initial_pages [max_pages])`
+        .with_min(initial_pages)
+        .with_max(max_pages)
+        .build()
+        .build();
+    casper_wasm::serialize(module)
+        .expect("should serialize")
+        .into()
+}
+
+#[test]
+fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
+    // A contract that has initial memory pages of 0 and maximum memory pages of 0 is valid
+    let session_code = make_session_code_with_memory_pages(0, Some(0));
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+}
+
+#[test]
+fn should_run_ee_966_cant_have_too_much_initial_memory() {
+    // Set initial memory to max + 1
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY + 1, None);
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(matches!(
+        result,
+        Err(ExecuteWithProviderError::Execute(
+            ExecuteError::WasmPreparation(WasmPreparationError::Memory(_))
+        ))
+    ));
+}
+
+#[test]
+fn should_run_ee_966_cant_have_too_much_max_memory() {
+    let session_code = make_session_code_with_memory_pages(0, Some(DEFAULT_WASM_MAX_MEMORY + 1));
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(matches!(
+        result,
+        Err(ExecuteWithProviderError::Execute(
+            ExecuteError::WasmPreparation(WasmPreparationError::Instantiation(_))
+        ))
+    ));
+}
+
+#[test]
+fn should_run_ee_966_cant_have_way_too_much_max_memory() {
+    let session_code = make_session_code_with_memory_pages(0, Some(DEFAULT_WASM_MAX_MEMORY * 3));
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(matches!(
+        result,
+        Err(ExecuteWithProviderError::Execute(
+            ExecuteError::WasmPreparation(WasmPreparationError::Instantiation(_))
+        ))
+    ));
+}
+
+#[test]
+fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(0));
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(matches!(
+        result,
+        Err(ExecuteWithProviderError::Execute(
+            ExecuteError::WasmPreparation(WasmPreparationError::Compile(_))
+        ))
+    ));
+}
+
+#[test]
+fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, None);
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn should_run_ee_966_should_request_exactly_maximum() {
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
+    let session_code = read_wasm(CONTRACT_EE_966_REGRESSION);
+
+    let mut executor = make_executor();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_input(Bytes::new())
+        .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
+        .build()
+        .expect("should build");
+
+    let result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    println!("{:?}", result);
+
+    assert!(matches!(
+        result,
+        Ok(ExecuteWithProviderResult { host_error: Some(CallError::CalleeReverted), .. })
+    ));
 }

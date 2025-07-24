@@ -315,24 +315,18 @@ where
             .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
 
         let mem_import = module
-            .imports()
-            .find(|import| import.module() == "env" && import.name() == "memory")
-            .and_then(|import| {
-                if let ExternType::Memory(memory_type) = import.ty() {
-                    Some(*memory_type)
-                } else {
-                    None
-                }
-            })
-            .ok_or(WasmPreparationError::Compile(
-                "missing memory import".to_string(),
-            ))?;
+            .info()
+            .memories
+            .iter()
+            .next()
+            .map(|(_, mem_type)| *mem_type)
+            .ok_or(WasmPreparationError::Compile("missing memory".to_string()))?;
 
         let mut store = Store::new(engine);
 
         let wasmer_env = WasmerEnv::new(context, wasm_bytes, InterfaceVersion::from(1u32));
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
-
+        
         let memory = Memory::new(
             &mut store,
             MemoryType {
