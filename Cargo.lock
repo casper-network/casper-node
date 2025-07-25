@@ -827,7 +827,6 @@ dependencies = [
  "criterion",
  "datasize",
  "either",
- "hex",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
  "hostname",

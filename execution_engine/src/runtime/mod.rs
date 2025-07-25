@@ -77,11 +77,13 @@ pub use wasm_prep::{
 };
 
 const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
-const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
 const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
-const MESSAGING_ADDR_ENTITY_CONTRACT_ADDR_TOPIC: &str = "addressable_entity_contract_addr";
 const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
+
+const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
+const MESSAGING_ADDR_ENTITY_ADDR_TOPIC: &str = "addressable_entity_addr";
 const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
+
 const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";
 
 #[derive(Debug)]
@@ -2709,17 +2711,20 @@ where
         let insert_contract_result =
             contract_package.insert_contract_version(major, contract_hash_addr.into());
 
+        let contract_wasm_key = Key::Hash(contract_wasm_hash);
         self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
+            .metered_write_gs_unsafe(contract_wasm_key, contract_wasm)?;
+        let contract_key = Key::Hash(contract_hash_addr);
         self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_hash_addr), contract)?;
+            .metered_write_gs_unsafe(contract_key, contract)?;
+        let contract_package_key = Key::Hash(contract_package_hash.value());
         self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_package_hash.value()), contract_package)?;
+            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         let system_account_hash = PublicKey::System.to_account_hash().value();
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
             MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(contract_package_hash.value())),
+            MessagePayload::String(contract_package_key.to_formatted_string()),
             true,
         )? {
             return Ok(Err(e));
@@ -2727,7 +2732,7 @@ where
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
             MESSAGING_CONTRACT_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(contract_hash_addr)),
+            MessagePayload::String(contract_key.to_formatted_string()),
             true,
         )? {
             return Ok(Err(e));
@@ -2735,7 +2740,7 @@ where
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
             MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(contract_wasm_hash)),
+            MessagePayload::String(contract_wasm_key.to_formatted_string()),
             true,
         )? {
             return Ok(Err(e));
@@ -2899,15 +2904,15 @@ where
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
             MESSAGING_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(package_hash.value())),
+            MessagePayload::String(Key::Hash(package_hash.value()).to_formatted_string()),
             true,
         )? {
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
-            MESSAGING_ADDR_ENTITY_CONTRACT_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(entity_addr.value())),
+            MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
+            MessagePayload::String(entity_key.to_formatted_string()),
             true,
         )? {
             return Ok(Err(e));
@@ -2915,7 +2920,9 @@ where
         if let Err(e) = self.emit_message_for_entity(
             EntityAddr::System(system_account_hash),
             MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
-            MessagePayload::String(hex::encode(byte_code_hash)),
+            MessagePayload::String(
+                Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)).to_formatted_string(),
+            ),
             true,
         )? {
             return Ok(Err(e));

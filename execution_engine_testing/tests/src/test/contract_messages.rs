@@ -1288,7 +1288,7 @@ fn on_install_should_emit_system_messages() {
     let query_view = ContractQueryView::new(&builder, contract_hash);
     expect_message_on_topic_and_index(
         &query_view,
-        &hex::encode(contract_package_addr),
+        &format!("hash-{}", hex::encode(contract_package_addr)),
         "contract_package_addr",
         system_account_entity,
         0,
@@ -1296,7 +1296,7 @@ fn on_install_should_emit_system_messages() {
     );
     expect_message_on_topic_and_index(
         &query_view,
-        &hex::encode(contract_hash.value()),
+        &format!("hash-{}", hex::encode(contract_hash.value())),
         "contract_addr",
         system_account_entity,
         1,
@@ -1304,7 +1304,7 @@ fn on_install_should_emit_system_messages() {
     );
     expect_message_on_topic_and_index(
         &query_view,
-        &hex::encode(wasm_addr),
+        &format!("hash-{}", hex::encode(wasm_addr)),
         "contract_wasm_addr",
         system_account_entity,
         2,
