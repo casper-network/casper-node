@@ -867,6 +867,7 @@ dependencies = [
  "borsh",
  "bytes",
  "casper-execution-engine",
+ "casper-executor-wasm",
  "casper-executor-wasm-common",
  "casper-executor-wasm-host",
  "casper-executor-wasm-interface",

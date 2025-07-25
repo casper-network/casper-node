@@ -50,6 +50,9 @@ use install::{InstallContractError, InstallContractRequest, InstallContractResul
 use parking_lot::RwLock;
 use tracing::{error, warn};
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
