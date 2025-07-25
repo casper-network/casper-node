@@ -388,6 +388,11 @@ pub enum ExecuteError {
     InternalHost(#[from] InternalHostError),
     #[error("Code not found")]
     CodeNotFound(HashAddr),
+    #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]
+    ArgumentSizeExceedsMemory {
+        argument_size: usize,
+        memory_limit: u32,
+    },
     // Wasm attempted to return flags that are not supported
     #[error("Return flags are not supported: {0}")]
     ReturnFlagsNotSupported(u32),
