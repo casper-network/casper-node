@@ -243,7 +243,7 @@ async fn should_cancel_refund_for_erroneous_wasm() {
         ))
         .await;
 
-    // Alice should get the all the fee since it's set to pay to proposer
+    // Alice should get all the fee since it's set to pay to proposer
     // AND Bob didn't get a refund
     test_scenario
         .assert(PublicKeyBalanceChange::new(

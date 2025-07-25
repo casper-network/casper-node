@@ -736,3 +736,55 @@ fn casper_return_writes_to_execution_journal() {
         "Ret transform should be under the contract key"
     );
 }
+
+#[test]
+fn casper_return_fails_if_contract_uses_unsupported_flags() {
+    let address_generator = make_address_generator();
+    let mut executor = make_executor();
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    // Create a contract that will be used to test the ret host function
+    let input_data = borsh::to_vec(&("write".to_string(),))
+        .map(Bytes::from)
+        .unwrap();
+
+    let install_request = base_install_request_builder()
+        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    let contract_address = *create_result.smart_contract_addr();
+    state_root_hash = create_result.post_state_hash();
+
+    // Execute the contract to trigger the return
+    let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: contract_address,
+            entry_point: "ret_faulty_flags".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+    assert!(result.is_err());
+    let err: ExecuteWithProviderError = result.err().expect("should have error details");
+    assert!(matches!(
+        err,
+        ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
+    ));
+}

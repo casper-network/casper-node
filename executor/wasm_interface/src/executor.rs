@@ -393,6 +393,9 @@ pub enum ExecuteError {
         argument_size: usize,
         memory_limit: u32,
     },
+    // Wasm attempted to return flags that are not supported
+    #[error("Return flags are not supported: {0}")]
+    ReturnFlagsNotSupported(u32),
 }
 
 #[derive(Debug, Error)]
