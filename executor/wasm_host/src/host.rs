@@ -1251,8 +1251,19 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         .context_mut()
         .tracking_copy
         .read(&callee_addressable_entity_key)
-        .map_err(|_| InternalHostError::TrackingCopy)?
-        .ok_or(InternalHostError::AccountRecordNotFound)?;
+        .map_err(|_| InternalHostError::TrackingCopy)?;
+
+    let callee_stored_value = match callee_stored_value {
+        Some(callee_stored_value) => callee_stored_value,
+        None => {
+            warn!(
+                ?callee_addressable_entity_key,
+                "Callee not found while transferring tokens"
+            );
+            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+        }
+    };
+
     let callee_addressable_entity = callee_stored_value
         .into_addressable_entity()
         .ok_or(InternalHostError::TypeConversion)?;
@@ -1307,8 +1318,6 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             Err(VMError::Internal(InternalHostError::DispatchSystemContract))
         }
     }
-
-    // Ok(u32_from_host_result(result))
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(

@@ -12,12 +12,11 @@ use casper_storage::{
         mint::Mint,
         runtime_native::{Id, RuntimeNative},
     },
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
+    tracking_copy::TrackingCopyError,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, system::SystemEntityType, CLValueError, ContextAccessRights, EntityAddr,
-    Key, Phase, PublicKey, SystemHashRegistry, TransactionHash, URef, METHOD_TRANSFER, U512,
+    account::AccountHash, CLValueError, Phase, TransactionHash, URef, METHOD_TRANSFER, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -46,51 +45,22 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    system_contract: SystemEntityType,
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
 ) -> Result<Ret, DispatchError> {
-    let system_entity_registry = {
-        let stored_value = tracking_copy
-            .read(&Key::SystemEntityRegistry)
-            .map_err(DispatchError::Storage)?
-            .ok_or(DispatchError::RegistryNotFound)?;
-        stored_value
-            .into_cl_value()
-            .expect("should convert stored value into CLValue")
-            .into_t::<SystemHashRegistry>()
-            .map_err(DispatchError::CLValue)?
-    };
-    let system_entity_name = system_contract.entity_name();
-    let system_entity_addr = system_entity_registry
-        .get(&system_entity_name)
-        .ok_or(DispatchError::MissingSystemContract(system_entity_name))?;
-    let entity_addr = EntityAddr::new_system(*system_entity_addr);
-
-    let runtime_footprint = tracking_copy
-        .runtime_footprint_by_entity_addr(entity_addr)
-        .map_err(DispatchError::RuntimeFootprint)?;
-
-    let access_rights = ContextAccessRights::new(*system_entity_addr, []);
-    let address = PublicKey::System.to_account_hash();
-
     let forked_tracking_copy = Rc::new(RefCell::new(tracking_copy.fork2()));
 
-    let remaining_spending_limit = U512::MAX; // NOTE: Since there's no custom payment, there's no need to track the remaining spending limit.
-    let phase = Phase::System; // NOTE: Since this is a system contract, the phase is always `System`.
-
     let ret = {
-        let runtime = RuntimeNative::new(
+        let runtime = RuntimeNative::new_system_runtime(
             runtime_native_config,
             Id::Transaction(transaction_hash),
             address_generator,
             Rc::clone(&forked_tracking_copy),
-            address,
-            Key::AddressableEntity(entity_addr),
-            runtime_footprint,
-            access_rights,
-            remaining_spending_limit,
-            phase,
-        );
+            Phase::System,
+        )
+        .map_err(|tracking_copy_error| {
+            error!(%tracking_copy_error, "Failed to create system contract runtime");
+            DispatchError::Internal(InternalHostError::DispatchSystemContract)
+        })?;
 
         func(runtime)
     };
@@ -123,7 +93,6 @@ pub fn create_purse<R: GlobalStateReader>(
         runtime_native_config,
         transaction_hash,
         address_generator,
-        SystemEntityType::Mint,
         |mut runtime| runtime.mint(U512::zero()),
     ) {
         Ok(mint_result) => mint_result,
@@ -177,7 +146,6 @@ pub fn transfer<R: GlobalStateReader>(
             runtime_native_config,
             id,
             address_generator,
-            SystemEntityType::Mint,
             |mut runtime| {
                 let MintTransferArgs {
                     maybe_to,
@@ -235,9 +203,8 @@ mod tests {
         AddressGenerator, RuntimeNativeConfig,
     };
     use casper_types::{
-        system::SystemEntityType, ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion,
-        StorageCosts, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig,
-        U512,
+        ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, StorageCosts,
+        SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, U512,
     };
     use parking_lot::RwLock;
 
@@ -260,7 +227,7 @@ mod tests {
             Timestamp::now().millis(),
             casper_types::HoldBalanceHandling::Accrued,
             0,
-            true,
+            false,
             StorageCosts::default(),
         );
 
@@ -301,27 +268,62 @@ mod tests {
 
         let runtime_native_config = RuntimeNativeConfig::default();
 
+        //
+        // Mint source purse
+        //
+
         let ret = dispatch_system_contract(
             &mut tracking_copy,
             runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
-            SystemEntityType::Mint,
             |mut runtime| runtime.mint(U512::from(1000u64)),
         );
 
-        let uref = ret.expect("dispatch mint").expect("uref");
+        let source_uref = ret.expect("dispatch mint").expect("uref");
+
+        //
+        // Mint dest purse
+        //
+
+        let ret = dispatch_system_contract(
+            &mut tracking_copy,
+            runtime_native_config.clone(),
+            transaction_hash,
+            Arc::clone(&address_generator),
+            |mut runtime| runtime.mint(U512::from(0u64)),
+        );
+
+        let dest_purse = ret.expect("dispatch mint").expect("uref");
+
+        //
+        // Check source balance
+        //
 
         let ret: Result<Result<U512, _>, _> = dispatch_system_contract(
+            &mut tracking_copy,
+            runtime_native_config.clone(),
+            transaction_hash,
+            Arc::clone(&address_generator),
+            |mut runtime| runtime.total_balance(source_uref),
+        );
+
+        assert_eq!(ret.unwrap(), Ok(U512::from(1000u64)));
+
+        //
+        // Transfer from source to dest
+        //
+        let ret: Result<Result<(), _>, _> = dispatch_system_contract(
             &mut tracking_copy,
             runtime_native_config,
             transaction_hash,
             Arc::clone(&address_generator),
-            SystemEntityType::Mint,
-            |mut runtime| runtime.total_balance(uref),
+            |mut runtime| {
+                runtime.transfer(None, source_uref, dest_purse, U512::from(1000u64), None)
+            },
         );
 
-        assert_eq!(ret.unwrap(), Ok(U512::from(1000u64)));
+        assert_eq!(ret.unwrap(), Ok(()));
 
         let post_root_hash = global_state
             .commit_effects(root_hash, tracking_copy.effects())

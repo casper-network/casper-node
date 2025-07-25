@@ -88,6 +88,8 @@ static RUST_TOOL_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
         .join("wasm")
 });
 
+const ENABLE_ADDRESSABLE_ENTITY: bool = false;
+
 #[track_caller]
 fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
     let paths = vec![
@@ -140,10 +142,19 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     )))
 }
 
-fn base_execute_builder() -> ExecuteRequestBuilder {
-    let chainspec = Chainspec::default();
+fn make_runtime_native_config() -> RuntimeNativeConfig {
+    let mut chainspec = Chainspec::default();
+    chainspec.core_config.enable_addressable_entity = ENABLE_ADDRESSABLE_ENTITY;
     let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
+    assert_eq!(
+        runtime_native_config.enable_addressable_entity(),
+        ENABLE_ADDRESSABLE_ENTITY
+    );
+    runtime_native_config
+}
 
+fn base_execute_builder() -> ExecuteRequestBuilder {
+    let runtime_native_config = make_runtime_native_config();
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -159,9 +170,7 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
 }
 
 fn base_install_request_builder() -> InstallContractRequestBuilder {
-    let chainspec = Chainspec::default();
-    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
-
+    let runtime_native_config = make_runtime_native_config();
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -435,7 +444,7 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         Timestamp::now().millis(),
         casper_types::HoldBalanceHandling::Accrued,
         0,
-        true,
+        ENABLE_ADDRESSABLE_ENTITY,
         StorageCosts::default(),
     );
     let genesis_request: GenesisRequest = GenesisRequest::new(
@@ -1234,7 +1243,46 @@ fn escrow() {
     );
     dbg!(result_2.gas_usage().gas_spent());
 
-    state_root_hash = global_state
+    let post_state_root_hash = global_state
         .commit_effects(state_root_hash, result_2.effects().clone())
         .expect("Should commit");
+
+    assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn shouldnt_fail_without_account() {
+    let executor = make_executor();
+
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(AccountHash::new([0xF0; 32]))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = {
+        executor
+            .install_contract(state_root_hash, &mut global_state, create_request)
+            .expect_err("Succeed")
+    };
+
+    assert!(
+        matches!(create_result, InstallContractError::Execute(ExecuteError::EntityNotFound(Key::Account(account_hash))) if account_hash == AccountHash::new([0xF0; 32]))
+    );
 }

@@ -368,9 +368,7 @@ impl ExecutorV2 {
             runtime_native_config,
         } = execute_request;
 
-        // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
-        // supported. let caller_entity_addr = EntityAddr::new_account(caller);
-        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
+        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
         let (wasm_bytes, export_name) = match &execution_kind {
             ExecutionKind::SessionBytes(wasm_bytes) => {
@@ -914,11 +912,11 @@ impl Executor for ExecutorV2 {
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> URef {
+) -> Result<URef, ExecuteError> {
     let stored_value = tracking_copy
         .read(&entity_key)
-        .expect("should read account")
-        .expect("should have account");
+        .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
+        .ok_or(ExecuteError::EntityNotFound(entity_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key
@@ -933,9 +931,9 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .into_addressable_entity()
                 .expect("should be addressable entity");
 
-            addressable_entity.main_purse()
+            Ok(addressable_entity.main_purse())
         }
-        StoredValue::Account(account) => account.main_purse(),
+        StoredValue::Account(account) => Ok(account.main_purse()),
         StoredValue::SmartContract(smart_contract_package) => {
             let contract_hash = smart_contract_package
                 .versions()
@@ -950,8 +948,13 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .expect("should have addressable entity")
                 .into_addressable_entity()
                 .expect("should be addressable entity");
-            addressable_entity.main_purse()
+            Ok(addressable_entity.main_purse())
         }
-        other => panic!("should be account or contract received {other:?}"),
+        other => Err(ExecuteError::InternalHost(
+            InternalHostError::UnexpectedStoredValueVariant {
+                expected: "AddressableEntity or Account".to_string(),
+                found: other.type_name(),
+            },
+        )),
     }
 }

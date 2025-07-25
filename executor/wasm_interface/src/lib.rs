@@ -97,14 +97,14 @@ pub enum InternalHostError {
     TotalBalanceOverflow,
     #[error("remaining gas exceeded the gas limit")]
     RemainingGasExceedsGasLimit,
-    #[error("account not found under key")]
-    AccountRecordNotFound,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
     #[error("attempted writing in restricted mode")]
     AttemptWriteInRestricted,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
+    #[error("incompatible type: expected {expected}, found {found}")]
+    UnexpectedStoredValueVariant { expected: String, found: String },
 }
 
 /// The outcome of a call.
