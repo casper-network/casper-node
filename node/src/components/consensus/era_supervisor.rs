@@ -822,10 +822,10 @@ impl EraSupervisor {
                             .saturating_mul(10);
                         let tolerance = last_block_time.saturating_add(increment);
                         if tolerance <= Timestamp::now() {
-                            debug!(
+                            info!(
                             era = era_id.value(),
                             %tolerance,
-                            "empty block payload within tolerance for skipping an empty proposal");
+                            "SKIPPING EMPTY PROPOSAL: within tolerance for skipping an empty proposal");
                             return Effects::new();
                         }
                     }
