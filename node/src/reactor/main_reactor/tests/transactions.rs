@@ -1383,7 +1383,7 @@ async fn should_cancel_refund_for_erroneous_wasm() {
     let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
     let bob_expected_available_balance = bob_expected_total_balance;
 
-    // Alice should get the all the fee since it's set to pay to proposer
+    // Alice should get all the fee since it's set to pay to proposer
     // AND Bob didn't get a refund
     let alice_expected_total_balance = alice_initial_balance + expected_transaction_cost;
     let alice_expected_available_balance = alice_expected_total_balance;

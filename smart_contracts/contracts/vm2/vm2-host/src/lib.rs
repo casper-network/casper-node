@@ -154,7 +154,7 @@ impl MinHostWrapper {
         let all_flags_bits = ReturnFlags::all().bits();
         let faulty_flags = all_flags_bits << 1;
         if faulty_flags == all_flags_bits {
-            // By pure coincidence the all the current flags of ReturnFlags are homomorphic when
+            // By pure coincidence all the current flags of ReturnFlags are homomorphic when
             // shifted by one byte. If this happens we need to produce a different
             // "faulty_flags value"
             casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
