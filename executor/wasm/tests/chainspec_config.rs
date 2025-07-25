@@ -5,21 +5,131 @@ use std::{
 };
 
 use log::error;
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
-use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
+use casper_execution_engine::engine_state::{
+    engine_config::DEFAULT_ENABLE_ENTITY, EngineConfig, EngineConfigBuilder,
+};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, MintCosts, PricingHandling, ProtocolVersion, RefundHandling, StorageCosts,
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ChainspecRegistry, CoreConfig, Digest,
+    FeeHandling, GenesisAccount, GenesisConfig, HoldBalanceHandling, MintCosts, Motes,
+    PricingHandling, ProtocolVersion, PublicKey, RefundHandling, SecretKey, StorageCosts,
     SystemConfig, TimeDiff, WasmConfig,
 };
 
-use crate::{
-    GenesisConfigBuilder, DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_MAX_QUERY_DEPTH,
-};
+/// Default number of validator slots.
+pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+/// Default auction delay.
+pub const DEFAULT_AUCTION_DELAY: u64 = 1;
+/// Default lock-in period is currently zero.
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
+/// Default length of total vesting schedule is currently zero.
+pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 0;
+
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
+
+/// Round seigniorage rate represented as a fraction of the total supply.
+///
+/// Annual issuance: 8%
+/// Minimum round length: 2^14 ms
+/// Ticks per year: 31536000000
+///
+/// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(1, 4200000000000000000);
+/// Default genesis timestamp in milliseconds.
+pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
+/// Default block time.
+pub const DEFAULT_BLOCK_TIME: u64 = 0;
+/// Default gas price.
+pub const DEFAULT_GAS_PRICE: u8 = 1;
+/// Amount named argument.
+pub const ARG_AMOUNT: &str = "amount";
+/// Timestamp increment in milliseconds.
+pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
+/// Default gas hold balance handling.
+pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Accrued;
+/// Default gas hold interval in milliseconds.
+pub const DEFAULT_GAS_HOLD_INTERVAL_MILLIS: u64 = 24 * 60 * 60 * 60;
+
+/// Default value for maximum associated keys configuration option.
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+
+/// Default value for a maximum query depth configuration option.
+pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
+/// Default value for maximum runtime call stack height configuration option.
+pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+/// Default value for minimum delegation amount in motes.
+pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
+/// Default value for maximum delegation amount in motes.
+pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
+
+/// Default genesis config hash.
+pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
+
+/// Default test account address.
+pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
+// NOTE: declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
+/// Default account key.
+pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
+/// Default initial balance of a test account in motes.
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 10_000_000_000_000_000_000_u64;
+/// Minimal amount for a transfer that creates new accounts.
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
+/// Default proposer public key.
+pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+/// Default proposer address.
+pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
+
+/// Default [`ProtocolVersion`].
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
+pub(crate) static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
+pub(crate) static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
+pub(crate) static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
+    Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
+
+/// Default accounts.
+pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
+    let mut ret = Vec::new();
+    let genesis_account = GenesisAccount::account(
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+        None,
+    );
+    ret.push(genesis_account);
+    let proposer_account = GenesisAccount::account(
+        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+        None,
+    );
+    ret.push(proposer_account);
+    let rng = &mut TestRng::new();
+    for _ in 0..10 {
+        let filler_account = GenesisAccount::account(
+            PublicKey::random(rng),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+            None,
+        );
+        ret.push(filler_account);
+    }
+    ret
+});
+/// Default [`ChainspecRegistry`].
+pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
+    Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
+
+use casper_types::{account::AccountHash, testing::TestRng};
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -30,6 +140,125 @@ pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
         .join("resources/")
         .join(CHAINSPEC_NAME)
 });
+
+/// A builder for an [`GenesisConfig`].
+///
+/// Any field that isn't specified will be defaulted.  See [the module docs](index.html) for the set
+/// of default values.
+#[derive(Default, Debug)]
+pub struct GenesisConfigBuilder {
+    accounts: Option<Vec<GenesisAccount>>,
+    wasm_config: Option<WasmConfig>,
+    system_config: Option<SystemConfig>,
+    validator_slots: Option<u32>,
+    auction_delay: Option<u64>,
+    locked_funds_period_millis: Option<u64>,
+    round_seigniorage_rate: Option<Ratio<u64>>,
+    unbonding_delay: Option<u64>,
+    genesis_timestamp_millis: Option<u64>,
+    gas_hold_balance_handling: Option<HoldBalanceHandling>,
+    gas_hold_interval_millis: Option<u64>,
+    enable_addressable_entity: Option<bool>,
+    storage_costs: Option<StorageCosts>,
+}
+
+impl GenesisConfigBuilder {
+    /// Creates a new `ExecConfig` builder.
+    pub fn new() -> Self {
+        GenesisConfigBuilder::default()
+    }
+
+    /// Sets the genesis accounts.
+    pub fn with_accounts(mut self, accounts: Vec<GenesisAccount>) -> Self {
+        self.accounts = Some(accounts);
+        self
+    }
+
+    /// Sets the Wasm config options.
+    pub fn with_wasm_config(mut self, wasm_config: WasmConfig) -> Self {
+        self.wasm_config = Some(wasm_config);
+        self
+    }
+
+    /// Sets the system config options.
+    pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
+        self.system_config = Some(system_config);
+        self
+    }
+
+    /// Sets the validator slots config option.
+    pub fn with_validator_slots(mut self, validator_slots: u32) -> Self {
+        self.validator_slots = Some(validator_slots);
+        self
+    }
+
+    /// Sets the auction delay config option.
+    pub fn with_auction_delay(mut self, auction_delay: u64) -> Self {
+        self.auction_delay = Some(auction_delay);
+        self
+    }
+
+    /// Sets the locked funds period config option.
+    pub fn with_locked_funds_period_millis(mut self, locked_funds_period_millis: u64) -> Self {
+        self.locked_funds_period_millis = Some(locked_funds_period_millis);
+        self
+    }
+
+    /// Sets the round seigniorage rate config option.
+    pub fn with_round_seigniorage_rate(mut self, round_seigniorage_rate: Ratio<u64>) -> Self {
+        self.round_seigniorage_rate = Some(round_seigniorage_rate);
+        self
+    }
+
+    /// Sets the unbonding delay config option.
+    pub fn with_unbonding_delay(mut self, unbonding_delay: u64) -> Self {
+        self.unbonding_delay = Some(unbonding_delay);
+        self
+    }
+
+    /// Sets the genesis timestamp config option.
+    pub fn with_genesis_timestamp_millis(mut self, genesis_timestamp_millis: u64) -> Self {
+        self.genesis_timestamp_millis = Some(genesis_timestamp_millis);
+        self
+    }
+
+    /// Sets the enable addressable entity flag.
+    pub fn with_enable_addressable_entity(mut self, enable_addressable_entity: bool) -> Self {
+        self.enable_addressable_entity = Some(enable_addressable_entity);
+        self
+    }
+
+    /// Sets the storage_costs handling.
+    pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
+        self.storage_costs = Some(storage_costs);
+        self
+    }
+
+    /// Builds a new [`GenesisConfig`] object.
+    pub fn build(self) -> GenesisConfig {
+        GenesisConfig::new(
+            self.accounts.unwrap_or_default(),
+            self.wasm_config.unwrap_or_default(),
+            self.system_config.unwrap_or_default(),
+            self.validator_slots.unwrap_or(DEFAULT_VALIDATOR_SLOTS),
+            self.auction_delay.unwrap_or(DEFAULT_AUCTION_DELAY),
+            self.locked_funds_period_millis
+                .unwrap_or(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS),
+            self.round_seigniorage_rate
+                .unwrap_or(DEFAULT_ROUND_SEIGNIORAGE_RATE),
+            self.unbonding_delay.unwrap_or(DEFAULT_UNBONDING_DELAY),
+            self.genesis_timestamp_millis
+                .unwrap_or(DEFAULT_GENESIS_TIMESTAMP_MILLIS),
+            self.gas_hold_balance_handling
+                .unwrap_or(DEFAULT_GAS_HOLD_BALANCE_HANDLING),
+            self.gas_hold_interval_millis
+                .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
+            self.enable_addressable_entity
+                .unwrap_or(DEFAULT_ENABLE_ENTITY),
+            self.storage_costs.unwrap_or_default(),
+        )
+    }
+}
 
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]

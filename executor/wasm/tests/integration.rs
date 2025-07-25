@@ -1,5 +1,4 @@
 mod chainspec_config;
-mod genesis_config_builder;
 
 use std::{
     env,
@@ -51,116 +50,7 @@ use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use tempfile::TempDir;
 
-use crate::chainspec_config::ChainspecConfig;
-pub(crate) use genesis_config_builder::GenesisConfigBuilder;
-
-/// Default number of validator slots.
-pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
-/// Default auction delay.
-pub const DEFAULT_AUCTION_DELAY: u64 = 1;
-/// Default lock-in period is currently zero.
-pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
-/// Default length of total vesting schedule is currently zero.
-pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 0;
-
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
-
-/// Round seigniorage rate represented as a fraction of the total supply.
-///
-/// Annual issuance: 8%
-/// Minimum round length: 2^14 ms
-/// Ticks per year: 31536000000
-///
-/// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(1, 4200000000000000000);
-/// Default genesis timestamp in milliseconds.
-pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default block time.
-pub const DEFAULT_BLOCK_TIME: u64 = 0;
-/// Default gas price.
-pub const DEFAULT_GAS_PRICE: u8 = 1;
-/// Amount named argument.
-pub const ARG_AMOUNT: &str = "amount";
-/// Timestamp increment in milliseconds.
-pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
-/// Default gas hold balance handling.
-pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Accrued;
-/// Default gas hold interval in milliseconds.
-pub const DEFAULT_GAS_HOLD_INTERVAL_MILLIS: u64 = 24 * 60 * 60 * 60;
-
-/// Default value for maximum associated keys configuration option.
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-
-/// Default value for a maximum query depth configuration option.
-pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
-/// Default value for maximum runtime call stack height configuration option.
-pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
-/// Default value for minimum delegation amount in motes.
-pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
-/// Default value for maximum delegation amount in motes.
-pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
-
-/// Default genesis config hash.
-pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
-
-/// Default test account address.
-pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-// NOTE: declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
-/// Default account key.
-pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-/// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 10_000_000_000_000_000_000_u64;
-/// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
-/// Default proposer public key.
-pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
-/// Default proposer address.
-pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
-/// Default accounts.
-pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
-    let mut ret = Vec::new();
-    let genesis_account = GenesisAccount::account(
-        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-        None,
-    );
-    ret.push(genesis_account);
-    let proposer_account = GenesisAccount::account(
-        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-        None,
-    );
-    ret.push(proposer_account);
-    let rng = &mut TestRng::new();
-    for _ in 0..10 {
-        let filler_account = GenesisAccount::account(
-            PublicKey::random(rng),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-            None,
-        );
-        ret.push(filler_account);
-    }
-    ret
-});
-/// Default [`ProtocolVersion`].
-pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
-/// Default [`ChainspecRegistry`].
-pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
-    Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
-
-static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
-static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
-    Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
-static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
-    Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
+use crate::chainspec_config::{ChainspecConfig, DEFAULT_ACCOUNT_HASH, DEFAULT_ACCOUNT_PUBLIC_KEY};
 
 const CSPR: u64 = 10u64.pow(9);
 
