@@ -18,7 +18,7 @@ use casper_executor_wasm_common::{
     keyspace::{Keyspace, KeyspaceTag},
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
     u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{
@@ -566,7 +566,15 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         [u64::from(data_ptr), u64::from(data_len)],
     )?;
 
-    let flags = ReturnFlags::from_bits_retain(flags);
+    let maybe_flags = ReturnFlags::from_bits(flags);
+    let flags = match maybe_flags {
+        Some(flags) => flags,
+        None => {
+            return VMResult::Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
+                flags,
+            )))
+        }
+    };
     let data = if data_ptr == 0 {
         None
     } else {
