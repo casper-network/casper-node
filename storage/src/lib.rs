@@ -31,3 +31,5 @@ pub use block_store::{
     lmdb::{DbTableId, UnknownDbTableId},
     DbRawBytesSpec,
 };
+
+pub use system::runtime_native::Config as RuntimeNativeConfig;

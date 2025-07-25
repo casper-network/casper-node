@@ -3,6 +3,8 @@
 
 use alloc::vec::Vec;
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{
@@ -10,6 +12,8 @@ use crate::{
     },
     CLType, CLTyped, PublicKey, URef, U512,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -58,6 +62,21 @@ impl ValidatorBid {
     pub fn with_inactive(mut self, inactive: bool) -> Self {
         self.inactive = inactive;
         self
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_public_key(rng: &mut TestRng, validator_public_key: PublicKey) -> Self {
+        Self {
+            validator_public_key,
+            bonding_purse: rng.gen(),
+            staked_amount: rng.gen(),
+            delegation_rate: rng.gen(),
+            vesting_schedule: rng.gen(),
+            inactive: rng.gen(),
+            minimum_delegation_amount: rng.gen(),
+            maximum_delegation_amount: rng.gen(),
+            reserved_slots: rng.gen(),
+        }
     }
 }
 

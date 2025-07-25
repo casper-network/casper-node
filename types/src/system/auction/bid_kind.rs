@@ -1,19 +1,20 @@
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{
-        bid::VestingSchedule, Bid, BidAddr, DelegatorBid, ValidatorBid, ValidatorCredit,
+        bid::VestingSchedule,
+        delegator_kind::DelegatorKind,
+        unbond::{Unbond, UnbondKind},
+        Bid, BidAddr, Bridge, DelegatorBid, ValidatorBid, ValidatorCredit,
     },
     CLType, CLTyped, EraId, PublicKey, URef, U512,
 };
-
-use crate::system::auction::{
-    delegator_kind::DelegatorKind,
-    unbond::{Unbond, UnbondKind},
-    Bridge,
-};
+#[cfg(any(feature = "testing", test))]
+use crate::{testing::TestRng, URefAddr};
 use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -328,6 +329,78 @@ impl BidKind {
             | BidKind::Reservation(_)
             | BidKind::Unbond(_) => None,
         }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_validator_bid_public_key(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+    ) -> Self {
+        let validator_bid = ValidatorBid::random_for_public_key(rng, validator_public_key.clone());
+        Self::Validator(Box::new(validator_bid))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_unified_bid_public_key(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+    ) -> Self {
+        let validator_bid = Bid::random_for_public_key(rng, validator_public_key.clone());
+        Self::Unified(Box::new(validator_bid))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_delegated_account(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+        delegated_public_key: PublicKey,
+    ) -> Self {
+        let validator_bid = DelegatorBid::random_for_validator_and_delegator(
+            rng,
+            validator_public_key,
+            DelegatorKind::PublicKey(delegated_public_key),
+        );
+        Self::Delegator(Box::new(validator_bid))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_delegated_purse(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+        delegated_purse: URefAddr,
+    ) -> Self {
+        let validator_bid = DelegatorBid::random_for_validator_and_delegator(
+            rng,
+            validator_public_key,
+            DelegatorKind::Purse(delegated_purse),
+        );
+        Self::Delegator(Box::new(validator_bid))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_credit(rng: &mut TestRng) -> Self {
+        let validator_bid: ValidatorCredit = rng.gen();
+        Self::Credit(Box::new(validator_bid))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_reserved_delegation_for_account(rng: &mut TestRng) -> Self {
+        let delegator_kind = DelegatorKind::PublicKey(rng.gen());
+        let reservation = Reservation::random_for_delegator(rng, delegator_kind);
+        Self::Reservation(Box::new(reservation))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_reserved_delegation_for_purse(rng: &mut TestRng) -> Self {
+        let delegator_kind = DelegatorKind::Purse(rng.gen());
+        let reservation = Reservation::random_for_delegator(rng, delegator_kind);
+        Self::Reservation(Box::new(reservation))
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_unbond(rng: &mut TestRng) -> Self {
+        let unbond = Unbond::random(rng);
+        Self::Unbond(Box::new(unbond))
     }
 }
 

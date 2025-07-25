@@ -33,7 +33,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::{Message, Messages},
     contracts::NamedKeys,
-    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
+    execution::{
+        Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
+    },
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
     KeyTag, StoredValue, StoredValueTypeMismatch, U512,
@@ -582,6 +584,15 @@ where
         self.effects.push(TransformV2::new(
             normalized_key,
             TransformKindV2::Prune(key),
+        ));
+    }
+
+    /// Registers a contract return
+    pub fn ret(&mut self, key: Key, value: RetValue) {
+        let normalized_key = key.normalize();
+        self.effects.push(TransformV2::new(
+            normalized_key,
+            TransformKindV2::Ret(value),
         ));
     }
 

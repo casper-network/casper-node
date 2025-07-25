@@ -29,23 +29,28 @@ use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionResult,
+};
 use casper_storage::{
     data_access_layer::{
+        bids::{DelegatorBidRequest, ValidatorBidRequest},
         AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, ScratchProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
     system::genesis::GenesisError,
     tracking_copy::TrackingCopyError,
+    RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    EntityAddr, EraId, Key, PublicKey,
+    EntityAddr, EraId, Gas, Key, PublicKey,
 };
 
 use crate::{
@@ -68,6 +73,7 @@ use crate::{
     },
     NodeRng,
 };
+use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
 pub(crate) use event::Event;
@@ -77,10 +83,7 @@ use metrics::Metrics;
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
-pub(crate) use types::{
-    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
-    StepOutcome,
-};
+pub(crate) use types::{ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult};
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -333,6 +336,44 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::SandboxedExecution { request, responder } => {
+                trace!(?request, "call restricted");
+                let metrics = Arc::clone(&self.metrics);
+                let execution_engine_v2 = self.execution_engine_v2.clone();
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                // TODO: consider adding a singleton field for runtime_native_config to this
+                // component, set during construction.
+                let runtime_native_config = RuntimeNativeConfig::from_chainspec(&self.chainspec);
+                async move {
+                    let start = Instant::now();
+                    let result = run_intensive_task(move || {
+                        // Create a tracking copy for the request
+                        let state = data_access_layer.get_scratch_global_state();
+                        let tracking_copy = state
+                            .tracking_copy(request.state_hash)
+                            .expect("should get tracking copy result")
+                            .expect("should create tracking copy");
+                        // Execute the request
+                        execution_engine_v2.execute_sandbox(
+                            tracking_copy,
+                            runtime_native_config,
+                            request,
+                        )
+                    })
+                    .await;
+
+                    let result = result.unwrap_or(SandboxedExecutionResult {
+                        error: Some(SandboxedExecutionError::InternalHostError),
+                        output: None,
+                        gas_usage: Gas::new(0),
+                    });
+
+                    metrics.run_query.observe(start.elapsed().as_secs_f64());
+                    trace!("restricted contract request completed");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::QueryByPrefix {
                 request: query_request,
                 responder,
@@ -450,7 +491,6 @@ impl ContractRuntime {
                         AddressableEntityResult::Success { .. } |
                         AddressableEntityResult::Failure(_) => result,
                     };
-
                     metrics
                         .addressable_entity
                         .observe(start.elapsed().as_secs_f64());
@@ -739,6 +779,31 @@ impl ContractRuntime {
                 self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()
             }
+            ContractRuntimeRequest::ValidatorBids {
+                state_root_hash,
+                validator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .validator_bids(ValidatorBidRequest::new(state_root_hash, validator)),
+                )
+                .ignore(),
+            ContractRuntimeRequest::DelegatorBids {
+                state_root_hash,
+                validator,
+                delegator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .delegator_bids(DelegatorBidRequest::new(
+                            state_root_hash,
+                            validator,
+                            delegator,
+                        )),
+                )
+                .ignore(),
         }
     }
 

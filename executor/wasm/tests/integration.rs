@@ -32,13 +32,13 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
     system::runtime_native::Id,
-    AddressGenerator, KeyPrefix,
+    AddressGenerator, KeyPrefix, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, execution::RetValue, BlockHash, Chainspec, ChainspecRegistry, Digest,
+    EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
+    MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue,
+    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -141,6 +141,9 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
 }
 
 fn base_execute_builder() -> ExecuteRequestBuilder {
+    let chainspec = Chainspec::default();
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
+
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -152,9 +155,13 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
 }
 
 fn base_install_request_builder() -> InstallContractRequestBuilder {
+    let chainspec = Chainspec::default();
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
+
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -164,6 +171,7 @@ fn base_install_request_builder() -> InstallContractRequestBuilder {
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
+        .with_runtime_native_config(runtime_native_config)
 }
 
 #[test]
@@ -204,7 +212,7 @@ fn harness() {
             .expect("Should commit")
     };
 
-    let execute_request = ExecuteRequestBuilder::default()
+    let execute_request = base_execute_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -316,7 +324,7 @@ fn cep18() {
     let block_time_2 = (block_time_1.value() + 1).into();
     assert_ne!(block_time_1, block_time_2);
 
-    let execute_request = ExecuteRequestBuilder::default()
+    let execute_request = base_execute_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -864,7 +872,7 @@ fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = InstallContractRequestBuilder::default()
+    let create_request = base_install_request_builder()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -1015,4 +1023,92 @@ fn non_existing_smart_contract_does_not_panic() {
     assert!(matches!(
         result,
         ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
+}
+
+#[test]
+fn casper_return_writes_to_execution_journal() {
+    let address_generator = make_address_generator();
+    let mut executor = make_executor();
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    // Create a contract that will be used to test the ret host function
+    let input_data = borsh::to_vec(&("write".to_string(),))
+        .map(Bytes::from)
+        .unwrap();
+
+    let install_request = base_install_request_builder()
+        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    let contract_address = *create_result.smart_contract_addr();
+    state_root_hash = create_result.post_state_hash();
+
+    // Execute the contract to trigger the return
+    let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: contract_address,
+            entry_point: "ret".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+
+    let execute_result = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    // Check that the effects contain a Ret transform
+    let effects = execute_result.effects();
+    let transforms = effects.transforms();
+
+    let ret_transform = transforms.iter().find(|transform| {
+        matches!(
+            transform.kind(),
+            casper_types::execution::TransformKindV2::Ret(_)
+        )
+    });
+
+    assert!(
+        ret_transform.is_some(),
+        "Expected to find a Ret transform in the effects"
+    );
+
+    let ret_transform = ret_transform.unwrap();
+    match ret_transform.kind() {
+        casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
+            // The ret function in the test contract calls casper::ret with [1, 2, 3] data
+            assert_eq!(
+                bytes.as_slice(),
+                &[1, 2, 3],
+                "Return data should match what was passed to casper::ret"
+            );
+        }
+        _ => panic!("Expected Ret transform kind"),
+    }
+
+    // Verify the key is the contract address
+    let expected_key = casper_types::Key::SmartContract(contract_address);
+    assert_eq!(
+        ret_transform.key(),
+        &expected_key,
+        "Ret transform should be under the contract key"
+    );
 }

@@ -120,6 +120,9 @@ use casper_binary_port::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
+        bids::{
+            DelegatorBidRequest, DelegatorBidsResult, ValidatorBidRequest, ValidatorBidsResult,
+        },
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
@@ -145,14 +148,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
-        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
+    contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -168,6 +170,9 @@ use announcements::{
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionRequest, SandboxedExecutionResult,
 };
 use casper_storage::data_access_layer::EntryPointExistsResult;
 use diagnostics_port::DumpConsensusStateRequest;
@@ -1959,6 +1964,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a sandboxed contract execution.
+    pub(crate) async fn execute_sandboxed_contract(
+        self,
+        request: SandboxedExecutionRequest,
+    ) -> SandboxedExecutionResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::SandboxedExecution { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     /// Retrieves an `AddressableEntity` from under the given entity address (or key, if the former
     /// is not found) in global state.
     pub(crate) async fn get_addressable_entity(
@@ -2322,6 +2342,42 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
+    /// Requests a validator bid
+    pub(crate) async fn get_get_validator_bids(
+        self,
+        request: ValidatorBidRequest,
+    ) -> ValidatorBidsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::ValidatorBids {
+                state_root_hash: request.state_root_hash(),
+                validator: request.validator_key().clone(),
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Requests a delegator bid
+    pub(crate) async fn get_delegator_bid(self, request: DelegatorBidRequest) -> DelegatorBidsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::DelegatorBids {
+                state_root_hash: request.state_root_hash(),
+                validator: request.validator_key().clone(),
+                delegator: request.delegator().clone(),
+                responder,
+            },
+            QueueKind::ContractRuntime,
         )
         .await
     }

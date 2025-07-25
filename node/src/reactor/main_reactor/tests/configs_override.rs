@@ -36,6 +36,7 @@ pub(crate) struct ConfigsOverride {
     pub chain_name: Option<String>,
     pub gas_hold_balance_handling: Option<HoldBalanceHandling>,
     pub transaction_v1_override: Option<TransactionV1Config>,
+    pub vm_casper_v2: bool,
     pub node_config_override: NodeConfigOverride,
 }
 
@@ -126,6 +127,15 @@ impl ConfigsOverride {
         self.transaction_v1_override = Some(transaction_v1config);
         self
     }
+
+    pub(crate) fn with_idle_tolerance(mut self, idle_tolernace: TimeDiff) -> Self {
+        let config = NodeConfigOverride {
+            idle_tolerance: Some(idle_tolernace),
+            ..Default::default()
+        };
+        self.node_config_override = config;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -156,6 +166,7 @@ impl Default for ConfigsOverride {
             chain_name: None,
             gas_hold_balance_handling: None,
             transaction_v1_override: None,
+            vm_casper_v2: false,
             node_config_override: NodeConfigOverride::default(),
         }
     }
@@ -164,4 +175,5 @@ impl Default for ConfigsOverride {
 #[derive(Clone, Default)]
 pub(crate) struct NodeConfigOverride {
     pub sync_handling_override: Option<SyncHandling>,
+    pub idle_tolerance: Option<TimeDiff>,
 }

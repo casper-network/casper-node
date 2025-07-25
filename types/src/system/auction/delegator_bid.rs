@@ -10,6 +10,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{
@@ -18,6 +20,8 @@ use crate::{
     },
     CLType, CLTyped, PublicKey, URef, U512,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +223,21 @@ impl DelegatorBid {
         match &self.delegator_kind {
             DelegatorKind::PublicKey(pk) => UnbondKind::DelegatedPublicKey(pk.clone()),
             DelegatorKind::Purse(addr) => UnbondKind::DelegatedPurse(*addr),
+        }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_validator_and_delegator(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+        delegator_kind: DelegatorKind,
+    ) -> Self {
+        Self {
+            delegator_kind,
+            staked_amount: rng.gen(),
+            bonding_purse: rng.gen(),
+            validator_public_key,
+            vesting_schedule: rng.gen(),
         }
     }
 }

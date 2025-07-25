@@ -4248,7 +4248,6 @@ fn should_enforce_minimum_delegation_amount() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4343,7 +4342,6 @@ fn should_allow_delegations_with_minimal_floor_amount() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4467,7 +4465,6 @@ fn should_enforce_max_delegators_per_validator_cap() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4952,7 +4949,6 @@ fn should_increase_existing_delegation_when_limit_exceeded() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();

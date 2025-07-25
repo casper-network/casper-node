@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::MetaTransaction;
 use bytes::Bytes;
 use casper_executor_wasm::{
     install::{
@@ -17,6 +18,7 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::{
     global_state::state::{CommitProvider, StateProvider},
+    system::runtime_native,
     AddressGeneratorBuilder,
 };
 use casper_types::{
@@ -26,7 +28,7 @@ use casper_types::{
 use thiserror::Error;
 use tracing::info;
 
-use super::MetaTransaction;
+use runtime_native::Config as RuntimeNativeConfig;
 
 /// The request to execute a Wasm contract.
 pub(crate) enum WasmV2Request {
@@ -121,6 +123,7 @@ impl WasmV2Request {
     pub(crate) fn new(
         gas_limit: Gas,
         network_name: impl Into<Arc<str>>,
+        runtime_native_config: RuntimeNativeConfig,
         state_root_hash: Digest,
         parent_block_hash: BlockHash,
         block_height: u64,
@@ -251,6 +254,7 @@ impl WasmV2Request {
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
+                    .with_runtime_native_config(runtime_native_config)
                     .build()
                     .expect("should build");
 
@@ -275,7 +279,8 @@ impl WasmV2Request {
                     .with_input(input_data.clone().take_inner().into())
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
-                    .with_block_height(block_height);
+                    .with_block_height(block_height)
+                    .with_runtime_native_config(runtime_native_config);
                 let execution_kind = match target {
                     Target::Session { module_bytes } => ExecutionKind::SessionBytes(module_bytes),
                     Target::Stored {

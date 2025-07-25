@@ -5,7 +5,8 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
-use sha2::{Digest, Sha256};
+use keccak_asm::Digest as KeccakDigest;
+use sha2::Sha256;
 
 /// The number of bytes in a hash.
 /// All hash functions in this module have a digest length of 32.
@@ -40,4 +41,16 @@ pub fn blake3<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
 /// The 32-byte digest sha256 hash function
 pub fn sha256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
     Sha256::digest(data).into()
+}
+
+/// The 32-byte digest keccak256 hash function
+pub fn keccak256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
+    use keccak_asm::Keccak256;
+
+    let mut h = Keccak256::new();
+    KeccakDigest::update(&mut h, &data);
+    let mut out = [0u8; 32];
+    let result = KeccakDigest::finalize(h);
+    out.copy_from_slice(&result);
+    out
 }

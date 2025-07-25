@@ -27,7 +27,7 @@ use casper_storage::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
         StateProvider, StateReader,
     },
-    system::runtime_native::Config as NativeRuntimeConfig,
+    RuntimeNativeConfig,
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
@@ -35,19 +35,21 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, Transaction, TransactionEntryPoint,
-    AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    PublicKey, RefundHandling, Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID,
+    U512,
 };
 
 use super::{
     types::{SpeculativeExecutionResult, StepOutcome},
     utils::{self, calculate_prune_eras},
-    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics, StateResultError,
-    APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+    BlockExecutionError, Metrics, StateResultError, APPROVALS_CHECKSUM_NAME,
+    EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
     components::fetcher::FetchItem,
-    contract_runtime::types::ExecutionArtifactBuilder,
+    contract_runtime::types::{
+        BlockAndExecutionArtifacts, ExecutionArtifactBuilder, ExecutionPreState,
+    },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 
@@ -82,7 +84,7 @@ pub fn execute_finalized_block(
     let protocol_version = chainspec.protocol_version();
     let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
     let prune_batch_size = chainspec.core_config.prune_batch_size;
-    let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+    let runtime_native_config = RuntimeNativeConfig::from_chainspec(chainspec);
     let addressable_entity_enabled = chainspec.core_config.enable_addressable_entity();
 
     if addressable_entity_enabled != data_access_layer.enable_addressable_entity {
@@ -288,7 +290,7 @@ pub fn execute_finalized_block(
             // NOTE: when executed, custom payment logic has the option to call set_refund_purse
             //  on the handle payment contract to set up a different refund purse, if desired.
             let handle_refund_request = HandleRefundRequest::new(
-                native_runtime_config.clone(),
+                runtime_native_config.clone(),
                 state_root_hash,
                 protocol_version,
                 transaction_hash,
@@ -405,7 +407,7 @@ pub fn execute_finalized_block(
                     // the most expedient way to do this that aligns with later code
                     // is to transfer from the initiator's main purse to the payment purse
                     let transfer_result = scratch_state.transfer(TransferRequest::new_indirect(
-                        native_runtime_config.clone(),
+                        runtime_native_config.clone(),
                         state_root_hash,
                         protocol_version,
                         transaction_hash,
@@ -523,7 +525,7 @@ pub fn execute_finalized_block(
                     if let TransactionEntryPoint::Transfer = entry_point {
                         let transfer_result =
                             scratch_state.transfer(TransferRequest::with_runtime_args(
-                                native_runtime_config.clone(),
+                                runtime_native_config.clone(),
                                 state_root_hash,
                                 protocol_version,
                                 transaction_hash,
@@ -540,7 +542,7 @@ pub fn execute_finalized_block(
                             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     } else if let TransactionEntryPoint::Burn = entry_point {
                         let burn_result = scratch_state.burn(BurnRequest::with_runtime_args(
-                            native_runtime_config.clone(),
+                            runtime_native_config.clone(),
                             state_root_hash,
                             protocol_version,
                             transaction_hash,
@@ -569,9 +571,8 @@ pub fn execute_finalized_block(
                     match AuctionMethod::from_parts(entry_point, runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
-                                native_runtime_config.clone(),
+                                runtime_native_config.clone(),
                                 state_root_hash,
-                                protocol_version,
                                 transaction_hash,
                                 initiator_addr.clone(),
                                 authorization_keys,
@@ -639,6 +640,7 @@ pub fn execute_finalized_block(
                 _ if is_v2_wasm => match WasmV2Request::new(
                     gas_limit,
                     chainspec.network_config.name.clone(),
+                    runtime_native_config.clone(),
                     state_root_hash,
                     parent_block_hash,
                     block_height,
@@ -798,7 +800,7 @@ pub fn execute_finalized_block(
             match refund_mode {
                 Some(refund_mode) => {
                     let handle_refund_request = HandleRefundRequest::new(
-                        native_runtime_config.clone(),
+                        runtime_native_config.clone(),
                         state_root_hash,
                         protocol_version,
                         transaction_hash,
@@ -837,9 +839,8 @@ pub fn execute_finalized_block(
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
+                    runtime_native_config.clone(),
                     state_root_hash,
-                    protocol_version,
                     transaction_hash,
                     HandleFeeMode::credit(proposer.clone(), amount, era_id),
                 );
@@ -849,9 +850,8 @@ pub fn execute_finalized_block(
                 // in this mode, the fee portion is burned.
                 let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
+                    runtime_native_config.clone(),
                     state_root_hash,
-                    protocol_version,
                     transaction_hash,
                     HandleFeeMode::burn(balance_identifier, Some(amount)),
                 );
@@ -861,9 +861,8 @@ pub fn execute_finalized_block(
                 // in this mode, the consumed gas is paid as a fee to the block proposer
                 let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
+                    runtime_native_config.clone(),
                     state_root_hash,
-                    protocol_version,
                     transaction_hash,
                     HandleFeeMode::pay(
                         Box::new(initiator_addr.clone()),
@@ -879,9 +878,8 @@ pub fn execute_finalized_block(
                 // for later distribution
                 let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
+                    runtime_native_config.clone(),
                     state_root_hash,
-                    protocol_version,
                     transaction_hash,
                     HandleFeeMode::pay(
                         Box::new(initiator_addr.clone()),
@@ -908,7 +906,7 @@ pub fn execute_finalized_block(
             // has the option to call set_refund_purse on the handle payment contract to set
             // up a different refund purse, if desired.
             let handle_refund_request = HandleRefundRequest::new(
-                native_runtime_config.clone(),
+                runtime_native_config.clone(),
                 state_root_hash,
                 protocol_version,
                 transaction_hash,
@@ -992,12 +990,8 @@ pub fn execute_finalized_block(
         let block_rewards_payout_start = Instant::now();
         // Pay out block fees, if relevant. This auto-commits
         {
-            let fee_req = FeeRequest::new(
-                native_runtime_config.clone(),
-                state_root_hash,
-                protocol_version,
-                block_time,
-            );
+            let fee_req =
+                FeeRequest::new(runtime_native_config.clone(), state_root_hash, block_time);
             debug!(?fee_req, "distributing fees");
             match scratch_state.distribute_fees(fee_req) {
                 FeeResult::RootNotFound => {
@@ -1014,9 +1008,8 @@ pub fn execute_finalized_block(
         }
 
         let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config.clone(),
+            runtime_native_config.clone(),
             state_root_hash,
-            protocol_version,
             block_time,
             rewards.clone(),
         );
@@ -1050,10 +1043,9 @@ pub fn execute_finalized_block(
 
         debug!("committing step");
         let step_effects = match commit_step(
-            native_runtime_config,
+            runtime_native_config,
             &scratch_state,
             metrics.clone(),
-            protocol_version,
             state_root_hash,
             era_report.clone(),
             block_time.value(),
@@ -1346,7 +1338,7 @@ where
         if transaction.is_native() {
             let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
             let protocol_version = chainspec.protocol_version();
-            let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+            let runtime_native_config = RuntimeNativeConfig::from_chainspec(chainspec);
             let transaction_hash = transaction.hash();
             let initiator_addr = transaction.initiator_addr();
             let authorization_keys = transaction.authorization_keys();
@@ -1360,7 +1352,7 @@ where
             };
 
             let result = state_provider.transfer(TransferRequest::with_runtime_args(
-                native_runtime_config.clone(),
+                runtime_native_config.clone(),
                 *state_root_hash,
                 protocol_version,
                 transaction_hash,
@@ -1431,10 +1423,9 @@ fn invoked_contract_will_pay(
 
 #[allow(clippy::too_many_arguments)]
 fn commit_step(
-    native_runtime_config: NativeRuntimeConfig,
+    runtime_native_config: RuntimeNativeConfig,
     scratch_state: &ScratchGlobalState,
     maybe_metrics: Option<Arc<Metrics>>,
-    protocol_version: ProtocolVersion,
     state_hash: Digest,
     InternalEraReport {
         equivocators,
@@ -1451,9 +1442,8 @@ fn commit_step(
         .collect();
 
     let step_request = StepRequest::new(
-        native_runtime_config,
+        runtime_native_config,
         state_hash,
-        protocol_version,
         vec![], // <-- casper mainnet currently does not slash
         evict_items,
         next_era_id,

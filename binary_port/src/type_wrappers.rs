@@ -5,7 +5,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::ContractHash,
     global_state::TrieMerkleProof,
-    system::auction::DelegationRate,
+    system::auction::{BidKind, DelegationRate},
     Account, AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
     ExecutionInfo, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, ValidatorChange,
     U512,
@@ -686,6 +686,45 @@ impl<T: FromBytes> FromBytes for ValueWithProof<T> {
         let (value, remainder) = FromBytes::from_bytes(bytes)?;
         let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((ValueWithProof::new(value, merkle_proof), remainder))
+    }
+}
+
+/// Validator bid with associated delegators.
+#[derive(Debug, PartialEq)]
+pub struct BidsInformation {
+    bids: Vec<BidKind>,
+}
+
+impl BidsInformation {
+    pub fn new(bids: Vec<BidKind>) -> Self {
+        Self { bids }
+    }
+
+    pub fn bids(&self) -> &Vec<BidKind> {
+        &self.bids
+    }
+}
+
+impl ToBytes for BidsInformation {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.bids.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.bids.serialized_length()
+    }
+}
+
+impl FromBytes for BidsInformation {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (bids, remainder) = FromBytes::from_bytes(bytes)?;
+        Ok((BidsInformation::new(bids), remainder))
     }
 }
 

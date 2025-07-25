@@ -32,9 +32,3 @@ do
   cargo build --target wasm32-unknown-unknown -p $contract --release
   popd
 done
-
-echo "Stripping linked wasm"
-for wasm in executor/wasm/*.wasm; do
-  echo "Stripping $wasm"
-  wasm-strip $wasm
-done
