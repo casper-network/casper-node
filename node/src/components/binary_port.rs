@@ -170,7 +170,7 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-    call_restricted_request: TimeDiff,
+    sandboxed_execution_request: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -182,7 +182,7 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-            call_restricted_request: config.try_call_restricted_request_termination_delay,
+            sandboxed_execution_request: config.try_sandboxed_execution_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -193,7 +193,7 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TrySandboxedExecution { .. } => self.call_restricted_request,
+            Command::TrySandboxedExecution { .. } => self.sandboxed_execution_request,
         }
     }
 }
@@ -239,19 +239,16 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-        Command::TrySandboxedExecution {
-            request: call_restricted_request,
-        } => {
-            metrics.binary_port_try_call_restricted_count.inc();
+        Command::TrySandboxedExecution { request } => {
+            metrics.binary_port_try_sandboxed_execution_count.inc();
             let enable_for_peer = config
-                .call_restricted_allowed_ips
+                .sandboxed_execution_allowed_ips
                 .iter()
                 .any(|ip| ip == "*" || ip == &peer_ip.to_string());
             if !enable_for_peer {
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            // let request = casper_executor_wasm_interface::Ca
-            try_sandboxed_execution(effect_builder, call_restricted_request).await
+            try_sandboxed_execution(effect_builder, request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await

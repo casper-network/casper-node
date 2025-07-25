@@ -29,9 +29,10 @@ const BINARY_PORT_CONNECTIONS_COUNT_HELP: &str =
 const BINARY_PORT_TRIE_COUNT_NAME: &str = "binary_port_get_trie_count";
 const BINARY_PORT_TRIE_COUNT_HELP: &str = "number of Get queries received for the trie state";
 
-const BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_NAME: &str = "binary_port_try_call_restricted_count";
-const BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_HELP: &str =
-    "number of TryCallRestricted queries received";
+const BINARY_PORT_TRY_SANDBOXED_EXECUTION_COUNT_NAME: &str =
+    "binary_port_try_sandboxed_execution_count";
+const BINARY_PORT_TRY_SANDBOXED_EXECUTION_COUNT_HELP: &str =
+    "number of TrySandboxedExecution queries received";
 
 /// Metrics.
 #[derive(Debug)]
@@ -50,8 +51,8 @@ pub(crate) struct Metrics {
     pub(super) binary_port_connections_count: IntCounter,
     /// Number of `Get::Trie` queries received.
     pub(super) binary_port_get_trie_count: IntCounter,
-    /// Number of `TryCallRestricted` queries received.
-    pub(super) binary_port_try_call_restricted_count: IntCounter,
+    /// Number of `TrySandboxedExecution` queries received.
+    pub(super) binary_port_try_sandboxed_execution_count: IntCounter,
 
     registry: Registry,
 }
@@ -94,9 +95,9 @@ impl Metrics {
             BINARY_PORT_TRIE_COUNT_HELP.to_string(),
         )?;
 
-        let binary_port_try_call_restricted_count = IntCounter::new(
-            BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_NAME.to_string(),
-            BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_HELP.to_string(),
+        let binary_port_try_sandboxed_execution_count = IntCounter::new(
+            BINARY_PORT_TRY_SANDBOXED_EXECUTION_COUNT_NAME.to_string(),
+            BINARY_PORT_TRY_SANDBOXED_EXECUTION_COUNT_HELP.to_string(),
         )?;
 
         registry.register(Box::new(binary_port_try_accept_transaction_count.clone()))?;
@@ -106,7 +107,7 @@ impl Metrics {
         registry.register(Box::new(binary_port_get_state_count.clone()))?;
         registry.register(Box::new(binary_port_connections_count.clone()))?;
         registry.register(Box::new(binary_port_get_trie_count.clone()))?;
-        registry.register(Box::new(binary_port_try_call_restricted_count.clone()))?;
+        registry.register(Box::new(binary_port_try_sandboxed_execution_count.clone()))?;
 
         Ok(Metrics {
             binary_port_try_accept_transaction_count,
@@ -116,7 +117,7 @@ impl Metrics {
             binary_port_get_state_count,
             binary_port_connections_count,
             binary_port_get_trie_count,
-            binary_port_try_call_restricted_count,
+            binary_port_try_sandboxed_execution_count,
             registry: registry.clone(),
         })
     }
