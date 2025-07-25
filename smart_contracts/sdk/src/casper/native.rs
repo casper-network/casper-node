@@ -343,7 +343,16 @@ impl Environment {
         data_ptr: *const u8,
         data_len: usize,
     ) -> Result<Infallible, NativeTrap> {
-        let return_flags = ReturnFlags::from_bits_truncate(flags);
+        let maybe_flags = ReturnFlags::from_bits(flags);
+        let return_flags = match maybe_flags {
+            Some(flags) => flags,
+            None => {
+                return Err(NativeTrap::Panic(Box::new(format!(
+                    "Attempted to pass return flags which are not supported, raw flags: {}",
+                    flags
+                ))))
+            }
+        };
         let data = if data_ptr.is_null() {
             Bytes::new()
         } else {
@@ -959,5 +968,27 @@ mod tests {
             let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_returns_unsupported_flags() {
+        let all_flags = ReturnFlags::all().bits();
+        let faulty_flags = all_flags << 1;
+        if all_flags == faulty_flags {
+            unreachable!("Shifting ReturnFlags::all by 1 byte yields ReturnFlags::all and cannot be used to construct faulty_flags, replace with different value.")
+        }
+
+        let ret = dispatch_with(Environment::default(), || {
+            with_current_environment(|stub| stub.casper_return(faulty_flags, ptr::null(), 0))
+        });
+        assert!(ret.is_ok());
+        let inner_result = ret.ok().unwrap();
+        assert!(inner_result.is_err());
+        let inner_err = inner_result.err().unwrap();
+        let expected_err = NativeTrap::Panic(Box::new(format!(
+            "Attempted to pass return flags which are not supported, raw flags: {}",
+            1
+        )));
+        assert_eq!(format!("{inner_err:?}"), format!("{expected_err:?}"))
     }
 }
