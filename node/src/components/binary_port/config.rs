@@ -34,8 +34,8 @@ const DEFAULT_ACCEPT_TRANSACTION_REQUEST_TERMINATION_DELAY: &str = "24 seconds";
 const DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
 
 // Default amount of time which is given to a connection to extend it's lifetime when a valid
-// [`Command::TryCallRestricted`] is sent to the node
-const DEFAULT_TRY_CALL_RESTRICTED_REQUEST_TERMINATION_DELAY: &str = "30 seconds";
+// [`Command::TrySandboxedExecution`] is sent to the node
+const DEFAULT_TRY_SANDBOXED_EXECUTION_REQUEST_TERMINATION_DELAY: &str = "30 seconds";
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -54,9 +54,9 @@ pub struct Config {
     pub allow_request_get_trie: bool,
     /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
     pub allow_request_speculative_exec: bool,
-    /// IP addresses allowed to make [`TryCallRestricted`] requests. Empty list means no access
+    /// IP addresses allowed to make [`TrySandboxedExecution`] requests. Empty list means no access
     /// allowed. Supports IP address strings like "127.0.0.1" or "::1".
-    pub call_restricted_allowed_ips: Vec<String>,
+    pub sandboxed_execution_allowed_ips: Vec<String>,
     /// Maximum size of the binary port message.
     pub max_message_size_bytes: u32,
     /// Maximum number of connections to the server.
@@ -83,10 +83,9 @@ pub struct Config {
     // The amount of time which is given to a connection to extend it's lifetime when a valid
     // [`Command::TrySpeculativeExec`] is sent to the node
     pub speculative_exec_request_termination_delay: TimeDiff,
-
     // The amount of time which is given to a connection to extend it's lifetime when a valid
-    // [`Command::TryCallRestricted`] is sent to the node
-    pub try_call_restricted_request_termination_delay: TimeDiff,
+    // [`Command::TrySandboxedExecution`] is sent to the node
+    pub try_sandboxed_execution_request_termination_delay: TimeDiff,
 }
 
 impl Config {
@@ -98,7 +97,7 @@ impl Config {
             allow_request_get_all_values: false,
             allow_request_get_trie: false,
             allow_request_speculative_exec: false,
-            call_restricted_allowed_ips: Vec::new(),
+            sandboxed_execution_allowed_ips: Vec::new(),
             max_message_size_bytes: DEFAULT_MAX_MESSAGE_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             qps_limit: DEFAULT_QPS_LIMIT,
@@ -129,8 +128,8 @@ impl Config {
             )
             .unwrap(),
 
-            try_call_restricted_request_termination_delay: TimeDiff::from_str(
-                DEFAULT_TRY_CALL_RESTRICTED_REQUEST_TERMINATION_DELAY,
+            try_sandboxed_execution_request_termination_delay: TimeDiff::from_str(
+                DEFAULT_TRY_SANDBOXED_EXECUTION_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
         }

@@ -302,7 +302,7 @@ impl fmt::Display for ResponseType {
             ResponseType::BidsInformation => {
                 write!(f, "BidsInformation")
             }
-            ResponseType::SandboxedExecutionResult => write!(f, "CallRestrictedResult"),
+            ResponseType::SandboxedExecutionResult => write!(f, "CallSandboxedResult"),
         }
     }
 }
