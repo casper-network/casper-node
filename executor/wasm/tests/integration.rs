@@ -62,6 +62,15 @@ static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     path.to_path_buf()
 });
 
+use casper_executor_wasm::testing::{
+    base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
+    expect_successful_execution, make_address_generator, make_executor,
+    make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
+    DEFAULT_ACCOUNT_HASH, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
+};
+use casper_types::account::AccountHash;
+
+
 static RUST_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH
         .join("target")
@@ -88,147 +97,6 @@ pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
         .join("../../resources/local/")
         .join(chainspec_config::CHAINSPEC_NAME)
 });
-
-#[track_caller]
-fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
-    let paths = vec![
-        RUST_WORKSPACE_WASM_PATH.clone(),
-        RUST_TOOL_WASM_PATH.clone(),
-    ];
-
-    for path in &paths {
-        let wasm_path = path.join(&filename);
-        match fs::read(wasm_path) {
-            Ok(bytes) => return Bytes::from(bytes),
-            Err(err) => {
-                if err.kind() == std::io::ErrorKind::NotFound {
-                    continue;
-                } else {
-                    panic!(
-                        "Failed to read Wasm file at {}: {}",
-                        filename.as_ref().display(),
-                        err
-                    );
-                }
-            }
-        }
-    }
-
-    panic!(
-        "Failed to find Wasm file at {} in any of the paths: {:?}",
-        filename.as_ref().display(),
-        paths
-    );
-}
-
-const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
-const TRANSACTION_HASH: TransactionHash =
-    TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
-const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * TOKEN;
-const DEFAULT_CHAIN_NAME: &str = "casper-example";
-
-fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
-    let id = Id::Transaction(TRANSACTION_HASH);
-    Arc::new(RwLock::new(AddressGenerator::new(
-        &id.seed(),
-        Phase::Session,
-    )))
-}
-
-fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfig {
-    let protocol_version = ProtocolVersion::V2_0_0;
-    let transfer_config = TransferConfig::Unadministered;
-    let fee_handling = chainspec_config.core_config.fee_handling;
-    let refund_handling = chainspec_config.core_config.refund_handling;
-    let vesting_schedule_period_millis = chainspec_config
-        .core_config
-        .vesting_schedule_period
-        .millis();
-    let allow_auction_bids = chainspec_config.core_config.allow_auction_bids;
-    let compute_rewards = chainspec_config.core_config.compute_rewards;
-    let max_delegators_per_validator = chainspec_config.core_config.max_delegators_per_validator;
-    let minimum_bid_amount = chainspec_config.core_config.minimum_bid_amount;
-    let minimum_delegation_amount = chainspec_config.core_config.minimum_delegation_amount;
-    let balance_hold_interval = chainspec_config.core_config.gas_hold_interval.millis();
-    let include_credits = chainspec_config.core_config.fee_handling == FeeHandling::NoFee;
-    let credit_cap = Ratio::new_raw(
-        U512::from(*chainspec_config.core_config.validator_credit_cap.numer()),
-        U512::from(*chainspec_config.core_config.validator_credit_cap.denom()),
-    );
-    let enable_addressable_entity = chainspec_config.core_config.enable_addressable_entity;
-    let native_transfer_cost = chainspec_config.system_costs_config.mint_costs().transfer;
-    Config::new(
-        protocol_version,
-        transfer_config,
-        fee_handling,
-        refund_handling,
-        vesting_schedule_period_millis,
-        allow_auction_bids,
-        compute_rewards,
-        max_delegators_per_validator,
-        minimum_bid_amount,
-        minimum_delegation_amount,
-        balance_hold_interval,
-        include_credits,
-        credit_cap,
-        enable_addressable_entity,
-        native_transfer_cost,
-    )
-}
-
-fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteRequestBuilder {
-    let chainspec = Chainspec::default();
-    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
-    ExecuteRequestBuilder::default()
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
-        .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
-        .with_transaction_hash(TRANSACTION_HASH)
-        .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(Timestamp::now().into())
-        .with_state_hash(Digest::hash(b"state"))
-        .with_block_height(1)
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
-        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
-        .with_runtime_native_config(runtime_native_config)
-}
-
-fn base_install_request_builder(
-    chainspec_config: &ChainspecConfig,
-) -> InstallContractRequestBuilder {
-    let chainspec = Chainspec::default();
-    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
-    InstallContractRequestBuilder::default()
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transaction_hash(TRANSACTION_HASH)
-        .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(Timestamp::now().into())
-        .with_state_hash(Digest::hash(b"state"))
-        .with_block_height(1)
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
-        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
-        .with_runtime_native_config(runtime_native_config)
-}
-
-pub(crate) fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
-    let storage_costs = chainspec_config.storage_costs;
-    let v1_config = EngineConfig::from(chainspec_config.clone());
-    let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
-    let wasm_v2_config = chainspec_config.wasm_config.v2().clone();
-    let memory_limit = wasm_v2_config.max_memory();
-    let message_limits = chainspec_config.wasm_config.messages_limits();
-    let executor_config = ExecutorConfigBuilder::default()
-        .with_memory_limit(memory_limit)
-        .with_executor_kind(ExecutorKind::Compiled)
-        .with_wasm_config(wasm_v2_config)
-        .with_storage_costs(storage_costs)
-        .with_message_limits(message_limits)
-        .build()
-        .expect("Should build");
-    ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
-}
 
 #[test]
 fn harness() {
@@ -275,7 +143,7 @@ fn harness() {
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
+        .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
@@ -376,7 +244,6 @@ fn cep18() {
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm(
             "vm2_cep18_caller.wasm",
@@ -1082,4 +949,119 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         err,
         ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
     ));
+}
+
+#[test]
+
+fn escrow() {
+    let mut executor = make_executor();
+
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        create_request,
+    );
+
+    dbg!(create_result.gas_usage().gas_spent());
+
+    let contract_hash = create_result.smart_contract_addr();
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let execute_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *contract_hash,
+            entry_point: "deposit_tokens".to_string(),
+        })
+        .with_serialized_input(())
+        .with_transferred_value(10000)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(1234567890.into())
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(2) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let result_2 = run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    )
+    .expect("should have result");
+    dbg!(result_2.gas_usage().gas_spent());
+
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, result_2.effects().clone())
+        .expect("Should commit");
+
+    assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn should_not_fail_without_account() {
+    let executor = make_executor();
+
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(AccountHash::new([0xF0; 32]))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = {
+        executor
+            .install_contract(state_root_hash, &mut global_state, create_request)
+            .expect_err("Succeed")
+    };
+
+    assert!(
+        matches!(create_result, InstallContractError::Execute(ExecuteError::EntityNotFound(Key::Account(account_hash))) if account_hash == AccountHash::new([0xF0; 32]))
+    );
 }

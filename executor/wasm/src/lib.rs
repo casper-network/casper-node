@@ -17,7 +17,7 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_host::{
     context::Context,
-    system::{self, MintTransferArgs},
+    system::{self, DispatchError, MintTransferArgs},
 };
 use casper_executor_wasm_interface::{
     executor::{
@@ -50,7 +50,7 @@ use install::{InstallContractError, InstallContractRequest, InstallContractResul
 use parking_lot::RwLock;
 use tracing::{error, warn};
 
-#[cfg(feature = "testing")]
+#[cfg(any(feature = "testing", test))]
 pub mod testing;
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
@@ -371,9 +371,7 @@ impl ExecutorV2 {
             runtime_native_config,
         } = execute_request;
 
-        // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
-        // supported. let caller_entity_addr = EntityAddr::new_account(caller);
-        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
+        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
         let (wasm_bytes, export_name) = match &execution_kind {
             ExecutionKind::SessionBytes(wasm_bytes) => {
@@ -453,7 +451,7 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
-                            if let Err(error) = system::transfer(
+                            match system::transfer(
                                 &mut tracking_copy,
                                 runtime_native_config.clone(),
                                 transaction_hash,
@@ -464,17 +462,36 @@ impl ExecutorV2 {
                                     transferred_value.into(),
                                 ),
                             ) {
-                                return Ok(ExecuteResult {
-                                    host_error: Some(error),
-                                    output: None,
-                                    gas_usage: GasUsage::new(
-                                        gas_limit,
-                                        gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
-                                    ),
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
+                                Ok(()) => {}
+                                Err(DispatchError::Internal(internal_error)) => {
+                                    error!(
+                                        ?internal_error,
+                                        "Internal error while transferring value to the contract's purse",
+                                    );
+                                    return Err(ExecuteError::InternalHost(internal_error));
+                                }
+                                Err(DispatchError::Call(error)) => {
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(error),
+                                        output: None,
+                                        gas_usage: GasUsage::new(
+                                            gas_limit,
+                                            gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                        ),
+                                        effects: tracking_copy.effects(),
+                                        cache: tracking_copy.cache(),
+                                        messages: tracking_copy.messages(),
+                                    });
+                                }
+                                Err(error) => {
+                                    error!(
+                                        ?error,
+                                        "Dispatch error while transferring value to the contract's purse",
+                                    );
+                                    return Err(ExecuteError::InternalHost(
+                                        InternalHostError::DispatchSystemContract,
+                                    ));
+                                }
                             }
                         }
 
@@ -907,11 +924,11 @@ impl Executor for ExecutorV2 {
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> URef {
+) -> Result<URef, ExecuteError> {
     let stored_value = tracking_copy
         .read(&entity_key)
-        .expect("should read account")
-        .expect("should have account");
+        .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
+        .ok_or(ExecuteError::EntityNotFound(entity_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key
@@ -926,9 +943,9 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .into_addressable_entity()
                 .expect("should be addressable entity");
 
-            addressable_entity.main_purse()
+            Ok(addressable_entity.main_purse())
         }
-        StoredValue::Account(account) => account.main_purse(),
+        StoredValue::Account(account) => Ok(account.main_purse()),
         StoredValue::SmartContract(smart_contract_package) => {
             let contract_hash = smart_contract_package
                 .versions()
@@ -943,8 +960,13 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .expect("should have addressable entity")
                 .into_addressable_entity()
                 .expect("should be addressable entity");
-            addressable_entity.main_purse()
+            Ok(addressable_entity.main_purse())
         }
-        other => panic!("should be account or contract received {other:?}"),
+        other => Err(ExecuteError::InternalHost(
+            InternalHostError::UnexpectedStoredValueVariant {
+                expected: "AddressableEntity or Account".to_string(),
+                found: other.type_name(),
+            },
+        )),
     }
 }

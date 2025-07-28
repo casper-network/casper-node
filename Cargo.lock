@@ -792,6 +792,7 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
+ "hex",
  "lmdb-rkv",
  "log",
  "num-rational",
@@ -1065,6 +1066,7 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
+ "blake2 0.10.6",
  "casper-types",
  "criterion",
  "datasize",
@@ -7241,6 +7243,13 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-escrow"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
 ]
 
 [[package]]
