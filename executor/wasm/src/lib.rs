@@ -50,7 +50,7 @@ use install::{InstallContractError, InstallContractRequest, InstallContractResul
 use parking_lot::RwLock;
 use tracing::{error, warn};
 
-#[cfg(feature = "testing")]
+#[cfg(any(feature = "testing", test))]
 pub mod testing;
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";

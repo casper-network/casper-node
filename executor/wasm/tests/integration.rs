@@ -27,9 +27,10 @@ use itertools::Itertools;
 use casper_executor_wasm::testing::{
     base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
     expect_successful_execution, make_address_generator, make_executor,
-    make_global_state_with_genesis, read_wasm, run_create_contract, DEFAULT_ACCOUNT_HASH,
-    DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
+    make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
+    DEFAULT_ACCOUNT_HASH, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
 };
+use casper_types::account::AccountHash;
 
 #[test]
 fn harness() {
@@ -503,7 +504,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by it's address
+    // Calling legacy contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -728,7 +729,7 @@ fn casper_return_writes_to_execution_journal() {
     }
 
     // Verify the key is the contract address
-    let expected_key = casper_types::Key::SmartContract(contract_address);
+    let expected_key = Key::SmartContract(contract_address);
     assert_eq!(
         ret_transform.key(),
         &expected_key,
@@ -855,7 +856,8 @@ fn escrow() {
         &mut global_state,
         state_root_hash,
         execute_request,
-    );
+    )
+    .expect("should have result");
     dbg!(result_2.gas_usage().gas_spent());
 
     let post_state_root_hash = global_state
@@ -866,7 +868,7 @@ fn escrow() {
 }
 
 #[test]
-fn shouldnt_fail_without_account() {
+fn should_not_fail_without_account() {
     let executor = make_executor();
 
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
