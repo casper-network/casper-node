@@ -4,9 +4,9 @@ use crate::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, EntityAddr,
-    FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling, RuntimeFootprint,
-    StoredValue, TransactionHash, Transfer, URef, U512,
+    account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, CoreConfig,
+    EntityAddr, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
+    RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use num_rational::Ratio;
 use parking_lot::RwLock;
@@ -75,23 +75,36 @@ impl Config {
     /// Ctor from chainspec.
     pub fn from_chainspec(chainspec: &Chainspec) -> Self {
         let protocol_version = chainspec.protocol_version();
-        let transfer_config = TransferConfig::from_chainspec(chainspec);
-        let fee_handling = chainspec.core_config.fee_handling;
-        let refund_handling = chainspec.core_config.refund_handling;
-        let vesting_schedule_period_millis = chainspec.core_config.vesting_schedule_period.millis();
-        let allow_auction_bids = chainspec.core_config.allow_auction_bids;
-        let compute_rewards = chainspec.core_config.compute_rewards;
-        let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
-        let minimum_bid_amount = chainspec.core_config.minimum_bid_amount;
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
-        let include_credits = chainspec.core_config.fee_handling == FeeHandling::NoFee;
-        let credit_cap = Ratio::new_raw(
-            U512::from(*chainspec.core_config.validator_credit_cap.numer()),
-            U512::from(*chainspec.core_config.validator_credit_cap.denom()),
-        );
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
         let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
+        Self::from_core_config(
+            &chainspec.core_config,
+            protocol_version,
+            native_transfer_cost,
+        )
+    }
+
+    /// Ctor from core_config.
+    pub fn from_core_config(
+        core_config: &CoreConfig,
+        protocol_version: ProtocolVersion,
+        native_transfer_cost: u32,
+    ) -> Self {
+        let transfer_config = TransferConfig::from_core_config(core_config);
+        let fee_handling = core_config.fee_handling;
+        let refund_handling = core_config.refund_handling;
+        let vesting_schedule_period_millis = core_config.vesting_schedule_period.millis();
+        let allow_auction_bids = core_config.allow_auction_bids;
+        let compute_rewards = core_config.compute_rewards;
+        let max_delegators_per_validator = core_config.max_delegators_per_validator;
+        let minimum_bid_amount = core_config.minimum_bid_amount;
+        let minimum_delegation_amount = core_config.minimum_delegation_amount;
+        let balance_hold_interval = core_config.gas_hold_interval.millis();
+        let include_credits = core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*core_config.validator_credit_cap.numer()),
+            U512::from(*core_config.validator_credit_cap.denom()),
+        );
+        let enable_addressable_entity = core_config.enable_addressable_entity;
         Config::new(
             protocol_version,
             transfer_config,
@@ -239,13 +252,17 @@ impl TransferConfig {
 
     /// New instance from chainspec.
     pub fn from_chainspec(chainspec: &Chainspec) -> Self {
-        let administrative_accounts: BTreeSet<AccountHash> = chainspec
-            .core_config
+        Self::from_core_config(&chainspec.core_config)
+    }
+
+    /// New instance from core_config.
+    pub fn from_core_config(core_config: &CoreConfig) -> Self {
+        let administrative_accounts: BTreeSet<AccountHash> = core_config
             .administrators
             .iter()
             .map(|x| x.to_account_hash())
             .collect();
-        let allow_unrestricted_transfers = chainspec.core_config.allow_unrestricted_transfers;
+        let allow_unrestricted_transfers = core_config.allow_unrestricted_transfers;
         if administrative_accounts.is_empty() && allow_unrestricted_transfers {
             TransferConfig::Unadministered
         } else {

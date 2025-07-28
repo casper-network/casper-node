@@ -2,7 +2,15 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::ExecutionEngineV1;
-use casper_executor_wasm::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
+use casper_executor_wasm::{
+    chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK},
+    testing::{
+        expect_successful_execution, make_address_generator, make_executor,
+        make_global_state_with_genesis, read_wasm, run_wasm_session, DEFAULT_ACCOUNT_HASH,
+        DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, DEFAULT_GAS_PER_BYTE_COST, TRANSACTION_HASH,
+    },
+    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
+};
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{
     executor::{
@@ -17,12 +25,6 @@ use casper_types::{
     DEFAULT_WASM_MAX_MEMORY,
 };
 use casper_wasm::builder;
-
-use casper_executor_wasm::testing::{
-    expect_successful_execution, make_address_generator, make_executor,
-    make_global_state_with_genesis, read_wasm, run_wasm_session, DEFAULT_ACCOUNT_HASH,
-    DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, DEFAULT_GAS_PER_BYTE_COST, TRANSACTION_HASH,
-};
 
 pub const CONTRACT_EE_966_REGRESSION: &str = "vm2_ee_966_regression.wasm";
 
@@ -105,10 +107,12 @@ fn argument_size_exceeds_memory_limit() {
 
 #[test]
 fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
     // A contract that has initial memory pages of 0 and maximum memory pages of 0 is valid
     let session_code = make_session_code_with_memory_pages(0, Some(0));
 
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -144,7 +148,9 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
     // Set initial memory to max + 1
     let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY + 1, None);
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -186,7 +192,9 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 fn should_run_ee_966_cant_have_too_much_max_memory() {
     let session_code = make_session_code_with_memory_pages(0, Some(DEFAULT_WASM_MAX_MEMORY + 1));
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -228,7 +236,9 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 fn should_run_ee_966_cant_have_way_too_much_max_memory() {
     let session_code = make_session_code_with_memory_pages(0, Some(DEFAULT_WASM_MAX_MEMORY * 3));
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -270,7 +280,9 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
     let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(0));
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -312,11 +324,18 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
     let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, None);
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
-    let runtime_native_config = RuntimeNativeConfig::from_chainspec(&Chainspec::default());
+    let runtime_native_config = RuntimeNativeConfig::from_core_config(
+        &chainspec_config.core_config,
+        chainspec_config.protocol_config.version,
+        chainspec_config.system_costs_config.mint_costs().transfer,
+    );
+
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -350,7 +369,9 @@ fn should_run_ee_966_should_request_exactly_maximum() {
     let session_code =
         make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
@@ -387,7 +408,9 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     let session_code = read_wasm(CONTRACT_EE_966_REGRESSION);
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 

@@ -2722,7 +2722,7 @@ where
             .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         let system_account_hash = PublicKey::System.to_account_hash().value();
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
             MessagePayload::String(contract_package_key.to_formatted_string()),
             true,
@@ -2730,7 +2730,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_CONTRACT_ADDR_TOPIC,
             MessagePayload::String(contract_key.to_formatted_string()),
             true,
@@ -2738,7 +2738,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
             MessagePayload::String(contract_wasm_key.to_formatted_string()),
             true,
@@ -2746,7 +2746,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_CONTRACT_VERSION_TOPIC,
             MessagePayload::String(insert_contract_result.to_string()),
             true,
@@ -2902,7 +2902,7 @@ where
 
         let system_account_hash = PublicKey::System.to_account_hash().value();
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_PACKAGE_ADDR_TOPIC,
             MessagePayload::String(Key::Hash(package_hash.value()).to_formatted_string()),
             true,
@@ -2910,7 +2910,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
             MessagePayload::String(entity_key.to_formatted_string()),
             true,
@@ -2918,7 +2918,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
             MessagePayload::String(
                 Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)).to_formatted_string(),
@@ -2928,7 +2928,7 @@ where
             return Ok(Err(e));
         }
         if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::System(system_account_hash),
+            EntityAddr::Account(system_account_hash),
             MESSAGING_CONTRACT_VERSION_TOPIC,
             MessagePayload::String(insert_entity_version_result.to_string()),
             true,

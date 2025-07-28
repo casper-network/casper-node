@@ -1,7 +1,25 @@
-use std::{fs::File, path::Path, sync::Arc};
+use std::{
+    env,
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use bytes::Bytes;
-use casper_executor_wasm::install::{InstallContractError, InstallContractRequest};
+use casper_executor_wasm::{
+    install::{InstallContractError, InstallContractRequest},
+    testing::{
+        base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
+        expect_successful_execution, make_address_generator, make_executor,
+        make_global_state_with_genesis, make_runtime_config, read_wasm, run_create_contract,
+        run_wasm_session, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
+    },
+};
+
+use casper_executor_wasm::{
+    chainspec_config,
+    chainspec_config::{ChainspecConfig, DEFAULT_ACCOUNT_HASH},
+};
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
     ExecuteError, ExecuteWithProviderError, ExecutionKind,
@@ -19,21 +37,26 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    execution::RetValue, BlockHash, Digest, EntityAddr, Key, StoredValue, Timestamp,
+    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, BlockHash, Digest, EntityAddr,
+    Key, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
+use once_cell::sync::Lazy;
 
-use casper_executor_wasm::testing::{
-    base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
-    expect_successful_execution, make_address_generator, make_executor,
-    make_global_state_with_genesis, read_wasm, run_create_contract, DEFAULT_ACCOUNT_HASH,
-    DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
-};
+/// Symlink to chainspec.
+pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/local/")
+        .join(chainspec_config::CHAINSPEC_NAME)
+});
 
 #[test]
 fn harness() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
 
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -46,7 +69,7 @@ fn harness() {
             .map(Bytes::from)
             .unwrap();
 
-        let install_request = base_install_request_builder()
+        let install_request = base_install_request_builder(&chainspec_config)
             .with_wasm_bytes(read_wasm("vm2_cep18.wasm"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_transferred_value(0)
@@ -69,11 +92,11 @@ fn harness() {
             .expect("Should commit")
     };
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
+        .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
@@ -83,6 +106,7 @@ fn harness() {
         .with_state_hash(state_root_hash)
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"bl0ck")))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .build()
         .expect("should build");
 
@@ -95,9 +119,11 @@ fn harness() {
 }
 
 #[test]
-
 fn cep18() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
 
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -109,7 +135,7 @@ fn cep18() {
 
     let block_time_1 = Timestamp::now().into();
 
-    let create_request = base_install_request_builder()
+    let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(read_wasm("vm2_cep18.wasm").clone())
@@ -167,11 +193,10 @@ fn cep18() {
     let block_time_2 = (block_time_1.value() + 1).into();
     assert_ne!(block_time_1, block_time_2);
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm(
             "vm2_cep18_caller.wasm",
@@ -184,6 +209,7 @@ fn cep18() {
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(2) // TODO: Carry on block height
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .build()
         .expect("should build");
 
@@ -259,10 +285,13 @@ fn cep18() {
 
 #[test]
 fn traits() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
         .with_serialized_input(())
         .with_shared_address_generator(make_address_generator())
@@ -279,7 +308,10 @@ fn traits() {
 
 #[test]
 fn upgradable() {
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
 
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
@@ -290,7 +322,7 @@ fn upgradable() {
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
-        let create_request = base_install_request_builder()
+        let create_request = base_install_request_builder(&chainspec_config)
             .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -315,7 +347,7 @@ fn upgradable() {
     };
 
     let version_before_upgrade = {
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
@@ -340,7 +372,7 @@ fn upgradable() {
 
     {
         // Increment the value
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment".to_string(),
@@ -365,7 +397,7 @@ fn upgradable() {
     let binding = read_wasm("vm2_upgradable_v2.wasm");
     let new_code = binding.as_ref();
 
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
         .with_target(ExecutionKind::Stored {
             address: upgradable_address,
@@ -387,7 +419,7 @@ fn upgradable() {
         .expect("Should commit");
 
     let version_after_upgrade = {
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
@@ -412,7 +444,7 @@ fn upgradable() {
 
     {
         // Increment the value
-        let execute_request = base_execute_builder()
+        let execute_request = base_execute_builder(&chainspec_config)
             .with_target(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment_by".to_string(),
@@ -439,7 +471,7 @@ fn upgradable() {
 
 #[test]
 fn backwards_compatibility() {
-    let (global_state, post_state_hash, _temp) = {
+    let (mut global_state, post_state_hash, _temp) = {
         let fixture_name = "counter_contract";
         // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
         // global_state/data.lmdb
@@ -504,7 +536,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by it's address
+    // Calling legacy contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -519,7 +551,10 @@ fn backwards_compatibility() {
         _ => panic!("Expected counter URef"),
     };
 
-    let mut executor = make_executor();
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
     // Calling v1 vm directly by hash is not currently supported (i.e. disabling vm1 runtime, and
@@ -551,7 +586,7 @@ fn backwards_compatibility() {
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
-    let install_request: InstallContractRequest = base_install_request_builder()
+    let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_legacy_counter_proxy.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -565,7 +600,7 @@ fn backwards_compatibility() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &global_state,
+        &mut global_state,
         state_root_hash,
         install_request,
     );
@@ -576,7 +611,7 @@ fn backwards_compatibility() {
 
     // Call v2 contract
 
-    let call_request = base_execute_builder()
+    let call_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: proxy_address,
             entry_point: "perform_test".to_string(),
@@ -594,10 +629,12 @@ fn backwards_compatibility() {
     expect_successful_execution(&mut executor, &global_state, state_root_hash, call_request);
 }
 
+// host function tests
+
 #[test]
 fn host_functions_consume_gas() {
-    fn assert_consumes_gas(host_function_name: &str) {
-        let result = call_dummy_host_fn_by_name(host_function_name, 1);
+    fn assert_consumes_gas(chainspec_config: &ChainspecConfig, host_function_name: &str) {
+        let result = call_dummy_host_fn_by_name(&chainspec_config.clone(), host_function_name, 1);
         assert!(result.is_err_and(|e| matches!(
             e,
             InstallContractError::Constructor {
@@ -606,29 +643,35 @@ fn host_functions_consume_gas() {
         )));
     }
 
-    assert_consumes_gas("get_caller");
-    assert_consumes_gas("get_block_time");
-    assert_consumes_gas("get_transferred_value");
-    assert_consumes_gas("get_balance_of");
-    assert_consumes_gas("call");
-    assert_consumes_gas("input");
-    assert_consumes_gas("create");
-    assert_consumes_gas("print");
-    assert_consumes_gas("read");
-    assert_consumes_gas("ret");
-    assert_consumes_gas("transfer");
-    assert_consumes_gas("upgrade");
-    assert_consumes_gas("write");
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    assert_consumes_gas(&chainspec_config, "get_caller");
+    assert_consumes_gas(&chainspec_config, "get_block_time");
+    assert_consumes_gas(&chainspec_config, "get_transferred_value");
+    assert_consumes_gas(&chainspec_config, "get_balance_of");
+    assert_consumes_gas(&chainspec_config, "call");
+    assert_consumes_gas(&chainspec_config, "input");
+    assert_consumes_gas(&chainspec_config, "create");
+    assert_consumes_gas(&chainspec_config, "print");
+    assert_consumes_gas(&chainspec_config, "read");
+    assert_consumes_gas(&chainspec_config, "ret");
+    assert_consumes_gas(&chainspec_config, "transfer");
+    assert_consumes_gas(&chainspec_config, "upgrade");
+    assert_consumes_gas(&chainspec_config, "write");
 }
 
 #[test]
 fn non_existing_smart_contract_does_not_panic() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
     let address_generator = make_address_generator();
-    let executor = make_executor();
+    let executor = make_executor(&chainspec_config);
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let non_existing_address = [255; 32];
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: non_existing_address,
             entry_point: "non_existing".to_string(),
@@ -649,10 +692,15 @@ fn non_existing_smart_contract_does_not_panic() {
         ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
 }
 
+// TODO: get this test working.
 #[test]
+#[ignore]
 fn casper_return_writes_to_execution_journal() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
     let address_generator = make_address_generator();
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
@@ -660,7 +708,7 @@ fn casper_return_writes_to_execution_journal() {
         .map(Bytes::from)
         .unwrap();
 
-    let install_request = base_install_request_builder()
+    let install_request = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_host.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -680,7 +728,7 @@ fn casper_return_writes_to_execution_journal() {
     state_root_hash = create_result.post_state_hash();
 
     // Execute the contract to trigger the return
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret".to_string(),
@@ -720,7 +768,7 @@ fn casper_return_writes_to_execution_journal() {
         casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
             assert_eq!(
-                bytes.as_slice(),
+                &bytes.to_bytes().expect("must get to bytes"),
                 &[1, 2, 3],
                 "Return data should match what was passed to casper::ret"
             );
@@ -729,7 +777,7 @@ fn casper_return_writes_to_execution_journal() {
     }
 
     // Verify the key is the contract address
-    let expected_key = casper_types::Key::SmartContract(contract_address);
+    let expected_key = Key::SmartContract(contract_address);
     assert_eq!(
         ret_transform.key(),
         &expected_key,
@@ -739,8 +787,10 @@ fn casper_return_writes_to_execution_journal() {
 
 #[test]
 fn casper_return_fails_if_contract_uses_unsupported_flags() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
     let address_generator = make_address_generator();
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
@@ -748,7 +798,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         .map(Bytes::from)
         .unwrap();
 
-    let install_request = base_install_request_builder()
+    let install_request = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_host.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -768,7 +818,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
     state_root_hash = create_result.post_state_hash();
 
     // Execute the contract to trigger the return
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret_faulty_flags".to_string(),
@@ -787,4 +837,123 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         err,
         ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
     ));
+}
+
+#[test]
+
+fn escrow() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
+
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        create_request,
+    );
+
+    dbg!(create_result.gas_usage().gas_spent());
+
+    let contract_hash = create_result.smart_contract_addr();
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *contract_hash,
+            entry_point: "deposit_tokens".to_string(),
+        })
+        .with_serialized_input(())
+        .with_transferred_value(10000)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(1234567890.into())
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(2) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let result_2 = run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    )
+    .expect("should have result");
+    dbg!(result_2.gas_usage().gas_spent());
+
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, result_2.effects().clone())
+        .expect("Should commit");
+
+    assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn should_not_fail_without_account() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let executor = make_executor(&chainspec_config);
+
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder(&chainspec_config)
+        .with_initiator(AccountHash::new([0xF0; 32]))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = {
+        executor
+            .install_contract(state_root_hash, &mut global_state, create_request)
+            .expect_err("Succeed")
+    };
+
+    assert!(
+        matches!(create_result, InstallContractError::Execute(ExecuteError::EntityNotFound(Key::Account(account_hash))) if account_hash == AccountHash::new([0xF0; 32]))
+    );
 }

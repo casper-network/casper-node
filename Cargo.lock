@@ -879,11 +879,15 @@ dependencies = [
  "digest 0.10.7",
  "fs_extra",
  "itertools 0.14.0",
+ "log",
+ "num-rational",
  "once_cell",
  "parking_lot",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.12",
+ "toml 0.5.11",
  "tracing",
 ]
 
@@ -7239,6 +7243,13 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-escrow"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
 ]
 
 [[package]]
