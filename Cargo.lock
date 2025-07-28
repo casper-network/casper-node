@@ -792,6 +792,7 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
+ "hex",
  "lmdb-rkv",
  "log",
  "num-rational",
@@ -867,12 +868,14 @@ dependencies = [
  "borsh",
  "bytes",
  "casper-execution-engine",
+ "casper-executor-wasm",
  "casper-executor-wasm-common",
  "casper-executor-wasm-host",
  "casper-executor-wasm-interface",
  "casper-executor-wasmer-backend",
  "casper-storage",
  "casper-types",
+ "casper-wasm",
  "digest 0.10.7",
  "fs_extra",
  "itertools 0.14.0",
@@ -1059,6 +1062,7 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
+ "blake2 0.10.6",
  "casper-types",
  "criterion",
  "datasize",
@@ -2363,6 +2367,10 @@ dependencies = [
 
 [[package]]
 name = "ee-966-regression"
+version = "0.1.0"
+
+[[package]]
+name = "ee-966-regression-vm2"
 version = "0.1.0"
 
 [[package]]
@@ -7231,6 +7239,13 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-escrow"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
 ]
 
 [[package]]

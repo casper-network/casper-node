@@ -8,9 +8,6 @@ bitflags! {
     pub struct ReturnFlags: u32 {
         /// If this bit is set, the host should return the value to the caller and all the execution effects are reverted.
         const REVERT = 0x0000_0001;
-
-        // The source may set any bits.
-        const _ = !0;
     }
 
     #[repr(transparent)]
