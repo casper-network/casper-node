@@ -881,9 +881,6 @@ where
                 StoredValue::Prepayment(_) => {
                     return Ok(query.into_not_found_result("Prepayment value found."))
                 }
-                StoredValue::RawBytes(_) => {
-                    return Ok(query.into_not_found_result("RawBytes value found."));
-                }
             }
         }
     }
