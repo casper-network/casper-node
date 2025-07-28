@@ -1165,7 +1165,6 @@ fn should_correctly_retain_disabled_contract_version() {
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(true)
         .build();
 
     builder
