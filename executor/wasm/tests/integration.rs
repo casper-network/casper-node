@@ -1,11 +1,6 @@
 mod chainspec_config;
 
-use std::{
-    env,
-    fs::{self, File},
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{fs::File, path::Path, sync::Arc};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
@@ -18,17 +13,14 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
-    ExecuteWithProviderResult, ExecutionKind,
+    ExecuteError, ExecuteWithProviderError, ExecutionKind,
 };
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
-        GenesisRequest, GenesisResult, MessageTopicsRequest, MessageTopicsResult, QueryRequest,
-        QueryResult,
+        MessageTopicsRequest, MessageTopicsResult, QueryRequest, QueryResult,
     },
     global_state::{
-        self,
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
@@ -247,7 +239,7 @@ fn harness() {
 
     let mut executor = make_executor(&chainspec_config);
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -269,7 +261,7 @@ fn harness() {
 
         let create_result = run_create_contract(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             install_request,
         );
@@ -299,9 +291,9 @@ fn harness() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
+    expect_successful_execution(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -314,7 +306,7 @@ fn cep18() {
 
     let mut executor = make_executor(&chainspec_config);
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -341,7 +333,7 @@ fn cep18() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         create_request,
     );
@@ -403,9 +395,9 @@ fn cep18() {
         .build()
         .expect("should build");
 
-    let result_2 = run_wasm_session(
+    let result_2 = expect_successful_execution(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -421,7 +413,7 @@ fn cep18() {
         panic!("Expected success")
     };
 
-    assert!(matches!(message_topics.get("Transfer"), Some(_)));
+    assert!(message_topics.get("Transfer").is_some());
     assert_ne!(
         message_topics.get("Mint"),
         message_topics.get("Transfer"),
@@ -473,54 +465,13 @@ fn cep18() {
     assert_eq!(messages[1].block_index(), 1);
 }
 
-fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
-    let default_accounts = vec![GenesisAccount::Account {
-        public_key: DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        balance: Motes::new(U512::from(100 * CSPR)),
-        validator: None,
-    }];
-
-    let (global_state, _state_root_hash, _tempdir) =
-        global_state::state::lmdb::make_temporary_global_state([]);
-
-    let genesis_config = GenesisConfig::new(
-        default_accounts,
-        WasmConfig::default(),
-        SystemConfig::default(),
-        10,
-        10,
-        0,
-        Default::default(),
-        14,
-        Timestamp::now().millis(),
-        casper_types::HoldBalanceHandling::Accrued,
-        0,
-        true,
-        StorageCosts::default(),
-    );
-    let genesis_request: GenesisRequest = GenesisRequest::new(
-        Digest::hash("foo"),
-        ProtocolVersion::V2_0_0,
-        genesis_config,
-        ChainspecRegistry::new_with_genesis(b"", b""),
-    );
-    match global_state.genesis(genesis_request) {
-        GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-        GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
-        GenesisResult::Success {
-            post_state_hash,
-            effects: _,
-        } => (global_state, post_state_hash, _tempdir),
-    }
-}
-
 #[test]
 fn traits() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
 
     let mut executor = make_executor(&chainspec_config);
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
@@ -529,9 +480,9 @@ fn traits() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
+    expect_successful_execution(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -544,7 +495,7 @@ fn upgradable() {
 
     let mut executor = make_executor(&chainspec_config);
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -565,7 +516,7 @@ fn upgradable() {
 
         let create_result = run_create_contract(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             create_request,
         );
@@ -589,9 +540,9 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -614,9 +565,9 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -639,9 +590,9 @@ fn upgradable() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
-    let res = run_wasm_session(
+    let res = expect_successful_execution(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
@@ -661,9 +612,9 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -686,9 +637,9 @@ fn upgradable() {
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
-        let res = run_wasm_session(
+        let res = expect_successful_execution(
             &mut executor,
-            &mut global_state,
+            &global_state,
             state_root_hash,
             execute_request,
         );
@@ -700,37 +651,9 @@ fn upgradable() {
     let _ = state_root_hash;
 }
 
-fn run_create_contract(
-    executor: &mut ExecutorV2,
-    global_state: &LmdbGlobalState,
-    pre_state_hash: Digest,
-    install_contract_request: InstallContractRequest,
-) -> InstallContractResult {
-    executor
-        .install_contract(pre_state_hash, global_state, install_contract_request)
-        .expect("Succeed")
-}
-
-fn run_wasm_session(
-    executor: &mut ExecutorV2,
-    global_state: &LmdbGlobalState,
-    pre_state_hash: Digest,
-    execute_request: ExecuteRequest,
-) -> ExecuteWithProviderResult {
-    let result = executor
-        .execute_with_provider(pre_state_hash, global_state, execute_request)
-        .expect("Succeed");
-
-    if let Some(host_error) = result.host_error {
-        panic!("Host error: {host_error:?}")
-    }
-
-    result
-}
-
 #[test]
 fn backwards_compatibility() {
-    let (mut global_state, post_state_hash, _temp) = {
+    let (global_state, post_state_hash, _temp) = {
         let fixture_name = "counter_contract";
         // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
         // global_state/data.lmdb
@@ -859,7 +782,7 @@ fn backwards_compatibility() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -963,18 +886,18 @@ fn call_dummy_host_fn_by_name(
     executor.install_contract(state_root_hash, &mut global_state, create_request)
 }
 
-fn assert_consumes_gas(host_function_name: &str) {
-    let result = call_dummy_host_fn_by_name(host_function_name, 1);
-    assert!(result.is_err_and(|e| match e {
-        InstallContractError::Constructor {
-            host_error: CallError::CalleeGasDepleted,
-        } => true,
-        _ => false,
-    }));
-}
-
 #[test]
 fn host_functions_consume_gas() {
+    fn assert_consumes_gas(host_function_name: &str) {
+        let result = call_dummy_host_fn_by_name(host_function_name, 1);
+        assert!(result.is_err_and(|e| matches!(
+            e,
+            InstallContractError::Constructor {
+                host_error: CallError::CalleeGasDepleted,
+            }
+        )));
+    }
+
     assert_consumes_gas("get_caller");
     assert_consumes_gas("get_block_time");
     assert_consumes_gas("get_transferred_value");
@@ -990,84 +913,6 @@ fn host_functions_consume_gas() {
     assert_consumes_gas("write");
 }
 
-#[allow(dead_code)]
-fn write_n_bytes_at_limit(
-    bytes_len: u64,
-    gas_limit: u64,
-) -> Result<InstallContractResult, InstallContractError> {
-    let executor = {
-        let execution_engine_v1 = ExecutionEngineV1::default();
-        let default_wasm_config = WasmV2Config::default();
-        let wasm_config = WasmV2Config::new(
-            default_wasm_config.max_memory(),
-            default_wasm_config.opcode_costs(),
-            HostFunctionCostsV2 {
-                read: HostFunctionV2::fixed(0),
-                write: HostFunctionV2::fixed(0),
-                remove: HostFunctionV2::fixed(0),
-                copy_input: HostFunctionV2::fixed(0),
-                ret: HostFunctionV2::fixed(0),
-                create: HostFunctionV2::fixed(0),
-                transfer: HostFunctionV2::fixed(0),
-                env_balance: HostFunctionV2::fixed(0),
-                upgrade: HostFunctionV2::fixed(0),
-                call: HostFunctionV2::fixed(0),
-                print: HostFunctionV2::fixed(0),
-                emit: HostFunctionV2::fixed(0),
-                env_info: HostFunctionV2::fixed(0),
-            },
-        );
-        let executor_config = ExecutorConfigBuilder::default()
-            .with_memory_limit(17)
-            .with_executor_kind(ExecutorKind::Compiled)
-            .with_wasm_config(wasm_config)
-            .with_storage_costs(StorageCosts::new(1))
-            .with_message_limits(MessageLimits::default())
-            .build()
-            .expect("Should build");
-        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
-    };
-
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
-
-    let address_generator = make_address_generator();
-
-    let input_data = borsh::to_vec(&(bytes_len,)).map(Bytes::from).unwrap();
-
-    let create_request = InstallContractRequestBuilder::default()
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_gas_limit(gas_limit)
-        .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
-        .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_transferred_value(0)
-        .with_entry_point("new_with_write".to_string())
-        .with_input(input_data)
-        .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(Timestamp::now().into())
-        .with_state_hash(Digest::from_raw([0; 32]))
-        .with_block_height(1)
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
-        .build()
-        .expect("should build");
-
-    executor.install_contract(state_root_hash, &mut global_state, create_request)
-}
-
-// #[test]
-// fn consume_gas_on_write() {
-//     let successful_write = write_n_bytes_at_limit(50, 10_000);
-//     assert!(successful_write.is_ok());
-
-//     let out_of_gas_write_exceeded_gas_limit = write_n_bytes_at_limit(50, 10);
-//     assert!(out_of_gas_write_exceeded_gas_limit.is_err_and(|e| match e {
-//         InstallContractError::Constructor {
-//             host_error: HostError::CalleeGasDepleted,
-//         } => true,
-//         _ => false,
-//     }));
-// }
-
 #[test]
 fn non_existing_smart_contract_does_not_panic() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
@@ -1075,7 +920,7 @@ fn non_existing_smart_contract_does_not_panic() {
 
     let address_generator = make_address_generator();
     let executor = make_executor(&chainspec_config);
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let non_existing_address = [255; 32];
     let execute_request = base_execute_builder(&chainspec_config)
@@ -1091,7 +936,7 @@ fn non_existing_smart_contract_does_not_panic() {
         .expect("should build");
 
     let result = executor
-        .execute_with_provider(state_root_hash, &mut global_state, execute_request)
+        .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect_err("Failure");
 
     assert!(matches!(
@@ -1108,7 +953,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let address_generator = make_address_generator();
     let mut executor = make_executor(&chainspec_config);
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
     let input_data = borsh::to_vec(&("write".to_string(),))
@@ -1126,7 +971,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -1147,7 +992,7 @@ fn casper_return_writes_to_execution_journal() {
         .build()
         .expect("should build");
 
-    let execute_result = run_wasm_session(
+    let execute_result = expect_successful_execution(
         &mut executor,
         &global_state,
         state_root_hash,
@@ -1190,4 +1035,56 @@ fn casper_return_writes_to_execution_journal() {
         &expected_key,
         "Ret transform should be under the contract key"
     );
+}
+
+#[test]
+fn casper_return_fails_if_contract_uses_unsupported_flags() {
+    let address_generator = make_address_generator();
+    let mut executor = make_executor();
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    // Create a contract that will be used to test the ret host function
+    let input_data = borsh::to_vec(&("write".to_string(),))
+        .map(Bytes::from)
+        .unwrap();
+
+    let install_request = base_install_request_builder()
+        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    let contract_address = *create_result.smart_contract_addr();
+    state_root_hash = create_result.post_state_hash();
+
+    // Execute the contract to trigger the return
+    let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: contract_address,
+            entry_point: "ret_faulty_flags".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+    assert!(result.is_err());
+    let err: ExecuteWithProviderError = result.err().expect("should have error details");
+    assert!(matches!(
+        err,
+        ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
+    ));
 }
