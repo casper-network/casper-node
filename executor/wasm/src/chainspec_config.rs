@@ -16,8 +16,8 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ChainspecRegistry, CoreConfig, Digest,
     FeeHandling, GenesisAccount, GenesisConfig, HoldBalanceHandling, MintCosts, Motes,
-    PricingHandling, ProtocolVersion, PublicKey, RefundHandling, SecretKey, StorageCosts,
-    SystemConfig, TimeDiff, WasmConfig,
+    PricingHandling, ProtocolConfig, ProtocolVersion, PublicKey, RefundHandling, SecretKey,
+    StorageCosts, SystemConfig, TimeDiff, WasmConfig,
 };
 
 /// Default number of validator slots.
@@ -61,7 +61,7 @@ pub(crate) static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
 pub(crate) static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
-pub(crate) static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
+pub static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
 
 /// Default accounts.
@@ -102,7 +102,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 /// Symlink to chainspec.
 pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources/")
+        .join("../../resources/local/")
         .join(CHAINSPEC_NAME)
 });
 
@@ -243,6 +243,9 @@ pub enum Error {
 /// in the chainspec file, it can continue to be parsed as an `ChainspecConfig`.
 #[derive(Deserialize, Clone, Default, Debug)]
 pub struct ChainspecConfig {
+    /// Protocol config.
+    #[serde(rename = "protocol")]
+    pub protocol_config: ProtocolConfig,
     /// CoreConfig
     #[serde(rename = "core")]
     pub core_config: CoreConfig,
@@ -314,6 +317,7 @@ impl ChainspecConfig {
     ) -> Result<GenesisRequest, Error> {
         // if you get a compilation error here, make sure to update the builder below accordingly
         let ChainspecConfig {
+            protocol_config: _protocol_config,
             core_config,
             wasm_config,
             system_costs_config,

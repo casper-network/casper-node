@@ -5,7 +5,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use casper_execution_engine::engine_state::ExecutionEngineV1;
+use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
 use casper_executor_wasm_interface::executor::{
     ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
 };
@@ -19,23 +19,25 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, Chainspec, ChainspecRegistry, Digest, GenesisAccount,
-    GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, SystemConfig, Timestamp, TransactionHash,
-    TransactionV1Hash, WasmConfig, WasmV2Config, DEFAULT_WASM_MAX_MEMORY, U512,
+    account::AccountHash, BlockHash, Chainspec, ChainspecRegistry, Digest, FeeHandling,
+    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
+    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, SystemConfig, Timestamp,
+    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, DEFAULT_WASM_MAX_MEMORY, U512,
 };
-
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
-use tempfile::TempDir;
+use num_rational::Ratio;
 
 use crate::{
+    chainspec_config::ChainspecConfig,
     install::{
         InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
         InstallContractResult,
     },
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
+use casper_storage::system::runtime_native::{Config, TransferConfig};
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use tempfile::TempDir;
 
 pub static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
@@ -132,10 +134,9 @@ pub fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     )))
 }
 
-pub fn base_execute_builder() -> ExecuteRequestBuilder {
+pub fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteRequestBuilder {
     let chainspec = Chainspec::default();
     let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
-
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -146,14 +147,57 @@ pub fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
 }
 
-pub fn base_install_request_builder() -> InstallContractRequestBuilder {
+pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfig {
+    let protocol_version = ProtocolVersion::V2_0_0;
+    let transfer_config = TransferConfig::Unadministered;
+    let fee_handling = chainspec_config.core_config.fee_handling;
+    let refund_handling = chainspec_config.core_config.refund_handling;
+    let vesting_schedule_period_millis = chainspec_config
+        .core_config
+        .vesting_schedule_period
+        .millis();
+    let allow_auction_bids = chainspec_config.core_config.allow_auction_bids;
+    let compute_rewards = chainspec_config.core_config.compute_rewards;
+    let max_delegators_per_validator = chainspec_config.core_config.max_delegators_per_validator;
+    let minimum_bid_amount = chainspec_config.core_config.minimum_bid_amount;
+    let minimum_delegation_amount = chainspec_config.core_config.minimum_delegation_amount;
+    let balance_hold_interval = chainspec_config.core_config.gas_hold_interval.millis();
+    let include_credits = chainspec_config.core_config.fee_handling == FeeHandling::NoFee;
+    let credit_cap = Ratio::new_raw(
+        U512::from(*chainspec_config.core_config.validator_credit_cap.numer()),
+        U512::from(*chainspec_config.core_config.validator_credit_cap.denom()),
+    );
+    let enable_addressable_entity = chainspec_config.core_config.enable_addressable_entity;
+    let native_transfer_cost = chainspec_config.system_costs_config.mint_costs().transfer;
+    Config::new(
+        protocol_version,
+        transfer_config,
+        fee_handling,
+        refund_handling,
+        vesting_schedule_period_millis,
+        allow_auction_bids,
+        compute_rewards,
+        max_delegators_per_validator,
+        minimum_bid_amount,
+        minimum_delegation_amount,
+        balance_hold_interval,
+        include_credits,
+        credit_cap,
+        enable_addressable_entity,
+        native_transfer_cost,
+    )
+}
+
+pub fn base_install_request_builder(
+    chainspec_config: &ChainspecConfig,
+) -> InstallContractRequestBuilder {
     let chainspec = Chainspec::default();
     let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
-
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -162,19 +206,24 @@ pub fn base_install_request_builder() -> InstallContractRequestBuilder {
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
 }
 
-pub fn make_executor() -> ExecutorV2 {
-    let storage_costs = StorageCosts::new(DEFAULT_GAS_PER_BYTE_COST);
-    let execution_engine_v1 = ExecutionEngineV1::default();
+pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
+    let storage_costs = chainspec_config.storage_costs;
+    let v1_config = EngineConfig::from(chainspec_config.clone());
+    let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
+    let wasm_v2_config = chainspec_config.wasm_config.v2().clone();
+    let memory_limit = wasm_v2_config.max_memory();
+    let message_limits = chainspec_config.wasm_config.messages_limits();
     let executor_config = ExecutorConfigBuilder::default()
-        .with_memory_limit(DEFAULT_WASM_MAX_MEMORY)
+        .with_memory_limit(memory_limit)
         .with_executor_kind(ExecutorKind::Compiled)
-        .with_wasm_config(WasmV2Config::default())
+        .with_wasm_config(wasm_v2_config)
         .with_storage_costs(storage_costs)
-        .with_message_limits(MessageLimits::default())
+        .with_message_limits(message_limits)
         .build()
         .expect("Should build");
     ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
@@ -258,6 +307,7 @@ pub fn run_wasm_session(
 }
 
 pub fn call_dummy_host_fn_by_name(
+    chainspec_config: &ChainspecConfig,
     host_function_name: &str,
     gas_limit: u64,
 ) -> Result<InstallContractResult, InstallContractError> {
@@ -302,7 +352,7 @@ pub fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = base_install_request_builder()
+    let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
