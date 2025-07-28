@@ -1276,7 +1276,7 @@ fn emit_message_should_consume_variable_gas_based_on_topic_and_message_size() {
 #[ignore]
 #[test]
 fn on_install_should_emit_system_messages() {
-    let system_account_entity = EntityAddr::System(PublicKey::System.to_account_hash().value());
+    let system_account_entity = EntityAddr::Account(PublicKey::System.to_account_hash().value());
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()

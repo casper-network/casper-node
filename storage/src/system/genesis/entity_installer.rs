@@ -900,7 +900,7 @@ where
         block_time: BlockTime,
         topic_name: &str,
     ) -> Result<(), Box<GenesisError>> {
-        let entity_addr = EntityAddr::new_system(PublicKey::System.to_account_hash().value());
+        let entity_addr = EntityAddr::new_account(PublicKey::System.to_account_hash().value());
         let topic_name_hash = blake2b(topic_name.as_bytes()).into();
         let topic_key = Key::message_topic(entity_addr, topic_name_hash);
         let maybe_existing_topic = self
