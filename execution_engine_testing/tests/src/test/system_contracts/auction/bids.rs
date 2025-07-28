@@ -4268,7 +4268,7 @@ fn should_enforce_minimum_delegation_amount() {
     )
     .build();
 
-    // The delegation amount is below the default value of 500 CSPR,
+    // The delegation amount is below the default value of 500 token,
     // therefore the delegation should not succeed.
     builder.exec(delegation_request_1).expect_failure();
 
@@ -4363,7 +4363,7 @@ fn should_allow_delegations_with_minimal_floor_amount() {
     )
     .build();
 
-    // The delegation amount is below the default value of 500 CSPR,
+    // The delegation amount is below the default value of 500 token,
     // therefore the delegation should not succeed.
     builder.exec(delegation_request_1).expect_failure();
 

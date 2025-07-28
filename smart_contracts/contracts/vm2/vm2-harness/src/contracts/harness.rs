@@ -41,7 +41,7 @@ pub struct Harness {
 //         // Called when no entrypoint is matched
 //         //
 //         // Is invoked when
-//         // a) user performs plan CSPR transfer (not a contract call)
+//         // a) user performs plan token transfer (not a contract call)
 //         //   a.1) if there's no fallback entrypoint, the transfer will fail
 //         //   a.2) if there's fallback entrypoint, it will be called
 //         // b) user calls a contract with no matching entrypoint

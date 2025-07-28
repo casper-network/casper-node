@@ -39,12 +39,12 @@ use crate::{
 
 pub static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
-pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<casper_types::PublicKey> =
+pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
 pub static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
 
-pub const CSPR: u64 = 10u64.pow(9);
+pub const TOKEN: u64 = 10u64.pow(9);
 
 pub static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -115,7 +115,7 @@ pub fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
 pub const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 pub const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
-pub const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * CSPR;
+pub const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * TOKEN;
 pub const DEFAULT_CHAIN_NAME: &str = "casper-test";
 
 // TODO: This is a temporary value, it should be set in the config. Default value from V1 engine
@@ -183,7 +183,7 @@ pub fn make_executor() -> ExecutorV2 {
 pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
     let default_accounts = vec![GenesisAccount::Account {
         public_key: DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        balance: Motes::new(U512::from(100 * CSPR)),
+        balance: Motes::new(U512::from(100 * TOKEN)),
         validator: None,
     }];
 
@@ -229,7 +229,7 @@ pub fn run_create_contract(
 ) -> InstallContractResult {
     executor
         .install_contract(pre_state_hash, global_state, install_contract_request)
-        .expect("Succeed")
+        .expect("run_create_contract should succeed")
 }
 
 pub fn expect_successful_execution(

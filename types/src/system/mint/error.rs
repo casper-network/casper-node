@@ -142,7 +142,7 @@ pub enum Error {
     /// Raised when an entry point is called from invalid account context.
     InvalidContext = 20,
 
-    /// Session code tried to transfer more CSPR than user approved.
+    /// Session code tried to transfer more token than user approved.
     /// ```
     /// # use casper_types::system::mint::Error;
     /// assert_eq!(21, Error::UnapprovedSpendingAmount as u8);

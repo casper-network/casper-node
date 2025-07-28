@@ -1,6 +1,11 @@
 mod chainspec_config;
 
-use std::{fs::File, path::Path, sync::Arc};
+use std::{
+    env,
+    fs::{self, File},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
@@ -9,11 +14,12 @@ use casper_executor_wasm::{
         InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
         InstallContractResult,
     },
+    testing::{expect_successful_execution, make_global_state_with_genesis, run_create_contract},
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    ExecuteError, ExecuteWithProviderError, ExecutionKind,
+    ExecuteError, ExecuteRequestBuilder, ExecuteWithProviderError, ExecutionKind,
 };
 use casper_storage::{
     data_access_layer::{
@@ -29,21 +35,19 @@ use casper_storage::{
     AddressGenerator, KeyPrefix, RuntimeNativeConfig,
 };
 use casper_types::{
-    bytesrepr::ToBytes, execution::RetValue, BlockHash, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, FeeHandling, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2,
-    Key, MessageLimits, Motes, Phase, ProtocolVersion, StorageCosts, StoredValue, SystemConfig,
-    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    bytesrepr::ToBytes, execution::RetValue, BlockHash, Chainspec, Digest, EntityAddr, FeeHandling,
+    HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Phase, ProtocolVersion, StorageCosts,
+    StoredValue, Timestamp, TransactionHash, TransactionV1Hash, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
-use tempfile::TempDir;
 
-use crate::chainspec_config::{ChainspecConfig, DEFAULT_ACCOUNT_HASH, DEFAULT_ACCOUNT_PUBLIC_KEY};
+use crate::chainspec_config::{ChainspecConfig, DEFAULT_ACCOUNT_HASH};
 
-const CSPR: u64 = 10u64.pow(9);
+const TOKEN: u64 = 10u64.pow(9);
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -120,14 +124,8 @@ fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
 const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
-const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * CSPR;
+const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * TOKEN;
 const DEFAULT_CHAIN_NAME: &str = "casper-example";
-
-// TODO: This is a temporary value, it should be set in the config. Default value from V1 engine
-// does not apply to V2 engine due to different cost structure. Rather than hardcoding it here, we
-// should probably reflect gas costs in a dynamic costs in host function charge. Proper value is
-// pending calculation.
-// const DEFAULT_GAS_PER_BYTE_COST: u32 = 1_117_587;
 
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     let id = Id::Transaction(TRANSACTION_HASH);
@@ -653,7 +651,7 @@ fn upgradable() {
 
 #[test]
 fn backwards_compatibility() {
-    let (global_state, post_state_hash, _temp) = {
+    let (mut global_state, post_state_hash, _temp) = {
         let fixture_name = "counter_contract";
         // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
         // global_state/data.lmdb
@@ -718,7 +716,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by it's address
+    // Calling legacy contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -782,7 +780,7 @@ fn backwards_compatibility() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &global_state,
+        &mut global_state,
         state_root_hash,
         install_request,
     );
@@ -808,12 +806,7 @@ fn backwards_compatibility() {
         .build()
         .expect("should build");
 
-    run_wasm_session(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        call_request,
-    );
+    expect_successful_execution(&mut executor, &global_state, state_root_hash, call_request);
 }
 
 // host function tests
@@ -1039,8 +1032,10 @@ fn casper_return_writes_to_execution_journal() {
 
 #[test]
 fn casper_return_fails_if_contract_uses_unsupported_flags() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
     let address_generator = make_address_generator();
-    let mut executor = make_executor();
+    let mut executor = make_executor(&chainspec_config);
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
@@ -1048,7 +1043,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         .map(Bytes::from)
         .unwrap();
 
-    let install_request = base_install_request_builder()
+    let install_request = base_install_request_builder(&chainspec_config)
         .with_wasm_bytes(read_wasm("vm2_host.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
@@ -1068,7 +1063,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
     state_root_hash = create_result.post_state_hash();
 
     // Execute the contract to trigger the return
-    let execute_request = base_execute_builder()
+    let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret_faulty_flags".to_string(),

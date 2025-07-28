@@ -3,7 +3,7 @@ use std::sync::Arc;
 use wasmer::{wasmparser::Operator, ModuleMiddleware};
 use wasmer_middlewares::Metering;
 
-/// Calculated based on the benchmark results and fitted for approx ~1000 CSPR of computation and
+/// Calculated based on the benchmark results and fitted for approx ~1000 tokens of computation and
 /// 16s maximum computation time.
 const MULTIPLIER: u64 = 16;
 
