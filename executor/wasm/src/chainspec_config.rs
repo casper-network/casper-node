@@ -16,8 +16,8 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ChainspecRegistry, CoreConfig, Digest,
     FeeHandling, GenesisAccount, GenesisConfig, HoldBalanceHandling, MintCosts, Motes,
-    PricingHandling, ProtocolVersion, PublicKey, RefundHandling, SecretKey, StorageCosts,
-    SystemConfig, TimeDiff, WasmConfig,
+    PricingHandling, ProtocolConfig, ProtocolVersion, PublicKey, RefundHandling, SecretKey,
+    StorageCosts, SystemConfig, TimeDiff, WasmConfig,
 };
 
 /// Default number of validator slots.
@@ -26,9 +26,6 @@ pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 1;
 /// Default lock-in period is currently zero.
 pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
-/// Default length of total vesting schedule is currently zero.
-pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 0;
-
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 
@@ -42,61 +39,29 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(1, 4200000000000000000);
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default block time.
-pub const DEFAULT_BLOCK_TIME: u64 = 0;
-/// Default gas price.
-pub const DEFAULT_GAS_PRICE: u8 = 1;
-/// Amount named argument.
-pub const ARG_AMOUNT: &str = "amount";
-/// Timestamp increment in milliseconds.
-pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 /// Default gas hold balance handling.
 pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Accrued;
 /// Default gas hold interval in milliseconds.
 pub const DEFAULT_GAS_HOLD_INTERVAL_MILLIS: u64 = 24 * 60 * 60 * 60;
 
-/// Default value for maximum associated keys configuration option.
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
-/// Default value for maximum runtime call stack height configuration option.
-pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
-/// Default value for minimum delegation amount in motes.
-pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
-/// Default value for maximum delegation amount in motes.
-pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
 
 /// Default genesis config hash.
 pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
 
-/// Default test account address.
-pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-// NOTE: declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
-/// Default account key.
-pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
-/// Default initial balance of a test account in motes.
 pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 10_000_000_000_000_000_000_u64;
-/// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
 /// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
-/// Default proposer address.
-pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
 
-/// Default [`ProtocolVersion`].
-pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 pub(crate) static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
 pub(crate) static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
-pub(crate) static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
+pub static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
 
 /// Default accounts.
@@ -137,7 +102,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 /// Symlink to chainspec.
 pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources/")
+        .join("../../resources/local/")
         .join(CHAINSPEC_NAME)
 });
 
@@ -278,6 +243,9 @@ pub enum Error {
 /// in the chainspec file, it can continue to be parsed as an `ChainspecConfig`.
 #[derive(Deserialize, Clone, Default, Debug)]
 pub struct ChainspecConfig {
+    /// Protocol config.
+    #[serde(rename = "protocol")]
+    pub protocol_config: ProtocolConfig,
     /// CoreConfig
     #[serde(rename = "core")]
     pub core_config: CoreConfig,
@@ -349,6 +317,7 @@ impl ChainspecConfig {
     ) -> Result<GenesisRequest, Error> {
         // if you get a compilation error here, make sure to update the builder below accordingly
         let ChainspecConfig {
+            protocol_config: _protocol_config,
             core_config,
             wasm_config,
             system_costs_config,
