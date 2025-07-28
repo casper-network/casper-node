@@ -984,7 +984,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
-        collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -1010,7 +1009,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::NamedKey(_) => stored_value,
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
-                StoredValue::RawBytes(_) => stored_value,
         })
 }
 
