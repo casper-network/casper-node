@@ -76,8 +76,6 @@ pub enum StoredValueTag {
     Prepayment = 18,
     /// An entrypoint record.
     EntryPoint = 19,
-    /// Raw bytes.
-    RawBytes = 20,
 }
 
 /// A value stored in Global State.
