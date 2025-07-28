@@ -79,9 +79,8 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
-#[derive(Error, Debug, Clone, Serialize)]
 /// Represents a catastrophic internal host error.
-#[derive(Debug, Error)]
+#[derive(Error, Debug, Clone, Serialize)]
 pub enum InternalHostError {
     #[error("type conversion failure")]
     TypeConversion,
