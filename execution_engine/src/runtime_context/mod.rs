@@ -985,6 +985,7 @@ where
         block_message_count: u64,
         topic_message_count: u32,
         message: Message,
+        skip_charging: bool,
     ) -> Result<(), ExecError> {
         let topic_value = StoredValue::MessageTopic(MessageTopicSummary::new(
             topic_message_count,
@@ -997,11 +998,14 @@ where
         let block_message_count_value =
             StoredValue::CLValue(CLValue::from_t((block_time, block_message_count))?);
 
-        // Charge for amount as measured by serialized length
-        let bytes_count = topic_value.serialized_length()
-            + message_value.serialized_length()
-            + block_message_count_value.serialized_length();
-        self.charge_gas_storage(bytes_count)?;
+        // In case of "system" messages we want to be able to skip charging for the message
+        if !skip_charging {
+            // Charge for amount as measured by serialized length
+            let bytes_count = topic_value.serialized_length()
+                + message_value.serialized_length()
+                + block_message_count_value.serialized_length();
+            self.charge_gas_storage(bytes_count)?;
+        }
 
         self.tracking_copy.borrow_mut().emit_message(
             topic_key,
