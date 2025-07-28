@@ -50,6 +50,9 @@ use install::{InstallContractError, InstallContractRequest, InstallContractResul
 use parking_lot::RwLock;
 use tracing::{error, warn};
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
@@ -565,6 +568,15 @@ impl ExecutorV2 {
             sandboxed,
             runtime_native_config,
         };
+
+        // Check that the input argument size does not exceed the VM memory limit
+        let memory_limit_bytes = self.config.memory_limit as usize * 65_536; // 64KiB per page
+        if context.input.len() > memory_limit_bytes {
+            return Err(ExecuteError::ArgumentSizeExceedsMemory {
+                argument_size: context.input.len(),
+                memory_limit: self.config.memory_limit,
+            });
+        }
 
         let wasm_instance_config = ConfigBuilder::new()
             .with_gas_limit(gas_limit)
