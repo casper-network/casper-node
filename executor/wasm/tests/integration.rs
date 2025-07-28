@@ -27,9 +27,10 @@ use itertools::Itertools;
 use casper_executor_wasm::testing::{
     base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
     expect_successful_execution, make_address_generator, make_executor,
-    make_global_state_with_genesis, read_wasm, run_create_contract, DEFAULT_ACCOUNT_HASH,
-    DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
+    make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
+    DEFAULT_ACCOUNT_HASH, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
 };
+use casper_types::account::AccountHash;
 
 #[test]
 fn harness() {
@@ -73,7 +74,7 @@ fn harness() {
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
+        .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
@@ -171,7 +172,6 @@ fn cep18() {
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm(
             "vm2_cep18_caller.wasm",
@@ -504,7 +504,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by it's address
+    // Calling legacy contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -729,7 +729,7 @@ fn casper_return_writes_to_execution_journal() {
     }
 
     // Verify the key is the contract address
-    let expected_key = casper_types::Key::SmartContract(contract_address);
+    let expected_key = Key::SmartContract(contract_address);
     assert_eq!(
         ret_transform.key(),
         &expected_key,
@@ -787,4 +787,119 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         err,
         ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
     ));
+}
+
+#[test]
+
+fn escrow() {
+    let mut executor = make_executor();
+
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        create_request,
+    );
+
+    dbg!(create_result.gas_usage().gas_spent());
+
+    let contract_hash = create_result.smart_contract_addr();
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let execute_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *contract_hash,
+            entry_point: "deposit_tokens".to_string(),
+        })
+        .with_serialized_input(())
+        .with_transferred_value(10000)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(1234567890.into())
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(2) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let result_2 = run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    )
+    .expect("should have result");
+    dbg!(result_2.gas_usage().gas_spent());
+
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, result_2.effects().clone())
+        .expect("Should commit");
+
+    assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn should_not_fail_without_account() {
+    let executor = make_executor();
+
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = Bytes::new();
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(AccountHash::new([0xF0; 32]))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = {
+        executor
+            .install_contract(state_root_hash, &mut global_state, create_request)
+            .expect_err("Succeed")
+    };
+
+    assert!(
+        matches!(create_result, InstallContractError::Execute(ExecuteError::EntityNotFound(Key::Account(account_hash))) if account_hash == AccountHash::new([0xF0; 32]))
+    );
 }

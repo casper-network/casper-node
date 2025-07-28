@@ -386,7 +386,7 @@ pub enum ExecuteError {
     /// Error while executing Wasm: traps, memory access errors, etc.
     #[error("Internal host error: {0}")]
     InternalHost(#[from] InternalHostError),
-    #[error("Code not found")]
+    #[error("Code not found: {0:?}")]
     CodeNotFound(HashAddr),
     #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]
     ArgumentSizeExceedsMemory {
@@ -396,6 +396,8 @@ pub enum ExecuteError {
     // Wasm attempted to return flags that are not supported
     #[error("Return flags are not supported: {0}")]
     ReturnFlagsNotSupported(u32),
+    #[error("Entity not found: {0}")]
+    EntityNotFound(Key),
 }
 
 #[derive(Debug, Error)]
