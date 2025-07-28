@@ -47,7 +47,6 @@ impl ByteSize for StoredValue {
                 StoredValue::NamedKey(named_key) => named_key.serialized_length(),
                 StoredValue::Prepayment(prepayment_kind) => prepayment_kind.serialized_length(),
                 StoredValue::EntryPoint(entry_point) => entry_point.serialized_length(),
-                StoredValue::RawBytes(raw_bytes) => raw_bytes.serialized_length(),
             }
     }
 }

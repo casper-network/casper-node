@@ -18,7 +18,7 @@ use casper_executor_wasm_common::{
     keyspace::{Keyspace, KeyspaceTag},
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
     u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{
@@ -45,7 +45,7 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, MintTransferArgs},
+    system::{self, DispatchError, MintTransferArgs},
 };
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
@@ -193,7 +193,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
     let stored_value = match keyspace {
         Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
-            StoredValue::RawBytes(value)
+            let cl_value_any = CLValue::from_components(CLType::Any, value);
+            StoredValue::CLValue(cl_value_any)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -421,7 +422,12 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
     let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-        Ok(Some(StoredValue::RawBytes(raw_bytes))) => Cow::Owned(raw_bytes),
+        Ok(Some(StoredValue::CLValue(cl_value))) => {
+            let CLType::Any = cl_value.cl_type() else {
+                return Err(InternalHostError::TypeConversion)?;
+            };
+            Cow::Owned(cl_value.inner_bytes().to_owned())
+        }
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             match entry_point.entry_point_payment() {
                 EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
@@ -566,7 +572,15 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         [u64::from(data_ptr), u64::from(data_len)],
     )?;
 
-    let flags = ReturnFlags::from_bits_retain(flags);
+    let maybe_flags = ReturnFlags::from_bits(flags);
+    let flags = match maybe_flags {
+        Some(flags) => flags,
+        None => {
+            return VMResult::Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
+                flags,
+            )))
+        }
+    };
     let data = if data_ptr == 0 {
         None
     } else {
@@ -1243,8 +1257,19 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         .context_mut()
         .tracking_copy
         .read(&callee_addressable_entity_key)
-        .map_err(|_| InternalHostError::TrackingCopy)?
-        .ok_or(InternalHostError::AccountRecordNotFound)?;
+        .map_err(|_| InternalHostError::TrackingCopy)?;
+
+    let callee_stored_value = match callee_stored_value {
+        Some(callee_stored_value) => callee_stored_value,
+        None => {
+            warn!(
+                ?callee_addressable_entity_key,
+                "Callee not found while transferring tokens"
+            );
+            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+        }
+    };
+
     let callee_addressable_entity = callee_stored_value
         .into_addressable_entity()
         .ok_or(InternalHostError::TypeConversion)?;
@@ -1273,17 +1298,32 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let transaction_hash = caller.context().transaction_hash;
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
+
     let args = MintTransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
 
-    let result = system::transfer(
+    match system::transfer(
         &mut caller.context_mut().tracking_copy,
         runtime_native_config,
         transaction_hash,
         address_generator,
         args,
-    );
-
-    Ok(u32_from_host_result(result))
+    ) {
+        Ok(()) => Ok(HOST_ERROR_SUCCESS),
+        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
+        Err(DispatchError::Call(call_error)) => {
+            // This is a bug in the EE, as it should have been caught during the preparation phase
+            // when the contract was stored in the global state.
+            error!(?call_error, "Failed to transfer");
+            Ok(call_error.into_u32())
+        }
+        Err(dispatch_error) => {
+            error!(
+                ?dispatch_error,
+                "Failed to dispatch system contract while transferring tokens"
+            );
+            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
+        }
+    }
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(

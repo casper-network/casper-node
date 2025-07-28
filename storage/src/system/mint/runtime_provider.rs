@@ -30,7 +30,7 @@ pub trait RuntimeProvider {
     /// This method should handle obtaining a given named [`Key`] under a `name`.
     fn get_key(&self, name: &str) -> Option<Key>;
 
-    /// Returns approved CSPR spending limit.
+    /// Returns approved spending limit.
     fn get_approved_spending_limit(&self) -> U512;
 
     /// Signal to host that `amount` of tokens has been transferred.

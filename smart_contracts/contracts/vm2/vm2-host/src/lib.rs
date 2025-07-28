@@ -3,6 +3,7 @@
 use casper_contract_sdk::{
     casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
+    sys::casper_return,
 };
 
 const CURRENT_VERSION: &str = "v1";
@@ -70,6 +71,7 @@ impl MinHostWrapper {
             "write_n_bytes" => {
                 ret.write();
             }
+            "ret_faulty_flags" => ret.ret_faulty_flags(),
             _ => panic!("Unknown host function"),
         }
         ret
@@ -146,5 +148,19 @@ impl MinHostWrapper {
     pub fn write_n_bytes(&self, n: u64) {
         let buffer = vec![0; n as usize];
         casper::write(Keyspace::Context(&[0]), &buffer).ok();
+    }
+
+    pub fn ret_faulty_flags(&self) {
+        let all_flags_bits = ReturnFlags::all().bits();
+        let faulty_flags = all_flags_bits << 1;
+        if faulty_flags == all_flags_bits {
+            // By pure coincidence all the current flags of ReturnFlags are homomorphic when
+            // shifted by one byte. If this happens we need to produce a different
+            // "faulty_flags value"
+            casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
+        }
+        let data = [1, 2, 3];
+        let (data_ptr, data_len) = ((&data).as_ptr(), (&data).len());
+        unsafe { casper_return(faulty_flags, data_ptr, data_len) };
     }
 }
