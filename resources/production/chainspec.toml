@@ -359,7 +359,7 @@ call_package_version = { cost = 300_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 1
 
 [wasm.v2]
 # Amount of free memory each contract can use for stack.
-max_memory = 17
+max_memory = 64
 
 [wasm.v2.opcode_costs]
 # Bit operations multiplier.

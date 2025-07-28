@@ -1,5 +1,6 @@
 pub(crate) mod imports;
 pub(crate) mod middleware;
+pub(crate) mod tunables;
 
 use std::{
     collections::BinaryHeap,
@@ -20,11 +21,14 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut,
-    Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
+    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, Function, FunctionEnv,
+    FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages,
+    RuntimeError, Store, StoreMut, Table, Target, TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
+
+use crate::tunables::memory_limit::MemLimitTunables;
 
 fn from_wasmer_memory_access_error(error: wasmer::MemoryAccessError) -> VMError {
     let trap_code = match error {
@@ -300,10 +304,23 @@ where
             singlepass_compiler
         };
 
-        let engine = Engine::from(engine);
+        let max_mem_pages = Pages(config.memory_limit());
+
+        let base = BaseTunables::for_target(&Target::default());
+        let tunables = MemLimitTunables::new(base, max_mem_pages);
+        let mut engine = Engine::from(engine);
+        engine.set_tunables(tunables);
 
         let module = Module::new(&engine, &wasm_bytes)
             .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
+
+        let mem_import = module
+            .info()
+            .memories
+            .iter()
+            .next()
+            .map(|(_, mem_type)| *mem_type)
+            .ok_or(WasmPreparationError::Compile("missing memory".to_string()))?;
 
         let mut store = Store::new(engine);
 
@@ -312,9 +329,9 @@ where
 
         let memory = Memory::new(
             &mut store,
-            wasmer_types::MemoryType {
-                minimum: wasmer_types::Pages(17),
-                maximum: None,
+            MemoryType {
+                minimum: mem_import.minimum,
+                maximum: Some(max_mem_pages),
                 shared: false,
             },
         )
