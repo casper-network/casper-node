@@ -10,6 +10,13 @@
 pub(super) mod debug;
 mod era;
 
+use anyhow::Error;
+use datasize::DataSize;
+use futures::{Future, FutureExt};
+use itertools::Itertools;
+use prometheus::Registry;
+use rand::Rng;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -20,22 +27,14 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
-use anyhow::Error;
-use datasize::DataSize;
-use futures::{Future, FutureExt};
-use itertools::Itertools;
-use prometheus::Registry;
-use rand::Rng;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_binary_port::{ConsensusStatus, ConsensusValidatorChanges};
 
 use casper_types::{
     Approval, AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest,
-    DisplayIter, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
-    ValidatorChange,
+    DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorChange,
 };
 
 use crate::{
@@ -76,6 +75,8 @@ use crate::{components::consensus::error::CreateNewEraError, types::InvalidPropo
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 /// A warning is printed if a timer is delayed by more than this.
 const TIMER_DELAY_WARNING_MILLIS: u64 = 1000;
+/// Maximum empty proposal tolerance multiple.
+const MAXIMUM_EMPTY_PROPOSAL_TOLERANCE_MULTIPLE: u64 = 20;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
@@ -112,6 +113,8 @@ pub struct EraSupervisor {
     next_block_height: u64,
     /// The height of the next block to be executed. If this falls too far behind, we pause.
     next_executed_height: u64,
+    /// The maximum time in millis to skip proposing an empty block.
+    empty_proposal_tolerance_interval_to_use: u64,
     /// The last seen added block time.
     last_block_time: Option<Timestamp>,
     #[data_size(skip)]
@@ -147,6 +150,13 @@ impl EraSupervisor {
         info!(our_id = %validator_matrix.public_signing_key(), "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
+        let empty_proposal_tolerance_interval_to_use = chainspec
+            .core_config
+            .minimum_block_time
+            .saturating_mul(MAXIMUM_EMPTY_PROPOSAL_TOLERANCE_MULTIPLE)
+            .millis()
+            .min(config.empty_proposal_tolerance_interval);
+
         let era_supervisor = Self {
             open_eras: Default::default(),
             validator_matrix,
@@ -157,6 +167,7 @@ impl EraSupervisor {
             metrics,
             unit_files_folder,
             next_executed_height: 0,
+            empty_proposal_tolerance_interval_to_use,
             last_progress: Timestamp::now(),
             message_delay_failpoint: Failpoint::new("consensus.message_delay"),
             proposal_delay_failpoint: Failpoint::new("consensus.proposal_delay"),
@@ -813,19 +824,23 @@ impl EraSupervisor {
             Some(current_era) => {
                 // if proposal is empty, do not send it unless too many increments of block time
                 // have passed. this turns down the volume of empty blocks
+
+                let now = Timestamp::now();
                 if block_payload.count(None) == 0 {
+                    // THIS BEHAVIOR ALLOWS FOR SKIPPING OF EMPTY PROPOSALS
                     if let Some(last_block_time) = self.last_block_time {
-                        let increment = self
-                            .chainspec
-                            .core_config
-                            .minimum_block_time
-                            .saturating_mul(10);
-                        let tolerance = last_block_time.saturating_add(increment);
-                        if tolerance <= Timestamp::now() {
+                        let threshold_to_force_proposal = last_block_time.saturating_add(
+                            TimeDiff::from_millis(self.empty_proposal_tolerance_interval_to_use),
+                        );
+                        if now < threshold_to_force_proposal {
+                            self.metrics.skipping_empty_proposal(now, last_block_time);
                             info!(
-                            era = era_id.value(),
-                            %tolerance,
-                            "SKIPPING EMPTY PROPOSAL: within tolerance for skipping an empty proposal");
+                                era = era_id.value(),
+                                ?last_block_time,
+                                ?now,
+                                ?threshold_to_force_proposal,
+                                "SKIPPING EMPTY PROPOSAL: within tolerance for skipping an empty proposal"
+                            );
                             return Effects::new();
                         }
                     }
@@ -839,7 +854,7 @@ impl EraSupervisor {
                 }
                 let proposed_block = ProposedBlock::new(block_payload, block_context);
                 self.delegate_to_era(effect_builder, rng, era_id, move |consensus, _| {
-                    consensus.propose(proposed_block, Timestamp::now())
+                    consensus.propose(proposed_block, now)
                 })
             }
         }

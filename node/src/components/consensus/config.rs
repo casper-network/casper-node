@@ -26,6 +26,8 @@ pub struct Config {
     /// The maximum number of blocks by which execution is allowed to lag behind finalization.
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
     pub max_execution_delay: u64,
+    /// The maximum time in millis to skip proposing an empty block.
+    pub empty_proposal_tolerance_interval: u64,
     /// Highway-specific node configuration.
     #[serde(default)]
     pub highway: HighwayConfig,
@@ -39,6 +41,7 @@ impl Default for Config {
         Config {
             secret_key_path: External::Missing,
             max_execution_delay: DEFAULT_MAX_EXECUTION_DELAY,
+            empty_proposal_tolerance_interval: u64::default(),
             highway: HighwayConfig::default(),
             zug: ZugConfig::default(),
         }

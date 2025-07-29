@@ -96,6 +96,20 @@ secret_key_path = 'secret_key.pem'
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
 max_execution_delay = 3
 
+# If a validating node is selected to propose a block but does not have any transactions to propose,
+# it results in an empty block being proposed. Empty blocks require computation and network traffic
+# to process and store. In periods of no to low activity on the network, a sequence of such empty
+# blocks are produced on the chain, taking up disk space for no real benefit.
+#
+# This setting allows a validator to opt to not propose an empty block unless the time since the
+# last block exceeds a time threshold. If this setting is 0, a validating node chosen to propose
+# with no transactions will always propose. If this setting is greater than 0, such a node will
+# only propose an empty block if the elapsed time since the last block in milliseconds is equal
+# or greater. In other words, if the value is 5 a validator selected to propose will not propose
+# an empty block unless it has been 5 milliseconds or more since the last block.
+#
+# A configured value greater than 20 x minimum_block_time is capped to 20 x minimum_block_time.
+empty_proposal_tolerance_interval = 0
 
 # =======================================
 # Configuration options for Zug consensus
