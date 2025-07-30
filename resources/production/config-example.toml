@@ -108,9 +108,8 @@ max_execution_delay = 3
 # or greater. In other words, if the value is 5 a validator selected to propose will not propose
 # an empty block unless it has been 5 milliseconds or more since the last block.
 #
-# A configured value greater than 20 x minimum_block_time is capped to 20 x minimum_block_time.
+# A configured value greater than 10 x minimum_block_time is capped to 10 x minimum_block_time.
 empty_proposal_tolerance_interval = 0
-
 
 # =======================================
 # Configuration options for Zug consensus

@@ -76,7 +76,7 @@ const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 /// A warning is printed if a timer is delayed by more than this.
 const TIMER_DELAY_WARNING_MILLIS: u64 = 1000;
 /// Maximum empty proposal tolerance multiple.
-const MAXIMUM_EMPTY_PROPOSAL_TOLERANCE_MULTIPLE: u64 = 20;
+const MAXIMUM_EMPTY_PROPOSAL_TOLERANCE_MULTIPLE: u64 = 10;
 
 /// The number of eras across which evidence can be cited.
 /// If this is 1, you can cite evidence from the previous era, but not the one before that.
@@ -822,11 +822,18 @@ impl EraSupervisor {
                 Effects::new()
             }
             Some(current_era) => {
+                let now = Timestamp::now();
+
                 // if proposal is empty, do not send it unless too many increments of block time
                 // have passed. this turns down the volume of empty blocks
-
-                let now = Timestamp::now();
-                if block_payload.count(None) == 0 {
+                let is_empty_proposal = {
+                    let lacks_transactions = block_payload.count(None) == 0;
+                    // validator will always have their own signature for the previous block
+                    let lacks_signatures =
+                        block_payload.rewarded_signatures().total_signed_count() <= 1;
+                    lacks_transactions && lacks_signatures
+                };
+                if is_empty_proposal {
                     // THIS BEHAVIOR ALLOWS FOR SKIPPING OF EMPTY PROPOSALS
                     if let Some(last_block_time) = self.last_block_time {
                         let threshold_to_force_proposal = last_block_time.saturating_add(

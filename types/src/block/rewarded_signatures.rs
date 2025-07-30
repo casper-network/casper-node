@@ -22,6 +22,17 @@ use tracing::error;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct RewardedSignatures(Vec<SingleBlockRewardedSignatures>);
 
+impl RewardedSignatures {
+    /// Total count of all signed entries.
+    pub fn total_signed_count(&self) -> u32 {
+        let mut count = 0;
+        for entry in &self.0 {
+            count += entry.signed_count();
+        }
+        count
+    }
+}
+
 /// List of identifiers for finality signatures for a particular past block.
 ///
 /// That past block height is current_height - signature_rewards_max_delay, the latter being defined
@@ -60,6 +71,11 @@ impl SingleBlockRewardedSignatures {
         }
 
         result
+    }
+
+    /// Count of signatures.
+    pub fn signed_count(&self) -> u32 {
+        self.0.iter().map(|c| c.count_ones()).sum()
     }
 
     /// Gets the list of validators which signed from a set of recorded finality signaures (`self`)
@@ -101,7 +117,7 @@ impl SingleBlockRewardedSignatures {
     }
 
     /// Unpacks the bytes to bits,
-    /// to get a human readable representation of `PastFinalitySignature`.
+    /// to get a human-readable representation of `PastFinalitySignature`.
     #[doc(hidden)]
     pub fn unpack(&self) -> impl Iterator<Item = u8> + '_ {
         // Returns the bit at the given position (0 or 1):
