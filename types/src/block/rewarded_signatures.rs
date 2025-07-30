@@ -31,6 +31,19 @@ impl RewardedSignatures {
         }
         count
     }
+
+    /// Returns true when signatures count equals or exceeds `target_count`, else false.
+    pub fn has_at_least(&self, target_count: u32) -> bool {
+        let mut count = 0;
+        for entry in &self.0 {
+            count += entry.signed_count();
+            if count >= target_count {
+                // short circuit once criteria met
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// List of identifiers for finality signatures for a particular past block.

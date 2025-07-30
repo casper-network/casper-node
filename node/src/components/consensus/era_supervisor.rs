@@ -829,8 +829,7 @@ impl EraSupervisor {
                 let is_empty_proposal = {
                     let lacks_transactions = block_payload.count(None) == 0;
                     // validator will always have their own signature for the previous block
-                    let lacks_signatures =
-                        block_payload.rewarded_signatures().total_signed_count() <= 1;
+                    let lacks_signatures = block_payload.rewarded_signatures().has_at_least(2);
                     lacks_transactions && lacks_signatures
                 };
                 if is_empty_proposal {
