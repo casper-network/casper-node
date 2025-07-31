@@ -41,6 +41,8 @@ use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
+use casper_types::addressable_entity::NamedKeyValue;
+use casper_types::bytesrepr::FromBytes;
 
 use crate::{
     abi::{CreateResult, ReadInfo},
@@ -192,10 +194,20 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     let value = caller.memory_read(value_ptr, value_size.try_into_wrapped()?)?;
 
     let stored_value = match keyspace {
-        Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
+        Keyspace::State | Keyspace::Context(_)  => {
             let cl_value_any = CLValue::from_components(CLType::Any, value);
             StoredValue::CLValue(cl_value_any)
         }
+        Keyspace::NamedKey(name) => {
+            let (key, remainder) = Key::from_bytes(&value)?;
+            if !remainder.is_empty() {
+
+            }
+
+
+
+            let stored_value = StoredValue::NamedKey(NamedKeyValue::from_concrete_values(, name.clone()))
+        },
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
                 [ENTRY_POINT_PAYMENT_CALLER] => EntryPointPayment::Caller,
