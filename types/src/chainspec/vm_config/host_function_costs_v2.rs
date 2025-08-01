@@ -354,6 +354,7 @@ impl ToBytes for HostFunctionCostsV2 {
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.emit.to_bytes()?);
         ret.append(&mut self.env_info.to_bytes()?);
+        ret.append(&mut self.generic_hash.to_bytes()?);
         Ok(ret)
     }
 
@@ -371,6 +372,7 @@ impl ToBytes for HostFunctionCostsV2 {
             + self.print.serialized_length()
             + self.emit.serialized_length()
             + self.env_info.serialized_length()
+            + self.generic_hash.serialized_length()
     }
 }
 
