@@ -553,6 +553,20 @@ pub fn get_block_time() -> u64 {
     info.block_time
 }
 
+#[inline]
+pub fn generic_hash(data: &[u8], algorithm: usize) -> Result<[u8; 32], CommonResult> {
+    let output = [0; 32];
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_generic_hash(
+            data.as_ptr(),
+            data.len(),
+            output.as_ptr(),
+            algorithm,
+        )
+    };
+    result_from_code(ret).map(|_| output)
+}
+
 #[doc(hidden)]
 pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
     let ret = unsafe {

@@ -34,19 +34,28 @@ use casper_types::{
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, URef, U512,
+    EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package, PackageHash,
+    ProtocolVersion, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
 
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
+use keccak_asm::Digest as KeccakDigest;
+use sha2::Sha256;
+
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
     system::{self, DispatchError, MintTransferArgs},
 };
+
+const DIGEST_LENGTH: usize = 32;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {
@@ -1799,6 +1808,74 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         block_message_count_value,
         message,
     );
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Computes digest hash, using provided algorithm type.
+///
+/// # Arguments
+///
+/// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+/// * `in_size` - size of output pointer
+/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+/// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    in_ptr: u32,
+    in_size: u32,
+    out_ptr: u32,
+    hash_algorithm: u32,
+) -> VMResult<u32> {
+    let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
+
+    // Charge for parameter weights.
+    let generic_hash_host_function = caller.context().config.host_function_costs().generic_hash;
+
+    charge_host_function_call(
+        &mut caller,
+        &generic_hash_host_function,
+        [
+            u64::from(in_ptr),
+            u64::from(in_size),
+            u64::from(out_ptr),
+            u64::from(hash_algorithm),
+        ],
+    )?;
+
+    let hash_algorithm =
+        HashAlgorithm::from_u32(hash_algorithm).ok_or(InternalHostError::TypeConversion)?;
+
+    let hashed_bytes = match hash_algorithm {
+        HashAlgorithm::Blake2b => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+            hasher.update(in_bytes.as_ref());
+            hasher.finalize_variable(&mut result).ok();
+            result
+        }
+        HashAlgorithm::Blake3 => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(in_bytes.as_ref());
+            let hash = hasher.finalize();
+            let hash_bytes: &[u8; DIGEST_LENGTH] = hash.as_bytes();
+            result.copy_from_slice(hash_bytes);
+            result
+        }
+        HashAlgorithm::Sha256 => Sha256::digest(in_bytes).into(),
+        HashAlgorithm::Keccak256 => {
+            use keccak_asm::Keccak256;
+            let mut result = [0u8; DIGEST_LENGTH];
+            let mut hasher = Keccak256::new();
+            KeccakDigest::update(&mut hasher, &in_bytes);
+            let hash = KeccakDigest::finalize(hasher);
+            result.copy_from_slice(&hash);
+            result
+        }
+    };
+
+    caller.memory_write(out_ptr, &hashed_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }
