@@ -905,6 +905,16 @@ mod symbols {
         let ret = with_current_environment(|env| env.casper_env_info(info_ptr, info_size));
         crate::casper::native::handle_ret(ret)
     }
+
+    #[no_mangle]
+    pub extern "C" fn casper_generic_hash(
+        _in_ptr: *const u8,
+        _in_size: u32,
+        _out_ptr: *const u8,
+        _algorithm: u32,
+    ) -> u32 {
+        todo!()
+    }
 }
 
 #[cfg(test)]
