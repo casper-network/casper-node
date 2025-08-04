@@ -1,12 +1,13 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Display, Formatter};
+use serde_bytes::ByteBuf;
 
 use super::{serialization::CalltableSerializationEnvelope, TransactionInvocationTarget};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{
-        Bytes,
+        self, Bytes,
         Error::{self, Formatting},
         FromBytes, ToBytes,
     },
@@ -19,21 +20,23 @@ use datasize::DataSize;
 use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 
 const VM_CASPER_V1_TAG: u8 = 0;
 const VM_CASPER_V2_TAG: u8 = 1;
 const TRANSFERRED_VALUE_INDEX: u16 = 1;
 const SEED_VALUE_INDEX: u16 = 2;
 
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "Session params of a TransactionTarget.")
+    schemars(
+        with = "serde_helpers::TransactionRuntimeParamsSerdeHelper",
+        description = "Session params of a TransactionTarget."
+    )
 )]
-#[serde(deny_unknown_fields)]
 pub enum TransactionRuntimeParams {
     VmCasperV1,
     VmCasperV2 {
@@ -165,6 +168,33 @@ impl Display for TransactionRuntimeParams {
                 "vm-casper-v2 {{ transferred_value: {}, seed: {:?} }}",
                 transferred_value, seed
             ),
+        }
+    }
+}
+
+impl Serialize for TransactionRuntimeParams {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serde_helpers::TransactionRuntimeParamsSerdeHelper::from(self).serialize(serializer)
+        } else {
+            let bytes = self
+                .to_bytes()
+                .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+            ByteBuf::from(bytes).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TransactionRuntimeParams {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let json_helper =
+                serde_helpers::TransactionRuntimeParamsSerdeHelper::deserialize(deserializer)?;
+            TransactionRuntimeParams::try_from(json_helper).map_err(de::Error::custom)
+        } else {
+            let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+            bytesrepr::deserialize::<TransactionRuntimeParams>(bytes)
+                .map_err(|error| de::Error::custom(format!("{:?}", error)))
         }
     }
 }
@@ -435,15 +465,146 @@ impl Debug for TransactionTarget {
     }
 }
 
+mod serde_helpers {
+    use crate::{checksummed_hex, TransactionRuntimeParams};
+    use alloc::string::String;
+    use core::fmt::{Display, Formatter, Result as DisplayResult};
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(crate) enum TransactionRuntimeParamsSerdeHelper {
+        VmCasperV1,
+        VmCasperV2 {
+            /// The amount of motes to transfer before code is executed.
+            ///
+            /// This is for protection against phishing attack where a malicious session code
+            /// drains the balance of the caller account. The amount stated here is the
+            /// maximum amount that can be transferred from the caller account to the
+            /// session account.
+            transferred_value: u64,
+            /// The seed for the session code that is used for an installer.
+            seed: Option<String>,
+        },
+    }
+
+    pub(crate) enum TransactionRuntimeParamsDeserializationError {
+        SeedDecodeError(String),
+        WrongSeedLength(u32),
+    }
+
+    impl Display for TransactionRuntimeParamsDeserializationError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> DisplayResult {
+            match self {
+                TransactionRuntimeParamsDeserializationError::SeedDecodeError(s) => {
+                    write!(
+                        f,
+                        "Error when trying to deserialize TransactionRuntimeParams: {}",
+                        s
+                    )
+                }
+                TransactionRuntimeParamsDeserializationError::WrongSeedLength(l) => write!(
+                    f,
+                    "Error when trying to deserialize TransactionRuntimeParams: given `seed` field has unexpected length. Expected hex-encoded 32 bytes array, got {} bytes",
+                    l
+                ),
+            }
+        }
+    }
+
+    impl TryFrom<TransactionRuntimeParamsSerdeHelper> for TransactionRuntimeParams {
+        type Error = TransactionRuntimeParamsDeserializationError;
+
+        fn try_from(value: TransactionRuntimeParamsSerdeHelper) -> Result<Self, Self::Error> {
+            match value {
+                TransactionRuntimeParamsSerdeHelper::VmCasperV1 => {
+                    Ok(TransactionRuntimeParams::VmCasperV1)
+                }
+                TransactionRuntimeParamsSerdeHelper::VmCasperV2 {
+                    transferred_value,
+                    seed,
+                } => {
+                    let seed = if let Some(seed) = seed {
+                        let vec = checksummed_hex::decode(seed).map_err(|e| {
+                            TransactionRuntimeParamsDeserializationError::SeedDecodeError(format!(
+                                "{}",
+                                e
+                            ))
+                        })?;
+                        let arr = <[u8; 32]>::try_from(vec).map_err(|e| {
+                            TransactionRuntimeParamsDeserializationError::WrongSeedLength(
+                                e.len() as u32
+                            )
+                        })?;
+                        Some(arr)
+                    } else {
+                        None
+                    };
+                    Ok(TransactionRuntimeParams::VmCasperV2 {
+                        transferred_value,
+                        seed,
+                    })
+                }
+            }
+        }
+    }
+
+    impl From<&TransactionRuntimeParams> for TransactionRuntimeParamsSerdeHelper {
+        fn from(value: &TransactionRuntimeParams) -> Self {
+            match value {
+                TransactionRuntimeParams::VmCasperV1 => {
+                    TransactionRuntimeParamsSerdeHelper::VmCasperV1
+                }
+                TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value,
+                    seed,
+                } => TransactionRuntimeParamsSerdeHelper::VmCasperV2 {
+                    transferred_value: *transferred_value,
+                    seed: seed.map(hex::encode),
+                },
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, gens::transaction_target_arb};
+    use crate::{
+        bytesrepr,
+        gens::{transaction_stored_runtime_params_arb, transaction_target_arb},
+        TransactionRuntimeParams,
+    };
     use proptest::prelude::*;
+    use serde_json::json;
 
     proptest! {
         #[test]
         fn generative_bytesrepr_roundtrip(val in transaction_target_arb()) {
             bytesrepr::test_serialization_roundtrip(&val);
         }
+
+        #[test]
+        fn transaction_runtime_params_bytesrepr_roundtrip(val in transaction_stored_runtime_params_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
+        }
+    }
+
+    #[test]
+    fn should_correctly_serialize_seed_for_vm2() {
+        let to_serialize = TransactionRuntimeParams::VmCasperV2 {
+            transferred_value: u64::MAX,
+            seed: Some([1; 32]),
+        };
+        let serialized = serde_json::to_string(&to_serialize).expect("Expect serialization");
+        let serialized_value = serde_json::from_str::<serde_json::Value>(&serialized)
+            .expect("expected to transform to value");
+        let expected = json!({ "VmCasperV2": json!({
+            "transferred_value": u64::MAX,
+            "seed": "0101010101010101010101010101010101010101010101010101010101010101"
+        })});
+        assert_eq!(expected, serialized_value);
+        let trp: TransactionRuntimeParams =
+            serde_json::from_str(&serialized).expect("Expect deserialization");
+        assert_eq!(trp, to_serialize);
     }
 }
