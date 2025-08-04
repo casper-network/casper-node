@@ -8,6 +8,32 @@ use casper_contract_sdk::contrib::cep18::{
     Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
 };
 
+#[repr(C)]
+pub struct StableKey<T> {
+    name: &'static str,
+    _marker: marker::PhantomData<T>,
+}
+
+impl<T> StableKey<T> {
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            _marker: marker::PhantomData,
+        }
+    }
+
+    pub fn write(&self, value: T) {
+        todo!()
+    }
+
+    pub fn read(&self) -> T {
+        todo!()
+    }
+}
+
+#[casper]
+const EXAMPLE_STABLE_KEY: StableKey<String> = StableKey::new("some key value");
+
 #[casper(contract_state)]
 pub struct TokenContract {
     state: CEP18State,

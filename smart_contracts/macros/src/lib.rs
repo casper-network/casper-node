@@ -7,8 +7,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
-    LitStr, Type,
+    parse_macro_input, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemUnion, LitStr, Type
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -138,6 +137,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         match func_meta {
             ItemFnMeta::Export => generate_export_function(&func),
         }
+    } else if let Ok(constant) = syn::parse::<ItemConst>(item.clone()) {
+        let err = syn::Error::new(
+            Span::call_site(),
+            "Stable key constants are WIP",
+        );
+        TokenStream::from(err.to_compile_error())
     } else {
         let err = syn::Error::new(
             Span::call_site(),
