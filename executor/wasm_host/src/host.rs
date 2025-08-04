@@ -55,8 +55,6 @@ use crate::{
     system::{self, DispatchError, MintTransferArgs},
 };
 
-const DIGEST_LENGTH: usize = 32;
-
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {
     Account = 0,
@@ -1824,9 +1822,11 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
     in_ptr: u32,
     in_size: u32,
-    out_ptr: u32,
     hash_algorithm: u32,
+    out_ptr: u32,
 ) -> VMResult<u32> {
+    const DIGEST_LENGTH: usize = 32;
+
     let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
 
     // Charge for parameter weights.
