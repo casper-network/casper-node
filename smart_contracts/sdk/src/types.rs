@@ -1,15 +1,40 @@
-use casper_executor_wasm_common::error::{
+use core::marker::PhantomData;
+
+use casper_executor_wasm_common::{error::{
     CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
-};
+}, keyspace::Keyspace};
 
 use crate::{
-    abi::{CasperABI, Declaration, Definition, EnumVariant},
-    prelude::fmt,
-    serializers::borsh::{BorshDeserialize, BorshSerialize},
+    abi::{CasperABI, Declaration, Definition, EnumVariant}, casper, prelude::fmt, serializers::borsh::{BorshDeserialize, BorshSerialize}
 };
 
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
+
+#[repr(C)]
+pub struct StableKey<T: BorshSerialize + BorshDeserialize> {
+    name: &'static str,
+    _marker: PhantomData<T>,
+}
+
+impl<T: BorshSerialize + BorshDeserialize> StableKey<T> {
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn write(&self, value: T) {
+        let bytes = borsh::to_vec(&value).unwrap();
+        casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();
+    }
+
+    pub fn read(&self) -> Option<T> {
+        let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
+        borsh::from_slice(&bytes).unwrap()
+    }
+}
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
