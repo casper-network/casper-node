@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 
 use crate::serializers::borsh::{
     io::{self, Read},
@@ -107,9 +107,13 @@ macro_rules! impl_cltyped_for {
 
 impl_cltyped_for! {
     bool => CLType::Bool,
+    i8 => CLType::Any, // No variant exists
+    i16 => CLType::Any, // No variant exists
     i32 => CLType::I32,
     i64 => CLType::I64,
+    i128 => CLType::Any, // No variant exists
     u8 => CLType::U8,
+    u16 => CLType::Any, // No variant exists
     u32 => CLType::U32,
     u64 => CLType::U64,
     u128 => CLType::U128,
@@ -132,13 +136,19 @@ impl<T: CLTyped> CLTyped for Vec<T> {
     }
 }
 
+impl<T: CLTyped> CLTyped for LinkedList<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
+    }
+}
+
 impl<T: CLTyped> CLTyped for BTreeSet<T> {
     fn cl_type() -> CLType {
         CLType::List(Box::new(T::cl_type()))
     }
 }
 
-impl<T: CLTyped> CLTyped for &T {
+impl<T: ?Sized + CLTyped> CLTyped for &T {
     fn cl_type() -> CLType {
         T::cl_type()
     }
@@ -147,6 +157,24 @@ impl<T: CLTyped> CLTyped for &T {
 impl<const COUNT: usize> CLTyped for [u8; COUNT] {
     fn cl_type() -> CLType {
         CLType::ByteArray(COUNT as u32)
+    }
+}
+
+impl<const COUNT: usize> CLTyped for [u16; COUNT] {
+    fn cl_type() -> CLType {
+        CLType::ByteArray((COUNT * 2) as u32)
+    }
+}
+
+impl<const COUNT: usize> CLTyped for [u32; COUNT] {
+    fn cl_type() -> CLType {
+        CLType::ByteArray((COUNT * 4) as u32)
+    }
+}
+
+impl<const COUNT: usize> CLTyped for [u64; COUNT] {
+    fn cl_type() -> CLType {
+        CLType::ByteArray((COUNT * 8) as u32)
     }
 }
 
@@ -163,6 +191,20 @@ impl<K: CLTyped, V: CLTyped> CLTyped for BTreeMap<K, V> {
         let key = Box::new(K::cl_type());
         let value = Box::new(V::cl_type());
         CLType::Map { key, value }
+    }
+}
+
+impl<K: CLTyped, V: CLTyped> CLTyped for HashMap<K, V> {
+    fn cl_type() -> CLType {
+        let key = Box::new(K::cl_type());
+        let value = Box::new(V::cl_type());
+        CLType::Map { key, value }
+    }
+}
+
+impl<T: CLTyped> CLTyped for Box<T> {
+    fn cl_type() -> CLType {
+        T::cl_type()
     }
 }
 
@@ -185,6 +227,32 @@ impl<T1: CLTyped, T2: CLTyped, T3: CLTyped> CLTyped for (T1, T2, T3) {
             Box::new(T2::cl_type()),
             Box::new(T3::cl_type()),
         ])
+    }
+}
+
+impl<T1, T2, T3, T4> CLTyped for (T1, T2, T3, T4) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5> CLTyped for (T1, T2, T3, T4, T5) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6> CLTyped for (T1, T2, T3, T4, T5, T6) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7> CLTyped for (T1, T2, T3, T4, T5, T6, T7) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7, T8> CLTyped for (T1, T2, T3, T4, T5, T6, T7, T8) {
+    fn cl_type() -> CLType {
+        CLType::Any
     }
 }
 
@@ -448,5 +516,11 @@ mod tests {
 
         let result_at_limit: Result<CLType, _> = borsh::from_slice(&bytes_at_limit);
         assert!(result_at_limit.is_ok());
+    }
+
+    #[test]
+    fn str_also_implements_cltyped() {
+        assert_eq!(<str>::cl_type(), <String>::cl_type());
+        assert_eq!(<&str>::cl_type(), <String>::cl_type());
     }
 }

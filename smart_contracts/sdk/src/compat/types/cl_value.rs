@@ -12,6 +12,8 @@ pub struct CLValue {
 }
 
 impl CLValue {
+    pub const UNIT: CLValue = CLValue::from_components(CLType::Unit, Bytes::new());
+
     pub const fn from_components(cl_type: CLType, bytes: Bytes) -> Self {
         CLValue { bytes, cl_type }
     }

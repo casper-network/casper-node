@@ -8,7 +8,11 @@ use casper_contract_macros::CasperABI;
 
 #[allow(unused_imports)]
 use crate as casper_contract_sdk;
-use crate::{casper::Entity, macros::casper};
+use crate::{
+    casper::Entity,
+    compat::types::{CLType, CLTyped},
+    macros::casper,
+};
 
 /// The state of the Ownable contract, which contains the owner of the contract.
 #[casper(path = crate)]
@@ -25,7 +29,6 @@ impl Default for OwnableState {
 }
 
 /// Represents the possible errors that can occur during ownership operations.
-#[derive(CasperABI, BorshSerialize, BorshDeserialize)]
 #[casper(path = crate)]
 pub enum OwnableError {
     /// The caller is not authorized to perform the action.

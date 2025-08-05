@@ -8,6 +8,7 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
+pub use ::bytes::Bytes;
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
 

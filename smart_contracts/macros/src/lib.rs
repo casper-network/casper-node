@@ -28,6 +28,8 @@ struct MethodAttribute {
     private: bool,
     #[darling(default)]
     payable: bool,
+    #[darling(default)]
+    abi_convention: Option<syn::Path>,
 }
 
 #[derive(Debug, FromMeta)]
@@ -54,6 +56,8 @@ struct EnumMeta {
 struct TraitMeta {
     path: Option<syn::Path>,
     export: Option<bool>,
+    #[darling(default)]
+    abi_convention: Option<syn::Path>,
 }
 
 #[derive(Debug, FromMeta)]
@@ -358,6 +362,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 }
 
                 let export_name = format_ident!("{}", &func_name);
+                let inner_func_name = format_ident!("__casper_export_inner_{}", &func_name);
 
                 names.push(func_name.clone());
 
@@ -436,13 +441,35 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     }
                 };
 
+                let resolve_abi_convention = match method_attribute.abi_convention {
+                    Some(convention) => {
+                        // If method specifies a convention, then use it
+                        quote! { #convention }
+                    }
+                    None => quote! {
+                        // If method does not specify a convention, resolve to the convention specified at the struct level.
+                        <#struct_name as casper_contract_sdk::serializers::AbiConfig>::DEFAULT_ABI_CONVENTION
+                    },
+                };
+
                 let handle_ret = if never_returns {
                     None
                 } else {
                     match func.sig.output {
                         syn::ReturnType::Default => {
                             // Do not call casper_return if there is no return value
-                            None
+                            Some(quote! {
+                                match #resolve_abi_convention {
+                                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                        // Do nothing as lack of ret is synonymous with returning empty bytes (unit serializes to empty buffer)
+                                    }
+                                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                                        // For a named ABI convention we'd always ret with the bytes of unit CLValue.
+                                        let ret_bytes = casper_contract_sdk::serializers::borsh::to_vec(&casper_contract_sdk::compat::types::CLValue::UNIT).expect("Failed to serialize return CLValue");
+                                        casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
+                                    }
+                                }
+                            })
                         }
                         _ if method_attribute.constructor => {
                             // Constructor does not return serialized state but is expected to save
@@ -456,8 +483,17 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         syn::ReturnType::Type(..) => {
                             // There is a return value so call casper_return.
                             Some(quote! {
-                                let ret_bytes = casper_contract_sdk::serializers::borsh::to_vec(&_ret).unwrap();
-                                casper_contract_sdk::casper::ret(flags, Some(&ret_bytes));
+                                let ret_bytes = match #resolve_abi_convention {
+                                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                        casper_contract_sdk::serializers::borsh::to_vec(&_ret).expect("Failed to serialize return value")
+                                    }
+                                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                                        let ret_clvalue = casper_contract_sdk::compat::types::CLValue::from_t(&_ret).expect("Failed to convert return value to CLValue");
+
+                                        casper_contract_sdk::serializers::borsh::to_vec(&ret_clvalue).expect("Failed to serialize return CLValue")
+                                    }
+                                };
+                                casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
                             })
                         }
                     }
@@ -477,11 +513,11 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                     let input = casper_contract_sdk::prelude::casper::copy_input();
                     let args: Arguments = {
-                        match <#struct_name as casper_contract_sdk::serializers::AbiConvention>::DEFAULT_ABI_CONVENTION {
-                            casper_contract_sdk::serializers::Convention::Positional => {
+                        match #resolve_abi_convention {
+                            casper_contract_sdk::serializers::AbiConvention::Positional => {
                                 casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
                             }
-                            casper_contract_sdk::serializers::Convention::Named => {
+                            casper_contract_sdk::serializers::AbiConvention::Named => {
                                 let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
                                     casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
 
@@ -567,15 +603,15 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     #[export_name = stringify!(#export_name)]
                     #[cfg(target_arch = "wasm32")]
                     #vis extern "C" fn #extern_func_name() {
-                        __casper_export_inner();
+                        #inner_func_name();
                     }
 
                     #[cfg(not(target_arch = "wasm32"))]
                     #vis fn #extern_func_name() {
-                        __casper_export_inner();
+                        #inner_func_name();
                     }
 
-                    fn __casper_export_inner() {
+                    fn #inner_func_name() {
                         // Set panic hook (assumes std is enabled etc.)
                         #[cfg(target_arch = "wasm32")]
                         {
@@ -908,7 +944,7 @@ fn generate_impl_trait_for_contract(
     let ref_trait = format_ident!("{}Ext", trait_path.segments.last().unwrap().ident);
     let ref_name = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
 
-    let visitor = if impl_meta.compile_as_dependency || cfg!(not(feature = "__abi_generator")) {
+    let visitor = if impl_meta.compile_as_dependency {
         quote! {
             const _: () = {
                 macro_rules! visitor {
@@ -918,6 +954,26 @@ fn generate_impl_trait_for_contract(
                             $vis extern "C" fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            const _: () = {
+                                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
+                                #[linkme(crate = casper_contract_sdk::linkme)]
+                                pub static EXPORTS: casper_contract_sdk::casper::native::EntryPoint = casper_contract_sdk::casper::native::EntryPoint {
+                                    kind: casper_contract_sdk::casper::native::EntryPointKind::TraitImpl { trait_name: stringify!(#trait_name), impl_name: stringify!(#self_ty), name: stringify!($export_name) },
+                                    fptr: || -> () { $name(); },
+                                    module_path: module_path!(),
+                                    file: file!(),
+                                    line: line!(),
+                                };
+                            };
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            const _: () = {
+                                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
+                                #[linkme(crate = casper_contract_sdk::linkme)]
+                                static ENTRY_POINTS: fn() -> casper_contract_sdk::schema::SchemaEntryPoint = <#ref_name as #ref_trait>::$schema;
+                            };
                         )*
                     }
                 }
@@ -966,12 +1022,12 @@ fn generate_impl_trait_for_contract(
 
     code.push(visitor);
 
-    let ref_trait = format_ident!("{}Ext", trait_path.require_ident().unwrap());
+    let ext_trait = format_ident!("{}Ext", trait_path.require_ident().unwrap());
 
     let ref_name = format_ident!("{self_ty}Ref");
 
     code.push(quote! {
-        impl #ref_trait for #ref_name {}
+        impl #ext_trait for #ref_name {}
     });
 
     quote! {
@@ -1038,7 +1094,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 let export_ident = format_ident!("{trait_name}_{func_name_str}");
 
-                #[cfg(feature = "__abi_generator")]
+                // #[cfg(feature = "__abi_generator")]
                 let result = match &func.sig.output {
                     syn::ReturnType::Default => {
                         populate_definitions.push(quote! {
@@ -1111,6 +1167,69 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 let _flags = flags.bits();
 
+                let trait_ref = format_ident!("{}Ref", trait_name);
+                let resolve_abi_convention = match method_attribute.abi_convention {
+                    Some(convention) => {
+                        // If method specifies a convention, then use it
+                        quote! { #convention }
+                    }
+                    None => quote! {
+                        // If method does not specify a convention, resolve to the convention specified at the struct level.
+                        <#trait_ref as casper_contract_sdk::serializers::AbiConfig>::DEFAULT_ABI_CONVENTION
+                    },
+                };
+                let never_returns = match &func.sig.output {
+                    syn::ReturnType::Default => false,
+                    syn::ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::Never(_)),
+                };
+
+                let handle_ret = if never_returns {
+                    None
+                } else {
+                    match func.sig.output {
+                        syn::ReturnType::Default => {
+                            // Do not call casper_return if there is no return value
+                            Some(quote! {
+                                match #resolve_abi_convention {
+                                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                        // Do nothing as lack of ret is synonymous with returning empty bytes (unit serializes to empty buffer)
+                                    }
+                                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                                        // For a named ABI convention we'd always ret with the bytes of unit CLValue.
+                                        let ret_bytes = casper_contract_sdk::serializers::borsh::to_vec(&casper_contract_sdk::compat::types::CLValue::UNIT).expect("Failed to serialize return CLValue");
+                                        casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
+                                    }
+                                }
+                            })
+                        }
+                        _ if method_attribute.constructor => {
+                            // Constructor does not return serialized state but is expected to save
+                            // state, or explicitly revert.
+                            // TODO: Add support for Result<Self, Error> and revert_on_error if
+                            // possible.
+                            Some(quote! {
+                                let _ = flags; // hide the warning
+                            })
+                        }
+                        syn::ReturnType::Type(..) => {
+                            // There is a return value so call casper_return.
+                            Some(quote! {
+                                let ret_bytes = match #resolve_abi_convention {
+                                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                        casper_contract_sdk::serializers::borsh::to_vec(&_ret).expect("Failed to serialize return value")
+                                    }
+                                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                                        let ret_clvalue = casper_contract_sdk::compat::types::CLValue::from_t(&_ret).expect("Failed to convert return value to CLValue");
+
+                                        casper_contract_sdk::serializers::borsh::to_vec(&ret_clvalue).expect("Failed to serialize return CLValue")
+                                    }
+                                };
+                                casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
+                            })
+                        }
+                    }
+                };
+
                 let handle_dispatch = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(_receiver)) => {
                         assert!(
@@ -1125,7 +1244,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                     + #crate_path::serializers::borsh::BorshSerialize
                                     + Default
                             {
-                                #[derive(#crate_path::serializers::borsh::BorshDeserialize)]
+
+                                #[derive(#crate_path::serializers::borsh::BorshDeserialize, Debug)]
                                 #[borsh(crate = #borsh_path)]
                                 struct Arguments {
                                     #(#args_attrs,)*
@@ -1134,14 +1254,44 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
                                 let mut instance: T = #crate_path::casper::read_state().unwrap();
                                 let input = #crate_path::prelude::casper::copy_input();
-                                let args: Arguments = #crate_path::serializers::borsh::from_slice(&input).unwrap();
+                                let args: Arguments = {
+                                    match #resolve_abi_convention {
+                                        casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                            // eprintln!("{} Positional ABI convention is deprecated, use Named instead", stringify!(#func_name));
 
-                                let ret = instance.#func_name(#(args.#arg_names,)*);
+                                            casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                                        }
+                                        casper_contract_sdk::serializers::AbiConvention::Named => {
+                                            let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                                                casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                                                // panic!("runtime_args {runtime_args:?}");
+
+                                                //  eprintln!("{} Runtime args {:?}", stringify!(#func_name), &runtime_args);
+                                            #(
+                                                let #arg_names: #arg_types = {
+                                                    let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                                    cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                                        panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                                    })
+                                                };
+                                            )*
+
+                                            Arguments {
+                                                #(
+                                                    #arg_names,
+                                                )*
+                                            }
+                                        }
+                                    }
+                                };
+
+                                let _ret = instance.#func_name(#(args.#arg_names,)*);
 
                                 #crate_path::casper::write_state(&instance).unwrap();
 
-                                let ret_bytes = #crate_path::serializers::borsh::to_vec(&ret).unwrap();
-                                #crate_path::casper::ret(flags, Some(&ret_bytes));
+                                // let ret_bytes = #crate_path::serializers::borsh::to_vec(&ret).unwrap();
+                                // #crate_path::casper::ret(flags, Some(&ret_bytes));
+                                #handle_ret
                             }
                         }
                     }
@@ -1159,21 +1309,46 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                     #(#args_attrs,)*
                                 }
 
-
+                                let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
                                 let input = #crate_path::prelude::casper::copy_input();
-                                let args: Arguments = #crate_path::serializers::borsh::from_slice(&input).unwrap();
+                                let args: Arguments = {
+                                    match #resolve_abi_convention {
+                                        casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                            casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                                        }
+                                        casper_contract_sdk::serializers::AbiConvention::Named => {
+                                            let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                                                casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                                                #(
+                                                    let #arg_names: #arg_types = {
+                                                        let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                                        cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                                            panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                                        })
+                                                    };
+                                                )*
 
-
+                                            Arguments {
+                                                #(
+                                                    #arg_names,
+                                                )*
+                                            }
+                                        }
+                                    }
+                                };
                                 let _ret = <T as #trait_name>::#func_name(#(args.#arg_names,)*);
+
+                                #handle_ret
                             }
                         }
                     }
                 };
 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
-                #[cfg(feature = "__abi_generator")]
+                // if cfg(feature = "__abi_generator")]
                 {
-                    extra_code.push(quote! {
+                    abi_extras.push(quote! {
+                        #[cfg(not(target_arch = "wasm32"))]
                         fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                             casper_contract_sdk::schema::SchemaEntryPoint {
                                 name: stringify!(#export_name).into(),
@@ -1247,6 +1422,21 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
 
+    let abi_conv = match trait_meta.abi_convention {
+        Some(convention) => {
+            quote! {
+                impl #crate_path::serializers::AbiConfig for #ref_struct {
+                    const DEFAULT_ABI_CONVENTION: #crate_path::serializers::AbiConvention = #convention;
+                }
+            }
+        }
+        None => quote! {
+            impl #crate_path::serializers::AbiConfig for #ref_struct {
+               const DEFAULT_ABI_CONVENTION: #crate_path::serializers::AbiConvention = #crate_path::serializers::AbiConvention::Positional;
+            }
+        },
+    };
+
     let maybe_exported_macro = if !trait_meta.export.unwrap_or(false) {
         quote! {
             #[allow(non_snake_case, unused_macros)]
@@ -1288,7 +1478,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
         #(#dispatch_functions)*
 
-        // TODO: Rename Ext with Ref, since Ref struct can be pub(crate)'d
+        #abi_conv
+
         impl #ext_struct_trait for #ref_struct {}
             impl #crate_path::ContractRef for #ref_struct {
                 fn new() -> Self {
@@ -1325,11 +1516,19 @@ fn generate_casper_state_for_struct(
     };
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
 
+    let struct_name = &item_struct.ident;
+
     quote! {
         #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #item_struct
+
+        impl #crate_path::compat::types::CLTyped for #struct_name {
+            fn cl_type() -> #crate_path::compat::types::CLType {
+                #crate_path::compat::types::CLType::Any
+            }
+        }
     }
 }
 
@@ -1355,26 +1554,28 @@ fn generate_casper_state_for_enum(
 
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
 
+    let enum_name = &item_enum.ident;
+
     quote! {
         #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
         #[borsh(use_discriminant = true, crate = #borsh_path)]
         #[repr(u32)]
         #maybe_derive_abi
         #item_enum
+
+        impl #crate_path::compat::types::CLTyped for #enum_name {
+            fn cl_type() -> #crate_path::compat::types::CLType {
+                #crate_path::compat::types::CLType::Any
+            }
+        }
     }
 }
 
 fn get_maybe_derive_abi(_crate_path: impl ToTokens) -> impl ToTokens {
-    #[cfg(feature = "__abi_generator")]
     {
         quote! {
-            #[derive(#_crate_path::macros::CasperABI)]
+            #[cfg_attr(not(target_arch = "wasm32"), derive(#_crate_path::macros::CasperABI))]
         }
-    }
-
-    #[cfg(not(feature = "__abi_generator"))]
-    {
-        quote! {}
     }
 }
 
@@ -1423,18 +1624,18 @@ fn process_casper_contract_state_for_struct(
     };
 
     // let convention = struct_meta.abi_convention.unwrap_or(quote! {
-    // #crate_path::serializers::Convention::Positional });
+    // #crate_path::serializers::AbiConvention::Positional });
     let abi_conv = match struct_meta.abi_convention {
         Some(convention) => {
             quote! {
-                impl #crate_path::serializers::AbiConvention for #struct_name {
-                    const DEFAULT_ABI_CONVENTION: #crate_path::serializers::Convention = #convention;
+                impl #crate_path::serializers::AbiConfig for #struct_name {
+                    const DEFAULT_ABI_CONVENTION: #crate_path::serializers::AbiConvention = #convention;
                 }
             }
         }
         None => quote! {
-            impl #crate_path::serializers::AbiConvention for #struct_name {
-               const DEFAULT_ABI_CONVENTION: #crate_path::serializers::Convention = #crate_path::serializers::Convention::Positional;
+            impl #crate_path::serializers::AbiConfig for #struct_name {
+               const DEFAULT_ABI_CONVENTION: #crate_path::serializers::AbiConvention = #crate_path::serializers::AbiConvention::Positional;
             }
         },
     };
@@ -1456,6 +1657,12 @@ fn process_casper_contract_state_for_struct(
         }
 
         #maybe_casper_schema
+
+        impl #crate_path::compat::types::CLTyped for #struct_name {
+            fn cl_type() -> #crate_path::compat::types::CLType {
+                #crate_path::compat::types::CLType::Any
+            }
+        }
     }
     .into()
 }

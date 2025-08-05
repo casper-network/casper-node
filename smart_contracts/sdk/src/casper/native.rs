@@ -121,15 +121,17 @@ impl fmt::Debug for EntryPoint {
 /// This function is used to invoke an export by its name regardless of its location in the smart
 /// contract.
 pub fn invoke_export_by_name(name: &str) {
-    let exports_by_name: Vec<_> = ENTRY_POINTS
+    let all_entry_points = ENTRY_POINTS.iter().collect::<Vec<_>>();
+
+    let exports_by_name: Vec<_> = all_entry_points
         .iter()
         .filter(|export| export.kind.name() == name)
         .collect();
 
     if exports_by_name.len() != 1 {
         panic!(
-            "Expected exactly one export {} found, but got {:?}",
-            name, exports_by_name
+            "Expected exactly one export {} found, but got {:?} ({:?})",
+            name, exports_by_name, all_entry_points
         );
     }
 

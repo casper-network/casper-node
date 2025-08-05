@@ -37,8 +37,10 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, BlockHash, Digest, EntityAddr,
-    Key, StoredValue, Timestamp,
+    account::AccountHash, execution::RetValue, BlockHash, ChainspecRegistry, Digest, EntityAddr,
+    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
+    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -769,8 +771,8 @@ fn casper_return_writes_to_execution_journal() {
         casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
             assert_eq!(
-                &bytes.to_bytes().expect("must get to bytes"),
-                &[1, 2, 3],
+                bytes,
+                &RetValue::Bytes([1, 2, 3].to_vec().into()),
                 "Return data should match what was passed to casper::ret"
             );
         }

@@ -3,6 +3,7 @@ pub mod native;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
+    compat::types::{CLType, CLTyped},
     prelude::{
         ffi::c_void,
         marker::PhantomData,
@@ -431,6 +432,12 @@ pub fn get_callee() -> Entity {
 pub enum Entity {
     Account([u8; 32]),
     Contract([u8; 32]),
+}
+
+impl CLTyped for Entity {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
 }
 
 impl Entity {

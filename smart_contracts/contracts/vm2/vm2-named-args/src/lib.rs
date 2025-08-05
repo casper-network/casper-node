@@ -4,17 +4,38 @@
 use casper_contract_sdk::{
     compat::types::{CLType, CLValue, RuntimeArgs},
     prelude::*,
-    serializers::Convention,
+    serializers::AbiConvention,
 };
+
+#[casper(abi_convention = AbiConvention::Named)]
+pub trait ContractTrait {
+    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32;
+}
 
 /// This contract implements a simple flipper.
 #[derive(PanicOnDefault)]
-#[casper(contract_state, abi_convention = Convention::Named)]
+#[casper(contract_state, abi_convention = AbiConvention::Named)]
 pub struct Contract;
 
 #[casper]
 impl Contract {
     pub fn add_with_default_abi_convention(a: u32, b: u32) -> u32 {
+        a + b
+    }
+
+    pub fn unit_ret_value_with_default_abi_convention() {
+        // This function returns a unit value, which is compatible with the default ABI convention.
+    }
+
+    #[casper(abi_convention = AbiConvention::Positional)]
+    pub fn add_with_overriden_abi_convention(a: u32, b: u32, c: u32) -> u32 {
+        a + b + c
+    }
+}
+
+#[casper]
+impl ContractTrait for Contract {
+    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32 {
         a + b
     }
 }
@@ -24,8 +45,7 @@ mod tests {
     use super::*;
     use casper_contract_sdk::{
         casper::native::{self, Environment, NativeTrap},
-        casper_executor_wasm_common::flags::ReturnFlags,
-        serializers::{borsh, AbiConvention},
+        serializers::{borsh, AbiConfig},
     };
 
     #[test]
@@ -39,7 +59,7 @@ mod tests {
 
         let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
 
-        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, Convention::Named);
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
 
         // This should panic with the expected message
         native::dispatch_with(env, || {
@@ -56,7 +76,7 @@ mod tests {
 
         let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
 
-        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, Convention::Named);
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
 
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
             native::invoke_export_by_name("add_with_default_abi_convention")
@@ -65,6 +85,66 @@ mod tests {
             panic!("expected ret")
         };
 
+        let ret_clvalue: CLValue =
+            borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
+        assert_eq!(ret_clvalue.cl_type(), &CLType::U32);
+        assert_eq!(ret_clvalue.to_t::<u32>().unwrap(), 579);
+    }
+
+    #[test]
+    fn test_named_convention_with_unit_ret() {
+        let mut runtime_args = RuntimeArgs::new();
+        let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
+
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
+
+        let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
+            native::invoke_export_by_name("unit_ret_value_with_default_abi_convention")
+        })
+        .unwrap_err() else {
+            panic!("expected ret")
+        };
+
+        let ret_clvalue: CLValue =
+            borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
+        assert_eq!(ret_clvalue, CLValue::UNIT);
+    }
+
+    #[test]
+    fn test_calls_overriden_convnention() {
+        let args = (123u32, 456u32, 789u32);
+
+        let env = Environment::default().with_input_data(borsh::to_vec(&args).unwrap());
+
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
+
+        let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
+            native::invoke_export_by_name("add_with_overriden_abi_convention")
+        })
+        .unwrap_err() else {
+            panic!("expected ret")
+        };
+
+        let ret_value: u32 =
+            borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
+        assert_eq!(ret_value, 123 + 456 + 789);
+    }
+
+    #[test]
+    fn trait_method_has_different_convention() {
+        let mut runtime_args = RuntimeArgs::new();
+        runtime_args.insert("a", 123u32).unwrap();
+        runtime_args.insert("b", 456u32).unwrap();
+
+        let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
+
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
+        let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
+            native::invoke_export_by_name("trait_add_with_default_abi_convention")
+        })
+        .unwrap_err() else {
+            panic!("expected ret")
+        };
         let ret_clvalue: CLValue =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
         assert_eq!(ret_clvalue.cl_type(), &CLType::U32);

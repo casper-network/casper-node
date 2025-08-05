@@ -2,7 +2,7 @@ pub use ::borsh;
 
 /// Input/output serialization conventions for the SDK.
 #[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Convention {
+pub enum AbiConvention {
     /// Treats input bytes as a concatenated sequence of positional arguments.
     ///
     /// I.e. `borsh::to_vec(&(arg1, arg2, arg3))`.
@@ -14,9 +14,11 @@ pub enum Convention {
     /// `Vec<(String, CLValue)>`.
     ///
     /// Each argument will be dispatched by its name.
+    ///
+    /// For a return value it will wrap a return value in a `CLValue`.
     Named,
 }
 
-pub trait AbiConvention {
-    const DEFAULT_ABI_CONVENTION: Convention;
+pub trait AbiConfig {
+    const DEFAULT_ABI_CONVENTION: AbiConvention;
 }
