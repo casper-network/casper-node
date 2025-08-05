@@ -16,11 +16,15 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     crypto,
 };
+#[cfg(feature = "json-schema")]
+use crate::{transaction::transaction_v1::fields_container::build_raw_payloads_map, PublicKey};
 #[cfg(any(feature = "std", test))]
 use crate::{
     TransactionEntryPoint, TransactionTarget, TransactionV1Config, AUCTION_LANE_ID,
     INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
+#[cfg(feature = "json-schema")]
+use crate::{TransactionScheduling, URef};
 #[cfg(any(test, feature = "testing"))]
 use alloc::collections::BTreeMap;
 use alloc::{collections::BTreeSet, vec::Vec};
@@ -31,6 +35,8 @@ use errors_v1::FieldDeserializationError;
 use fields_container::FieldsContainer;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use fields_container::{ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY};
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(any(feature = "testing", test))]
@@ -71,6 +77,54 @@ use core::{
 const HASH_FIELD_INDEX: u16 = 0;
 const PAYLOAD_FIELD_INDEX: u16 = 1;
 const APPROVALS_FIELD_INDEX: u16 = 2;
+
+#[cfg(feature = "json-schema")]
+pub(super) static TRANSACTION_V1: Lazy<TransactionV1> = Lazy::new(|| {
+    let secret_key = SecretKey::example();
+    let source = URef::from_formatted_str(
+        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+    )
+    .unwrap();
+    let target = URef::from_formatted_str(
+        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+    )
+    .unwrap();
+    let id = Some(999);
+    let amount = 30_000_000_000_u64;
+    let args = arg_handling::new_transfer_args(amount, Some(source), target, id).unwrap();
+    let transaction_args = TransactionArgs::Named(args);
+    let transaction_target = TransactionTarget::Native;
+    let transaction_entry_point = TransactionEntryPoint::Transfer;
+    let transaction_scheduling = TransactionScheduling::Standard;
+    let pricing_mode = PricingMode::Fixed {
+        gas_price_tolerance: 5,
+        additional_computation_factor: 0,
+    };
+    let fields = build_raw_payloads_map(
+        &transaction_args,
+        &transaction_target,
+        &transaction_entry_point,
+        &transaction_scheduling,
+    )
+    .unwrap();
+    let initiator_addr = InitiatorAddr::PublicKey(PublicKey::from(secret_key));
+    let transaction_v1_payload = TransactionV1Payload::new(
+        "casper-example".to_owned(),
+        *Timestamp::example(),
+        TimeDiff::from_seconds(3_600),
+        pricing_mode,
+        initiator_addr,
+        fields,
+    );
+    let hash = Digest::hash(
+        transaction_v1_payload
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+    );
+    let mut transaction = TransactionV1::new(hash.into(), transaction_v1_payload, BTreeSet::new());
+    transaction.sign(secret_key);
+    transaction
+});
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -517,6 +571,13 @@ impl TransactionV1 {
                 0u8
             }
         }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TRANSACTION_V1
     }
 }
 
