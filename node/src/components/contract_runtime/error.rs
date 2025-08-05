@@ -6,7 +6,6 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_execution_engine::engine_state::Error as Vm1Error;
-use casper_executor_wasm_interface::InternalHostError;
 use casper_storage::{
     data_access_layer::{
         forced_undelegate::ForcedUndelegateError, BlockRewardsError, FeeError, StepError,
@@ -194,6 +193,4 @@ pub enum BlockExecutionError {
     InvalidTransactionArgs,
     #[error("Data Access Layer conflicts with chainspec setting: {0}")]
     InvalidAESetting(bool),
-    #[error("Catastrophic failure raised by VM2: {0}")]
-    Vm2InternalError(InternalHostError),
 }
