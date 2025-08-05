@@ -138,11 +138,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
             ItemFnMeta::Export => generate_export_function(&func),
         }
     } else if let Ok(constant) = syn::parse::<ItemConst>(item.clone()) {
-        let err = syn::Error::new(
-            Span::call_site(),
-            "Stable key constants are WIP",
-        );
-        TokenStream::from(err.to_compile_error())
+        process_casper_stable_key_constant(&constant)
     } else {
         let err = syn::Error::new(
             Span::call_site(),
@@ -1405,6 +1401,183 @@ fn process_casper_contract_state_for_struct(
         }
 
         #maybe_casper_schema
+    }
+    .into()
+}
+
+fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
+    let _const_name = &constant.ident;
+    let const_value = &constant.expr;
+    
+    // Parse the StableKey::new("key_name") expression to extract the key name
+    let key_name = match const_value.as_ref() {
+        syn::Expr::Call(call) => {
+            if let syn::Expr::Path(path) = &*call.func {
+                if path.path.segments.last().map(|s| s.ident.to_string()) == Some("new".to_string()) {
+                    if let Some(syn::Expr::Lit(lit)) = call.args.first() {
+                        if let syn::Lit::Str(lit_str) = &lit.lit {
+                            lit_str.value()
+                        } else {
+                            return TokenStream::from(
+                                syn::Error::new(
+                                    Span::call_site(),
+                                    "StableKey::new() must be called with a string literal",
+                                )
+                                .to_compile_error(),
+                            );
+                        }
+                    } else {
+                        return TokenStream::from(
+                            syn::Error::new(
+                                Span::call_site(),
+                                "StableKey::new() must be called with a string literal",
+                            )
+                            .to_compile_error(),
+                        );
+                    }
+                } else {
+                    return TokenStream::from(
+                        syn::Error::new(
+                            Span::call_site(),
+                            "Expected StableKey::new() call",
+                        )
+                        .to_compile_error(),
+                    );
+                }
+            } else {
+                return TokenStream::from(
+                    syn::Error::new(
+                        Span::call_site(),
+                        "Expected StableKey::new() call",
+                    )
+                    .to_compile_error(),
+                );
+            }
+        }
+        _ => {
+            return TokenStream::from(
+                syn::Error::new(
+                    Span::call_site(),
+                    "Expected StableKey::new() call",
+                )
+                .to_compile_error(),
+            );
+        }
+    };
+
+    // Extract the type parameter from the StableKey<T> type
+    let type_param = match &*constant.ty {
+        syn::Type::Path(path) => {
+            if let Some(segment) = path.path.segments.last() {
+                if segment.ident.to_string() == "StableKey" {
+                    if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                        if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
+                            ty
+                        } else {
+                            return TokenStream::from(
+                                syn::Error::new(
+                                    Span::call_site(),
+                                    "StableKey must have a type parameter",
+                                )
+                                .to_compile_error(),
+                            );
+                        }
+                    } else {
+                        return TokenStream::from(
+                            syn::Error::new(
+                                Span::call_site(),
+                                "StableKey must have a type parameter",
+                            )
+                            .to_compile_error(),
+                        );
+                    }
+                } else {
+                    return TokenStream::from(
+                        syn::Error::new(
+                            Span::call_site(),
+                            "Expected StableKey type",
+                        )
+                        .to_compile_error(),
+                    );
+                }
+            } else {
+                return TokenStream::from(
+                    syn::Error::new(
+                        Span::call_site(),
+                        "Expected StableKey type",
+                    )
+                    .to_compile_error(),
+                );
+            }
+        }
+        _ => {
+            return TokenStream::from(
+                syn::Error::new(
+                    Span::call_site(),
+                    "Expected StableKey type",
+                )
+                .to_compile_error(),
+            );
+        }
+    };
+
+    let crate_path = quote! { casper_contract_sdk };
+    let key_name_lit = syn::LitStr::new(&key_name, Span::call_site());
+    
+    // For now, hardcode the declaration based on the type
+    // In a more sophisticated implementation, we could match on the type
+    let type_decl = match type_param.to_token_stream().to_string().as_str() {
+        "String" => "String",
+        "u64" => "u64",
+        "u32" => "u32",
+        "u16" => "u16",
+        "u8" => "u8",
+        "i64" => "i64",
+        "i32" => "i32",
+        "i16" => "i16",
+        "i8" => "i8",
+        "bool" => "bool",
+        _ => "String", // Default fallback
+    };
+    let type_decl_lit = syn::LitStr::new(type_decl, Span::call_site());
+
+    let maybe_stable_key_collector;
+    let maybe_stable_key_def;
+
+    #[cfg(feature = "__abi_generator")]
+    {
+        maybe_stable_key_collector = quote! {
+            const _: () = {
+                #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::ABI_COLLECTORS)]
+                #[linkme(crate = #crate_path::linkme)]
+                static COLLECTOR: fn(&mut #crate_path::abi::Definitions) = |defs| {
+                    defs.populate_one::<#type_param>();
+                };
+            };
+        };
+
+        maybe_stable_key_def = quote! {
+            const _: () = {
+                #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::STABLE_KEYS)]
+                #[linkme(crate = #crate_path::linkme)]
+                static STABLE_KEY: #crate_path::abi_generator::StableKey = #crate_path::abi_generator::StableKey {
+                    name: #key_name_lit,
+                    decl: #type_decl_lit,
+                };
+            };
+        };
+    }
+    #[cfg(not(feature = "__abi_generator"))]
+    {
+        maybe_stable_key_collector = quote! {};
+        maybe_stable_key_def = quote! {};
+    }
+
+    quote! {
+        #constant
+
+        #maybe_stable_key_collector
+        #maybe_stable_key_def
     }
     .into()
 }

@@ -1,5 +1,5 @@
 use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState}, prelude::*, types::U256
+    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState}, prelude::*, types::{StableKey, U256}
 };
 
 use casper_contract_sdk::contrib::cep18::{
