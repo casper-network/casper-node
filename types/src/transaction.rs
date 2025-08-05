@@ -20,8 +20,6 @@ mod transaction_target;
 mod transaction_v1;
 mod transfer_target;
 
-#[cfg(feature = "json-schema")]
-use crate::URef;
 use alloc::{
     collections::BTreeSet,
     string::{String, ToString},
@@ -84,8 +82,6 @@ pub use transaction_id::TransactionId;
 pub use transaction_invocation_target::TransactionInvocationTarget;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
-#[cfg(feature = "json-schema")]
-pub(crate) use transaction_v1::arg_handling;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
@@ -98,40 +94,8 @@ const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
 #[cfg(feature = "json-schema")]
-pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
-    let secret_key = SecretKey::example();
-    let source = URef::from_formatted_str(
-        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-    )
-    .unwrap();
-    let target = URef::from_formatted_str(
-        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-    )
-    .unwrap();
-    let id = Some(999);
-    let amount = 30_000_000_000_u64;
-    let args = arg_handling::new_transfer_args(amount, Some(source), target, id).unwrap();
-    let container = FieldsContainer::new(
-        TransactionArgs::Named(args),
-        TransactionTarget::Native,
-        TransactionEntryPoint::Transfer,
-        TransactionScheduling::Standard,
-    );
-    let pricing_mode = PricingMode::Fixed {
-        gas_price_tolerance: 5,
-        additional_computation_factor: 0,
-    };
-    let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(secret_key);
-    let v1_txn = TransactionV1::build(
-        "casper-example".to_string(),
-        *Timestamp::example(),
-        TimeDiff::from_seconds(3_600),
-        pricing_mode,
-        container.to_map().unwrap(),
-        initiator_addr_and_secret_key,
-    );
-    Transaction::V1(v1_txn)
-});
+pub(super) static TRANSACTION: Lazy<Transaction> =
+    Lazy::new(|| Transaction::V1(TransactionV1::example().clone()));
 
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
