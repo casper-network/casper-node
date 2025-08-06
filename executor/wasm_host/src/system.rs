@@ -2,25 +2,45 @@
 //!
 //! This module wraps system contract logic into a dispatcher that can be used by the new engine
 //! hiding the complexity of the underlying implementation.
+
+mod activate_bid;
+mod add_bid;
+mod add_reservations;
+mod cancel_reservations;
+mod change_bid_public_key;
+mod create_purse;
+mod delegate;
+mod redelegate;
+mod transfer;
+mod undelegate;
+mod withdraw_bid;
+
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::{InternalHostError, VMError, VMResult};
+use casper_executor_wasm_interface::InternalHostError;
 use casper_storage::{
     global_state::GlobalStateReader,
-    system::{
-        mint::Mint,
-        runtime_native::{Id, RuntimeNative},
-    },
+    system::runtime_native::{Id, RuntimeNative},
     tracking_copy::TrackingCopyError,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
-use casper_types::{
-    account::AccountHash, CLValueError, Phase, TransactionHash, URef, METHOD_TRANSFER, U512,
-};
+use casper_types::{CLValueError, Phase, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::error;
+
+pub use activate_bid::{activate_bid, ActivateBidArgs};
+pub use add_bid::{add_bid, AddBidArgs};
+pub use add_reservations::{add_reservations, AddReservationsArgs};
+pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
+pub use change_bid_public_key::{change_bid_public_key, ChangeBidPublicKeyArgs};
+pub use create_purse::create_purse;
+pub use delegate::{delegate, DelegateArgs};
+pub use redelegate::{redelegate, RedelegateArgs};
+pub use transfer::{transfer, TransferArgs};
+pub use undelegate::{undelegate, UndelegateArgs};
+pub use withdraw_bid::{withdraw_bid, WithdrawBidArgs};
 
 #[derive(Debug, Error)]
 pub enum DispatchError {
@@ -80,110 +100,6 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     );
 
     Ok(ret)
-}
-
-pub fn create_purse<R: GlobalStateReader>(
-    tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    transaction_hash: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
-) -> VMResult<URef> {
-    let mint_result = match dispatch_system_contract(
-        tracking_copy,
-        runtime_native_config,
-        transaction_hash,
-        address_generator,
-        |mut runtime| runtime.mint(U512::zero()),
-    ) {
-        Ok(mint_result) => mint_result,
-        Err(error) => {
-            error!(%error, "create purse failed on dispatch");
-            return Err(VMError::Internal(InternalHostError::DispatchSystemContract));
-        }
-    };
-
-    match mint_result {
-        Ok(uref) => Ok(uref),
-        Err(casper_types::system::mint::Error::GasLimit) => Err(VMError::OutOfGas),
-        Err(mint_error) => {
-            error!(%mint_error, "create purse failed with error");
-            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct MintTransferArgs {
-    maybe_to: Option<AccountHash>,
-    source: URef,
-    target: URef,
-    amount: U512,
-    id: Option<u64>,
-}
-
-impl MintTransferArgs {
-    pub fn new_simple(source: URef, target: URef, amount: U512) -> Self {
-        MintTransferArgs {
-            source,
-            target,
-            amount,
-            maybe_to: None,
-            id: None,
-        }
-    }
-}
-
-pub fn transfer<R: GlobalStateReader>(
-    tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    id: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
-    args: MintTransferArgs,
-) -> Result<(), DispatchError> {
-    let transfer_result: Result<(), casper_types::system::mint::Error> =
-        match dispatch_system_contract(
-            tracking_copy,
-            runtime_native_config,
-            id,
-            address_generator,
-            |mut runtime| {
-                let MintTransferArgs {
-                    maybe_to,
-                    source,
-                    target,
-                    amount,
-                    id,
-                } = args;
-
-                runtime.transfer(maybe_to, source, target, amount, id)
-            },
-        ) {
-            Ok(result) => result,
-            Err(error) => {
-                error!(%error, "transfer failed on dispatch");
-                return Err(DispatchError::Internal(
-                    InternalHostError::DispatchSystemContract,
-                ));
-            }
-        };
-
-    debug!(?args, ?transfer_result, METHOD_TRANSFER);
-
-    match transfer_result {
-        Ok(()) => Ok(()),
-        Err(casper_types::system::mint::Error::InsufficientFunds) => {
-            Err(DispatchError::Call(CallError::CalleeReverted))
-        }
-        Err(casper_types::system::mint::Error::GasLimit) => {
-            Err(DispatchError::Call(CallError::CalleeGasDepleted))
-        }
-        Err(mint_error) => {
-            error!(%mint_error, ?args, "transfer failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
-        }
-    }
 }
 
 #[cfg(test)]

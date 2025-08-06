@@ -101,6 +101,12 @@ pub enum TrapCode {
     /// Trap code for unreachable code reached triggered by unreachable instruction.
     #[error("unreachable")]
     UnreachableCodeReached,
+    /// Trap code for failure upon dispatch to a native runtime function.
+    #[error("native runtime dispatch")]
+    NativeRuntimeDispatch,
+    /// Trap code for error received from a native runtime function.
+    #[error("native runtime error")]
+    NativeRuntimeError,
 }
 
 pub const CALLEE_SUCCEEDED: u32 = 0;

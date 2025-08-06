@@ -17,7 +17,7 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_host::{
     context::Context,
-    system::{self, DispatchError, MintTransferArgs},
+    system::{self, DispatchError, TransferArgs},
 };
 use casper_executor_wasm_interface::{
     executor::{
@@ -458,7 +458,7 @@ impl ExecutorV2 {
                                 runtime_native_config.clone(),
                                 transaction_hash,
                                 Arc::clone(&address_generator),
-                                MintTransferArgs::new_simple(
+                                TransferArgs::new_simple(
                                     source_purse,
                                     addressable_entity.main_purse(),
                                     transferred_value.into(),

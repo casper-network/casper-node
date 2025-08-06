@@ -52,7 +52,7 @@ use sha2::Sha256;
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, DispatchError, MintTransferArgs},
+    system::{self, DispatchError, TransferArgs},
 };
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
@@ -1306,7 +1306,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
 
-    let args = MintTransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
+    let args = TransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
 
     match system::transfer(
         &mut caller.context_mut().tracking_copy,
