@@ -37,6 +37,7 @@ impl<T: BorshSerialize + BorshDeserialize> StableKey<T> {
         let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
         Some(borsh::from_slice(&bytes).unwrap())
     }
+}
 
 /// A type of hashing algorithm.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
