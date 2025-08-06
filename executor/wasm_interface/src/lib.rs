@@ -9,6 +9,7 @@ use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
 };
+use serde::Serialize;
 
 #[cfg(test)]
 pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
@@ -79,7 +80,7 @@ pub enum MemoryError {
 }
 
 /// Represents a catastrophic internal host error.
-#[derive(Debug, Error)]
+#[derive(Error, Debug, Clone, Serialize)]
 pub enum InternalHostError {
     #[error("type conversion failure")]
     TypeConversion,
