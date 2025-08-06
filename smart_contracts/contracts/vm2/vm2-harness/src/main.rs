@@ -11,10 +11,14 @@ use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
     casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
     log,
-    types::{Address, CallError},
+    types::{Address, CallError, StableKey},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
+
+#[casper]
+#[allow(dead_code)]
+const EXAMPLE_STABLE_KEY: StableKey<String> = StableKey::new("My Stable Key");
 
 #[casper(message)]
 pub struct TestMessage {
@@ -646,6 +650,19 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let keyspace = Keyspace::Context(b"this key definetely does not exists");
         let result = casper::remove(keyspace);
         assert_eq!(result, Err(CommonResult::NotFound));
+    }
+
+    {
+        next_test(&mut counter, "Stable key read/write");
+
+        let old_value = EXAMPLE_STABLE_KEY.read();
+        assert!(old_value.is_none());
+
+        let new_string: String = "Updated value".into();
+        EXAMPLE_STABLE_KEY.write(new_string.clone());
+
+        let new_value = EXAMPLE_STABLE_KEY.read();
+        assert_eq!(new_value, Some(new_string))
     }
 
     log!("👋 Goodbye");

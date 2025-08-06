@@ -36,7 +36,7 @@ impl<T: BorshSerialize + BorshDeserialize> StableKey<T> {
 
     pub fn read(&self) -> Option<T> {
         let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
-        borsh::from_slice(&bytes).unwrap()
+        Some(borsh::from_slice(&bytes).unwrap())
     }
 }
 

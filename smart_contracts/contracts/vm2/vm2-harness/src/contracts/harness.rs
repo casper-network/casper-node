@@ -16,15 +16,11 @@ use casper_contract_sdk::{
     },
     collections::Map,
     log, revert,
-    types::{CallError, StableKey},
+    types::CallError,
     ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
-
-#[casper]
-#[allow(dead_code)]
-const EXAMPLE_STABLE_KEY: StableKey<String> = StableKey::new("some key value");
 
 pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";
