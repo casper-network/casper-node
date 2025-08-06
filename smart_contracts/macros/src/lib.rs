@@ -1467,7 +1467,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
 
     // Extract the type parameter from the StableKey<T> type
     let type_param = match &*constant.ty {
-        syn::Type::Path(path) => {
+        Type::Path(path) => {
             if let Some(segment) = path.path.segments.last() {
                 if segment.ident.to_string() == "StableKey" {
                     if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
@@ -1524,22 +1524,8 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
     let crate_path = quote! { casper_contract_sdk };
     let key_name_lit = syn::LitStr::new(&key_name, Span::call_site());
     
-    // For now, hardcode the declaration based on the type
-    // In a more sophisticated implementation, we could match on the type
-    let type_decl = match type_param.to_token_stream().to_string().as_str() {
-        "String" => "String",
-        "u64" => "u64",
-        "u32" => "u32",
-        "u16" => "u16",
-        "u8" => "u8",
-        "i64" => "i64",
-        "i32" => "i32",
-        "i16" => "i16",
-        "i8" => "i8",
-        "bool" => "bool",
-        _ => "String", // Default fallback
-    };
-    let type_decl_lit = syn::LitStr::new(type_decl, Span::call_site());
+    let type_decl = type_param.to_token_stream().to_string();
+    let type_decl_lit = syn::LitStr::new(&type_decl, Span::call_site());
 
     let maybe_stable_key_collector;
     let maybe_stable_key_def;
