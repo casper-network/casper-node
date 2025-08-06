@@ -51,6 +51,8 @@ use parking_lot::RwLock;
 use tracing::{error, warn};
 
 #[cfg(any(feature = "testing", test))]
+pub mod chainspec_config;
+#[cfg(any(feature = "testing", test))]
 pub mod testing;
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";

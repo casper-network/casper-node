@@ -34,13 +34,20 @@ use casper_types::{
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, URef, U512,
+    EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package, PackageHash,
+    ProtocolVersion, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
+
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
+use keccak_asm::Digest as KeccakDigest;
+use sha2::Sha256;
 
 use crate::{
     abi::{CreateResult, ReadInfo},
@@ -193,7 +200,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
     let stored_value = match keyspace {
         Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
-            StoredValue::RawBytes(value)
+            let cl_value_any = CLValue::from_components(CLType::Any, value);
+            StoredValue::CLValue(cl_value_any)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -421,7 +429,12 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
     let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-        Ok(Some(StoredValue::RawBytes(raw_bytes))) => Cow::Owned(raw_bytes),
+        Ok(Some(StoredValue::CLValue(cl_value))) => {
+            let CLType::Any = cl_value.cl_type() else {
+                return Err(InternalHostError::TypeConversion)?;
+            };
+            Cow::Owned(cl_value.inner_bytes().to_owned())
+        }
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             match entry_point.entry_point_payment() {
                 EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
@@ -1793,6 +1806,76 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         block_message_count_value,
         message,
     );
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Computes digest hash, using provided algorithm type.
+///
+/// # Arguments
+///
+/// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+/// * `in_size` - size of output pointer
+/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+/// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    in_ptr: u32,
+    in_size: u32,
+    hash_algorithm: u32,
+    out_ptr: u32,
+) -> VMResult<u32> {
+    const DIGEST_LENGTH: usize = 32;
+
+    let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
+
+    // Charge for parameter weights.
+    let generic_hash_host_function = caller.context().config.host_function_costs().generic_hash;
+
+    charge_host_function_call(
+        &mut caller,
+        &generic_hash_host_function,
+        [
+            u64::from(in_ptr),
+            u64::from(in_size),
+            u64::from(out_ptr),
+            u64::from(hash_algorithm),
+        ],
+    )?;
+
+    let hash_algorithm =
+        HashAlgorithm::from_u32(hash_algorithm).ok_or(InternalHostError::TypeConversion)?;
+
+    let hashed_bytes = match hash_algorithm {
+        HashAlgorithm::Blake2b => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+            hasher.update(in_bytes.as_ref());
+            hasher.finalize_variable(&mut result).ok();
+            result
+        }
+        HashAlgorithm::Blake3 => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(in_bytes.as_ref());
+            let hash = hasher.finalize();
+            let hash_bytes: &[u8; DIGEST_LENGTH] = hash.as_bytes();
+            result.copy_from_slice(hash_bytes);
+            result
+        }
+        HashAlgorithm::Sha256 => Sha256::digest(in_bytes).into(),
+        HashAlgorithm::Keccak256 => {
+            use keccak_asm::Keccak256;
+            let mut result = [0u8; DIGEST_LENGTH];
+            let mut hasher = Keccak256::new();
+            KeccakDigest::update(&mut hasher, &in_bytes);
+            let hash = KeccakDigest::finalize(hasher);
+            result.copy_from_slice(&hash);
+            result
+        }
+    };
+
+    caller.memory_write(out_ptr, &hashed_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }

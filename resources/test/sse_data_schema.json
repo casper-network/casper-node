@@ -3988,19 +3988,6 @@
             }
           },
           "additionalProperties": false
-        },
-        {
-          "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
-          "type": "object",
-          "required": [
-            "RawBytes"
-          ],
-          "properties": {
-            "RawBytes": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
         }
       ]
     },
