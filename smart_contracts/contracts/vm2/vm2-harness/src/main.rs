@@ -11,14 +11,14 @@ use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
     casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
     log,
-    types::{Address, CallError, StableKey},
+    types::{Address, CallError, NamedKey},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
 
 #[casper]
 #[allow(dead_code)]
-const EXAMPLE_STABLE_KEY: StableKey<String> = StableKey::new("My Stable Key");
+const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
 
 #[casper(message)]
 pub struct TestMessage {

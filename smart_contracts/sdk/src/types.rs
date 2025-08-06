@@ -15,12 +15,12 @@ use crate::{
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
 
-pub struct StableKey<T: BorshSerialize + BorshDeserialize> {
+pub struct NamedKey<T: BorshSerialize + BorshDeserialize> {
     name: &'static str,
     _marker: PhantomData<T>,
 }
 
-impl<T: BorshSerialize + BorshDeserialize> StableKey<T> {
+impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
     pub const fn new(name: &'static str) -> Self {
         Self {
             name,

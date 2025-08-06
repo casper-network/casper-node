@@ -1416,7 +1416,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
     {
         let const_value = &constant.expr;
 
-        // Parse the StableKey::new("key_name") expression to extract the key name
+        // Parse the NamedKey::new("key_name") expression to extract the key name
         let key_name = match const_value.as_ref() {
             syn::Expr::Call(call) => {
                 if let syn::Expr::Path(path) = &*call.func {
@@ -1430,7 +1430,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                                 return TokenStream::from(
                                     syn::Error::new(
                                         Span::call_site(),
-                                        "StableKey::new() must be called with a string literal",
+                                        "NamedKey::new() must be called with a string literal",
                                     )
                                     .to_compile_error(),
                                 );
@@ -1439,37 +1439,37 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                             return TokenStream::from(
                                 syn::Error::new(
                                     Span::call_site(),
-                                    "StableKey::new() must be called with a string literal",
+                                    "NamedKey::new() must be called with a string literal",
                                 )
                                 .to_compile_error(),
                             );
                         }
                     } else {
                         return TokenStream::from(
-                            syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                            syn::Error::new(Span::call_site(), "Expected NamedKey::new() call")
                                 .to_compile_error(),
                         );
                     }
                 } else {
                     return TokenStream::from(
-                        syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                        syn::Error::new(Span::call_site(), "Expected NamedKey::new() call")
                             .to_compile_error(),
                     );
                 }
             }
             _ => {
                 return TokenStream::from(
-                    syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                    syn::Error::new(Span::call_site(), "Expected NamedKey::new() call")
                         .to_compile_error(),
                 );
             }
         };
 
-        // Extract the type parameter from the StableKey<T> type
+        // Extract the type parameter from the NamedKey<T> type
         let type_param = match &*constant.ty {
             Type::Path(path) => {
                 if let Some(segment) = path.path.segments.last() {
-                    if segment.ident == "StableKey" {
+                    if segment.ident == "NamedKey" {
                         if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                             if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
                                 ty
@@ -1477,7 +1477,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                                 return TokenStream::from(
                                     syn::Error::new(
                                         Span::call_site(),
-                                        "StableKey must have a type parameter",
+                                        "NamedKey must have a type parameter",
                                     )
                                     .to_compile_error(),
                                 );
@@ -1486,27 +1486,27 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                             return TokenStream::from(
                                 syn::Error::new(
                                     Span::call_site(),
-                                    "StableKey must have a type parameter",
+                                    "NamedKey must have a type parameter",
                                 )
                                 .to_compile_error(),
                             );
                         }
                     } else {
                         return TokenStream::from(
-                            syn::Error::new(Span::call_site(), "Expected StableKey type")
+                            syn::Error::new(Span::call_site(), "Expected NamedKey type")
                                 .to_compile_error(),
                         );
                     }
                 } else {
                     return TokenStream::from(
-                        syn::Error::new(Span::call_site(), "Expected StableKey type")
+                        syn::Error::new(Span::call_site(), "Expected NamedKey type")
                             .to_compile_error(),
                     );
                 }
             }
             _ => {
                 return TokenStream::from(
-                    syn::Error::new(Span::call_site(), "Expected StableKey type")
+                    syn::Error::new(Span::call_site(), "Expected NamedKey type")
                         .to_compile_error(),
                 );
             }
