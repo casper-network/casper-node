@@ -470,3 +470,36 @@ where
         }
     }
 }
+
+pub fn entry_point_names(
+    wasm_bytes: Bytes,
+    config: Config,
+) -> Result<Vec<String>, WasmPreparationError> {
+    let engine = {
+        let mut singlepass_compiler = Singlepass::new();
+        let gatekeeper_config = GatekeeperConfig::default();
+        singlepass_compiler.push_middleware(Arc::new(Gatekeeper::new(gatekeeper_config)));
+
+        singlepass_compiler
+            .push_middleware(gas_metering::gas_metering_middleware(config.gas_limit()));
+
+        singlepass_compiler
+    };
+
+    let max_mem_pages = Pages(config.memory_limit());
+
+    let base = BaseTunables::for_target(&Target::default());
+    let tunables = MemLimitTunables::new(base, max_mem_pages);
+    let mut engine = Engine::from(engine);
+    engine.set_tunables(tunables);
+
+    let module = Module::new(&engine, &wasm_bytes)
+        .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
+
+    let entry_point_names = module
+        .exports()
+        .map(|export| export.name().to_string())
+        .collect();
+
+    Ok(entry_point_names)
+}
