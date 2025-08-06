@@ -1506,8 +1506,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
             }
             _ => {
                 return TokenStream::from(
-                    syn::Error::new(Span::call_site(), "Expected NamedKey type")
-                        .to_compile_error(),
+                    syn::Error::new(Span::call_site(), "Expected NamedKey type").to_compile_error(),
                 );
             }
         };
