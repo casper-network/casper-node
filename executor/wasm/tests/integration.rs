@@ -471,7 +471,7 @@ fn upgradable() {
 
 #[test]
 fn backwards_compatibility() {
-    let (mut global_state, post_state_hash, _temp) = {
+    let (global_state, post_state_hash, _temp) = {
         let fixture_name = "counter_contract";
         // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
         // global_state/data.lmdb
@@ -600,7 +600,7 @@ fn backwards_compatibility() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -659,6 +659,7 @@ fn host_functions_consume_gas() {
     assert_consumes_gas(&chainspec_config, "transfer");
     assert_consumes_gas(&chainspec_config, "upgrade");
     assert_consumes_gas(&chainspec_config, "write");
+    assert_consumes_gas(&chainspec_config, "generic_hash");
 }
 
 #[test]
@@ -791,7 +792,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         .expect("must get chainspec config");
     let address_generator = make_address_generator();
     let mut executor = make_executor(&chainspec_config);
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     // Create a contract that will be used to test the ret host function
     let input_data = borsh::to_vec(&("write".to_string(),))
@@ -809,7 +810,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         install_request,
     );
@@ -832,7 +833,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
 
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
     assert!(result.is_err());
-    let err: ExecuteWithProviderError = result.err().expect("should have error details");
+    let err: ExecuteWithProviderError = result.expect_err("should have error details");
     assert!(matches!(
         err,
         ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
@@ -846,7 +847,7 @@ fn escrow() {
         .expect("must get chainspec config");
     let mut executor = make_executor(&chainspec_config);
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -870,7 +871,7 @@ fn escrow() {
 
     let create_result = run_create_contract(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         create_request,
     );
@@ -905,7 +906,7 @@ fn escrow() {
 
     let result_2 = run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     )
@@ -925,7 +926,7 @@ fn should_not_fail_without_account() {
         .expect("must get chainspec config");
     let executor = make_executor(&chainspec_config);
 
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
@@ -949,7 +950,7 @@ fn should_not_fail_without_account() {
 
     let create_result = {
         executor
-            .install_contract(state_root_hash, &mut global_state, create_request)
+            .install_contract(state_root_hash, &global_state, create_request)
             .expect_err("Succeed")
     };
 

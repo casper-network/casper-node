@@ -11,7 +11,7 @@ use crate::{
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{Address, CallError},
+    types::{Address, CallError, HashAlgorithm},
     Message, ToCallData,
 };
 
@@ -551,6 +551,20 @@ pub fn transfer(target_account: &Address, amount: u64) -> Result<(), CallError> 
 pub fn get_block_time() -> u64 {
     let info = get_env_info();
     info.block_time
+}
+
+#[inline]
+pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], CommonResult> {
+    let output = [0; 32];
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_generic_hash(
+            data.as_ptr(),
+            data.len(),
+            output.as_ptr(),
+            algorithm as usize,
+        )
+    };
+    result_from_code(ret).map(|_| output)
 }
 
 #[doc(hidden)]

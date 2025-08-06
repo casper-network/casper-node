@@ -147,7 +147,7 @@ pub fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteReques
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
 }
@@ -206,7 +206,7 @@ pub fn base_install_request_builder(
         .with_block_time(Timestamp::now().into())
         .with_state_hash(Digest::hash(b"state"))
         .with_block_height(1)
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
 }
@@ -215,7 +215,7 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
     let storage_costs = chainspec_config.storage_costs;
     let v1_config = EngineConfig::from(chainspec_config.clone());
     let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
-    let wasm_v2_config = chainspec_config.wasm_config.v2().clone();
+    let wasm_v2_config = *chainspec_config.wasm_config.v2();
     let memory_limit = wasm_v2_config.max_memory();
     let message_limits = chainspec_config.wasm_config.messages_limits();
     let executor_config = ExecutorConfigBuilder::default()
@@ -331,6 +331,7 @@ pub fn call_dummy_host_fn_by_name(
                 print: HostFunctionV2::fixed(1),
                 emit: HostFunctionV2::fixed(1),
                 env_info: HostFunctionV2::fixed(1),
+                generic_hash: HostFunctionV2::fixed(1),
             },
         );
         let executor_config = ExecutorConfigBuilder::default()
@@ -352,7 +353,7 @@ pub fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = base_install_request_builder(&chainspec_config)
+    let create_request = base_install_request_builder(chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)

@@ -15,7 +15,6 @@ use crate::{
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
 
-#[repr(C)]
 pub struct StableKey<T: BorshSerialize + BorshDeserialize> {
     name: &'static str,
     _marker: PhantomData<T>,
@@ -38,6 +37,19 @@ impl<T: BorshSerialize + BorshDeserialize> StableKey<T> {
         let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
         Some(borsh::from_slice(&bytes).unwrap())
     }
+
+/// A type of hashing algorithm.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
+pub enum HashAlgorithm {
+    /// Blake2b
+    Blake2b = 0,
+    /// Blake3
+    Blake3 = 1,
+    /// Sha256,
+    Sha256 = 2,
+    /// Keccak256
+    Keccak256 = 3,
 }
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].

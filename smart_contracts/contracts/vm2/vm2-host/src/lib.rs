@@ -4,27 +4,28 @@ use casper_contract_sdk::{
     casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     sys::casper_return,
+    types::HashAlgorithm,
 };
 
 const CURRENT_VERSION: &str = "v1";
 
-// This contract is used to assert that calling host functions consumes gas.
-// It is by design that it does nothing other than calling appropriate host functions.
+// This contract is used to assert that calling host functions consumes gas and doesn't panic.
 
-// There is no need for these functions to actually do anything meaningful, and it's alright
-// if they short-circuit.
+// There is no need for these functions to actually do anything meaningful, but the execution
+// should be succesful.
 
 #[casper(contract_state)]
-pub struct MinHostWrapper;
+pub struct MinimalHostWrapper;
 
-impl Default for MinHostWrapper {
+impl Default for MinimalHostWrapper {
     fn default() -> Self {
         panic!("Unable to instantiate contract without a constructor");
     }
 }
 
 #[casper]
-impl MinHostWrapper {
+#[allow(clippy::should_implement_trait)]
+impl MinimalHostWrapper {
     #[casper(constructor)]
     pub fn new(with_host_fn_call: String) -> Self {
         let ret = Self;
@@ -72,6 +73,7 @@ impl MinHostWrapper {
                 ret.write();
             }
             "ret_faulty_flags" => ret.ret_faulty_flags(),
+            "generic_hash" => ret.generic_hash(),
             _ => panic!("Unknown host function"),
         }
         ret
@@ -160,7 +162,43 @@ impl MinHostWrapper {
             casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
         }
         let data = [1, 2, 3];
-        let (data_ptr, data_len) = ((&data).as_ptr(), (&data).len());
+        let (data_ptr, data_len) = (data.as_ptr(), data.len());
         unsafe { casper_return(faulty_flags, data_ptr, data_len) };
+    }
+
+    pub fn generic_hash(&self) {
+        let data = [1, 1, 2, 5, 14, 42, 132];
+
+        assert_eq!(
+            casper::generic_hash(&data, HashAlgorithm::Blake2b),
+            Ok([
+                101, 134, 221, 117, 175, 165, 62, 143, 176, 114, 113, 246, 5, 183, 189, 207, 11,
+                104, 170, 199, 146, 141, 122, 205, 157, 158, 233, 5, 125, 81, 23, 241
+            ]),
+        );
+
+        assert_eq!(
+            casper::generic_hash(&data, HashAlgorithm::Blake3),
+            Ok([
+                126, 230, 212, 24, 35, 87, 8, 3, 4, 62, 160, 20, 182, 106, 115, 229, 187, 7, 147,
+                32, 244, 103, 58, 70, 70, 67, 7, 151, 246, 32, 38, 93
+            ]),
+        );
+
+        assert_eq!(
+            casper::generic_hash(&data, HashAlgorithm::Sha256),
+            Ok([
+                0, 230, 115, 1, 88, 98, 21, 212, 204, 82, 181, 141, 113, 17, 93, 117, 110, 170, 80,
+                53, 20, 125, 106, 121, 92, 98, 75, 159, 117, 104, 172, 57
+            ]),
+        );
+
+        assert_eq!(
+            casper::generic_hash(&data, HashAlgorithm::Keccak256),
+            Ok([
+                114, 172, 78, 22, 211, 115, 239, 44, 244, 233, 234, 252, 93, 139, 253, 67, 225, 90,
+                77, 165, 66, 13, 132, 134, 234, 199, 38, 235, 176, 138, 236, 105
+            ]),
+        );
     }
 }
