@@ -1,11 +1,15 @@
 use core::marker::PhantomData;
 
-use casper_executor_wasm_common::{error::{
-    CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
-}, keyspace::Keyspace};
+use casper_executor_wasm_common::{
+    error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
+    keyspace::Keyspace,
+};
 
 use crate::{
-    abi::{CasperABI, Declaration, Definition, EnumVariant}, casper, prelude::fmt, serializers::borsh::{BorshDeserialize, BorshSerialize}
+    abi::{CasperABI, Declaration, Definition, EnumVariant},
+    casper,
+    prelude::fmt,
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
 pub type Address = [u8; 32];

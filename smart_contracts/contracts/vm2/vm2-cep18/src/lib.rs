@@ -1,13 +1,12 @@
 use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState}, prelude::*, types::{StableKey, U256}
+    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState},
+    prelude::*,
+    types::U256,
 };
 
 use casper_contract_sdk::contrib::cep18::{
     Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
 };
-
-#[casper]
-const EXAMPLE_STABLE_KEY: StableKey<String> = StableKey::new("some key value");
 
 #[casper(contract_state)]
 pub struct TokenContract {

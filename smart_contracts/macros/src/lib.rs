@@ -7,7 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemUnion, LitStr, Type
+    parse_macro_input, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
+    ItemUnion, LitStr, Type,
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -1407,16 +1408,33 @@ fn process_casper_contract_state_for_struct(
 
 fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
     let _const_name = &constant.ident;
-    let const_value = &constant.expr;
-    
-    // Parse the StableKey::new("key_name") expression to extract the key name
-    let key_name = match const_value.as_ref() {
-        syn::Expr::Call(call) => {
-            if let syn::Expr::Path(path) = &*call.func {
-                if path.path.segments.last().map(|s| s.ident.to_string()) == Some("new".to_string()) {
-                    if let Some(syn::Expr::Lit(lit)) = call.args.first() {
-                        if let syn::Lit::Str(lit_str) = &lit.lit {
-                            lit_str.value()
+
+    let maybe_stable_key_collector;
+    let maybe_stable_key_def;
+
+    #[cfg(feature = "__abi_generator")]
+    {
+        let const_value = &constant.expr;
+
+        // Parse the StableKey::new("key_name") expression to extract the key name
+        let key_name = match const_value.as_ref() {
+            syn::Expr::Call(call) => {
+                if let syn::Expr::Path(path) = &*call.func {
+                    if path.path.segments.last().map(|s| s.ident.to_string())
+                        == Some("new".to_string())
+                    {
+                        if let Some(syn::Expr::Lit(lit)) = call.args.first() {
+                            if let syn::Lit::Str(lit_str) = &lit.lit {
+                                lit_str.value()
+                            } else {
+                                return TokenStream::from(
+                                    syn::Error::new(
+                                        Span::call_site(),
+                                        "StableKey::new() must be called with a string literal",
+                                    )
+                                    .to_compile_error(),
+                                );
+                            }
                         } else {
                             return TokenStream::from(
                                 syn::Error::new(
@@ -1428,51 +1446,42 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                         }
                     } else {
                         return TokenStream::from(
-                            syn::Error::new(
-                                Span::call_site(),
-                                "StableKey::new() must be called with a string literal",
-                            )
-                            .to_compile_error(),
+                            syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                                .to_compile_error(),
                         );
                     }
                 } else {
                     return TokenStream::from(
-                        syn::Error::new(
-                            Span::call_site(),
-                            "Expected StableKey::new() call",
-                        )
-                        .to_compile_error(),
+                        syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                            .to_compile_error(),
                     );
                 }
-            } else {
+            }
+            _ => {
                 return TokenStream::from(
-                    syn::Error::new(
-                        Span::call_site(),
-                        "Expected StableKey::new() call",
-                    )
-                    .to_compile_error(),
+                    syn::Error::new(Span::call_site(), "Expected StableKey::new() call")
+                        .to_compile_error(),
                 );
             }
-        }
-        _ => {
-            return TokenStream::from(
-                syn::Error::new(
-                    Span::call_site(),
-                    "Expected StableKey::new() call",
-                )
-                .to_compile_error(),
-            );
-        }
-    };
+        };
 
-    // Extract the type parameter from the StableKey<T> type
-    let type_param = match &*constant.ty {
-        Type::Path(path) => {
-            if let Some(segment) = path.path.segments.last() {
-                if segment.ident.to_string() == "StableKey" {
-                    if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                        if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
-                            ty
+        // Extract the type parameter from the StableKey<T> type
+        let type_param = match &*constant.ty {
+            Type::Path(path) => {
+                if let Some(segment) = path.path.segments.last() {
+                    if segment.ident == "StableKey" {
+                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                            if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
+                                ty
+                            } else {
+                                return TokenStream::from(
+                                    syn::Error::new(
+                                        Span::call_site(),
+                                        "StableKey must have a type parameter",
+                                    )
+                                    .to_compile_error(),
+                                );
+                            }
                         } else {
                             return TokenStream::from(
                                 syn::Error::new(
@@ -1484,54 +1493,31 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                         }
                     } else {
                         return TokenStream::from(
-                            syn::Error::new(
-                                Span::call_site(),
-                                "StableKey must have a type parameter",
-                            )
-                            .to_compile_error(),
+                            syn::Error::new(Span::call_site(), "Expected StableKey type")
+                                .to_compile_error(),
                         );
                     }
                 } else {
                     return TokenStream::from(
-                        syn::Error::new(
-                            Span::call_site(),
-                            "Expected StableKey type",
-                        )
-                        .to_compile_error(),
+                        syn::Error::new(Span::call_site(), "Expected StableKey type")
+                            .to_compile_error(),
                     );
                 }
-            } else {
+            }
+            _ => {
                 return TokenStream::from(
-                    syn::Error::new(
-                        Span::call_site(),
-                        "Expected StableKey type",
-                    )
-                    .to_compile_error(),
+                    syn::Error::new(Span::call_site(), "Expected StableKey type")
+                        .to_compile_error(),
                 );
             }
-        }
-        _ => {
-            return TokenStream::from(
-                syn::Error::new(
-                    Span::call_site(),
-                    "Expected StableKey type",
-                )
-                .to_compile_error(),
-            );
-        }
-    };
+        };
 
-    let crate_path = quote! { casper_contract_sdk };
-    let key_name_lit = syn::LitStr::new(&key_name, Span::call_site());
-    
-    let type_decl = type_param.to_token_stream().to_string();
-    let type_decl_lit = syn::LitStr::new(&type_decl, Span::call_site());
+        let crate_path = quote! { casper_contract_sdk };
+        let key_name_lit = syn::LitStr::new(&key_name, Span::call_site());
 
-    let maybe_stable_key_collector;
-    let maybe_stable_key_def;
+        let type_decl = type_param.to_token_stream().to_string();
+        let type_decl_lit = syn::LitStr::new(&type_decl, Span::call_site());
 
-    #[cfg(feature = "__abi_generator")]
-    {
         maybe_stable_key_collector = quote! {
             const _: () = {
                 #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::ABI_COLLECTORS)]
@@ -1553,6 +1539,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
             };
         };
     }
+
     #[cfg(not(feature = "__abi_generator"))]
     {
         maybe_stable_key_collector = quote! {};
