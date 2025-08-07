@@ -37,10 +37,8 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, ChainspecRegistry, Digest, EntityAddr,
-    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
-    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
-    Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr,
+    Key, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -695,9 +693,7 @@ fn non_existing_smart_contract_does_not_panic() {
         ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
 }
 
-// TODO: get this test working.
 #[test]
-#[ignore]
 fn casper_return_writes_to_execution_journal() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
@@ -771,8 +767,8 @@ fn casper_return_writes_to_execution_journal() {
         casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
             assert_eq!(
-                bytes,
-                &RetValue::Bytes([1, 2, 3].to_vec().into()),
+                bytes.as_slice(),
+                &[1u8, 2, 3],
                 "Return data should match what was passed to casper::ret"
             );
         }
