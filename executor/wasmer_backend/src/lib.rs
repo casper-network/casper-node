@@ -467,6 +467,8 @@ where
             message_limits: data.context.message_limits,
             sandboxed: data.context.sandboxed,
             runtime_native_config: data.context.runtime_native_config.clone(),
+            parent_block_hash: data.context.parent_block_hash,
+            block_height: data.context.block_height,
         }
     }
 }

@@ -37,8 +37,8 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr,
-    Key, StoredValue, Timestamp,
+    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr, Key, StoredValue,
+    Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;

@@ -619,6 +619,11 @@ Example paths:
             caller_kind: self.caller.tag(),
             callee_addr: *self.callee.address(),
             callee_kind: self.callee.tag(),
+            protocol_version_major: 2,
+            protocol_version_minor: 1,
+            protocol_version_patch: 0,
+            parent_block_hash: [0xAB; 32],
+            block_height: 1,
         };
         Ok(HOST_ERROR_SUCCESS)
     }

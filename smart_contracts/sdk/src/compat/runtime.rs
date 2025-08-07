@@ -1,5 +1,5 @@
 use borsh::BorshDeserialize;
-use casper_executor_wasm_common::flags::ReturnFlags;
+use casper_executor_wasm_common::{error::CommonResult, flags::ReturnFlags};
 
 use crate::{
     casper,
@@ -43,7 +43,37 @@ pub fn get_blocktime() -> u64 {
     env_info.block_time
 }
 
+pub fn get_block_height() -> u64 {
+    let env_info = casper::get_env_info();
+    env_info.block_height
+}
+
 pub fn get_parent_block_hash() -> [u8; 32] {
-    let _env_info = casper::get_env_info();
-    todo!();
+    let env_info = casper::get_env_info();
+    env_info.parent_block_hash
+}
+
+pub fn get_protocol_version() -> (u32, u32, u32) {
+    let env_info = casper::get_env_info();
+    (
+        env_info.protocol_version_major,
+        env_info.protocol_version_minor,
+        env_info.protocol_version_patch,
+    )
+}
+
+#[inline]
+pub fn get_immediate_caller() -> [u8; 32] {
+    let env_info = casper::get_env_info();
+    env_info.caller_addr
+}
+
+#[inline]
+pub fn emit_message(topic_name: &str, message: &[u8]) -> Result<(), CommonResult> {
+    casper::emit(topic_name, message)
+}
+
+#[inline]
+pub fn print(text: &str) {
+    casper::print(text);
 }

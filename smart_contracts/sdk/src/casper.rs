@@ -575,7 +575,7 @@ pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], C
 }
 
 #[doc(hidden)]
-pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
+pub fn emit(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
     let ret = unsafe {
         casper_contract_sdk_sys::casper_emit(
             topic.as_ptr(),
@@ -588,11 +588,11 @@ pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
 }
 
 /// Emit a message.
-pub fn emit<M>(message: M) -> Result<(), CommonResult>
+pub fn emit_message<M>(message: M) -> Result<(), CommonResult>
 where
     M: Message,
 {
     let topic = M::TOPIC;
     let payload = message.payload();
-    emit_raw(topic, &payload)
+    emit(topic, &payload)
 }
