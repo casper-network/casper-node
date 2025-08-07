@@ -342,7 +342,7 @@ pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
         Just(CLType::URef),
         Just(CLType::PublicKey),
         Just(CLType::Any),
-        any::<u32>().prop_map(|size| CLType::ByteArray(size)),
+        any::<u32>().prop_map(CLType::ByteArray),
     ]
 }
 

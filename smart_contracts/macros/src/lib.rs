@@ -950,7 +950,6 @@ fn generate_impl_trait_for_contract(
                 macro_rules! visitor {
                     ($( $vis:vis $name:ident as $export_name:ident => $dispatch:ident , $schema:ident , )*) => {
                         $(
-                            #[export_name = stringify!($export_name)]
                             $vis extern "C" fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }

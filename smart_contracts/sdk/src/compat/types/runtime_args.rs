@@ -7,7 +7,9 @@ use crate::{
 
 pub type NamedArg<'a> = (&'a String, &'a CLValue);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, BorshDeserialize, Debug)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, BorshDeserialize, Debug, Default,
+)]
 pub struct RuntimeArgs(BTreeMap<String, CLValue>);
 
 impl RuntimeArgs {

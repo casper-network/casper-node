@@ -9,7 +9,13 @@ use casper_contract_sdk::{
 
 #[casper(abi_convention = AbiConvention::Named)]
 pub trait ContractTrait {
-    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32;
+    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32 {
+        a + b
+    }
+    #[casper(abi_convention = AbiConvention::Positional)]
+    fn trait_add_with_different_abi_convention(a: u32, b: u32, c: u32) -> u32 {
+        a + b + c
+    }
 }
 
 /// This contract implements a simple flipper.
@@ -34,11 +40,7 @@ impl Contract {
 }
 
 #[casper]
-impl ContractTrait for Contract {
-    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32 {
-        a + b
-    }
-}
+impl ContractTrait for Contract {}
 
 #[cfg(test)]
 mod tests {
@@ -131,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn trait_method_has_different_convention() {
+    fn trait_method_has_default_convention() {
         let mut runtime_args = RuntimeArgs::new();
         runtime_args.insert("a", 123u32).unwrap();
         runtime_args.insert("b", 456u32).unwrap();
@@ -140,7 +142,7 @@ mod tests {
 
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
-            native::invoke_export_by_name("trait_add_with_default_abi_convention")
+            native::invoke_export_by_name("ContractTrait_trait_add_with_default_abi_convention")
         })
         .unwrap_err() else {
             panic!("expected ret")
@@ -149,5 +151,23 @@ mod tests {
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
         assert_eq!(ret_clvalue.cl_type(), &CLType::U32);
         assert_eq!(ret_clvalue.to_t::<u32>().unwrap(), 579);
+    }
+
+    #[test]
+    fn trait_method_has_different_convention() {
+        let arguments = (123u32, 456u32, 789u32);
+
+        let env = Environment::default().with_input_data(borsh::to_vec(&arguments).unwrap());
+
+        assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
+        let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
+            native::invoke_export_by_name("ContractTrait_trait_add_with_different_abi_convention")
+        })
+        .unwrap_err() else {
+            panic!("expected ret")
+        };
+        let result: u32 =
+            borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
+        assert_eq!(result, 123 + 456 + 789);
     }
 }

@@ -7,7 +7,7 @@ use crate::serializers::borsh::{
 
 const MAX_DEPTH: usize = 128;
 const ERROR_NESTING_TOO_DEEP: &str = "CLType nesting exceeds maximum depth of 128";
-const ERROR_INVALID_CLTYPE_TAG: &'static str = "Invalid CLType tag";
+const ERROR_INVALID_CLTYPE_TAG: &str = "Invalid CLType tag";
 
 const CL_TYPE_TAG_BOOL: u8 = 0;
 const CL_TYPE_TAG_I32: u8 = 1;

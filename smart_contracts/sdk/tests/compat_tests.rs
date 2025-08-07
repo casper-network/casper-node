@@ -1,5 +1,5 @@
 use casper_contract_sdk::compat;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::ToBytes;
 use proptest::prelude::*;
 
 fn convert_to_compat_cl_type(cl_type: casper_types::CLType) -> compat::types::CLType {

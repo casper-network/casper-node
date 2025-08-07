@@ -59,18 +59,11 @@
 //! }
 //! ```
 use bnum::types::U256;
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_contract_macros::CasperABI;
 
 use super::access_control::{AccessControl, AccessControlError, Role};
 #[allow(unused_imports)]
 use crate as casper_contract_sdk;
-use crate::{
-    collections::Map,
-    compat::types::{CLType, CLTyped},
-    macros::blake2b256,
-    prelude::*,
-};
+use crate::{collections::Map, macros::blake2b256, prelude::*};
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the `Error::User` variant or equivalently via the `ApiError::User`

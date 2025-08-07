@@ -6,16 +6,9 @@ use crate::{
     compat::types::{CLValue, RuntimeArgs},
 };
 
-// static CASPER_RUNTIME_ARGS: Lazy<RuntimeArgs> = Lazy::new(|| {
-//     let arg_bytes = casper::copy_input();
-//     borsh::from_slice(&arg_bytes).expect("Failed to deserialize runtime arguments")
-// });
-
 fn get_runtime_args() -> RuntimeArgs {
     let arg_bytes = casper::copy_input();
-    let runtime_args =
-        borsh::from_slice(&arg_bytes).expect("Failed to deserialize runtime arguments");
-    runtime_args
+    borsh::from_slice(&arg_bytes).expect("Failed to deserialize runtime arguments")
 }
 
 pub fn ret(value: CLValue) {
@@ -27,9 +20,9 @@ pub fn get_named_arg<T: BorshDeserialize>(name: &str) -> T {
     let runtime_args = get_runtime_args();
     let arg = runtime_args
         .get(name)
-        .expect(&format!("Named argument '{}' not found", name));
+        .unwrap_or_else(|| panic!("Named argument '{}' not found", name));
     let value: T = borsh::from_slice(arg.inner_bytes())
-        .expect(&format!("Named argument '{}' has wrong type", name));
+        .unwrap_or_else(|_| panic!("Named argument '{}' has wrong type", name));
     value
 }
 
