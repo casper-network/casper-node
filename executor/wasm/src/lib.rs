@@ -40,11 +40,12 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
+    addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
+    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
+    ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
+    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
+    MessageLimits, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
+    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -245,6 +246,47 @@ impl ExecutorV2 {
         // 3. Store addressable entity
         let addressable_entity_key =
             Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
+
+        // 3.1 Store entry points first
+        {
+            let config = ConfigBuilder::new()
+                .with_gas_limit(gas_limit)
+                .with_memory_limit(self.config.memory_limit)
+                .build();
+
+            let entry_point_names = casper_executor_wasmer_backend::entry_point_names(
+                wasm_bytes, config,
+            )
+            .map_err(|wasm_prep_error| {
+                InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
+            })?;
+
+            for name in entry_point_names {
+                let entry_point = EntityEntryPoint::new(
+                    name.clone(),
+                    Parameters::new(),
+                    CLType::Unit,
+                    EntryPointAccess::Public,
+                    EntryPointType::Called,
+                    EntryPointPayment::Caller,
+                );
+
+                let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(
+                    EntityAddr::SmartContract(smart_contract_addr),
+                    &name,
+                )
+                .map_err(|err| {
+                    InstallContractError::GlobalState(GlobalStateError::BytesRepr(err))
+                })?;
+
+                let entry_point_key = Key::EntryPoint(entry_point_addr);
+
+                tracking_copy.write(
+                    entry_point_key,
+                    StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+                )
+            }
+        }
 
         // TODO: abort(str) as an alternative to trap
         let main_purse: URef = match system::create_purse(

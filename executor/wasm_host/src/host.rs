@@ -27,8 +27,10 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
-    bytesrepr::ToBytes,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr, NamedKeyValue,
+    },
+    bytesrepr::{FromBytes, ToBytes},
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
@@ -199,9 +201,26 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     let value = caller.memory_read(value_ptr, value_size.try_into_wrapped()?)?;
 
     let stored_value = match keyspace {
-        Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
+        Keyspace::State | Keyspace::Context(_) => {
             let cl_value_any = CLValue::from_components(CLType::Any, value);
             StoredValue::CLValue(cl_value_any)
+        }
+        Keyspace::NamedKey(name) => {
+            let key = match Key::from_bytes(&value) {
+                Ok((key, remainder)) => {
+                    if !remainder.is_empty() {
+                        return Ok(HOST_ERROR_INVALID_INPUT);
+                    }
+                    key
+                }
+                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+            };
+
+            let named_key_value = match NamedKeyValue::from_concrete_values(key, name.to_string()) {
+                Ok(named_key_value) => named_key_value,
+                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+            };
+            StoredValue::NamedKey(named_key_value)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {

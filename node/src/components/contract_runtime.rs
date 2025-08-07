@@ -75,7 +75,9 @@ use crate::{
 };
 use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
+pub(crate) use error::{
+    BlockExecutionError, ConfigError, ContractRuntimeError, EngineStateError, StateResultError,
+};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;

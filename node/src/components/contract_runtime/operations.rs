@@ -675,7 +675,9 @@ pub fn execute_finalized_block(
                                 artifact_builder.with_wasm_v2_result(wasm_v2_result);
                             }
                             Err(wasm_v2_error) => {
-                                artifact_builder.with_wasm_v2_error(wasm_v2_error);
+                                artifact_builder
+                                    .with_wasm_v2_error(wasm_v2_error)
+                                    .map_err(BlockExecutionError::EngineState)?;
                             }
                         }
                     }

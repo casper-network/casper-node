@@ -11,10 +11,10 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_interface::{
     executor::{
-        ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
-        ExecutionKind,
+        ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
+        ExecuteWithProviderResult, ExecutionKind,
     },
-    GasUsage,
+    GasUsage, InternalHostError,
 };
 use casper_storage::{
     global_state::state::{CommitProvider, StateProvider},
@@ -77,6 +77,32 @@ pub(crate) enum WasmV2Error {
     Install(InstallContractError),
     #[error(transparent)]
     Execute(ExecuteWithProviderError),
+}
+
+impl WasmV2Error {
+    pub(crate) fn as_internal_host_error(&self) -> Option<InternalHostError> {
+        match self {
+            WasmV2Error::Install(install_error) => {
+                if let InstallContractError::Execute(ExecuteError::InternalHost(
+                    internal_host_error,
+                )) = install_error
+                {
+                    return Some(internal_host_error.clone());
+                }
+                None
+            }
+            WasmV2Error::Execute(execute_with_provider_error) => {
+                if let ExecuteWithProviderError::Execute(ExecuteError::InternalHost(
+                    internal_host_error,
+                )) = execute_with_provider_error
+                {
+                    let err = internal_host_error.clone();
+                    return Some(err);
+                }
+                None
+            }
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Error, Debug)]
