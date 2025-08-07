@@ -1345,9 +1345,9 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 };
 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
-                // if cfg(feature = "__abi_generator")]
+
                 {
-                    abi_extras.push(quote! {
+                    extra_code.push(quote! {
                         #[cfg(not(target_arch = "wasm32"))]
                         fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                             casper_contract_sdk::schema::SchemaEntryPoint {
