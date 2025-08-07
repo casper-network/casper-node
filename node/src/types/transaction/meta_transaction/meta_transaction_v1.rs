@@ -339,12 +339,6 @@ impl MetaTransactionV1 {
                         expected: expected_runtime,
                     });
                 }
-
-                if !self.args.is_named() {
-                    // VmCasperV1 runtime expected named arguments and does not support bytes
-                    // variant.
-                    return Err(InvalidTransactionV1::ExpectedNamedArguments);
-                }
             }
             Some(expected_runtime @ ContractRuntimeTag::VmCasperV2) => {
                 if !transaction_config.runtime_config.vm_casper_v2 {
@@ -356,12 +350,6 @@ impl MetaTransactionV1 {
                     return Err(InvalidTransactionV1::InvalidTransactionRuntime {
                         expected: expected_runtime,
                     });
-                }
-
-                if !self.args.is_bytesrepr() {
-                    // VmCasperV2 runtime expected bytes arguments and does not support named
-                    // variant.
-                    return Err(InvalidTransactionV1::ExpectedBytesArguments);
                 }
 
                 match self.pricing_mode {
@@ -781,19 +769,6 @@ impl MetaTransactionV1 {
         self.pricing_mode()
             .gas_limit(chainspec, self.lane_id)
             .map_err(Into::into)
-    }
-
-    /// Returns the seed of the transaction.
-    pub(crate) fn seed(&self) -> Option<[u8; 32]> {
-        match &self.target {
-            TransactionTarget::Native => None,
-            TransactionTarget::Stored { id: _, runtime: _ } => None,
-            TransactionTarget::Session {
-                is_install_upgrade: _,
-                runtime,
-                module_bytes: _,
-            } => runtime.seed(),
-        }
     }
 
     /// Returns the transferred value of the transaction.
