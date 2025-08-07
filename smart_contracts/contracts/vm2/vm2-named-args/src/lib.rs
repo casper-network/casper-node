@@ -1,11 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_contract_sdk::{
-    compat::types::{CLType, CLValue, RuntimeArgs},
-    prelude::*,
-    serializers::AbiConvention,
-};
+use casper_contract_sdk::{prelude::*, serializers::AbiConvention};
 
 #[casper(abi_convention = AbiConvention::Named)]
 pub trait ContractTrait {
@@ -19,12 +15,18 @@ pub trait ContractTrait {
 }
 
 /// This contract implements a simple flipper.
-#[derive(PanicOnDefault)]
+#[derive(Default)]
 #[casper(contract_state, abi_convention = AbiConvention::Named)]
-pub struct Contract;
+pub struct Contract {
+    pub value: u32,
+}
 
 #[casper]
 impl Contract {
+    #[casper(constructor)]
+    pub fn new(value: u32) -> Self {
+        Self { value }
+    }
     pub fn add_with_default_abi_convention(a: u32, b: u32) -> u32 {
         a + b
     }
@@ -47,6 +49,7 @@ mod tests {
     use super::*;
     use casper_contract_sdk::{
         casper::native::{self, Environment, NativeTrap},
+        compat::types::{CLType, CLValue, RuntimeArgs},
         serializers::{borsh, AbiConfig},
     };
 
@@ -95,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_named_convention_with_unit_ret() {
-        let mut runtime_args = RuntimeArgs::new();
+        let runtime_args = RuntimeArgs::new();
         let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
 
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);

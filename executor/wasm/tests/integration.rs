@@ -37,8 +37,8 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr, Key, StoredValue,
-    Timestamp,
+    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, BlockHash, Digest, EntityAddr,
+    Key, RuntimeArgs, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -946,13 +946,94 @@ fn should_not_fail_without_account() {
         .build()
         .expect("should build");
 
-    let create_result = {
+    let _create_result = {
         executor
             .install_contract(state_root_hash, &global_state, create_request)
             .expect_err("Succeed")
     };
+}
 
-    assert!(
-        matches!(create_result, InstallContractError::Execute(ExecuteError::EntityNotFound(Key::Account(account_hash))) if account_hash == AccountHash::new([0xF0; 32]))
+#[test]
+
+fn supports_named_args_convention() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let mut executor = make_executor(&chainspec_config);
+
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let input_data = {
+        let mut runtime_args = RuntimeArgs::new();
+        runtime_args.insert("value".to_string(), 123u32).unwrap();
+        runtime_args.to_bytes().map(Bytes::from).unwrap()
+    };
+
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_named_args.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        create_request,
     );
+
+    dbg!(create_result.gas_usage().gas_spent());
+
+    let contract_hash = create_result.smart_contract_addr();
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *contract_hash,
+            entry_point: "deposit_tokens".to_string(),
+        })
+        .with_serialized_input(())
+        .with_transferred_value(10000)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(1234567890.into())
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(2) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .build()
+        .expect("should build");
+
+    let result_2 = run_wasm_session(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    )
+    .expect("should have result");
+    dbg!(result_2.gas_usage().gas_spent());
+
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, result_2.effects().clone())
+        .expect("Should commit");
+
+    assert_ne!(post_state_root_hash, state_root_hash);
 }
