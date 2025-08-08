@@ -207,19 +207,19 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         }
         Keyspace::NamedKey(name) => {
             // NamedKey points to a URef which holds CLValue::Any bytes
-            let maybe_existing = match caller.context_mut().tracking_copy.read(&global_state_key) {
-                Ok(maybe) => maybe,
-                Err(_) => return Err(InternalHostError::TrackingCopy.into()),
-            };
+            let maybe_existing_uref = caller
+                .context_mut()
+                .tracking_copy
+                .read(&global_state_key)
+                .map_err(|_| InternalHostError::TrackingCopy)?;
 
             let uref_to_use: URef =
-                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing {
-                    match existing_named_key.get_key() {
-                        Ok(Key::URef(existing_uref)) => existing_uref,
-                        _ => {
-                            let mut address_generator = caller.context().address_generator.write();
-                            address_generator.new_uref(AccessRights::READ_ADD_WRITE)
-                        }
+                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
+                    if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
+                        existing_uref
+                    } else {
+                        let mut address_generator = caller.context().address_generator.write();
+                        address_generator.new_uref(AccessRights::READ_ADD_WRITE)
                     }
                 } else {
                     let mut address_generator = caller.context().address_generator.write();
@@ -235,12 +235,13 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             )?;
 
             // Point the named key to the URef
-            let named_key_value =
-                match NamedKeyValue::from_concrete_values(Key::URef(uref_to_use), name.to_string())
-                {
-                    Ok(named_key_value) => named_key_value,
-                    Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
-                };
+            let named_key = Key::URef(uref_to_use);
+            let key_name = name.to_string();
+            let Ok(named_key_value) = NamedKeyValue::from_concrete_values(named_key, key_name)
+            else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
             StoredValue::NamedKey(named_key_value)
         }
         Keyspace::PaymentInfo(_) => {
@@ -351,7 +352,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
-        Ok(Some(_stored_value)) => {
+        Ok(Some(_)) => {
             // If it's a named key pointing to a URef, prune both the named key and the URef.
             if let Keyspace::NamedKey(_) = keyspace {
                 if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
@@ -362,6 +363,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                     }
                 }
             }
+
             // Produce a prune transform for the named key
             caller.context_mut().tracking_copy.prune(global_state_key);
         }
@@ -487,28 +489,25 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         }
         Ok(Some(StoredValue::NamedKey(named_key_value))) => {
             // Dereference named key to its URef and return the underlying Any bytes
-            match named_key_value.get_key() {
-                Ok(Key::URef(uref)) => {
-                    match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
-                        Ok(Some(StoredValue::CLValue(cl_value))) => {
-                            let CLType::Any = cl_value.cl_type() else {
-                                return Ok(HOST_ERROR_INVALID_DATA);
-                            };
-                            Cow::Owned(cl_value.inner_bytes().to_owned())
-                        }
-                        Ok(Some(_other)) => {
-                            return Ok(HOST_ERROR_INVALID_DATA);
-                        }
-                        Ok(None) => {
-                            return Ok(HOST_ERROR_NOT_FOUND);
-                        }
-                        Err(_error) => {
-                            return Err(InternalHostError::TrackingCopy.into());
-                        }
-                    }
+            let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    let CLType::Any = cl_value.cl_type() else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
+                    Cow::Owned(cl_value.inner_bytes().to_owned())
                 }
-                _ => {
+                Ok(Some(_)) => {
                     return Ok(HOST_ERROR_INVALID_DATA);
+                }
+                Ok(None) => {
+                    return Ok(HOST_ERROR_NOT_FOUND);
+                }
+                Err(_error) => {
+                    return Err(InternalHostError::TrackingCopy.into());
                 }
             }
         }
