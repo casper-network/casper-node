@@ -980,7 +980,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     )?;
 
     // 1. Look up address in the storage
-    // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
+    // 1a. if it's VM1 contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
     // you can't pass value (tokens) to called contracts. 1b. if it's new contract, wire up
     // another VM as according to the bytecode format. 2. Depends on the VM used (old or new) at

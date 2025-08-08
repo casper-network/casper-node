@@ -9,7 +9,7 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
-    casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
+    casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
     log,
     types::{Address, CallError, NamedKey},
 };
@@ -598,11 +598,11 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         assert_eq!(
             emit_raw(&large_topic_name, &[]),
-            Err(CommonResult::TopicTooLong)
+            Err(HostResult::TopicTooLong)
         );
         assert_eq!(
             emit_raw(&small_topic_name, &large_payload_data),
-            Err(CommonResult::PayloadTooLong)
+            Err(HostResult::PayloadTooLong)
         );
 
         for i in 0..127u64 {
@@ -615,7 +615,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         assert_eq!(
             emit_raw(&format!("Topic128"), &[128]),
-            Err(CommonResult::TooManyTopics),
+            Err(HostResult::TooManyTopics),
             "Emitting message with small payload failed"
         );
     }
@@ -638,7 +638,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // No value exists
         assert_eq!(casper::read_into_vec(keyspace), Ok(None));
         // Removing again (aka removing non-existent key) should raise an error
-        assert_eq!(casper::remove(keyspace), Err(CommonResult::NotFound));
+        assert_eq!(casper::remove(keyspace), Err(HostResult::NotFound));
         // Re-reading already purged value wouldn't be an issue
         assert_eq!(casper::read_into_vec(keyspace), Ok(None));
         // Write a new value under same key
@@ -649,7 +649,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // Attempting to remove a definetely non-existent key should be an error
         let keyspace = Keyspace::Context(b"this key definetely does not exists");
         let result = casper::remove(keyspace);
-        assert_eq!(result, Err(CommonResult::NotFound));
+        assert_eq!(result, Err(HostResult::NotFound));
     }
 
     {
