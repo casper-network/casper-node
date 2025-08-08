@@ -18,7 +18,7 @@ const CL_VALUE_UNIT_BYTES: [u8; 5] = [0, 0, 0, 0, 9];
 #[casper]
 impl Vm1CounterProxy {
     #[casper(constructor)]
-    pub fn new(legacy_address: Address) -> Self {
+    pub fn new(contract_address: Address) -> Self {
         Self { contract_address }
     }
 
