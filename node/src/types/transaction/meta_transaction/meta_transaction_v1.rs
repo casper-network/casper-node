@@ -339,6 +339,12 @@ impl MetaTransactionV1 {
                         expected: expected_runtime,
                     });
                 }
+
+                if !self.args.is_named() {
+                    // VmCasperV1 runtime expected named arguments and does not support bytes
+                    // variant.
+                    return Err(InvalidTransactionV1::ExpectedNamedArguments);
+                }
             }
             Some(expected_runtime @ ContractRuntimeTag::VmCasperV2) => {
                 if !transaction_config.runtime_config.vm_casper_v2 {
