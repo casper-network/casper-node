@@ -500,10 +500,11 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
         // Explicitly verify the two effects are indeed asking networking and accumulator for peers.
         assert_matches!(
             events[0],
-            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-                count,
+            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                total_count,
+                known_addr_count,
                 ..
-            }) if count == MAX_SIMULTANEOUS_PEERS as usize
+            }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
         );
         assert_matches!(
             events[1],
@@ -783,10 +784,11 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
     // for the block that is being synchronized.
     assert_matches!(
         events[0],
-        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-            count,
+        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+            total_count,
+            known_addr_count,
             ..
-        }) if count == MAX_SIMULTANEOUS_PEERS as usize
+        }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
     );
 
     assert_matches!(
@@ -817,14 +819,18 @@ async fn fwd_sync_gets_peers_only_from_accumulator() {
         &mut rng,
         Event::Request(BlockSynchronizerRequest::NeedNext),
     );
-    assert_eq!(effects.len(), 1);
+    // with the tweaks made on this fork, the count should be 2
+    // bcs the block synchronizer will also ask for 1 known addr in addition
+    // to the normal ask
+    assert_eq!(effects.len(), 2);
     let events = mock_reactor.process_effects(effects).await;
 
     // The first thing the synchronizer should do is get peers.
     // For the forward flow, the synchronizer will ask the accumulator to provide peers
     // from which it has received information for the block that is being synchronized.
+
     assert_matches!(
-        events[0],
+        events[1],
         MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
             block_hash,
             ..
@@ -3353,12 +3359,16 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::Request(BlockSynchronizerRequest::NeedNext),
         );
-        assert_eq!(effects.len(), 1);
+
+        // with the tweaks made on this fork, the count should be 2
+        // bcs the block synchronizer will also ask for 1 known addr in addition
+        // to the normal ask
+        assert_eq!(effects.len(), 2);
 
         // First, the synchronizer should get peers.
         let events = mock_reactor.process_effects(effects).await;
         assert_matches!(
-            events[0],
+            events[1],
             MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
                 block_hash,
                 ..

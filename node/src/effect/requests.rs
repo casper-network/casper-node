@@ -209,6 +209,14 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get up to `total_count` fully-connected peers in random order, including up to
+    /// `known_addr_count` known addresses.
+    FullyConnectedPeersIncludingKnownAddresses {
+        total_count: usize,
+        known_addr_count: usize,
+        /// Responder to be called with the peers.
+        responder: Responder<Vec<NodeId>>,
+    },
     /// Get detailed insights into the nodes networking.
     Insight {
         responder: Responder<NetworkInsights>,
@@ -226,6 +234,17 @@ impl Display for NetworkInfoRequest {
                 responder: _,
             } => {
                 write!(formatter, "get up to {} fully connected peers", count)
+            }
+            NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                total_count,
+                known_addr_count,
+                responder: _,
+            } => {
+                write!(
+                    formatter,
+                    "get up to {} fully connected peers with up to {} known addrs",
+                    total_count, known_addr_count
+                )
             }
             NetworkInfoRequest::Insight { responder: _ } => {
                 formatter.write_str("get networking insights")

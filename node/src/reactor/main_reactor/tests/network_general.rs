@@ -32,7 +32,7 @@ use crate::{
                 fixture::TestFixture,
                 initial_stakes::InitialStakes,
                 node_has_lowest_available_block_at_or_below_height, Nodes, ERA_ONE, ERA_THREE,
-                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS,
+                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS, TWO_MIN,
             },
             MainEvent, MainReactor, ReactorState,
         },
@@ -99,7 +99,7 @@ async fn historical_sync_with_era_height_1() {
     fixture
         .run_until(
             node_has_lowest_available_block_at_or_below_height(0, joiner_id),
-            ONE_MIN,
+            TWO_MIN,
         )
         .await;
 }

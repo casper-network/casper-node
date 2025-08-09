@@ -720,6 +720,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets up to `total_count` fully-connected network peers in random order,
+    /// including up to `known_addr_count` known addresses.
+    pub async fn get_fully_connected_peers_with_known_addresses(
+        self,
+        known_addr_count: usize,
+        total_count: usize,
+    ) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                known_addr_count,
+                total_count,
+                responder,
+            },
+            QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
     /// Announces which transactions have expired.
     pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
