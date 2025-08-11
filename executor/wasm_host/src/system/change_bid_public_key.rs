@@ -46,7 +46,7 @@ pub fn change_bid_public_key<R: GlobalStateReader>(
     ) {
         Ok(result) => result,
         Err(error) => {
-            error!(%error, "undelegate failed on dispatch");
+            error!(%error, "change bid public key failed on dispatch");
             return Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ));
@@ -61,7 +61,7 @@ pub fn change_bid_public_key<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "withdraw bid failed with error");
+            error!(%error, ?args, "change bid public key failed with error");
             Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ))

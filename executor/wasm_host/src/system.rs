@@ -6,6 +6,7 @@
 mod activate_bid;
 mod add_bid;
 mod add_reservations;
+mod burn;
 mod cancel_reservations;
 mod change_bid_public_key;
 mod create_purse;
@@ -25,7 +26,7 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
-use casper_types::{CLValueError, Phase, TransactionHash};
+use casper_types::{ApiError, CLValueError, Phase, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
 use tracing::error;
@@ -33,6 +34,7 @@ use tracing::error;
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
 pub use add_reservations::{add_reservations, AddReservationsArgs};
+pub use burn::{burn, BurnArgs};
 pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
 pub use change_bid_public_key::{change_bid_public_key, ChangeBidPublicKeyArgs};
 pub use create_purse::create_purse;
@@ -54,10 +56,13 @@ pub enum DispatchError {
     MissingSystemContract(String),
     #[error("Runtime footprint")]
     RuntimeFootprint(TrackingCopyError),
+    // INTERNAL ERRORS ARE FATAL!
     #[error("Internal host error: {0}")]
     Internal(InternalHostError),
     #[error("Call error: {0}")]
     Call(CallError),
+    #[error("Api error: {0}")]
+    Api(ApiError),
 }
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(

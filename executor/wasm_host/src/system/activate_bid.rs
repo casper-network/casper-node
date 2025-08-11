@@ -44,7 +44,7 @@ pub fn activate_bid<R: GlobalStateReader>(
     ) {
         Ok(result) => result,
         Err(error) => {
-            error!(%error, "undelegate failed on dispatch");
+            error!(%error, "activate bid failed on dispatch");
             return Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ));
@@ -59,7 +59,7 @@ pub fn activate_bid<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "withdraw bid failed with error");
+            error!(%error, ?args, "activate bid failed with error");
             Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ))

@@ -358,6 +358,34 @@ impl ExecuteWithProviderResult {
     }
 }
 
+/// Available options for interacting with the system mint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MintMethods {
+    Burn,
+    Transfer,
+}
+
+/// Available options for interacting with the system auction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuctionMethods {
+    Activate,
+    Bid,
+    Withdraw,
+    Delegate,
+    Undelegate,
+    Redelegate,
+    AddReservation,
+    CancelReservation,
+    ChangePublicKey,
+}
+
+/// Available options for interacting with the system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SystemMenu {
+    Auction(AuctionMethods),
+    Mint(MintMethods),
+}
+
 /// Target for Wasm execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
@@ -370,6 +398,8 @@ pub enum ExecutionKind {
         /// Entry point to call.
         entry_point: String,
     },
+    /// Interact with the system.
+    System(SystemMenu),
 }
 
 /// Error that can occur during execution, before the Wasm virtual machine is involved.
@@ -398,6 +428,8 @@ pub enum ExecuteError {
     ReturnFlagsNotSupported(u32),
     #[error("Entity not found: {0}")]
     EntityNotFound(Key),
+    #[error("Api error: {0}")]
+    Api(String),
 }
 
 #[derive(Debug, Error)]

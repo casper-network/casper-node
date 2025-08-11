@@ -74,7 +74,7 @@ pub fn cancel_reservations<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "withdraw bid failed with error");
+            error!(%error, ?args, "cancel reservation failed with error");
             Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ))

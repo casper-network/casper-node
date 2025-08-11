@@ -101,12 +101,6 @@ pub enum TrapCode {
     /// Trap code for unreachable code reached triggered by unreachable instruction.
     #[error("unreachable")]
     UnreachableCodeReached,
-    /// Trap code for failure upon dispatch to a native runtime function.
-    #[error("native runtime dispatch")]
-    NativeRuntimeDispatch,
-    /// Trap code for error received from a native runtime function.
-    #[error("native runtime error")]
-    NativeRuntimeError,
 }
 
 pub const CALLEE_SUCCEEDED: u32 = 0;
@@ -114,7 +108,7 @@ pub const CALLEE_REVERTED: u32 = 1;
 pub const CALLEE_TRAPPED: u32 = 2;
 pub const CALLEE_GAS_DEPLETED: u32 = 3;
 pub const CALLEE_NOT_CALLABLE: u32 = 4;
-pub const CALLEE_HOST_ERROR: u32 = 5;
+pub const CALLEE_API_ERROR: u32 = 5;
 
 /// Represents the result of a host function call.
 ///
@@ -133,6 +127,9 @@ pub enum CallError {
     /// Called contract is not callable.
     #[error("not callable")]
     NotCallable,
+    /// System is callee and signaled vm instance kill.
+    #[error("kill the vm instance of the caller")]
+    Api(String),
 }
 
 impl CallError {
@@ -144,6 +141,7 @@ impl CallError {
             Self::CalleeTrapped(_) => CALLEE_TRAPPED,
             Self::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
             Self::NotCallable => CALLEE_NOT_CALLABLE,
+            Self::Api(_) => CALLEE_API_ERROR,
         }
     }
 }

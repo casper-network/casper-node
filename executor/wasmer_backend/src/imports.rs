@@ -80,10 +80,6 @@ pub(crate) fn generate_casper_imports<S: GlobalStateReader + 'static, E: Executo
                                     stringify!($name),
                                 );
 
-                                if let VMError::Internal(internal) = error {
-                                    panic!("InternalHostError {internal:?}; aborting");
-                                }
-
                                 Err(error)
                             }
                         }

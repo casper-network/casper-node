@@ -10,7 +10,10 @@ use casper_storage::{
     RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    system::auction::{DelegationRate, METHOD_ADD_BID},
+    system::{
+        auction,
+        auction::{DelegationRate, METHOD_ADD_BID},
+    },
     ApiError, PublicKey, TransactionHash, U512,
 };
 use parking_lot::RwLock;
@@ -80,7 +83,7 @@ pub fn add_bid<R: GlobalStateReader>(
     ) {
         Ok(result) => result,
         Err(error) => {
-            error!(%error, "undelegate failed on dispatch");
+            error!(%error, "add bid failed on dispatch");
             return Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ));
@@ -90,23 +93,15 @@ pub fn add_bid<R: GlobalStateReader>(
     debug!(?args, ?result, METHOD_ADD_BID);
     match result {
         Ok(updated_amount) => Ok(updated_amount),
-        Err(ApiError::AuctionError(code)) => {
-            error!(%code, ?args, "delegate failed with error code");
 
-            if code == 40 {
-                return Err(DispatchError::Call(CallError::CalleeGasDepleted));
-            }
-
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
-        }
         Err(error) => {
-            error!(%error, ?args, "delegate failed with error");
-
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            if let ApiError::AuctionError(code) = error {
+                if code == auction::Error::GasLimit as u8 {
+                    return Err(DispatchError::Call(CallError::CalleeGasDepleted));
+                }
+            }
+            error!(%error, ?args, "add bid failed with error");
+            Err(DispatchError::Api(error))
         }
     }
 }

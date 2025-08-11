@@ -3,13 +3,13 @@ pub mod sandboxed_execution;
 
 use bytes::Bytes;
 use executor::ExecuteError;
+use serde::Serialize;
 use thiserror::Error;
 
 use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
 };
-use serde::Serialize;
 
 #[cfg(test)]
 pub use sandboxed_execution::SandboxedExecutionRequestBuilder;

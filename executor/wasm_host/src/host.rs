@@ -1035,6 +1035,9 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     caller.consume_gas(gas_spent)?;
 
+    if let Err(CallError::Api(api_error)) = host_result {
+        return Err(VMError::Execute(ExecuteError::Api(api_error)));
+    }
     Ok(u32_from_host_result(host_result))
 }
 

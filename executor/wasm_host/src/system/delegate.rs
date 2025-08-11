@@ -63,7 +63,7 @@ pub fn delegate<R: GlobalStateReader>(
     ) {
         Ok(result) => result,
         Err(error) => {
-            error!(%error, "undelegate failed on dispatch");
+            error!(%error, "delegate failed on dispatch");
             return Err(DispatchError::Internal(
                 InternalHostError::DispatchSystemContract,
             ));
