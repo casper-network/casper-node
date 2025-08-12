@@ -216,6 +216,15 @@ pub(crate) enum NetworkInfoRequest {
     Insight {
         responder: Responder<NetworkInsights>,
     },
+    /// Get up to `count` fully-connected validators in random order.
+    FullyConnectedValidators {
+        /// "up-to" number of validators to select randomly
+        count: usize,
+        /// era_id in which the filtered peer needs to be a validator
+        era_id: EraId,
+        /// Responder to be called with the peers.
+        responder: Responder<Vec<NodeId>>,
+    },
 }
 
 impl Display for NetworkInfoRequest {
@@ -232,6 +241,17 @@ impl Display for NetworkInfoRequest {
             }
             NetworkInfoRequest::Insight { responder: _ } => {
                 formatter.write_str("get networking insights")
+            }
+            NetworkInfoRequest::FullyConnectedValidators {
+                count,
+                era_id,
+                responder: _,
+            } => {
+                write!(
+                    formatter,
+                    "get up to {} fully connected validators in era {}",
+                    count, era_id
+                )
             }
         }
     }
