@@ -7,34 +7,15 @@
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 # Historical sync behavior for this node. Options are:
-#  'ttl'      (node will attempt to acquire all block data to comply with time to live enforcement)
 #  'genesis'  (node will attempt to acquire all block data back to genesis)
+#  'ttl'      (node will attempt to acquire all block data to comply with time to live enforcement)
 #  'nosync'   (node will only acquire blocks moving forward)
 #  'isolated' (node will initialize without peers and will not accept peers)
-#  'completeblock' (node will acquire complete block and shutdown)
-# note: the only two states allowed to switch to Validate reactor state are `genesis` and `ttl`.
-#       it is recommended for dedicated validator nodes to be in ttl mode to increase
-#       their ability to maintain maximal uptime...if a long-running genesis validator
-#       goes offline and comes back up while in genesis mode, it must backfill
-#       any gaps in its block awareness before resuming validation.
-#
-#       it is recommended for reporting non-validator nodes to be in genesis mode to
-#       enable support for queries at any block height.
-#
-#       it is recommended for non-validator working nodes (for dapp support, etc) to run in
-#       ttl or nosync mode (depending upon their specific data requirements).
-#
-#       thus for instance a node backing a block explorer would prefer genesis mode,
-#       while a node backing a dapp interested in very recent activity would prefer to run in nosync mode,
-#       and a node backing a dapp interested in auction activity or tracking trends would prefer to run in ttl mode.
-# note: as time goes on, the time to sync back to genesis takes progressively longer.
 # note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
 #       (it is currently ~18 hours by default on production and production-like networks but subject to change).
 # note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
 #        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
 #        only interested in recent activity.
-# note: an isolated node will not connect to, sync with, or keep up with the network, but will respond to
-#       binary port, rest server, event server, and diagnostic port connections.
 sync_handling = 'genesis'
 
 # Idle time after which the syncing process is considered stalled.
@@ -282,13 +263,12 @@ blocklist_retain_max_duration = '10 minutes'
 # only degrade the network. Please note that there are limited guardrails for this functionality 
 # in the node - it is possible to specify a drop and block schedule which will end up 
 # in a network that will not be able to produce blocks. Also - please note that there is no requirement
-# to apply this to all the nodes in the network. Before removing this section consider updating 
-# `generate-flaky.sh` script which depends on it's presence
-# [network.flakiness]
-# drop_peer_after_min = '3 minutes'
-# drop_peer_after_max = '10 minutes'
-# block_peer_after_drop_min = '10 seconds'
-# block_peer_after_drop_max = '20 seconds'
+# to apply this to all the nodes in the network
+[network.flakiness]
+drop_peer_after_min = '3 minutes'
+drop_peer_after_max = '10 minutes'
+block_peer_after_drop_min = '10 seconds'
+block_peer_after_drop_max = '20 seconds'
 
 # Identity of a node
 #
@@ -329,6 +309,15 @@ approvals_hashes_responses = 0
 execution_results_requests = 1
 execution_results_responses = 0
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
+
 # ==================================================
 # Configuration options for the BinaryPort server
 # ==================================================
@@ -349,10 +338,6 @@ allow_request_get_trie = false
 
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
-
-# IP addresses allowed to make `TrySandboxedExecution` requests. Empty list means no access allowed.
-# Supports IP address strings like "127.0.0.1" or "::1". A string of "*" matches all IPs.
-sandboxed_execution_allowed_ips = []
 
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
@@ -390,10 +375,6 @@ accept_transaction_request_termination_delay = '24 seconds'
 #The amount of time which is given to a connection to extend it's lifetime when a valid
 #[`Command::TrySpeculativeExec`] is sent to the node
 speculative_exec_request_termination_delay = '0 seconds'
-
-#The amount of time which is given to a connection to extend it's lifetime when a valid
-#[`Command::TrySandboxedExecution`] is sent to the node
-try_sandboxed_execution_request_termination_delay = '30 seconds'
 
 # ==============================================
 # Configuration options for the REST HTTP server
