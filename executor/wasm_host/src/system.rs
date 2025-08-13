@@ -16,10 +16,9 @@ mod transfer;
 mod undelegate;
 mod withdraw_bid;
 
-use std::{cell::RefCell, rc::Rc, sync::Arc};
-
+use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::InternalHostError;
+use casper_executor_wasm_interface::{GasUsage, InternalHostError};
 use casper_storage::{
     global_state::GlobalStateReader,
     system::runtime_native::{Id, RuntimeNative},
@@ -28,8 +27,12 @@ use casper_storage::{
 };
 use casper_types::{ApiError, CLValueError, Phase, TransactionHash};
 use parking_lot::RwLock;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 use thiserror::Error;
-use tracing::error;
+use tracing::{debug, error};
+
+use casper_executor_wasm_interface::executor::{ExecuteError, ExecuteResult};
+use casper_types::bytesrepr::ToBytes;
 
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
@@ -105,6 +108,87 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     );
 
     Ok(ret)
+}
+
+pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
+    mut tracking_copy: TrackingCopy<R>,
+    id: TransactionHash,
+    current_gas_limit: u64,
+    gas_cost: u64,
+    func: impl FnOnce(&mut TrackingCopy<R>) -> Result<T, DispatchError>,
+) -> Result<ExecuteResult, ExecuteError> {
+    let (output, host_error, execute_error) = match func(&mut tracking_copy) {
+        Ok(ret) => match ret.to_bytes() {
+            Ok(ret_bytes) => (Some(Bytes::from(ret_bytes)), None, None),
+            Err(bre) => {
+                debug!(?id, %bre, "bytes repr error");
+                (None, Some(CallError::Api(bre.to_string())), None)
+            }
+        },
+        Err(der) => match der {
+            DispatchError::Api(apr) => {
+                debug!(?id, %apr, "api error");
+                (None, Some(CallError::Api(apr.to_string())), None)
+            }
+            DispatchError::Call(cer) => {
+                debug!(?id, %cer, "call error");
+                (None, Some(cer), None)
+            }
+            DispatchError::CLValue(cve) => {
+                debug!(?id, %cve, "cl value error");
+                (None, Some(CallError::Api(cve.to_string())), None)
+            }
+            // the below are all node killers
+            DispatchError::RegistryNotFound => {
+                error!(?id, "system contract registry not found");
+                (
+                    None,
+                    None,
+                    Some(ExecuteError::InternalHost(
+                        InternalHostError::DispatchSystemContract,
+                    )),
+                )
+            }
+            DispatchError::MissingSystemContract(name) => {
+                error!(?id, ?name, "system contract not found");
+                (
+                    None,
+                    None,
+                    Some(ExecuteError::InternalHost(
+                        InternalHostError::DispatchSystemContract,
+                    )),
+                )
+            }
+            DispatchError::Internal(ihe) => {
+                error!(?id, %ihe, "internal host error");
+                (None, None, Some(ExecuteError::InternalHost(ihe)))
+            }
+            DispatchError::Storage(tce) | DispatchError::RuntimeFootprint(tce) => {
+                error!(?id, %tce, "tracking copy error");
+                (
+                    None,
+                    None,
+                    Some(ExecuteError::InternalHost(InternalHostError::TrackingCopy)),
+                )
+            }
+        },
+    };
+
+    match execute_error {
+        None => {
+            let gas_usage = GasUsage::new(current_gas_limit, current_gas_limit - gas_cost);
+
+            Ok(ExecuteResult {
+                host_error,
+                output,
+                gas_usage,
+                effects: tracking_copy.effects(),
+                cache: tracking_copy.cache(),
+                messages: tracking_copy.messages(),
+            })
+        }
+        Some(exr) => Err(exr),
+    }
 }
 
 #[cfg(test)]

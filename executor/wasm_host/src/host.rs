@@ -1338,13 +1338,11 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         args,
     ) {
         Ok(()) => Ok(HOST_ERROR_SUCCESS),
-        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
         Err(DispatchError::Call(call_error)) => {
-            // This is a bug in the EE, as it should have been caught during the preparation phase
-            // when the contract was stored in the global state.
             error!(?call_error, "Failed to transfer");
             Ok(call_error.into_u32())
         }
+        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
         Err(dispatch_error) => {
             error!(
                 ?dispatch_error,

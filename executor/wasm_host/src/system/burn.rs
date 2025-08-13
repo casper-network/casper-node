@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use crate::system::{dispatch_system_contract, DispatchError, TransferArgs};
+use crate::system::{dispatch_system_contract, DispatchError};
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::{InternalHostError, VMError, VMResult};
+use casper_executor_wasm_interface::InternalHostError;
 use casper_storage::{
     global_state::GlobalStateReader, system::mint::Mint, AddressGenerator, RuntimeNativeConfig,
     TrackingCopy,
 };
-use casper_types::{account::AccountHash, system::mint::METHOD_BURN, TransactionHash, URef, U512};
+use casper_types::{system::mint::METHOD_BURN, TransactionHash, URef, U512};
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
@@ -17,6 +17,12 @@ use tracing::{debug, error};
 pub struct BurnArgs {
     purse: URef,
     amount: U512,
+}
+
+impl BurnArgs {
+    pub fn new(purse: URef, amount: U512) -> Self {
+        BurnArgs { purse, amount }
+    }
 }
 
 pub fn burn<R: GlobalStateReader>(

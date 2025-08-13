@@ -101,6 +101,12 @@ pub enum TrapCode {
     /// Trap code for unreachable code reached triggered by unreachable instruction.
     #[error("unreachable")]
     UnreachableCodeReached,
+    /// Trap code for a cl value error.
+    #[error("cl value error")]
+    CLValue,
+    /// Trap code for a failed type conversion.
+    #[error("type conversion")]
+    TypeConversion,
 }
 
 pub const CALLEE_SUCCEEDED: u32 = 0;

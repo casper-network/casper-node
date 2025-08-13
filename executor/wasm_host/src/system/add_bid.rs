@@ -1,7 +1,5 @@
 //! Add Bid.
 
-use std::sync::Arc;
-
 use crate::system::DispatchError;
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::InternalHostError;
@@ -17,6 +15,7 @@ use casper_types::{
     ApiError, PublicKey, TransactionHash, U512,
 };
 use parking_lot::RwLock;
+use std::sync::Arc;
 use tracing::{debug, error};
 
 #[derive(Debug, Clone)]

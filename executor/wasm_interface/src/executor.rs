@@ -363,6 +363,7 @@ impl ExecuteWithProviderResult {
 pub enum MintMethods {
     Burn,
     Transfer,
+    TransferSimple,
 }
 
 /// Available options for interacting with the system auction.
@@ -402,6 +403,16 @@ pub enum ExecutionKind {
     System(SystemMenu),
 }
 
+impl ExecutionKind {
+    /// Returns system menu selection if relevant.
+    pub fn system_menu_selection(&self) -> Option<SystemMenu> {
+        match self {
+            ExecutionKind::SessionBytes(_) | ExecutionKind::Stored { .. } => None,
+            ExecutionKind::System(menu) => Some(menu.clone()),
+        }
+    }
+}
+
 /// Error that can occur during execution, before the Wasm virtual machine is involved.
 ///
 /// This error is returned by the `execute` function. It contains information about the error that
@@ -430,6 +441,8 @@ pub enum ExecuteError {
     EntityNotFound(Key),
     #[error("Api error: {0}")]
     Api(String),
+    #[error("sandboxed system contract call")]
+    SandboxedSystemContractCall,
 }
 
 #[derive(Debug, Error)]

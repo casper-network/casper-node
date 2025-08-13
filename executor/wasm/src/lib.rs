@@ -17,12 +17,13 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_host::{
     context::Context,
-    system::{self, DispatchError, TransferArgs},
+    system::{self, native_exec, DispatchError, TransferArgs},
 };
 use casper_executor_wasm_interface::{
     executor::{
         AuctionMethods, ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, SystemMenu,
+        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, MintMethods,
+        SystemMenu,
     },
     sandboxed_execution::{
         SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
@@ -42,17 +43,17 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
     bytesrepr,
-    bytesrepr::ToBytes,
+    system::auction::{DelegatorKind, Reservation},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
     ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
-    EntryPointPayment, EntryPointType, EntryPointValue, Error, Gas, Groups, InitiatorAddr, Key,
+    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
     MessageLimits, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
-    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
-    U512,
+    PublicKey, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
+    WasmV2Config, U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 #[cfg(any(feature = "testing", test))]
 pub mod chainspec_config;
@@ -395,11 +396,348 @@ impl ExecutorV2 {
         }
     }
 
+    fn execute_system_contract<R: GlobalStateReader + 'static>(
+        &self,
+        menu_selection: SystemMenu,
+        tracking_copy: TrackingCopy<R>,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecuteResult, ExecuteError> {
+        //TODO all gas costs should gotten from cost table!!!!
+        const DEFAULT_GAS_COST: u64 = 1;
+
+        let ExecuteRequest {
+            gas_limit,
+            input,
+            transaction_hash,
+            address_generator,
+            sandboxed,
+            runtime_native_config,
+            ..
+        } = execute_request;
+
+        if sandboxed {
+            info!("attempt to call system contract while sandboxed");
+            return Err(ExecuteError::SandboxedSystemContractCall);
+        }
+
+        match menu_selection {
+            SystemMenu::Auction(auction_method) => match auction_method {
+                AuctionMethods::Activate => {
+                    let unpacked: (PublicKey,) = bytesrepr::deserialize_from_slice(&input)
+                        .map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::ActivateBidArgs::new(
+                        unpacked.0,
+                        runtime_native_config.minimum_bid_amount(),
+                    );
+                    let func = move |tc| {
+                        system::activate_bid(
+                            tc,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::ActivateBidArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::Bid => {
+                    let unpacked: (PublicKey, u8, U512, u64, u64, u64, u32, u32) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::AddBidArgs::new(
+                        unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4, unpacked.5,
+                        unpacked.6, unpacked.7,
+                    );
+
+                    let func = move |tracking_copy| {
+                        system::add_bid(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::AddBidArgs, U512, R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::Withdraw => {
+                    let unpacked: (PublicKey, U512, u64) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::WithdrawBidArgs::new(unpacked.0, unpacked.1, unpacked.2);
+
+                    let func = move |tracking_copy| {
+                        system::withdraw_bid(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::WithdrawBidArgs, U512, R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::Delegate => {
+                    let unpacked: (DelegatorKind, PublicKey, U512, u32) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args =
+                        system::DelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
+
+                    let func = move |tracking_copy| {
+                        system::delegate(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::DelegateArgs, U512, R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::Undelegate => {
+                    let unpacked: (DelegatorKind, PublicKey, U512) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::UndelegateArgs::new(unpacked.0, unpacked.1, unpacked.2);
+
+                    let func = move |tracking_copy| {
+                        system::undelegate(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::UndelegateArgs, U512, R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::Redelegate => {
+                    let unpacked: (DelegatorKind, PublicKey, U512, PublicKey) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args =
+                        system::RedelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
+
+                    let func = move |tracking_copy| {
+                        system::redelegate(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::RedelegateArgs, U512, R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::AddReservation => {
+                    let unpacked: (Vec<Reservation>,) = bytesrepr::deserialize_from_slice(&input)
+                        .map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                    let args = system::AddReservationsArgs::new(unpacked.0);
+
+                    let func = move |tracking_copy| {
+                        system::add_reservations(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::AddReservationsArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                AuctionMethods::CancelReservation => {
+                    let unpacked: (PublicKey, Vec<DelegatorKind>, u32) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args =
+                        system::CancelReservationsArgs::new(unpacked.0, unpacked.1, unpacked.2);
+
+                    let func = move |tracking_copy| {
+                        system::cancel_reservations(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::CancelReservationsArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+
+                AuctionMethods::ChangePublicKey => {
+                    let unpacked: (PublicKey, PublicKey) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::ChangeBidPublicKeyArgs::new(unpacked.0, unpacked.1);
+
+                    let func = move |tracking_copy| {
+                        system::change_bid_public_key(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::ChangeBidPublicKeyArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+            },
+            SystemMenu::Mint(mint_method) => match mint_method {
+                MintMethods::Burn => {
+                    let unpacked: (URef, U512) = bytesrepr::deserialize_from_slice(&input)
+                        .map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = system::BurnArgs::new(unpacked.0, unpacked.1);
+                    let func = move |tracking_copy| {
+                        system::burn(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<system::BurnArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                MintMethods::Transfer => {
+                    let unpacked: (URef, URef, U512, Option<AccountHash>, Option<u64>) =
+                        bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = TransferArgs::new(
+                        unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4,
+                    );
+                    let func = move |tracking_copy| {
+                        system::transfer(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<TransferArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+                MintMethods::TransferSimple => {
+                    let unpacked: (URef, URef, U512) = bytesrepr::deserialize_from_slice(&input)
+                        .map_err(|_err| {
+                            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                        })?;
+                    let args = TransferArgs::new_simple(unpacked.0, unpacked.1, unpacked.2);
+                    let func = move |tracking_copy| {
+                        system::transfer(
+                            tracking_copy,
+                            runtime_native_config,
+                            transaction_hash,
+                            Arc::clone(&address_generator),
+                            args,
+                        )
+                    };
+                    native_exec::<TransferArgs, (), R>(
+                        tracking_copy,
+                        transaction_hash,
+                        gas_limit,
+                        DEFAULT_GAS_COST,
+                        func,
+                    )
+                }
+            },
+        }
+    }
+
     fn execute_with_tracking_copy<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
+        if let Some(system_menu_selection) = execute_request.execution_kind.system_menu_selection()
+        {
+            return self.execute_system_contract(
+                system_menu_selection,
+                tracking_copy,
+                execute_request,
+            );
+        }
+
         let ExecuteRequest {
             initiator,
             caller_key,
@@ -420,157 +758,14 @@ impl ExecutorV2 {
 
         let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
-        if let ExecutionKind::System(menu_selection) = execution_kind {
-            match menu_selection {
-                SystemMenu::Auction(auction_method) => match auction_method {
-                    AuctionMethods::Activate => {
-                        let unpacked: (casper_types::PublicKey,) =
-                            bytesrepr::deserialize_from_slice(&input).map_err(|err| {
-                                ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                            })?;
-                        let args = system::ActivateBidArgs::new(
-                            unpacked.0,
-                            runtime_native_config.minimum_bid_amount(),
-                        );
-                        const DEFAULT_ACTIVATE_BID_GAS_COST: u64 = 1;
-                        match system::activate_bid(
-                            &mut tracking_copy,
-                            runtime_native_config.clone(),
-                            transaction_hash,
-                            Arc::clone(&address_generator),
-                            args,
-                        ) {
-                            Ok(_) => {
-                                //TODO costs should be in cost table
-                                return Ok(ExecuteResult {
-                                    host_error: None,
-                                    output: None,
-                                    gas_usage: GasUsage::new(
-                                        gas_limit,
-                                        gas_limit - DEFAULT_ACTIVATE_BID_GAS_COST,
-                                    ),
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
-                            }
-                            Err(DispatchError::Call(call_error)) => {
-                                return Ok(ExecuteResult {
-                                    host_error: Some(call_error),
-                                    output: None,
-                                    gas_usage: GasUsage::new(
-                                        gas_limit,
-                                        gas_limit - DEFAULT_ACTIVATE_BID_GAS_COST,
-                                    ),
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
-                            }
-                            Err(DispatchError::Internal(internal_error)) => {
-                                return Err(ExecuteError::InternalHost(internal_error));
-                            }
-                            Err(error) => {
-                                return Err(ExecuteError::InternalHost(
-                                    InternalHostError::DispatchSystemContract,
-                                ));
-                            }
-                        }
-                    }
-                    AuctionMethods::Bid => {
-                        let unpacked: (casper_types::PublicKey, u8, U512, u64, u64, u64, u32, u32) =
-                            bytesrepr::deserialize_from_slice(&input).map_err(|err| {
-                                ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                            })?;
-                        let args = system::AddBidArgs::new(
-                            unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4, unpacked.5,
-                            unpacked.6, unpacked.7,
-                        );
-                        //TODO costs should be in cost table
-                        const DEFAULT_ADD_BID_GAS_COST: u64 = 1;
-                        let gas_usage =
-                            GasUsage::new(gas_limit, gas_limit - DEFAULT_ADD_BID_GAS_COST);
-                        match system::add_bid(
-                            &mut tracking_copy,
-                            runtime_native_config,
-                            transaction_hash,
-                            Arc::clone(&address_generator),
-                            args,
-                        ) {
-                            Ok(ret) => {
-                                let ret_bytes = ret.to_bytes().map_err(|bre| {
-                                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                                })?;
-                                return Ok(ExecuteResult {
-                                    host_error: None,
-                                    output: Some(Bytes::from(ret_bytes)),
-                                    gas_usage,
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
-                            }
-                            Err(DispatchError::Api(api_error)) => {
-                                return Ok(ExecuteResult {
-                                    host_error: Some(CallError::Api(api_error.to_string())),
-                                    output: None,
-                                    gas_usage,
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
-                            }
-                            Err(DispatchError::Call(call_error)) => {
-                                return Ok(ExecuteResult {
-                                    host_error: Some(call_error),
-                                    output: None,
-                                    gas_usage,
-                                    effects: tracking_copy.effects(),
-                                    cache: tracking_copy.cache(),
-                                    messages: tracking_copy.messages(),
-                                });
-                            }
-                            Err(DispatchError::Internal(internal_error)) => {
-                                return Err(ExecuteError::InternalHost(internal_error));
-                            }
-                            Err(error) => {
-
-                                // return Err(ExecuteError::InternalHost(InternalHostError::))
-                            }
-                        }
-                    }
-                    AuctionMethods::Withdraw => {}
-                    AuctionMethods::Delegate => {}
-                    AuctionMethods::Undelegate => {}
-                    AuctionMethods::Redelegate => {}
-                    AuctionMethods::AddReservation => {}
-                    AuctionMethods::CancelReservation => {}
-                    AuctionMethods::ChangePublicKey => {}
-                },
-                SystemMenu::Mint(mint_method) => {}
-            }
-        }
-
-        let (wasm_bytes, export_name) = match &execution_kind {
-            ExecutionKind::System(_) => {
-                // this should be unreachable.
-                return Ok(ExecuteResult {
-                    host_error: Some(CallError::NotCallable),
-                    output: None,
-                    gas_usage: GasUsage::new(gas_limit, gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST),
-                    effects: tracking_copy.effects(),
-                    cache: tracking_copy.cache(),
-                    messages: tracking_copy.messages(),
-                });
-            }
-            ExecutionKind::SessionBytes(wasm_bytes) => {
-                // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
+        let (wasm_bytes, export_name) = {
+            if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
-            }
-            ExecutionKind::Stored {
+            } else if let ExecutionKind::Stored {
                 address: smart_contract_addr,
                 entry_point,
-            } => {
+            } = &execution_kind
+            {
                 let smart_contract_key = Key::SmartContract(*smart_contract_addr);
                 let legacy_key = Key::Hash(*smart_contract_addr);
 
@@ -723,6 +918,10 @@ impl ExecutorV2 {
                         return Err(ExecuteError::CodeNotFound(*smart_contract_addr));
                     }
                 }
+            } else {
+                return Err(ExecuteError::InternalHost(
+                    InternalHostError::DispatchSystemContract,
+                ));
             }
         };
 
@@ -777,7 +976,9 @@ impl ExecutorV2 {
             .with_memory_limit(self.config.memory_limit)
             .build();
 
-        let mut instance = vm.instantiate(wasm_bytes, context, wasm_instance_config)?;
+        let mut instance = vm
+            .instantiate(wasm_bytes, context, wasm_instance_config)
+            .map_err(|wpe| ExecuteError::WasmPreparation(wpe))?;
 
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = instance.call_export(export_name);
@@ -1106,6 +1307,7 @@ impl Executor for ExecutorV2 {
                     CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,
+                    CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),

@@ -1,4 +1,4 @@
-use casper_executor_wasm_interface::{executor::Executor, VMError, VMResult};
+use casper_executor_wasm_interface::{executor::Executor, VMResult};
 use casper_storage::global_state::GlobalStateReader;
 use tracing::warn;
 use wasmer::{FunctionEnv, FunctionEnvMut, Imports, Store};

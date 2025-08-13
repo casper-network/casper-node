@@ -102,6 +102,8 @@ pub enum InternalHostError {
     MessageChecksumMissing,
     #[error("attempted writing in restricted mode")]
     AttemptWriteInRestricted,
+    #[error("missing system contract")]
+    MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
     #[error("incompatible type: expected {expected}, found {found}")]
