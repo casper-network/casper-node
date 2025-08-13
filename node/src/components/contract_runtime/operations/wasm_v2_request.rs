@@ -82,8 +82,6 @@ pub(crate) enum WasmV2Error {
 
 #[derive(Clone, Eq, PartialEq, Error, Debug)]
 pub(crate) enum InvalidRequest {
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] casper_types::bytesrepr::Error),
     #[error("Expected target")]
     ExpectedTarget,
     #[error("Invalid gas limit: {0}")]

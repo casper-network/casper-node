@@ -325,6 +325,7 @@ pub enum ErrorCode {
     #[error("expected bytes arguments")]
     InvalidTransactionExpectedBytesArguments = 101,
     /// Missing seed field in transaction
+    #[deprecated]
     #[error("Missing seed field in transaction")]
     InvalidTransactionMissingSeed = 102,
     /// Pricing mode not supported
@@ -543,7 +544,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::ExpectedBytesArguments => {
                 ErrorCode::InvalidTransactionExpectedBytesArguments
             }
-            InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
+
             InvalidTransactionV1::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
             InvalidTransactionV1::InsufficientBurnAmount { .. } => {
                 ErrorCode::InvalidTransactionInsufficientBurnAmount

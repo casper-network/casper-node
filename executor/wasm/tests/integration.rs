@@ -12,7 +12,7 @@ use casper_executor_wasm::{
         base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
         expect_successful_execution, make_address_generator, make_executor,
         make_global_state_with_genesis, make_runtime_config, read_wasm, run_create_contract,
-        run_wasm_session, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
+        run_wasm_session, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
     },
 };
 
@@ -101,7 +101,6 @@ fn harness() {
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
-        .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(Timestamp::now().into())
         .with_state_hash(state_root_hash)
         .with_block_height(1)
@@ -157,8 +156,6 @@ fn cep18() {
         create_request,
     );
 
-    dbg!(create_result.gas_usage().gas_spent());
-
     let contract_hash = EntityAddr::SmartContract(*create_result.smart_contract_addr());
 
     state_root_hash = global_state
@@ -204,7 +201,6 @@ fn cep18() {
         .with_serialized_input((create_result.smart_contract_addr(),))
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(block_time_2)
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(2) // TODO: Carry on block height
@@ -219,7 +215,6 @@ fn cep18() {
         state_root_hash,
         execute_request,
     );
-    dbg!(result_2.gas_usage().gas_spent());
 
     state_root_hash = global_state
         .commit_effects(state_root_hash, result_2.effects().clone())
@@ -874,8 +869,6 @@ fn escrow() {
         create_request,
     );
 
-    dbg!(create_result.gas_usage().gas_spent());
-
     let contract_hash = create_result.smart_contract_addr();
 
     state_root_hash = global_state
@@ -894,7 +887,6 @@ fn escrow() {
         .with_serialized_input(())
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(1234567890.into())
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(2) // TODO: Carry on block height
@@ -909,7 +901,6 @@ fn escrow() {
         execute_request,
     )
     .expect("should have result");
-    dbg!(result_2.gas_usage().gas_spent());
 
     let post_state_root_hash = global_state
         .commit_effects(state_root_hash, result_2.effects().clone())
@@ -994,8 +985,6 @@ fn supports_named_args_convention() {
         create_request,
     );
 
-    dbg!(create_result.gas_usage().gas_spent());
-
     let contract_hash = create_result.smart_contract_addr();
 
     state_root_hash = global_state
@@ -1014,7 +1003,6 @@ fn supports_named_args_convention() {
         .with_serialized_input(())
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(1234567890.into())
         .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
         .with_block_height(2) // TODO: Carry on block height
@@ -1029,7 +1017,6 @@ fn supports_named_args_convention() {
         execute_request,
     )
     .expect("should have result");
-    dbg!(result_2.gas_usage().gas_spent());
 
     let post_state_root_hash = global_state
         .commit_effects(state_root_hash, result_2.effects().clone())
