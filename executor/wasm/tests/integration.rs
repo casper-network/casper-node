@@ -767,10 +767,10 @@ fn casper_return_writes_to_execution_journal() {
     let ret_transform = ret_transform.unwrap();
     match ret_transform.kind() {
         casper_types::execution::TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
-            // The ret function in the test contract calls casper::ret with [1, 2, 3] data
+            // The ret function in the test contract calls casper::ret with [~tag~, 1, 2, 3] data
             assert_eq!(
                 &bytes.to_bytes().expect("must get to bytes"),
-                &[1, 2, 3],
+                &[3, 0, 0, 0, 1, 2, 3],
                 "Return data should match what was passed to casper::ret"
             );
         }

@@ -25,20 +25,29 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
-use casper_types::{ApiError, CLValueError, Phase, TransactionHash};
+use casper_types::{
+    bytesrepr, ApiError, CLValueError, Phase, PublicKey, TransactionHash, URef, U512,
+};
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use thiserror::Error;
 use tracing::{debug, error};
 
-use casper_executor_wasm_interface::executor::{ExecuteError, ExecuteResult};
+use casper_executor_wasm_interface::executor::{
+    AuctionMethods, ExecuteError, ExecuteResult, MintMethods, SystemMenu,
+};
 use casper_types::bytesrepr::ToBytes;
 
+use crate::system;
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
 pub use add_reservations::{add_reservations, AddReservationsArgs};
 pub use burn::{burn, BurnArgs};
 pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
+use casper_types::{
+    account::AccountHash,
+    system::auction::{DelegatorKind, Reservation},
+};
 pub use change_bid_public_key::{change_bid_public_key, ChangeBidPublicKeyArgs};
 pub use create_purse::create_purse;
 pub use delegate::{delegate, DelegateArgs};
@@ -110,37 +119,263 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     Ok(ret)
 }
 
+/// This function adapts inner system contract interactions into direct execution using
+/// ExecuteRequest / ExecuteResult / ExecuteError semantics.
+///
+/// This is intended to interface with VM based calls.
+/// Inner logic that needs to interact with system contract(s) should instead call the appropriate
+/// system function(s) directly.
+#[allow(clippy::too_many_arguments)]
 pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     mut tracking_copy: TrackingCopy<R>,
-    id: TransactionHash,
+    runtime_native_config: RuntimeNativeConfig,
+    transaction_hash: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
     current_gas_limit: u64,
     gas_cost: u64,
-    func: impl FnOnce(&mut TrackingCopy<R>) -> Result<T, DispatchError>,
+    input: Bytes,
+    system_menu_selection: SystemMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
-    let (output, host_error, execute_error) = match func(&mut tracking_copy) {
-        Ok(ret) => match ret.to_bytes() {
-            Ok(ret_bytes) => (Some(Bytes::from(ret_bytes)), None, None),
-            Err(bre) => {
-                debug!(?id, %bre, "bytes repr error");
-                (None, Some(CallError::Api(bre.to_string())), None)
+    let ret: Result<Option<Bytes>, DispatchError> = match system_menu_selection {
+        SystemMenu::Auction(method) => match method {
+            AuctionMethods::Activate => {
+                let unpacked: (PublicKey,) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args =
+                    ActivateBidArgs::new(unpacked.0, runtime_native_config.minimum_bid_amount());
+                system::activate_bid(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+            AuctionMethods::Bid => {
+                let unpacked: (PublicKey, u8, U512, u64, u64, u64, u32, u32) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = AddBidArgs::new(
+                    unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4, unpacked.5,
+                    unpacked.6, unpacked.7,
+                );
+                match system::add_bid(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                ) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            AuctionMethods::Withdraw => {
+                let unpacked: (PublicKey, U512, u64) = bytesrepr::deserialize_from_slice(&input)
+                    .map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = WithdrawBidArgs::new(unpacked.0, unpacked.1, unpacked.2);
+                match system::withdraw_bid(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                ) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            AuctionMethods::Delegate => {
+                let unpacked: (DelegatorKind, PublicKey, U512, u32) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = DelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
+                match system::delegate(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                ) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            AuctionMethods::Undelegate => {
+                let unpacked: (DelegatorKind, PublicKey, U512) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = UndelegateArgs::new(unpacked.0, unpacked.1, unpacked.2);
+
+                match system::undelegate(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                ) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            AuctionMethods::Redelegate => {
+                let unpacked: (DelegatorKind, PublicKey, U512, PublicKey) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = RedelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
+
+                match system::redelegate(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                ) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            AuctionMethods::AddReservation => {
+                let unpacked: (Vec<Reservation>,) = bytesrepr::deserialize_from_slice(&input)
+                    .map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = AddReservationsArgs::new(unpacked.0);
+
+                system::add_reservations(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+            AuctionMethods::CancelReservation => {
+                let unpacked: (PublicKey, Vec<DelegatorKind>, u32) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = CancelReservationsArgs::new(unpacked.0, unpacked.1, unpacked.2);
+
+                system::cancel_reservations(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+            AuctionMethods::ChangePublicKey => {
+                let unpacked: (PublicKey, PublicKey) = bytesrepr::deserialize_from_slice(&input)
+                    .map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = ChangeBidPublicKeyArgs::new(unpacked.0, unpacked.1);
+
+                system::change_bid_public_key(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
             }
         },
+        SystemMenu::Mint(method) => match method {
+            MintMethods::Burn => {
+                let unpacked: (URef, U512) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = BurnArgs::new(unpacked.0, unpacked.1);
+                system::burn(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+            MintMethods::Transfer => {
+                let unpacked: (URef, URef, U512, Option<AccountHash>, Option<u64>) =
+                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args =
+                    TransferArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4);
+                system::transfer(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+            MintMethods::TransferSimple => {
+                let unpacked: (URef, URef, U512) = bytesrepr::deserialize_from_slice(&input)
+                    .map_err(|_err| {
+                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                    })?;
+                let args = TransferArgs::new_simple(unpacked.0, unpacked.1, unpacked.2);
+                system::transfer(
+                    &mut tracking_copy,
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    args,
+                )
+                .map(|_| None)
+            }
+        },
+    };
+
+    let (output, host_error, execute_error) = match ret {
+        Ok(maybe_bytes) => (maybe_bytes, None, None),
         Err(der) => match der {
             DispatchError::Api(apr) => {
-                debug!(?id, %apr, "api error");
+                debug!(?transaction_hash, %apr, "api error");
                 (None, Some(CallError::Api(apr.to_string())), None)
             }
             DispatchError::Call(cer) => {
-                debug!(?id, %cer, "call error");
+                debug!(?transaction_hash, %cer, "call error");
                 (None, Some(cer), None)
             }
             DispatchError::CLValue(cve) => {
-                debug!(?id, %cve, "cl value error");
+                debug!(?transaction_hash, %cve, "cl value error");
                 (None, Some(CallError::Api(cve.to_string())), None)
             }
             // the below are all node killers
             DispatchError::RegistryNotFound => {
-                error!(?id, "system contract registry not found");
+                error!(?transaction_hash, "system contract registry not found");
                 (
                     None,
                     None,
@@ -150,7 +385,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 )
             }
             DispatchError::MissingSystemContract(name) => {
-                error!(?id, ?name, "system contract not found");
+                error!(?transaction_hash, ?name, "system contract not found");
                 (
                     None,
                     None,
@@ -160,11 +395,11 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 )
             }
             DispatchError::Internal(ihe) => {
-                error!(?id, %ihe, "internal host error");
+                error!(?transaction_hash, %ihe, "internal host error");
                 (None, None, Some(ExecuteError::InternalHost(ihe)))
             }
             DispatchError::Storage(tce) | DispatchError::RuntimeFootprint(tce) => {
-                error!(?id, %tce, "tracking copy error");
+                error!(?transaction_hash, %tce, "tracking copy error");
                 (
                     None,
                     None,
