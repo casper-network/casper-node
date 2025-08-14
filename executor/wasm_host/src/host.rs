@@ -219,11 +219,11 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                         existing_uref
                     } else {
                         let mut address_generator = caller.context().address_generator.write();
-                        address_generator.new_uref(AccessRights::READ_ADD_WRITE)
+                        address_generator.new_uref(AccessRights::NONE)
                     }
                 } else {
                     let mut address_generator = caller.context().address_generator.write();
-                    address_generator.new_uref(AccessRights::READ_ADD_WRITE)
+                    address_generator.new_uref(AccessRights::NONE)
                 };
 
             // Write payload bytes under the URef as CLValue::Any
