@@ -106,6 +106,8 @@ pub enum InternalHostError {
     MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
+    #[error("attempt to call a non-existent system option {0}")]
+    InvalidSystemOption(u32),
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
 }
@@ -254,7 +256,7 @@ pub trait Caller {
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32>;
     /// Returns the amount of gas used.
-    fn gas_consumed(&mut self) -> MeteringPoints;
+    fn get_remaining_points(&mut self) -> MeteringPoints;
     /// Set the amount of gas used.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
 }

@@ -163,7 +163,6 @@ const NOT_USED: Cost = 0;
 
 /// An arbitrary default fixed cost for host functions that were not researched yet.
 const DEFAULT_FIXED_COST: Cost = 200;
-
 const DEFAULT_CALL_COST: u64 = 10_000;
 const DEFAULT_ENV_BALANCE_COST: u64 = 100;
 

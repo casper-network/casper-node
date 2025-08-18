@@ -41,7 +41,13 @@ macro_rules! for_each_host_function {
                 seed_size: usize,
                 result_ptr: *mut $crate::CreateResult,
             ) -> u32;
-
+            pub fn casper_system(
+                system_contract_opt: u32,
+                input_ptr: *const u8,
+                input_size: usize,
+                alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data
+                alloc_ctx: *const core::ffi::c_void,
+            ) -> u32;
             // We don't offer any special protection against smart contracts on the host side
             pub fn casper_call(
                 address_ptr: *const u8,

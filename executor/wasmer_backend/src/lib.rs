@@ -149,11 +149,6 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
     type Context = Context<S, E>;
 
-    fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.write(offset.into(), data))
-            .map_err(from_wasmer_memory_access_error)
-    }
-
     fn context(&self) -> &Context<S, E> {
         &self.env.data().context
     }
@@ -162,8 +157,22 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         &mut self.env.data_mut().context
     }
 
+    fn bytecode(&self) -> Bytes {
+        self.env.data().bytecode.clone()
+    }
+
+    #[inline]
+    fn has_export(&self, name: &str) -> bool {
+        self.with_instance(|instance| instance.exports.contains(name))
+    }
+
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
         self.with_memory(|mem| mem.read(offset.into(), output))
+            .map_err(from_wasmer_memory_access_error)
+    }
+
+    fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
+        self.with_memory(|mem| mem.write(offset.into(), data))
             .map_err(from_wasmer_memory_access_error)
     }
 
@@ -190,13 +199,9 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         Ok(ptr)
     }
 
-    fn bytecode(&self) -> Bytes {
-        self.env.data().bytecode.clone()
-    }
-
     /// Returns the amount of gas used.
     #[inline]
-    fn gas_consumed(&mut self) -> MeteringPoints {
+    fn get_remaining_points(&mut self) -> MeteringPoints {
         self.get_remaining_points()
     }
 
@@ -204,8 +209,8 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     ///
     /// This method will cause the VM engine to stop in case remaining gas points are depleted.
     fn consume_gas(&mut self, amount: u64) -> VMResult<()> {
-        let gas_consumed = self.gas_consumed();
-        match gas_consumed {
+        let points = self.get_remaining_points();
+        match points {
             MeteringPoints::Remaining(remaining_points) => {
                 let remaining_points = remaining_points
                     .checked_sub(amount)
@@ -215,11 +220,6 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             }
             MeteringPoints::Exhausted => Err(VMError::OutOfGas),
         }
-    }
-
-    #[inline]
-    fn has_export(&self, name: &str) -> bool {
-        self.with_instance(|instance| instance.exports.contains(name))
     }
 }
 
@@ -257,15 +257,14 @@ pub(crate) struct WasmerInstance<S: GlobalStateReader, E: Executor + 'static> {
 }
 
 fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
-    match error.downcast::<VMError>() {
-        Ok(vm_error) => vm_error,
-        Err(wasmer_runtime_error) => {
+    error
+        .downcast::<VMError>()
+        .unwrap_or_else(|wasmer_runtime_error| {
             // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
             // our code.
             let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
             VMError::Trap(from_wasmer_trap_code(wasmer_trap_code))
-        }
-    }
+        })
 }
 
 impl<S, E> WasmerInstance<S, E>
@@ -456,6 +455,9 @@ where
             callee: data.context.callee,
             config: data.context.config,
             storage_costs: data.context.storage_costs,
+            mint_costs: data.context.mint_costs,
+            auction_costs: data.context.auction_costs,
+            baseline_motes_amount: data.context.baseline_motes_amount,
             transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
             executor: data.context.executor.clone(),

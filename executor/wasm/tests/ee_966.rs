@@ -21,8 +21,8 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::RuntimeNativeConfig;
 use casper_types::{
-    BlockHash, Chainspec, Digest, Key, MessageLimits, StorageCosts, Timestamp, WasmV2Config,
-    DEFAULT_WASM_MAX_MEMORY,
+    AuctionCosts, BlockHash, Chainspec, Digest, Key, MessageLimits, MintCosts, StorageCosts,
+    Timestamp, WasmV2Config, DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_WASM_MAX_MEMORY,
 };
 use casper_wasm::builder;
 
@@ -65,6 +65,9 @@ fn argument_size_exceeds_memory_limit() {
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(WasmV2Config::default())
             .with_storage_costs(storage_costs)
+            .with_mint_costs(MintCosts::default())
+            .with_auction_costs(AuctionCosts::default())
+            .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");

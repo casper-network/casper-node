@@ -363,7 +363,6 @@ impl ExecuteWithProviderResult {
 pub enum MintMethods {
     Burn,
     Transfer,
-    TransferSimple,
 }
 
 /// Available options for interacting with the system auction.
@@ -383,8 +382,40 @@ pub enum AuctionMethods {
 /// Available options for interacting with the system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemMenu {
-    Auction(AuctionMethods),
     Mint(MintMethods),
+    Auction(AuctionMethods),
+}
+
+impl TryFrom<u32> for SystemMenu {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(SystemMenu::Mint(MintMethods::Transfer))
+        } else if value == 1 {
+            Ok(SystemMenu::Mint(MintMethods::Burn))
+        } else if value == 100 {
+            Ok(SystemMenu::Auction(AuctionMethods::Activate))
+        } else if value == 101 {
+            Ok(SystemMenu::Auction(AuctionMethods::Bid))
+        } else if value == 102 {
+            Ok(SystemMenu::Auction(AuctionMethods::Withdraw))
+        } else if value == 103 {
+            Ok(SystemMenu::Auction(AuctionMethods::Delegate))
+        } else if value == 104 {
+            Ok(SystemMenu::Auction(AuctionMethods::Undelegate))
+        } else if value == 105 {
+            Ok(SystemMenu::Auction(AuctionMethods::Redelegate))
+        } else if value == 106 {
+            Ok(SystemMenu::Auction(AuctionMethods::AddReservation))
+        } else if value == 107 {
+            Ok(SystemMenu::Auction(AuctionMethods::CancelReservation))
+        } else if value == 108 {
+            Ok(SystemMenu::Auction(AuctionMethods::ChangePublicKey))
+        } else {
+            Err(())
+        }
+    }
 }
 
 /// Target for Wasm execution.

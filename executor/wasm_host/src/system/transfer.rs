@@ -24,23 +24,7 @@ pub struct TransferArgs {
 }
 
 impl TransferArgs {
-    pub fn new(
-        source: URef,
-        target: URef,
-        amount: U512,
-        maybe_to: Option<AccountHash>,
-        id: Option<u64>,
-    ) -> Self {
-        TransferArgs {
-            source,
-            target,
-            amount,
-            maybe_to,
-            id,
-        }
-    }
-
-    pub fn new_simple(source: URef, target: URef, amount: U512) -> Self {
+    pub fn new(source: URef, target: URef, amount: U512) -> Self {
         TransferArgs {
             source,
             target,

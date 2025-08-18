@@ -39,15 +39,13 @@ use casper_executor_wasm_interface::executor::{
 use casper_types::bytesrepr::ToBytes;
 
 use crate::system;
+use casper_types::system::auction::{DelegatorKind, Reservation};
+
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
 pub use add_reservations::{add_reservations, AddReservationsArgs};
 pub use burn::{burn, BurnArgs};
 pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
-use casper_types::{
-    account::AccountHash,
-    system::auction::{DelegatorKind, Reservation},
-};
 pub use change_bid_public_key::{change_bid_public_key, ChangeBidPublicKeyArgs};
 pub use create_purse::create_purse;
 pub use delegate::{delegate, DelegateArgs};
@@ -131,8 +129,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    current_gas_limit: u64,
-    gas_cost: u64,
+    gas_usage: GasUsage, // unfortunately, ExecuteResult needs this value so we tunnel it
     input: Bytes,
     system_menu_selection: SystemMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
@@ -325,27 +322,11 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             MintMethods::Transfer => {
-                let unpacked: (URef, URef, U512, Option<AccountHash>, Option<u64>) =
-                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
-                let args =
-                    TransferArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4);
-                system::transfer(
-                    &mut tracking_copy,
-                    runtime_native_config,
-                    transaction_hash,
-                    Arc::clone(&address_generator),
-                    args,
-                )
-                .map(|_| None)
-            }
-            MintMethods::TransferSimple => {
                 let unpacked: (URef, URef, U512) = bytesrepr::deserialize_from_slice(&input)
                     .map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
-                let args = TransferArgs::new_simple(unpacked.0, unpacked.1, unpacked.2);
+                let args = TransferArgs::new(unpacked.0, unpacked.1, unpacked.2);
                 system::transfer(
                     &mut tracking_copy,
                     runtime_native_config,
@@ -410,18 +391,14 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     };
 
     match execute_error {
-        None => {
-            let gas_usage = GasUsage::new(current_gas_limit, current_gas_limit - gas_cost);
-
-            Ok(ExecuteResult {
-                host_error,
-                output,
-                gas_usage,
-                effects: tracking_copy.effects(),
-                cache: tracking_copy.cache(),
-                messages: tracking_copy.messages(),
-            })
-        }
+        None => Ok(ExecuteResult {
+            host_error,
+            output,
+            gas_usage,
+            effects: tracking_copy.effects(),
+            cache: tracking_copy.cache(),
+            messages: tracking_copy.messages(),
+        }),
         Some(exr) => Err(exr),
     }
 }

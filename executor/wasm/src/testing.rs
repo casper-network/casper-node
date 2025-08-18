@@ -19,10 +19,11 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, Chainspec, ChainspecRegistry, Digest, FeeHandling,
-    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
-    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, DEFAULT_WASM_MAX_MEMORY, U512,
+    account::AccountHash, AuctionCosts, BlockHash, Chainspec, ChainspecRegistry, Digest,
+    FeeHandling, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
+    MessageLimits, MintCosts, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
+    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config,
+    DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 use num_rational::Ratio;
 
@@ -213,6 +214,8 @@ pub fn base_install_request_builder(
 
 pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
     let storage_costs = chainspec_config.storage_costs;
+    let mint_costs = chainspec_config.system_costs_config.mint_costs().clone();
+    let auction_costs = chainspec_config.system_costs_config.auction_costs().clone();
     let v1_config = EngineConfig::from(chainspec_config.clone());
     let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
     let wasm_v2_config = *chainspec_config.wasm_config.v2();
@@ -223,6 +226,9 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
         .with_executor_kind(ExecutorKind::Compiled)
         .with_wasm_config(wasm_v2_config)
         .with_storage_costs(storage_costs)
+        .with_mint_costs(mint_costs)
+        .with_auction_costs(auction_costs)
+        .with_baseline_motes_amount(chainspec_config.core_config.baseline_motes_amount)
         .with_message_limits(message_limits)
         .build()
         .expect("Should build");
@@ -339,6 +345,9 @@ pub fn call_dummy_host_fn_by_name(
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(wasm_config)
             .with_storage_costs(StorageCosts::default())
+            .with_mint_costs(MintCosts::default())
+            .with_auction_costs(AuctionCosts::default())
+            .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");

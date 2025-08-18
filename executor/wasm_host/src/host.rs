@@ -44,18 +44,20 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    Blake2bVar,
-};
-use keccak_asm::Digest as KeccakDigest;
-use sha2::Sha256;
-
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
     system::{self, DispatchError, TransferArgs},
 };
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
+use casper_executor_wasm_interface::executor::{
+    AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
+};
+use keccak_asm::Digest as KeccakDigest;
+use sha2::Sha256;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {
@@ -74,6 +76,15 @@ where
     fn try_into_wrapped(self) -> VMResult<To> {
         To::try_from(self).map_err(|_| VMError::Internal(InternalHostError::TypeConversion))
     }
+}
+
+/// Consumes imputed amount of gas.
+fn charge_gas<S: GlobalStateReader, E: Executor>(
+    caller: &mut impl Caller<Context = Context<S, E>>,
+    imputed: u64,
+) -> VMResult<()> {
+    caller.consume_gas(imputed)?;
+    Ok(())
 }
 
 /// Consumes a set amount of gas for the specified storage value.
@@ -800,9 +811,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
-            // Take the gas spent so far and use it as a limit for the new VM.
+            // Limit the new VM to remaining gas.
             let gas_limit = caller
-                .gas_consumed()
+                .get_remaining_points()
                 .try_into_remaining()
                 .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -887,6 +898,79 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    system_contract_opt: u32,
+    input_ptr: u32,
+    input_len: u32,
+    cb_alloc: u32,
+    cb_ctx: u32,
+) -> VMResult<u32> {
+    // In restricted mode, contract calls are not allowed
+    if caller.context().sandboxed {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
+    }
+
+    // get option so we can determine cost, or charge if invalid
+    let option: SystemMenu = match TryFrom::try_from(system_contract_opt) {
+        Ok(option) => option,
+        Err(_) => {
+            // the following can produce a VMError::OutOfGas error
+            let penalty_cost = caller.context().baseline_motes_amount;
+            charge_gas(&mut caller, penalty_cost)?;
+            return Err(InternalHostError::InvalidSystemOption(system_contract_opt).into());
+        }
+    };
+
+    let cost = match &option {
+        SystemMenu::Mint(mint_opt) => match mint_opt {
+            MintMethods::Burn => caller.context().mint_costs.burn as u64,
+            MintMethods::Transfer => caller.context().mint_costs.transfer as u64,
+        },
+        SystemMenu::Auction(auction_opt) => match auction_opt {
+            AuctionMethods::Activate => caller.context().auction_costs.activate_bid,
+            AuctionMethods::Bid => caller.context().auction_costs.add_bid,
+            AuctionMethods::Withdraw => caller.context().auction_costs.withdraw_bid,
+            AuctionMethods::Delegate => caller.context().auction_costs.delegate,
+            AuctionMethods::Undelegate => caller.context().auction_costs.undelegate,
+            AuctionMethods::Redelegate => caller.context().auction_costs.redelegate,
+            AuctionMethods::AddReservation => caller.context().auction_costs.add_reservations,
+            AuctionMethods::CancelReservation => caller.context().auction_costs.cancel_reservations,
+            AuctionMethods::ChangePublicKey => caller.context().auction_costs.change_bid_public_key,
+        },
+    };
+    // the following can produce a VMError::OutOfGas error
+    charge_gas(&mut caller, cost)?;
+
+    let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
+
+    // Limit the call to remaining gas.
+    let gas_limit = caller
+        .get_remaining_points()
+        .try_into_remaining()
+        .map_err(|_| InternalHostError::TypeConversion)?;
+
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(caller.context().initiator)
+        .with_caller_key(caller.context().callee)
+        .with_gas_limit(gas_limit)
+        .with_target(ExecutionKind::System(option))
+        .with_input(input_data)
+        .with_transaction_hash(caller.context().transaction_hash)
+        .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+        .with_chain_name(caller.context().chain_name.clone())
+        .with_block_time(caller.context().block_time)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_runtime_native_config(caller.context().runtime_native_config.clone())
+        .build()
+        .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+
+    exec(caller, execute_request, cb_alloc, cb_ctx)
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     mut caller: impl Caller<Context = Context<S, E>>,
     address_ptr: u32,
@@ -947,11 +1031,9 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         }
     };
 
-    let tracking_copy = caller.context().tracking_copy.fork2();
-
-    // Take the gas spent so far and use it as a limit for the new VM.
+    // Limit the new VM to remaining gas.
     let gas_limit = caller
-        .gas_consumed()
+        .get_remaining_points()
         .try_into_remaining()
         .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -977,6 +1059,26 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
         .build()
         .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+
+    let ret = exec(caller, execute_request, cb_alloc, cb_ctx);
+    if let Err(execute_error) = &ret {
+        error!(
+            ?execute_error,
+            ?smart_contract_addr,
+            ?entry_point,
+            "Failed to execute entry point"
+        );
+    }
+    ret
+}
+
+fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    execute_request: ExecuteRequest,
+    cb_alloc: u32,
+    cb_ctx: u32,
+) -> VMResult<u32> {
+    let tracking_copy = caller.context().tracking_copy.fork2();
 
     let (gas_usage, host_result) = match caller
         .context()
@@ -1018,12 +1120,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             (gas_usage, host_result)
         }
         Err(execute_error) => {
-            error!(
-                ?execute_error,
-                ?smart_contract_addr,
-                ?entry_point,
-                "Failed to execute entry point"
-            );
             return Err(VMError::Execute(execute_error));
         }
     };
@@ -1035,9 +1131,11 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     caller.consume_gas(gas_spent)?;
 
+    // this will result in the VM being killed
     if let Err(CallError::Api(api_error)) = host_result {
         return Err(VMError::Execute(ExecuteError::Api(api_error)));
     }
+
     Ok(u32_from_host_result(host_result))
 }
 
@@ -1328,7 +1426,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
 
-    let args = TransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
+    let args = TransferArgs::new(callee_purse, target_purse, U512::from(amount));
 
     match system::transfer(
         &mut caller.context_mut().tracking_copy,
@@ -1489,9 +1587,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     // this code should handle reading old state, and saving new state
 
     if let Some(entry_point_name) = entry_point {
-        // Take the gas spent so far and use it as a limit for the new VM.
+        // Limit the new VM to remaining gas.
         let gas_limit = caller
-            .gas_consumed()
+            .get_remaining_points()
             .try_into_remaining()
             .map_err(|_| InternalHostError::TypeConversion)?;
 

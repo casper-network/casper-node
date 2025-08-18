@@ -41,11 +41,12 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
+    bytesrepr, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    CLType, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
     EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
-    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
+    MessageLimits, MintCosts, Package, PackageHash, PackageStatus, Parameters, Phase,
+    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
+    WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -74,6 +75,9 @@ pub struct ExecutorConfig {
     executor_kind: ExecutorKind,
     wasm_config: WasmV2Config,
     storage_costs: StorageCosts,
+    mint_costs: MintCosts,
+    auction_costs: AuctionCosts,
+    baseline_motes_amount: u64,
     message_limits: MessageLimits,
 }
 
@@ -89,6 +93,9 @@ pub struct ExecutorConfigBuilder {
     executor_kind: Option<ExecutorKind>,
     wasm_config: Option<WasmV2Config>,
     storage_costs: Option<StorageCosts>,
+    mint_costs: Option<MintCosts>,
+    auction_costs: Option<AuctionCosts>,
+    baseline_motes_amount: Option<u64>,
     message_limits: Option<MessageLimits>,
 }
 
@@ -111,9 +118,26 @@ impl ExecutorConfigBuilder {
         self
     }
 
-    /// Set the wasm config.
+    /// Set storage costs.
     pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
         self.storage_costs = Some(storage_costs);
+        self
+    }
+
+    /// Set mint costs.
+    pub fn with_mint_costs(mut self, mint_costs: MintCosts) -> Self {
+        self.mint_costs = Some(mint_costs);
+        self
+    }
+
+    /// Set auction costs.
+    pub fn with_auction_costs(mut self, auction_costs: AuctionCosts) -> Self {
+        self.auction_costs = Some(auction_costs);
+        self
+    }
+
+    pub fn with_baseline_motes_amount(mut self, baseline_motes_amount: u64) -> Self {
+        self.baseline_motes_amount = Some(baseline_motes_amount);
         self
     }
 
@@ -129,6 +153,11 @@ impl ExecutorConfigBuilder {
         let executor_kind = self.executor_kind.ok_or("Executor kind is not set")?;
         let wasm_config = self.wasm_config.ok_or("Wasm config is not set")?;
         let storage_costs = self.storage_costs.ok_or("Storage costs are not set")?;
+        let mint_costs = self.mint_costs.ok_or("Storage costs are not set")?;
+        let auction_costs = self.auction_costs.ok_or("Storage costs are not set")?;
+        let baseline_motes_amount = self
+            .baseline_motes_amount
+            .ok_or("Baseline motes amount not set")?;
         let message_limits = self.message_limits.ok_or("Message limits are not set")?;
 
         Ok(ExecutorConfig {
@@ -136,6 +165,9 @@ impl ExecutorConfigBuilder {
             executor_kind,
             wasm_config,
             storage_costs,
+            mint_costs,
+            auction_costs,
+            baseline_motes_amount,
             message_limits,
         })
     }
@@ -398,9 +430,6 @@ impl ExecutorV2 {
         tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
-        //TODO all gas costs should gotten from cost table!!!!
-        const DEFAULT_GAS_COST: u64 = 1;
-
         let ExecuteRequest {
             gas_limit,
             input,
@@ -416,13 +445,14 @@ impl ExecutorV2 {
             return Err(ExecuteError::SandboxedSystemContractCall);
         }
 
+        let gas_usage = GasUsage::new(gas_limit, gas_limit);
+
         native_exec::<TransferArgs, (), R>(
             tracking_copy,
             runtime_native_config,
             transaction_hash,
             address_generator,
-            gas_limit,
-            DEFAULT_GAS_COST,
+            gas_usage,
             input,
             menu_selection,
         )
@@ -544,7 +574,7 @@ impl ExecutorV2 {
                                 runtime_native_config.clone(),
                                 transaction_hash,
                                 Arc::clone(&address_generator),
-                                TransferArgs::new_simple(
+                                TransferArgs::new(
                                     source_purse,
                                     addressable_entity.main_purse(),
                                     transferred_value.into(),
@@ -651,6 +681,9 @@ impl ExecutorV2 {
             initiator,
             config: self.config.wasm_config,
             storage_costs: self.config.storage_costs,
+            mint_costs: self.config.mint_costs,
+            auction_costs: self.config.auction_costs,
+            baseline_motes_amount: self.config.baseline_motes_amount,
             caller: caller_key,
             callee: callee_key,
             transferred_value,

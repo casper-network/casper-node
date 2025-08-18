@@ -6,8 +6,8 @@ use casper_storage::{
     global_state::GlobalStateReader, AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, BlockTime, Key, MessageLimits, StorageCosts, TransactionHash,
-    WasmV2Config,
+    account::AccountHash, AuctionCosts, BlockTime, Key, MessageLimits, MintCosts, StorageCosts,
+    TransactionHash, WasmV2Config,
 };
 use parking_lot::RwLock;
 
@@ -27,6 +27,9 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub transferred_value: u64,
     pub config: WasmV2Config,
     pub storage_costs: StorageCosts,
+    pub mint_costs: MintCosts,
+    pub auction_costs: AuctionCosts,
+    pub baseline_motes_amount: u64,
     pub message_limits: MessageLimits,
     pub tracking_copy: TrackingCopy<S>,
     pub executor: E, // TODO: This could be part of the caller
