@@ -1407,7 +1407,7 @@ fn process_casper_contract_state_for_struct(
 }
 
 fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
-    let const_ident = &constant.ident;
+    let _const_ident = &constant.ident;
 
     let maybe_stable_key_collector;
     let maybe_stable_key_def;
@@ -1480,7 +1480,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                 #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::NAMED_KEYS)]
                 #[linkme(crate = #crate_path::linkme)]
                 static NAMED_KEY: #crate_path::abi_generator::NamedKey = #crate_path::abi_generator::NamedKey {
-                    name: #const_ident.name(),
+                    name: #_const_ident.name(),
                     decl: #type_decl_lit,
                 };
             };
