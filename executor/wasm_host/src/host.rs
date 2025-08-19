@@ -188,6 +188,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -246,6 +247,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
             StoredValue::EntryPoint(entry_point_value)
         }
+        Keyspace::AllNamedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     metered_write(&mut caller, global_state_key, stored_value)?;
@@ -318,6 +320,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -330,6 +333,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
+        Ok(Some(StoredValue::AddressableEntity(_))) => return Ok(HOST_ERROR_INVALID_INPUT),
         Ok(Some(_stored_value)) => {
             // Produce a prune transform only if value under a given key exists in the global state
             caller.context_mut().tracking_copy.prune(global_state_key);
@@ -436,6 +440,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             }
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -445,43 +450,60 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             return Ok(HOST_ERROR_NOT_FOUND);
         }
     };
-    let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
-    let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-        Ok(Some(StoredValue::CLValue(cl_value))) => {
-            let CLType::Any = cl_value.cl_type() else {
-                return Err(InternalHostError::TypeConversion)?;
-            };
-            Cow::Owned(cl_value.inner_bytes().to_owned())
+    let global_state_raw_bytes = if let Key::AddressableEntity(entity_addr) = global_state_key {
+        let named_keys = caller
+            .context_mut()
+            .tracking_copy
+            .get_named_keys(entity_addr)
+            .map(|named_keys| named_keys.to_bytes());
+        match named_keys {
+            Ok(Ok(named_keys)) => Cow::Owned(named_keys),
+            Ok(_) | Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
         }
-        Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
-            match entry_point.entry_point_payment() {
-                EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
-                EntryPointPayment::DirectInvocationOnly => {
-                    Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
-                }
-                EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
+    } else {
+        let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
+        let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                let CLType::Any = cl_value.cl_type() else {
+                    return Err(InternalHostError::TypeConversion)?;
+                };
+                Cow::Owned(cl_value.inner_bytes().to_owned())
             }
-        }
-        Ok(Some(stored_value)) => {
-            // TODO: Backwards compatibility with old EE, although it's not clear if we should do it
-            // at the storage level. Since new VM has storage isolated from the Wasm
-            // (i.e. we have Keyspace on the wasm which gets converted to a global state `Key`).
-            // I think if we were to pursue this we'd add a new `Keyspace` enum variant for each old
-            // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time, then
-            // deprecate this.
-            todo!("Unsupported {stored_value:?}")
-        }
-        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
-        Err(error) => {
-            // To protect the network against potential non-determinism (i.e. one validator runs out
-            // of space or just faces I/O issues that other validators may not have) we're simply
-            // aborting the process, hoping that once the node goes back online issues are resolved
-            // on the validator side. TODO: We should signal this to the contract
-            // runtime somehow, and let validator nodes skip execution.
-            error!(?error, "Error while reading from storage; aborting");
-            panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
-        }
+            Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
+                match entry_point.entry_point_payment() {
+                    EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
+                    EntryPointPayment::DirectInvocationOnly => {
+                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
+                    }
+                    EntryPointPayment::SelfOnward => {
+                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD])
+                    }
+                }
+            }
+            Ok(Some(stored_value)) => {
+                // TODO: Backwards compatibility with old EE, although it's not clear if we should
+                // do it at the storage level. Since new VM has storage isolated
+                // from the Wasm (i.e. we have Keyspace on the wasm which gets
+                // converted to a global state `Key`). I think if we were to pursue
+                // this we'd add a new `Keyspace` enum variant for each old
+                // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time,
+                // then deprecate this.
+                todo!("Unsupported {stored_value:?}")
+            }
+            Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
+            Err(error) => {
+                // To protect the network against potential non-determinism (i.e. one validator runs
+                // out of space or just faces I/O issues that other validators may
+                // not have) we're simply aborting the process, hoping that once the
+                // node goes back online issues are resolved on the validator side.
+                // TODO: We should signal this to the contract runtime somehow, and
+                // let validator nodes skip execution.
+                error!(?error, "Error while reading from storage; aborting");
+                panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
+            }
+        };
+        global_state_raw_bytes
     };
 
     let out_ptr: u32 = if cb_alloc != 0 {
@@ -531,6 +553,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
             Some(Key::EntryPoint(entry_point_addr))
         }
+        Keyspace::AllNamedKeys => Some(Key::AddressableEntity(entity_addr)),
     }
 }
 
