@@ -255,9 +255,9 @@ pub trait Caller {
     ///
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32>;
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     fn get_remaining_points(&mut self) -> MeteringPoints;
-    /// Set the amount of gas used.
+    /// Check for gas exhaustion, then reduce remaining by amount if able.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
 }
 

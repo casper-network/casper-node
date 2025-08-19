@@ -1409,7 +1409,3 @@ pub fn legal_transaction_arb() -> impl Strategy<Value = Transaction> {
 pub fn example_u32_arb() -> impl Strategy<Value = u32> {
     prop_oneof![Just(0), Just(1), Just(u32::MAX / 2), Just(u32::MAX)]
 }
-
-pub fn example_u64_arb() -> impl Strategy<Value = u64> {
-    prop_oneof![Just(0), Just(1), Just(u64::MAX / 2), Just(u64::MAX)]
-}

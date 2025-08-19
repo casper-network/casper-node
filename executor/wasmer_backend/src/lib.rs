@@ -128,7 +128,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
         f(store, &instance)
     }
 
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     fn get_remaining_points(&mut self) -> MeteringPoints {
         self.with_store_and_instance(|mut store, instance| {
             let metering_points = metering::get_remaining_points(&mut store, instance);
@@ -138,7 +138,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
             }
         })
     }
-    /// Set the amount of gas used.
+    /// Set the amount of gas remaining.
     fn set_remaining_points(&mut self, new_value: u64) {
         self.with_store_and_instance(|mut store, instance| {
             metering::set_remaining_points(&mut store, instance, new_value);
@@ -199,18 +199,17 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         Ok(ptr)
     }
 
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     #[inline]
     fn get_remaining_points(&mut self) -> MeteringPoints {
         self.get_remaining_points()
     }
 
-    /// Set the amount of gas used.
+    /// Check for exhaustion, then deduct amount from remaining if able.
     ///
     /// This method will cause the VM engine to stop in case remaining gas points are depleted.
     fn consume_gas(&mut self, amount: u64) -> VMResult<()> {
-        let points = self.get_remaining_points();
-        match points {
+        match self.get_remaining_points() {
             MeteringPoints::Remaining(remaining_points) => {
                 let remaining_points = remaining_points
                     .checked_sub(amount)
