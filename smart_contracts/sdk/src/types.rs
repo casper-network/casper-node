@@ -28,6 +28,10 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
         }
     }
 
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
     pub fn write(&self, value: T) {
         let bytes = borsh::to_vec(&value).unwrap();
         casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();
