@@ -648,6 +648,27 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         assert_eq!(result, Err(CommonResult::NotFound));
     }
 
+    {
+        // TODO: This test should leverage PK/Signing abstractions when they're added to the SDK
+        next_test(&mut counter, "Secp2561k recover");
+        let message_bytes = [82, 101, 99, 111, 118, 101, 114, 121, 32, 116, 101, 115, 116];
+        let signature_bytes = [
+            2, 33, 154, 147, 197, 122, 73, 167, 50, 27, 55, 198, 199, 72, 150, 161, 233, 124, 60,
+            152, 11, 232, 62, 162, 254, 202, 238, 47, 132, 126, 214, 136, 27, 4, 130, 19, 56, 134,
+            202, 212, 111, 42, 165, 15, 114, 70, 125, 79, 234, 132, 96, 193, 56, 157, 210, 52, 51,
+            93, 205, 34, 152, 122, 236, 64, 66,
+        ];
+        let public_key_bytes = [
+            2, 2, 105, 205, 254, 188, 142, 121, 77, 200, 81, 106, 88, 171, 244, 176, 18, 97, 121,
+            89, 51, 105, 37, 210, 95, 231, 10, 81, 221, 63, 65, 129, 191, 113,
+        ];
+
+        let recovered_public_key =
+            casper::recover_secp256k1(&message_bytes, &signature_bytes, 1).expect("Should recover");
+
+        assert_eq!(recovered_public_key, public_key_bytes);
+    }
+
     log!("👋 Goodbye");
 }
 

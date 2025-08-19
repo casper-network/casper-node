@@ -660,6 +660,7 @@ fn host_functions_consume_gas() {
     assert_consumes_gas(&chainspec_config, "upgrade");
     assert_consumes_gas(&chainspec_config, "write");
     assert_consumes_gas(&chainspec_config, "generic_hash");
+    assert_consumes_gas(&chainspec_config, "recover_secp256k1");
 }
 
 #[test]
