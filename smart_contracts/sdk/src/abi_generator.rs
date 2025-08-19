@@ -31,10 +31,10 @@ pub static MESSAGES: [Message] = [..];
 
 #[distributed_slice]
 #[linkme(crate = crate::linkme)]
-pub static STABLE_KEYS: [StableKey] = [..];
+pub static NAMED_KEYS: [NamedKey] = [..];
 
 #[derive(Debug, Clone)]
-pub struct StableKey {
+pub struct NamedKey {
     pub name: &'static str,
     pub decl: &'static str,
 }
@@ -79,18 +79,18 @@ pub fn casper_collect_schema() -> Schema {
         messages
     };
 
-    // Collect stable keys
-    let stable_keys = {
-        let mut stable_keys = Vec::new();
+    // Collect named keys
+    let named_keys = {
+        let mut named_keys = Vec::new();
 
-        for stable_key in STABLE_KEYS {
-            stable_keys.push(crate::schema::SchemaStableKey {
-                name: stable_key.name.to_owned(),
-                decl: stable_key.decl.to_owned(),
+        for named_key in NAMED_KEYS {
+            named_keys.push(crate::schema::SchemaStableKey {
+                name: named_key.name.to_owned(),
+                decl: named_key.decl.to_owned(),
             });
         }
 
-        stable_keys
+        named_keys
     };
 
     // Collect entrypoints
@@ -112,7 +112,7 @@ pub fn casper_collect_schema() -> Schema {
         definitions,
         entry_points,
         messages,
-        stable_keys,
+        named_keys,
     }
 }
 

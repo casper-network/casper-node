@@ -79,7 +79,7 @@ pub struct Schema {
     pub definitions: Definitions,
     pub entry_points: Vec<SchemaEntryPoint>,
     pub messages: Vec<SchemaMessage>,
-    pub stable_keys: Vec<SchemaStableKey>,
+    pub named_keys: Vec<SchemaStableKey>,
 }
 
 #[derive(Debug)]
