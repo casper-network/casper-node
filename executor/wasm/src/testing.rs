@@ -351,7 +351,7 @@ pub fn call_dummy_host_fn_by_name(
 
     let input_data = borsh::to_vec(&(host_function_name.to_owned(),))
         .map(Bytes::from)
-        .unwrap();
+        .expect("Expected borsh to work");
 
     let create_request = base_install_request_builder(chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)

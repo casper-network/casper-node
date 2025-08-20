@@ -236,4 +236,7 @@ pub enum InstallContractError {
 
     #[error("constructor error: {host_error}")]
     Constructor { host_error: CallError },
+
+    #[error("failed building BuildingExecuteRequest: {0}")]
+    FailedBuildingExecuteRequest(&'static str),
 }

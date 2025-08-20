@@ -528,7 +528,8 @@ mod tests {
     #[test]
     fn should_load_chainspec_config_from_chainspec() {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
-        let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
+        let chainspec_config =
+            ChainspecConfig::from_chainspec_path(path).expect("Expected chainspec to load");
         // Check that the loaded values matches values present in the local chainspec.
         assert_eq!(chainspec_config.core_config.auction_delay, 1);
     }
@@ -536,8 +537,9 @@ mod tests {
     #[test]
     fn should_get_exec_config_from_chainspec_values() {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
-        let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
-        let config = GenesisConfig::try_from(chainspec_config).unwrap();
+        let chainspec_config =
+            ChainspecConfig::from_chainspec_path(path).expect("Expected chainspec to load");
+        let config = GenesisConfig::try_from(chainspec_config).expect("Couln't build genesis");
         assert_eq!(config.auction_delay(), 1)
     }
 }
