@@ -57,6 +57,12 @@ pub enum SystemContractOption {
     ChangePublicKey = 108,
 }
 
+impl From<SystemContractOption> for u32 {
+    fn from(value: SystemContractOption) -> Self {
+        value as u32
+    }
+}
+
 /// A type of hashing algorithm.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]

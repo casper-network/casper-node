@@ -247,12 +247,49 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     call_result_from_code(result_code)
 }
 
+pub(crate) fn call_into_system<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+    system_contract_opt: u32,
+    input_data: &[u8],
+    alloc: Option<F>,
+) -> Result<(), CallError> {
+    let result_code = unsafe {
+        casper_contract_sdk_sys::casper_system(
+            system_contract_opt,
+            input_data.as_ptr(),
+            input_data.len(),
+            alloc_callback::<F>,
+            &alloc as *const _ as *mut _,
+        )
+    };
+    call_result_from_code(result_code)
+}
+
 fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
     if result_code == HOST_ERROR_SUCCESS {
         Ok(())
     } else {
         Err(CallError::try_from(result_code).expect("Unexpected error code"))
     }
+}
+
+/// Call a system contract.
+pub fn casper_system(
+    system_contract_opt: u32,
+    input_data: &[u8],
+) -> (Option<Vec<u8>>, Result<(), CallError>) {
+    let mut output = None;
+    let result_code = call_into_system(
+        system_contract_opt,
+        input_data,
+        Some(|size| {
+            let mut vec = Vec::new();
+            reserve_vec_space(&mut vec, size);
+            let result = Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) });
+            output = Some(vec);
+            result
+        }),
+    );
+    (output, result_code)
 }
 
 /// Call a contract.
