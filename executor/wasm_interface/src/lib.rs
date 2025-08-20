@@ -110,6 +110,8 @@ pub enum InternalHostError {
     InvalidSystemOption(u32),
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
+    #[error("invalid public key")]
+    InvalidPublicKey,
 }
 
 /// The outcome of a call.

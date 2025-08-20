@@ -31,7 +31,7 @@ use casper_types::{
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_executor_wasm_interface::executor::{
     AuctionMethods, ExecuteError, ExecuteResult, MintMethods, SystemMenu,
@@ -138,11 +138,17 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             AuctionMethods::Activate => {
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (PublicKey,)>(&input);
                 if let Err(err) = &ret {
-                    error!(?err, "bytesrepr error in native_exec Activate");
+                    debug!(?err, "bytesrepr error in native_exec Activate");
                 }
                 let unpacked = ret.map_err(|_err| {
                     ExecuteError::InternalHost(InternalHostError::TypeConversion)
                 })?;
+                if unpacked.0.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args =
                     ActivateBidArgs::new(unpacked.0, runtime_native_config.minimum_bid_amount());
                 match system::activate_bid(
@@ -164,6 +170,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.0.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = AddBidArgs::new(
                     unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4, unpacked.5,
                     unpacked.6, unpacked.7,
@@ -187,6 +199,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     .map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.0.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = WithdrawBidArgs::new(unpacked.0, unpacked.1, unpacked.2);
                 match system::withdraw_bid(
                     &mut tracking_copy,
@@ -207,6 +225,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.1.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = DelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
                 match system::delegate(
                     &mut tracking_copy,
@@ -227,6 +251,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.1.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = UndelegateArgs::new(unpacked.0, unpacked.1, unpacked.2);
 
                 match system::undelegate(
@@ -248,6 +278,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.1.is_system() || unpacked.3.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = RedelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
 
                 match system::redelegate(
@@ -285,6 +321,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.0.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = CancelReservationsArgs::new(unpacked.0, unpacked.1, unpacked.2);
 
                 system::cancel_reservations(
@@ -301,6 +343,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     .map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
+                if unpacked.0.is_system() || unpacked.1.is_system() {
+                    info!(?method, "attempt to pass system public key from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidPublicKey,
+                    ));
+                }
                 let args = ChangeBidPublicKeyArgs::new(unpacked.0, unpacked.1);
 
                 system::change_bid_public_key(
