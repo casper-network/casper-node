@@ -10,7 +10,10 @@ use casper_storage::{
     RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    system::auction::{DelegatorKind, METHOD_DELEGATE},
+    system::{
+        auction,
+        auction::{DelegatorKind, METHOD_DELEGATE},
+    },
     ApiError, PublicKey, TransactionHash, U512,
 };
 use parking_lot::RwLock;
@@ -74,23 +77,14 @@ pub fn delegate<R: GlobalStateReader>(
 
     match result {
         Ok(updated_amount) => Ok(updated_amount),
-        Err(ApiError::AuctionError(code)) => {
-            error!(%code, ?args, "delegate failed with error code");
-
-            if code == 40 {
-                return Err(DispatchError::Call(CallError::CalleeGasDepleted));
-            }
-
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
-        }
         Err(error) => {
+            if let ApiError::AuctionError(code) = error {
+                if code == auction::Error::GasLimit as u8 {
+                    return Err(DispatchError::Call(CallError::CalleeGasDepleted));
+                }
+            }
             error!(%error, ?args, "delegate failed with error");
-
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            Err(DispatchError::Api(error))
         }
     }
 }

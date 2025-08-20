@@ -92,7 +92,6 @@ pub fn add_bid<R: GlobalStateReader>(
     debug!(?args, ?result, METHOD_ADD_BID);
     match result {
         Ok(updated_amount) => Ok(updated_amount),
-
         Err(error) => {
             if let ApiError::AuctionError(code) = error {
                 if code == auction::Error::GasLimit as u8 {

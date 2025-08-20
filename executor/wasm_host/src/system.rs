@@ -136,20 +136,28 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     let ret: Result<Option<Bytes>, DispatchError> = match system_menu_selection {
         SystemMenu::Auction(method) => match method {
             AuctionMethods::Activate => {
-                let unpacked: (PublicKey,) =
-                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (PublicKey,)>(&input);
+                if let Err(err) = &ret {
+                    error!(?err, "bytesrepr error in native_exec Activate");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
                 let args =
                     ActivateBidArgs::new(unpacked.0, runtime_native_config.minimum_bid_amount());
-                system::activate_bid(
+                match system::activate_bid(
                     &mut tracking_copy,
                     runtime_native_config,
                     transaction_hash,
                     Arc::clone(&address_generator),
                     args,
-                )
-                .map(|_| None)
+                ) {
+                    Ok(_) => Ok(None),
+                    Err(de) => {
+                        error!(?de, "dispatch error in native_exec Activate");
+                        Err(de)
+                    }
+                }
             }
             AuctionMethods::Bid => {
                 let unpacked: (PublicKey, u8, U512, u64, u64, u64, u32, u32) =

@@ -11,7 +11,7 @@ pub mod exports {
     pub fn call() -> String {
         use borsh;
         let input =
-            borsh::to_vec(&(PublicKey::Ed25519([99; 32]),)).expect("Serialization to succeed");
+            borsh::to_vec(&(PublicKey::Ed25519([1; 32]),)).expect("Serialization to succeed");
         let (_output, result) = casper_system(SystemContractOption::ActivateBid.into(), &input);
 
         match result {

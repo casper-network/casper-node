@@ -9,7 +9,7 @@ use casper_storage::{
     global_state::GlobalStateReader, system::auction::Auction, AddressGenerator,
     RuntimeNativeConfig, TrackingCopy,
 };
-use casper_types::{system::auction::METHOD_ACTIVATE_BID, PublicKey, TransactionHash};
+use casper_types::{system::auction::METHOD_ACTIVATE_BID, ApiError, PublicKey, TransactionHash};
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
@@ -59,10 +59,9 @@ pub fn activate_bid<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "activate bid failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            let api_error: ApiError = error.into();
+            error!(%api_error, ?args, "activate bid failed with error");
+            Err(DispatchError::Api(api_error))
         }
     }
 }

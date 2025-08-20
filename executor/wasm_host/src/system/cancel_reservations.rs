@@ -11,7 +11,7 @@ use casper_storage::{
 };
 use casper_types::{
     system::auction::{DelegatorKind, METHOD_CANCEL_RESERVATIONS},
-    PublicKey, TransactionHash,
+    ApiError, PublicKey, TransactionHash,
 };
 use parking_lot::RwLock;
 use tracing::{debug, error};
@@ -74,10 +74,9 @@ pub fn cancel_reservations<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "cancel reservation failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            let api_error: ApiError = error.into();
+            error!(%api_error, ?args, "cancel reservation failed with error");
+            Err(DispatchError::Api(api_error))
         }
     }
 }

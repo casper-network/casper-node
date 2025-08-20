@@ -37,8 +37,8 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, BlockHash, Digest, EntityAddr,
-    Key, StoredValue, Timestamp,
+    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr, Key, StoredValue,
+    Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -110,6 +110,42 @@ fn harness() {
         .build()
         .expect("should build");
 
+    expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+}
+
+#[test]
+fn should_call_system_activate_bid() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let block_time = Timestamp::now().into();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_shared_address_generator(Arc::clone(&address_generator)) // TODO: Carry on state root hash
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(block_time)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_target(ExecutionKind::SessionBytes(read_wasm(
+            "vm2_system_caller.wasm",
+        )))
+        .with_input(Bytes::default())
+        .with_transferred_value(0)
+        .build()
+        .expect("should build");
+
+    let mut executor = make_executor(&chainspec_config);
     expect_successful_execution(
         &mut executor,
         &global_state,
@@ -695,7 +731,6 @@ fn non_existing_smart_contract_does_not_panic() {
 
 // TODO: get this test working.
 #[test]
-#[ignore]
 fn casper_return_writes_to_execution_journal() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");

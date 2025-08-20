@@ -9,7 +9,9 @@ use casper_storage::{
     global_state::GlobalStateReader, system::auction::Auction, AddressGenerator,
     RuntimeNativeConfig, TrackingCopy,
 };
-use casper_types::{system::auction::METHOD_CHANGE_BID_PUBLIC_KEY, PublicKey, TransactionHash};
+use casper_types::{
+    system::auction::METHOD_CHANGE_BID_PUBLIC_KEY, ApiError, PublicKey, TransactionHash,
+};
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
@@ -61,10 +63,9 @@ pub fn change_bid_public_key<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "change bid public key failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            let api_error: ApiError = error.into();
+            error!(%api_error, ?args, "change bid public key failed with error");
+            Err(DispatchError::Api(api_error))
         }
     }
 }

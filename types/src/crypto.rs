@@ -12,10 +12,10 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
 pub use crate::key::BLAKE2B_DIGEST_LENGTH;
-#[cfg(any(feature = "std", test))]
-pub use asymmetric_key::generate_ed25519_keypair;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub use asymmetric_key::gens;
+#[cfg(any(feature = "std", test))]
+pub use asymmetric_key::{ed25519_imputed, generate_ed25519_keypair};
 pub use asymmetric_key::{
     recover_secp256k1, sign, verify, AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG,
     SECP256K1_TAG, SYSTEM_ACCOUNT, SYSTEM_TAG,

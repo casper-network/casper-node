@@ -11,7 +11,7 @@ use casper_storage::{
 };
 use casper_types::{
     system::auction::{DelegatorKind, METHOD_REDELEGATE},
-    PublicKey, TransactionHash, U512,
+    ApiError, PublicKey, TransactionHash, U512,
 };
 use parking_lot::RwLock;
 use tracing::{debug, error};
@@ -78,10 +78,9 @@ pub fn redelegate<R: GlobalStateReader>(
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
         Err(error) => {
-            error!(%error, ?args, "redelegate failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+            let api_error: ApiError = error.into();
+            error!(%api_error, ?args, "redelegate failed with error");
+            Err(DispatchError::Api(api_error))
         }
     }
 }

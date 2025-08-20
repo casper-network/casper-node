@@ -223,7 +223,7 @@ impl ExecuteRequestBuilder {
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
-        let transferred_value = self.value.ok_or("Value is not set")?;
+        let transferred_value = self.value.unwrap_or_default();
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash is not set")?;
         let address_generator = self
             .address_generator

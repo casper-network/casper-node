@@ -653,6 +653,7 @@ impl ExecutorV2 {
                     }
                 }
             } else {
+                error!("System executions do not have wasm. This should be unreachable.");
                 return Err(ExecuteError::InternalHost(
                     InternalHostError::DispatchSystemContract,
                 ));
@@ -671,9 +672,10 @@ impl ExecutorV2 {
             } => Key::SmartContract(*smart_contract_addr),
             ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
             ExecutionKind::System(_) => {
+                error!("System executions are not called in this way. This should be unreachable.");
                 return Err(ExecuteError::InternalHost(
-                    InternalHostError::UnexpectedEntityKind,
-                ))
+                    InternalHostError::DispatchSystemContract,
+                ));
             }
         };
 

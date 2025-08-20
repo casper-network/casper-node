@@ -8,7 +8,7 @@ use casper_storage::{
     global_state::GlobalStateReader, system::mint::Mint, AddressGenerator, RuntimeNativeConfig,
     TrackingCopy,
 };
-use casper_types::{account::AccountHash, TransactionHash, URef, METHOD_TRANSFER, U512};
+use casper_types::{account::AccountHash, ApiError, TransactionHash, URef, METHOD_TRANSFER, U512};
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
@@ -79,11 +79,10 @@ pub fn transfer<R: GlobalStateReader>(
         Err(casper_types::system::mint::Error::GasLimit) => {
             Err(DispatchError::Call(CallError::CalleeGasDepleted))
         }
-        Err(mint_error) => {
-            error!(%mint_error, ?args, "transfer failed with error");
-            Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
-            ))
+        Err(error) => {
+            let api_error: ApiError = error.into();
+            error!(%api_error, ?args, "transfer failed with error");
+            Err(DispatchError::Api(api_error))
         }
     }
 }
