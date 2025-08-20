@@ -399,7 +399,10 @@ where
             .runtime_footprint()
             .borrow()
             .main_purse()
-            .expect("didnt have purse")
+            .ok_or({
+                error!("didn't have purse");
+                Error::MissingPurse
+            })?
             .addr()
             == source.addr();
         let has_perms = is_main_purse_transfer

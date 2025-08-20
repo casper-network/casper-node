@@ -181,7 +181,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -311,7 +311,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -430,7 +430,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state read
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -569,10 +569,10 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
         &copy_input_cost,
         [
             u64::from(out_ptr),
-            input
-                .len()
-                .try_into()
-                .expect("usize is at least the same size as u64"),
+            input.len().try_into().map_err(|err| {
+                error!("Failed to convert u64 to usize. Details: {err}");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?,
         ],
     )?;
 
@@ -676,7 +676,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             return Ok(CALLEE_NOT_CALLABLE);
         }
         let seed_bytes = caller.memory_read(seed_ptr, seed_len as usize)?;
-        let seed_bytes: [u8; 32] = seed_bytes.try_into().unwrap(); // SAFETY: We checked for length.
+        let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
+            // SAFETY: We checked for length. This shouldn't happen
+            error!("Error when converting seed_bytes from vec to static array");
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?;
         Some(seed_bytes)
     } else {
         None
@@ -802,7 +806,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         Some(entry_point_name) => {
             // Take the gas spent so far and use it as a limit for the new VM.
             let gas_limit = caller
-                .gas_consumed()
+                .gas_consumed()?
                 .try_into_remaining()
                 .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -951,7 +955,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     // Take the gas spent so far and use it as a limit for the new VM.
     let gas_limit = caller
-        .gas_consumed()
+        .gas_consumed()?
         .try_into_remaining()
         .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -1090,8 +1094,11 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 return Ok(HOST_ERROR_SUCCESS);
             }
             let hash_bytes = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            let hash_bytes: [u8; 32] = hash_bytes.try_into().unwrap(); // SAFETY: We checked for length.
-
+            let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
+                // SAFETY: We checked for length. This shouldn't happen
+                error!("Error when converting hash_bytes from vec to static array");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?;
             let smart_contract_key = Key::SmartContract(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
@@ -1204,9 +1211,11 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let (target_entity_addr, _runtime_footprint) = {
         let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
         debug_assert_eq!(entity_addr.len(), 32);
-
-        // SAFETY: entity_addr is 32 bytes long
-        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
+        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().map_err(|_| {
+            // SAFETY: We checked for length (32 bytes). This shouldn't happen
+            error!("Error when converting entity_addr from vec to account_hash");
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?);
 
         let protocol_version = ProtocolVersion::V2_0_0;
         let (entity_addr, runtime_footprint) = match caller
@@ -1490,7 +1499,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     if let Some(entry_point_name) = entry_point {
         // Take the gas spent so far and use it as a limit for the new VM.
         let gas_limit = caller
-            .gas_consumed()
+            .gas_consumed()?
             .try_into_remaining()
             .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -1868,7 +1877,11 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     let hashed_bytes = match hash_algorithm {
         HashAlgorithm::Blake2b => {
             let mut result = [0; DIGEST_LENGTH];
-            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
+                ExecuteError::InternalHost(InternalHostError::CorruptExecutionState(
+                    "Error when creating instance of Blake2bVar hashing".to_owned(),
+                ))
+            })?;
             hasher.update(in_bytes.as_ref());
             hasher.finalize_variable(&mut result).ok();
             result
