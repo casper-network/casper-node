@@ -271,4 +271,11 @@ mod tests {
 
         assert!(matches!(result, Ok(())));
     }
+
+    #[test]
+    fn foobar() {
+        dbg!(casper_contract_sdk::abi_generator::ABI_ITEMS
+            .iter()
+            .collect::<Vec<_>>());
+    }
 }

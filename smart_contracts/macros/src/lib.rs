@@ -454,12 +454,18 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     },
                 };
 
+                let ret_ty;
+
                 let handle_ret = if never_returns {
+                    ret_ty = Some(quote! { ! });
                     None
                 } else {
                     match func.sig.output {
                         syn::ReturnType::Default => {
                             // Do not call casper_return if there is no return value
+
+                            ret_ty = Some(quote! { () });
+
                             Some(quote! {
                                 match #resolve_abi_convention {
                                     casper_contract_sdk::serializers::AbiConvention::Positional => {
@@ -478,12 +484,18 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             // state, or explicitly revert.
                             // TODO: Add support for Result<Self, Error> and revert_on_error if
                             // possible.
+
+                            ret_ty = Some(quote! { #struct_name });
+
                             Some(quote! {
                                 let _ = flags; // hide the warning
                             })
                         }
-                        syn::ReturnType::Type(..) => {
+                        syn::ReturnType::Type(_rarrow, ref ty) => {
                             // There is a return value so call casper_return.
+                            // ret_ty =/
+                            ret_ty = Some(quote! { #ty });
+
                             Some(quote! {
                                 let ret_bytes = match #resolve_abi_convention {
                                     casper_contract_sdk::serializers::AbiConvention::Positional => {
@@ -514,8 +526,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
 
                     let input = casper_contract_sdk::prelude::casper::copy_input();
+                    let resolved_abi_convention = #resolve_abi_convention;
                     let args: Arguments = {
-                        match #resolve_abi_convention {
+                        match resolved_abi_convention {
                             casper_contract_sdk::serializers::AbiConvention::Positional => {
                                 casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
                             }
@@ -645,6 +658,55 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             line: line!(),
                         };
                     };
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    const _: () = {
+                        #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ABI_ITEMS)]
+                        #[linkme(crate = casper_contract_sdk::linkme)]
+                        pub static EXPORTS: casper_contract_sdk::abi_generator::AbiItem = casper_contract_sdk::abi_generator::AbiItem::EntryPoint {
+                            name: stringify!(#export_name),
+                            params: &[
+                                #(
+                                    casper_contract_sdk::abi_generator::AbiParam {
+                                        name: stringify!(#arg_names),
+                                        decl: casper_contract_sdk::abi_generator::AbiType {
+                                            name: stringify!(#arg_types),
+                                            cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                                        }
+                                    },
+                                )*
+                            ],
+                            abi_convention: None,
+                            result_decl: casper_contract_sdk::abi_generator::AbiType {
+                                name: stringify!(#ret_ty),
+                                cl_type: <#ret_ty as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                            },
+                            kind: casper_contract_sdk::abi_generator::AbiKind::SmartContract,
+                            location: casper_contract_sdk::abi_generator::AbiLocation {
+                                file: file!(),
+                                line: line!(),
+                                col: column!(),
+                            },
+                            fptr: || -> () { #extern_func_name(); },
+                        };
+                    };
+
+                    // #[cfg(not(target_arch = "wasm32"))]
+                    // const _: () = {
+                    //     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
+                    //     #[linkme(crate = casper_contract_sdk::linkme)]
+                    //     pub static EXPORTS: casper_contract_sdk::abi_generator::AbiItem = casper_contract_sdk::abi_generator::AbiEntryPoint {
+                    //         name: stringify!(#export_name),
+                    //         params: &[#(#arg_names),*],
+                    //         abi_convention: casper_contract_sdk::serializers::AbiConvention::default(),
+                    //         result_decl: casper_contract_sdk::abi_generator::AbiDeclaration {
+                    //             name: stringify!(#export_name),
+                    //             cl_type: None,
+                    //         },
+                    //         kind: casper_contract_sdk::casper::native::EntryPointKind::SmartContract { name: stringify!(#export_name), struct_name: stringify!(#struct_name) },
+                    //         fptr: || -> () { #extern_func_name(); },
+                    //     };
+                    // };
 
                 });
 
