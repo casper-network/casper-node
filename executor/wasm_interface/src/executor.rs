@@ -20,6 +20,7 @@ use crate::{
 };
 
 /// Request to execute a Wasm contract.
+#[derive(Debug)]
 pub struct ExecuteRequest {
     /// Initiator's address.
     pub initiator: AccountHash,

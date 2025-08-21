@@ -63,6 +63,38 @@ impl From<SystemContractOption> for u32 {
     }
 }
 
+impl TryFrom<u32> for SystemContractOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(SystemContractOption::Transfer)
+        } else if value == 1 {
+            Ok(SystemContractOption::Burn)
+        } else if value == 100 {
+            Ok(SystemContractOption::ActivateBid)
+        } else if value == 101 {
+            Ok(SystemContractOption::Bid)
+        } else if value == 102 {
+            Ok(SystemContractOption::Withdraw)
+        } else if value == 103 {
+            Ok(SystemContractOption::Delegate)
+        } else if value == 104 {
+            Ok(SystemContractOption::Undelegate)
+        } else if value == 105 {
+            Ok(SystemContractOption::Redelegate)
+        } else if value == 106 {
+            Ok(SystemContractOption::AddReservation)
+        } else if value == 107 {
+            Ok(SystemContractOption::CancelReservation)
+        } else if value == 108 {
+            Ok(SystemContractOption::ChangePublicKey)
+        } else {
+            Err(())
+        }
+    }
+}
+
 /// A type of hashing algorithm.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]

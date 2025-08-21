@@ -44,6 +44,8 @@ use fs_extra::dir;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
+const VM2_SYSTEM_CALLER_WASM: &str = "vm2_system_caller.wasm";
+
 /// Symlink to chainspec.
 pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -119,6 +121,44 @@ fn harness() {
 }
 
 #[test]
+fn should_revert_invalid_system_option() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let block_time = Timestamp::now().into();
+
+    let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(block_time)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_target(ExecutionKind::SessionBytes(read_wasm(
+            VM2_SYSTEM_CALLER_WASM,
+        )))
+        .with_transferred_value(0)
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let executor = make_executor(&chainspec_config);
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+
+    if let Ok(exec_result) = result {
+        assert!(exec_result.host_error.is_some(), "should have error");
+    }
+}
+
+#[test]
 fn should_call_system_activate_bid() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
@@ -128,8 +168,10 @@ fn should_call_system_activate_bid() {
 
     let block_time = Timestamp::now().into();
 
+    let input_data = borsh::to_vec(&(100,)).map(Bytes::from).unwrap();
+
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_shared_address_generator(Arc::clone(&address_generator)) // TODO: Carry on state root hash
+        .with_shared_address_generator(Arc::clone(&address_generator))
         .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(block_time)
@@ -138,20 +180,25 @@ fn should_call_system_activate_bid() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_target(ExecutionKind::SessionBytes(read_wasm(
-            "vm2_system_caller.wasm",
+            VM2_SYSTEM_CALLER_WASM,
         )))
-        .with_input(Bytes::default())
         .with_transferred_value(0)
+        .with_input(input_data)
         .build()
         .expect("should build");
 
-    let mut executor = make_executor(&chainspec_config);
-    expect_successful_execution(
-        &mut executor,
-        &global_state,
-        state_root_hash,
-        execute_request,
-    );
+    let executor = make_executor(&chainspec_config);
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+
+    match result {
+        Ok(result) => {
+            if let Some(host_error) = result.host_error {
+                panic!("Host error: {host_error:?}");
+            }
+        }
+        Err(err) => panic!("Host error: {err:?}"),
+    }
 }
 
 #[test]

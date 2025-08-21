@@ -1105,7 +1105,6 @@ fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     caller.memory_write(out_ptr, &output)?;
                 }
             }
-
             let host_result = match host_error {
                 Some(host_error) => Err(host_error),
                 None => {
