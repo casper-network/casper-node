@@ -53,6 +53,8 @@ pub enum AuctionMethod {
         delegation_rate: DelegationRate,
         /// Bid amount.
         amount: U512,
+        /// Vesting schedule period in milliseconds.
+        vesting_schedule_period_millis: u64,
         /// Minimum delegation amount for this validator bid.
         minimum_delegation_amount: u64,
         /// Maximum delegation amount for this validator bid.
@@ -145,6 +147,7 @@ impl AuctionMethod {
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
             TransactionEntryPoint::AddBid => Self::new_add_bid(
                 runtime_args,
+                chainspec.core_config.vesting_schedule_period.millis(),
                 chainspec.core_config.minimum_delegation_amount,
                 chainspec.core_config.maximum_delegation_amount,
                 chainspec.core_config.minimum_bid_amount,
@@ -176,6 +179,7 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
+        vesting_schedule_period_millis: u64,
         global_minimum_delegation: u64,
         global_maximum_delegation: u64,
         global_minimum_bid_amount: u64,
@@ -196,6 +200,7 @@ impl AuctionMethod {
             public_key,
             delegation_rate,
             amount,
+            vesting_schedule_period_millis,
             minimum_delegation_amount,
             maximum_delegation_amount,
             minimum_bid_amount: global_minimum_bid_amount,

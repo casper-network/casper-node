@@ -22,7 +22,7 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    ExecuteError, ExecuteWithProviderError, ExecutionKind,
+    AuctionMethods, ExecuteError, ExecuteWithProviderError, ExecutionKind, MintMethods, SystemMenu,
 };
 use casper_storage::{
     data_access_layer::{
@@ -158,17 +158,20 @@ fn should_revert_invalid_system_option() {
     }
 }
 
-#[test]
-fn should_call_system_activate_bid() {
+fn exec_system_call(system_menu: SystemMenu) {
+    let system_function_option: u32 = system_menu.into();
+    let input_data = borsh::to_vec(&(system_function_option,))
+        .map(Bytes::from)
+        .unwrap();
+
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
-        .expect("must get chainspec config");
+        .expect("must get chainspec config")
+        .with_vesting_schedule_period_millis(0);
 
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
     let block_time = Timestamp::now().into();
-
-    let input_data = borsh::to_vec(&(100,)).map(Bytes::from).unwrap();
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -199,6 +202,69 @@ fn should_call_system_activate_bid() {
         }
         Err(err) => panic!("Host error: {err:?}"),
     }
+}
+
+#[test]
+#[ignore]
+fn should_call_system_transfer() {
+    exec_system_call(SystemMenu::Mint(MintMethods::Transfer));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_burn() {
+    exec_system_call(SystemMenu::Mint(MintMethods::Burn));
+}
+
+#[test]
+fn should_call_system_activate_bid() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Activate));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_bid() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Bid));
+}
+
+#[test]
+fn should_call_system_withdraw() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Withdraw));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_delegate() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Delegate));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_undelegate() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Undelegate));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_redelegate() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Redelegate));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_add_reservation() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::AddReservation));
+}
+
+#[test]
+#[ignore]
+fn should_call_system_cancel_reservation() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::CancelReservation));
+}
+
+#[test]
+fn should_call_system_change_public_key() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::ChangePublicKey));
 }
 
 #[test]

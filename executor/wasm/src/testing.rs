@@ -171,6 +171,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
     let max_delegators_per_validator = chainspec_config.core_config.max_delegators_per_validator;
     let minimum_bid_amount = chainspec_config.core_config.minimum_bid_amount;
     let minimum_delegation_amount = chainspec_config.core_config.minimum_delegation_amount;
+    let maximum_delegation_amount = chainspec_config.core_config.maximum_delegation_amount;
     let balance_hold_interval = chainspec_config.core_config.gas_hold_interval.millis();
     let include_credits = chainspec_config.core_config.fee_handling == FeeHandling::NoFee;
     let credit_cap = Ratio::new_raw(
@@ -190,6 +191,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         max_delegators_per_validator,
         minimum_bid_amount,
         minimum_delegation_amount,
+        maximum_delegation_amount,
         balance_hold_interval,
         include_credits,
         credit_cap,
@@ -248,9 +250,9 @@ pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
 
     let acct_2 = GenesisAccount::Account {
         public_key: DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.clone(),
-        balance: Motes::new(U512::from(100 * TOKEN)),
+        balance: Motes::new(U512::from(200_000_000 * TOKEN)),
         validator: Some(GenesisValidator::new(
-            Motes::new(U512::from(100000000 * TOKEN)),
+            Motes::new(U512::from(100_000_000 * TOKEN)),
             DelegationRate::MIN,
         )),
     };

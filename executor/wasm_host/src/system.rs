@@ -39,7 +39,7 @@ use casper_executor_wasm_interface::executor::{
 use casper_types::bytesrepr::ToBytes;
 
 use crate::system;
-use casper_types::system::auction::{DelegatorKind, Reservation};
+use casper_types::system::auction::{DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR};
 
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
@@ -83,6 +83,19 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
 ) -> Result<Ret, DispatchError> {
     let forked_tracking_copy = Rc::new(RefCell::new(tracking_copy.fork2()));
+
+    /*
+        config: Config,
+        id: Id,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+        tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
+        address: AccountHash,
+        context_key: Key,
+        runtime_footprint: RuntimeFootprint,
+        access_rights: ContextAccessRights,
+        remaining_spending_limit: U512,
+        phase: Phase,
+    */
 
     let ret = {
         let runtime = RuntimeNative::new_system_runtime(
@@ -166,19 +179,53 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::Bid => {
-                let unpacked: (PublicKey, u8, U512, u64, u64, u64, u32, u32) =
-                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                let ret = bytesrepr::deserialize_from_slice::<
+                    &Bytes,
+                    (PublicKey, u8, u64, u64, u64, u32),
+                >(&input);
+                if let Err(err) = &ret {
+                    debug!(?err, "bytesrepr error in native_exec Activate");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
                 if unpacked.0.is_system() {
                     info!(?method, "attempt to pass system public key from userland");
                     return Err(ExecuteError::InternalHost(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
+                let delegation_rate = {
+                    if unpacked.1 > DELEGATION_RATE_DENOMINATOR {
+                        DELEGATION_RATE_DENOMINATOR
+                    } else {
+                        unpacked.1
+                    }
+                };
+                let min_del_amount = {
+                    if unpacked.3 < runtime_native_config.minimum_delegation_amount() {
+                        runtime_native_config.minimum_delegation_amount()
+                    } else {
+                        unpacked.3
+                    }
+                };
+                let max_del_amount = {
+                    if unpacked.4 > runtime_native_config.maximum_delegation_amount() {
+                        runtime_native_config.maximum_delegation_amount()
+                    } else {
+                        unpacked.4
+                    }
+                };
                 let args = AddBidArgs::new(
-                    unpacked.0, unpacked.1, unpacked.2, unpacked.3, unpacked.4, unpacked.5,
-                    unpacked.6, unpacked.7,
+                    unpacked.0, // public_key
+                    delegation_rate,
+                    unpacked.2.into(), // amount
+                    runtime_native_config.vesting_schedule_period_millis(),
+                    min_del_amount, // minimum_delegation_amount
+                    max_del_amount, // maximum_delegation_amount
+                    runtime_native_config.minimum_bid_amount(),
+                    runtime_native_config.max_delegators_per_validator(),
+                    unpacked.5, // reserved_slots
                 );
                 match system::add_bid(
                     &mut tracking_copy,
@@ -195,7 +242,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::Withdraw => {
-                let unpacked: (PublicKey, U512, u64) = bytesrepr::deserialize_from_slice(&input)
+                let unpacked: (PublicKey, u64) = bytesrepr::deserialize_from_slice(&input)
                     .map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
@@ -205,7 +252,11 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
-                let args = WithdrawBidArgs::new(unpacked.0, unpacked.1, unpacked.2);
+                let args = WithdrawBidArgs::new(
+                    unpacked.0,
+                    unpacked.1.into(),
+                    runtime_native_config.minimum_bid_amount(),
+                );
                 match system::withdraw_bid(
                     &mut tracking_copy,
                     runtime_native_config,
@@ -339,17 +390,23 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             AuctionMethods::ChangePublicKey => {
-                let unpacked: (PublicKey, PublicKey) = bytesrepr::deserialize_from_slice(&input)
-                    .map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
-                if unpacked.0.is_system() || unpacked.1.is_system() {
+                let ret =
+                    bytesrepr::deserialize_from_slice::<&Bytes, (PublicKey, PublicKey)>(&input);
+                if let Err(err) = &ret {
+                    debug!(?err, "bytesrepr error in native_exec Activate");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
+                let pk_curr = unpacked.0;
+                let pk_new = unpacked.1;
+                if pk_curr.is_system() || pk_new.is_system() {
                     info!(?method, "attempt to pass system public key from userland");
                     return Err(ExecuteError::InternalHost(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
-                let args = ChangeBidPublicKeyArgs::new(unpacked.0, unpacked.1);
+                let args = ChangeBidPublicKeyArgs::new(pk_curr, pk_new);
 
                 system::change_bid_public_key(
                     &mut tracking_copy,

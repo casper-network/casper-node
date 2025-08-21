@@ -137,6 +137,9 @@ impl VestingSchedule {
         timestamp_millis: u64,
         vesting_schedule_period_millis: u64,
     ) -> bool {
+        if vesting_schedule_period_millis == 0 {
+            return false;
+        }
         let vested_period = match self.locked_amounts() {
             Some(locked_amounts) => {
                 let vesting_weeks = locked_amounts

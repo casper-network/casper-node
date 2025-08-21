@@ -11,9 +11,6 @@ use crate::{
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
 
-// pub const ED25519_TAG: u8 = 1;
-// pub const SECP256K1_TAG: u8 = 2;
-
 /// Bytes for Ed25519 public key.
 pub type AddressEd25519 = [u8; 32];
 

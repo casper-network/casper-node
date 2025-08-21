@@ -419,6 +419,28 @@ impl TryFrom<u32> for SystemMenu {
     }
 }
 
+impl From<SystemMenu> for u32 {
+    fn from(value: SystemMenu) -> u32 {
+        match value {
+            SystemMenu::Mint(mint) => match mint {
+                MintMethods::Transfer => 0,
+                MintMethods::Burn => 1,
+            },
+            SystemMenu::Auction(auction) => match auction {
+                AuctionMethods::Activate => 100,
+                AuctionMethods::Bid => 101,
+                AuctionMethods::Withdraw => 102,
+                AuctionMethods::Delegate => 103,
+                AuctionMethods::Undelegate => 104,
+                AuctionMethods::Redelegate => 105,
+                AuctionMethods::AddReservation => 106,
+                AuctionMethods::CancelReservation => 107,
+                AuctionMethods::ChangePublicKey => 108,
+            },
+        }
+    }
+}
+
 /// Target for Wasm execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
