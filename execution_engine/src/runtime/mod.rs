@@ -2000,7 +2000,7 @@ where
                     .context
                     .runtime_footprint()
                     .borrow()
-                    .extract_access_rights(context_entity_hash);
+                    .extract_access_rights();
                 access_rights.extend(&extended_access_rights);
 
                 let named_keys = self
@@ -2013,7 +2013,7 @@ where
                 (named_keys, access_rights)
             }
             EntryPointType::Called | EntryPointType::Factory => {
-                let mut access_rights = footprint.extract_access_rights(entity_hash.value());
+                let mut access_rights = footprint.extract_access_rights();
                 access_rights.extend(&extended_access_rights);
                 let named_keys = footprint.named_keys().clone();
                 (named_keys, access_rights)

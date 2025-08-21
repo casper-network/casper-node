@@ -19,6 +19,7 @@ use casper_executor_wasm::{
 use casper_executor_wasm::{
     chainspec_config,
     chainspec_config::{ChainspecConfig, DEFAULT_ACCOUNT_HASH},
+    testing::DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY,
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
@@ -173,13 +174,15 @@ fn exec_system_call(system_menu: SystemMenu) {
 
     let block_time = Timestamp::now().into();
 
+    let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
+
     let execute_request = base_execute_builder(&chainspec_config)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(block_time)
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_initiator(account_hash)
+        .with_caller_key(Key::Account(account_hash))
         .with_transaction_hash(TRANSACTION_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_target(ExecutionKind::SessionBytes(read_wasm(
@@ -222,7 +225,6 @@ fn should_call_system_activate_bid() {
 }
 
 #[test]
-#[ignore]
 fn should_call_system_bid() {
     exec_system_call(SystemMenu::Auction(AuctionMethods::Bid));
 }

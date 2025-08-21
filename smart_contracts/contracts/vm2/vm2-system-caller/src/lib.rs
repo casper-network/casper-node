@@ -5,7 +5,7 @@ pub mod exports {
         casper::{casper_system, ret},
         casper_executor_wasm_common::flags::ReturnFlags,
         prelude::*,
-        types::{PublicKey, SystemContractOption},
+        types::{DelegatorKind, PublicKey, SystemContractOption},
     };
 
     #[casper(export)]
@@ -48,7 +48,15 @@ pub mod exports {
             SystemContractOption::Undelegate => None,
             SystemContractOption::Redelegate => None,
             SystemContractOption::AddReservation => None,
-            SystemContractOption::CancelReservation => None,
+            SystemContractOption::CancelReservation => {
+                let reservations = vec![
+                    DelegatorKind::Purse([254; 32]),
+                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
+                ];
+                let args = (PublicKey::Ed25519([1; 32]), reservations);
+                let input = borsh::to_vec(&args).expect("Serialization to succeed");
+                Some(input)
+            }
             SystemContractOption::ChangePublicKey => {
                 let args = (PublicKey::Ed25519([1; 32]), PublicKey::Ed25519([255; 32]));
                 let input = borsh::to_vec(&args).expect("Serialization to succeed");

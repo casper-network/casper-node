@@ -458,7 +458,7 @@ where
         let runtime_footprint = tracking_copy
             .borrow_mut()
             .runtime_footprint_by_hash_addr(hash)?;
-        let access_rights = runtime_footprint.extract_access_rights(hash);
+        let access_rights = runtime_footprint.extract_access_rights();
         let address = PublicKey::System.to_account_hash();
         let remaining_spending_limit = U512::MAX; // system has no spending limit
         Ok(RuntimeNative {

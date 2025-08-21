@@ -431,6 +431,8 @@ impl ExecutorV2 {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let ExecuteRequest {
+            initiator,
+            caller_key,
             gas_limit,
             input,
             transaction_hash,
@@ -453,6 +455,8 @@ impl ExecutorV2 {
             transaction_hash,
             address_generator,
             gas_usage,
+            initiator,
+            caller_key,
             input,
             menu_selection,
         )

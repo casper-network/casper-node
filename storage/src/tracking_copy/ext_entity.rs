@@ -431,7 +431,7 @@ where
             authorization_keys,
             administrative_accounts,
         )?;
-        let access_rights = footprint.extract_access_rights(entity_addr.value());
+        let access_rights = footprint.extract_access_rights();
         Ok((entity_addr, footprint, access_rights))
     }
 
@@ -456,7 +456,7 @@ where
                 }
             };
             let auction = self.runtime_footprint_by_hash_addr(auction_hash)?;
-            let auction_access_rights = auction.extract_access_rights(auction_hash);
+            let auction_access_rights = auction.extract_access_rights();
             (auction.take_named_keys(), auction_access_rights)
         };
         let (mint_named_keys, mint_access_rights) = {
@@ -470,7 +470,7 @@ where
                 }
             };
             let mint = self.runtime_footprint_by_hash_addr(mint_hash)?;
-            let mint_access_rights = mint.extract_access_rights(mint_hash);
+            let mint_access_rights = mint.extract_access_rights();
             (mint.take_named_keys(), mint_access_rights)
         };
 
@@ -485,7 +485,7 @@ where
                 }
             };
             let payment = self.runtime_footprint_by_hash_addr(payment_hash)?;
-            let payment_access_rights = payment.extract_access_rights(payment_hash);
+            let payment_access_rights = payment.extract_access_rights();
             (payment.take_named_keys(), payment_access_rights)
         };
 

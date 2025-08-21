@@ -40,6 +40,16 @@ impl From<AddressSecp256k1> for PublicKey {
 }
 
 #[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
+pub enum DelegatorKind {
+    /// PublicKey bytes.
+    PublicKey(PublicKey) = 0,
+    /// Purse address bytes.
+    Purse(Address) = 1,
+}
+
+#[repr(u32)]
 pub enum SystemContractOption {
     Transfer = 0,
     Burn = 1,

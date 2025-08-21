@@ -26,7 +26,8 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    bytesrepr, ApiError, CLValueError, Phase, PublicKey, TransactionHash, URef, U512,
+    bytesrepr, ApiError, CLValueError, EntityAddr, Key, Phase, PublicKey, RuntimeFootprint,
+    TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -39,13 +40,18 @@ use casper_executor_wasm_interface::executor::{
 use casper_types::bytesrepr::ToBytes;
 
 use crate::system;
-use casper_types::system::auction::{DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR};
+use casper_types::system::auction::{
+    DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
+    ERA_ID_KEY,
+};
 
 pub use activate_bid::{activate_bid, ActivateBidArgs};
 pub use add_bid::{add_bid, AddBidArgs};
 pub use add_reservations::{add_reservations, AddReservationsArgs};
 pub use burn::{burn, BurnArgs};
 pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
+use casper_storage::tracking_copy::TrackingCopyEntityExt;
+use casper_types::{account::AccountHash, system::AUCTION};
 pub use change_bid_public_key::{change_bid_public_key, ChangeBidPublicKeyArgs};
 pub use create_purse::create_purse;
 pub use delegate::{delegate, DelegateArgs};
@@ -75,6 +81,98 @@ pub enum DispatchError {
     Api(ApiError),
 }
 
+#[allow(clippy::too_many_arguments)]
+fn dispatch_userland_to_system_contract<R: GlobalStateReader, Ret: PartialEq>(
+    tracking_copy: &mut TrackingCopy<R>,
+    mut runtime_footprint: RuntimeFootprint,
+    runtime_native_config: RuntimeNativeConfig,
+    transaction_hash: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    initiator: AccountHash,
+    context_key: Key,
+    remaining_spending_limit: U512,
+    func: impl FnOnce(RuntimeNative<R>) -> Ret,
+) -> Result<Ret, DispatchError> {
+    let forked_tracking_copy = Rc::new(RefCell::new(tracking_copy.fork2()));
+
+    let mut access_rights = runtime_footprint.extract_access_rights();
+    match tracking_copy.system_contract_named_key(AUCTION, ERA_END_TIMESTAMP_MILLIS_KEY) {
+        Ok(Some(k)) => {
+            match k.as_uref() {
+                Some(uref) => access_rights.extend(&[*uref]),
+                None => {
+                    return Err(DispatchError::Storage(
+                        TrackingCopyError::UnexpectedKeyVariant(k),
+                    ));
+                }
+            }
+            runtime_footprint.insert_into_named_keys(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
+        }
+        Ok(None) => {
+            return Err(DispatchError::Storage(TrackingCopyError::NamedKeyNotFound(
+                ERA_END_TIMESTAMP_MILLIS_KEY.into(),
+            )));
+        }
+        Err(tce) => {
+            return Err(DispatchError::Storage(tce));
+        }
+    };
+    match tracking_copy.system_contract_named_key(AUCTION, ERA_ID_KEY) {
+        Ok(Some(k)) => {
+            match k.as_uref() {
+                Some(uref) => access_rights.extend(&[*uref]),
+                None => {
+                    return Err(DispatchError::Storage(
+                        TrackingCopyError::UnexpectedKeyVariant(k),
+                    ));
+                }
+            }
+            runtime_footprint.insert_into_named_keys(ERA_ID_KEY.into(), k);
+        }
+        Ok(None) => {
+            return Err(DispatchError::Storage(TrackingCopyError::NamedKeyNotFound(
+                ERA_END_TIMESTAMP_MILLIS_KEY.into(),
+            )));
+        }
+        Err(tce) => {
+            return Err(DispatchError::Storage(tce));
+        }
+    };
+
+    let ret = {
+        let runtime = RuntimeNative::new(
+            runtime_native_config,
+            Id::Transaction(transaction_hash),
+            address_generator,
+            Rc::clone(&forked_tracking_copy),
+            initiator,
+            context_key,
+            runtime_footprint,
+            access_rights,
+            remaining_spending_limit,
+            Phase::Session,
+        );
+
+        func(runtime)
+    };
+
+    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy the
+    // effects.
+    let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
+        .ok()
+        .expect("No other references");
+
+    let modified_tracking_copy = modified_tracking_copy.into_inner();
+
+    tracking_copy.apply_changes(
+        modified_tracking_copy.effects(),
+        modified_tracking_copy.cache(),
+        modified_tracking_copy.messages(),
+    );
+
+    Ok(ret)
+}
+
 fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     tracking_copy: &mut TrackingCopy<R>,
     runtime_native_config: RuntimeNativeConfig,
@@ -83,20 +181,6 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
 ) -> Result<Ret, DispatchError> {
     let forked_tracking_copy = Rc::new(RefCell::new(tracking_copy.fork2()));
-
-    /*
-        config: Config,
-        id: Id,
-        address_generator: Arc<RwLock<AddressGenerator>>,
-        tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
-        address: AccountHash,
-        context_key: Key,
-        runtime_footprint: RuntimeFootprint,
-        access_rights: ContextAccessRights,
-        remaining_spending_limit: U512,
-        phase: Phase,
-    */
-
     let ret = {
         let runtime = RuntimeNative::new_system_runtime(
             runtime_native_config,
@@ -142,10 +226,33 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    gas_usage: GasUsage, // unfortunately, ExecuteResult needs this value so we tunnel it
+    gas_usage: GasUsage,
+    initiator: AccountHash,
+    caller_key: Key,
     input: Bytes,
     system_menu_selection: SystemMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
+    let entity_addr = if let Key::Account(account_hash) = caller_key {
+        EntityAddr::Account(account_hash.value())
+    } else if let Key::Hash(contract_hash_addr) = caller_key {
+        EntityAddr::SmartContract(contract_hash_addr)
+    } else if let Key::AddressableEntity(entity_addr) = caller_key {
+        entity_addr
+    } else {
+        return Err(ExecuteError::EntityNotFound(caller_key));
+    };
+    let runtime_footprint = match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
+        Ok(footprint) => footprint,
+        Err(err) => {
+            debug!(
+                ?err,
+                ?entity_addr,
+                "native_exec failed attempt to runtime_footprint_by_entity_addr"
+            );
+            return Err(ExecuteError::EntityNotFound(caller_key));
+        }
+    };
+
     let ret: Result<Option<Bytes>, DispatchError> = match system_menu_selection {
         SystemMenu::Auction(method) => match method {
             AuctionMethods::Activate => {
@@ -162,15 +269,16 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
-                let args =
-                    ActivateBidArgs::new(unpacked.0, runtime_native_config.minimum_bid_amount());
-                match system::activate_bid(
-                    &mut tracking_copy,
+                let args = ActivateBidArgs::new(
                     runtime_native_config,
                     transaction_hash,
                     Arc::clone(&address_generator),
-                    args,
-                ) {
+                    initiator,
+                    caller_key,
+                    gas_usage.remaining_points().into(),
+                    unpacked.0,
+                );
+                match system::activate_bid(&mut tracking_copy, runtime_footprint, args) {
                     Ok(_) => Ok(None),
                     Err(de) => {
                         error!(?de, "dispatch error in native_exec Activate");
@@ -217,23 +325,20 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     }
                 };
                 let args = AddBidArgs::new(
-                    unpacked.0, // public_key
-                    delegation_rate,
-                    unpacked.2.into(), // amount
-                    runtime_native_config.vesting_schedule_period_millis(),
-                    min_del_amount, // minimum_delegation_amount
-                    max_del_amount, // maximum_delegation_amount
-                    runtime_native_config.minimum_bid_amount(),
-                    runtime_native_config.max_delegators_per_validator(),
-                    unpacked.5, // reserved_slots
-                );
-                match system::add_bid(
-                    &mut tracking_copy,
                     runtime_native_config,
                     transaction_hash,
                     Arc::clone(&address_generator),
-                    args,
-                ) {
+                    initiator,
+                    caller_key,
+                    gas_usage.remaining_points().into(),
+                    unpacked.0, // public_key
+                    delegation_rate,
+                    unpacked.2.into(), // amount
+                    min_del_amount,    // minimum_delegation_amount
+                    max_del_amount,    // maximum_delegation_amount
+                    unpacked.5,        // reserved_slots
+                );
+                match system::add_bid(&mut tracking_copy, runtime_footprint, args) {
                     Ok(ret) => match ret.to_bytes() {
                         Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
                         Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
@@ -253,17 +358,16 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     ));
                 }
                 let args = WithdrawBidArgs::new(
-                    unpacked.0,
-                    unpacked.1.into(),
-                    runtime_native_config.minimum_bid_amount(),
-                );
-                match system::withdraw_bid(
-                    &mut tracking_copy,
                     runtime_native_config,
                     transaction_hash,
                     Arc::clone(&address_generator),
-                    args,
-                ) {
+                    initiator,
+                    caller_key,
+                    gas_usage.remaining_points().into(),
+                    unpacked.0,
+                    unpacked.1.into(),
+                );
+                match system::withdraw_bid(&mut tracking_copy, runtime_footprint, args) {
                     Ok(ret) => match ret.to_bytes() {
                         Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
                         Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
@@ -368,7 +472,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             AuctionMethods::CancelReservation => {
-                let unpacked: (PublicKey, Vec<DelegatorKind>, u32) =
+                let unpacked: (PublicKey, Vec<DelegatorKind>) =
                     bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
                         ExecuteError::InternalHost(InternalHostError::TypeConversion)
                     })?;
@@ -378,7 +482,11 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
-                let args = CancelReservationsArgs::new(unpacked.0, unpacked.1, unpacked.2);
+                let args = CancelReservationsArgs::new(
+                    unpacked.0,
+                    unpacked.1,
+                    runtime_native_config.max_delegators_per_validator(),
+                );
 
                 system::cancel_reservations(
                     &mut tracking_copy,

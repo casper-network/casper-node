@@ -9,47 +9,70 @@ use casper_storage::{
     global_state::GlobalStateReader, system::auction::Auction, AddressGenerator,
     RuntimeNativeConfig, TrackingCopy,
 };
+
 use casper_types::{
-    system::auction::METHOD_WITHDRAW_BID, ApiError, PublicKey, TransactionHash, U512,
+    account::AccountHash, system::auction::METHOD_WITHDRAW_BID, ApiError, Key, PublicKey,
+    RuntimeFootprint, TransactionHash, U512,
 };
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct WithdrawBidArgs {
+    runtime_native_config: RuntimeNativeConfig,
+    id: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    initiator: AccountHash,
+    context_key: Key,
+    remaining_spending_limit: U512,
     public_key: PublicKey,
     amount: U512,
-    minimum_bid_amount: u64,
 }
 
 impl WithdrawBidArgs {
-    pub fn new(public_key: PublicKey, amount: U512, minimum_bid_amount: u64) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        runtime_native_config: RuntimeNativeConfig,
+        id: TransactionHash,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+        initiator: AccountHash,
+        context_key: Key,
+        remaining_spending_limit: U512,
+        public_key: PublicKey,
+        amount: U512,
+    ) -> Self {
         WithdrawBidArgs {
+            address_generator,
+            runtime_native_config,
+            id,
+            initiator,
+            context_key,
+            remaining_spending_limit,
             public_key,
             amount,
-            minimum_bid_amount,
         }
     }
 }
 
 pub fn withdraw_bid<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    id: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
+    runtime_footprint: RuntimeFootprint,
     args: WithdrawBidArgs,
 ) -> Result<U512, DispatchError> {
-    let result = match super::dispatch_system_contract(
+    debug!(?args, METHOD_WITHDRAW_BID);
+
+    let minimum_bid_amount = args.runtime_native_config.minimum_bid_amount();
+    let result = match super::dispatch_userland_to_system_contract(
         tracking_copy,
-        runtime_native_config,
-        id,
-        address_generator,
+        runtime_footprint,
+        args.runtime_native_config,
+        args.id,
+        args.address_generator,
+        args.initiator,
+        args.context_key,
+        args.remaining_spending_limit,
         |mut runtime| {
-            runtime.withdraw_bid(
-                args.public_key.clone(),
-                args.amount,
-                args.minimum_bid_amount,
-            )
+            runtime.withdraw_bid(args.public_key.clone(), args.amount, minimum_bid_amount)
         },
     ) {
         Ok(result) => result,
@@ -61,7 +84,7 @@ pub fn withdraw_bid<R: GlobalStateReader>(
         }
     };
 
-    debug!(?args, ?result, METHOD_WITHDRAW_BID);
+    debug!(?result, METHOD_WITHDRAW_BID);
 
     match result {
         Ok(updated_amount) => Ok(updated_amount),
@@ -70,7 +93,7 @@ pub fn withdraw_bid<R: GlobalStateReader>(
         }
         Err(error) => {
             let api_error: ApiError = error.into();
-            error!(%api_error, ?args, "withdraw bid failed with error");
+            error!(%api_error, "withdraw bid failed with error");
             Err(DispatchError::Api(api_error))
         }
     }
