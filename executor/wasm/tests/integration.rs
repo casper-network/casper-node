@@ -100,6 +100,7 @@ fn harness() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
         .with_block_time(Timestamp::now().into())
@@ -202,6 +203,7 @@ fn cep18() {
             "vm2_cep18_caller.wasm",
         )))
         .with_serialized_input((create_result.smart_contract_addr(),))
+        .expect("expected serialized input to be correct")
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -294,6 +296,7 @@ fn traits() {
     let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
         .with_serialized_input(())
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(make_address_generator())
         .build()
         .expect("should build");
@@ -405,6 +408,7 @@ fn upgradable() {
         })
         .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
         .with_serialized_input((new_code,))
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
@@ -450,6 +454,7 @@ fn upgradable() {
                 entry_point: "increment_by".to_string(),
             })
             .with_serialized_input((10u64,))
+            .expect("expected serialized input to be correct")
             .with_gas_limit(DEFAULT_GAS_LIMIT)
             .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
@@ -894,6 +899,7 @@ fn escrow() {
             entry_point: "deposit_tokens".to_string(),
         })
         .with_serialized_input(())
+        .expect("expected serialized input to be correct")
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_chain_name(DEFAULT_CHAIN_NAME)
