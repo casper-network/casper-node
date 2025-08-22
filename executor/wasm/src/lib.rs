@@ -453,7 +453,7 @@ impl ExecutorV2 {
                         //#TODO this probably should not be a node stopping error?
                         error!(
                             "Couldn't find an active version for smart contract under path {:?}",
-                            [&legacy_key, &smart_contract_key]
+                            [&vm1_key, &smart_contract_key]
                         );
                         return Err(ExecuteError::NoActiveContract(smart_contract_key));
                     };
