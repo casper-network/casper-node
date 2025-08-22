@@ -6,24 +6,53 @@ use std::{
 
 use casper_types::WasmConfig;
 
-use casper_execution_engine::runtime;
+use casper_execution_engine::runtime::{self, PreprocessingError};
 use casper_wasmi::{
-    memory_units::Pages, Externals, FuncInstance, HostError, ImportsBuilder, MemoryInstance,
+    memory_units::Pages, Error, Externals, FuncInstance, HostError, ImportsBuilder, MemoryInstance,
     ModuleImportResolver, ModuleInstance, RuntimeValue, Signature,
 };
 
-fn prepare_instance(module_bytes: &[u8], chainspec: &ChainspecConfig) -> casper_wasmi::ModuleRef {
-    let wasm_module = runtime::preprocess(chainspec.wasm_config, module_bytes).unwrap();
-    let module = casper_wasmi::Module::from_casper_wasm_module(wasm_module).unwrap();
+#[derive(Debug, thiserror::Error)]
+enum WasmPreparationError {
+    #[error("Error when preprocessing {0}")]
+    Preprocessing(PreprocessingError),
+    #[error("Wasmi error {0}")]
+    Wasmi(Error),
+    #[error("Unable to export by name {0}")]
+    UnableToExportByName(String),
+    #[error("Unable to convert to function {0}")]
+    UnableToFunc(String),
+    #[error("Type casting error")]
+    TypeCasting,
+}
+
+impl From<PreprocessingError> for WasmPreparationError {
+    fn from(value: PreprocessingError) -> Self {
+        WasmPreparationError::Preprocessing(value)
+    }
+}
+
+impl From<Error> for WasmPreparationError {
+    fn from(value: Error) -> Self {
+        WasmPreparationError::Wasmi(value)
+    }
+}
+
+fn prepare_instance(
+    module_bytes: &[u8],
+    chainspec: &ChainspecConfig,
+) -> Result<casper_wasmi::ModuleRef, WasmPreparationError> {
+    let wasm_module = runtime::preprocess(chainspec.wasm_config, module_bytes)?;
+    let module = casper_wasmi::Module::from_casper_wasm_module(wasm_module)?;
     let resolver = MinimalWasmiResolver::default();
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
-    let not_started_module = ModuleInstance::new(&module, &imports).unwrap();
+    let not_started_module = ModuleInstance::new(&module, &imports)?;
 
     assert!(!not_started_module.has_start());
 
     let instance = not_started_module.not_started_instance();
-    instance.clone()
+    Ok(instance.clone())
 }
 
 struct RunWasmInfo {
@@ -36,20 +65,21 @@ fn run_wasm(
     cli_args: &Args,
     chainspec: &ChainspecConfig,
     func_name: &str,
-) -> (
-    Result<Option<RuntimeValue>, casper_wasmi::Error>,
-    RunWasmInfo,
-) {
+) -> Result<(Result<Option<RuntimeValue>, Error>, RunWasmInfo), WasmPreparationError> {
     println!(
         "Invoke export {:?} with args {:?}",
         func_name, cli_args.args
     );
 
-    let instance = prepare_instance(&module_bytes, chainspec);
+    let instance = prepare_instance(&module_bytes, chainspec)?;
 
     let params = {
-        let export = instance.export_by_name(func_name).unwrap();
-        let func = export.as_func().unwrap();
+        let export = instance.export_by_name(func_name).ok_or(
+            WasmPreparationError::UnableToExportByName(func_name.to_owned()),
+        )?;
+        let func = export
+            .as_func()
+            .ok_or(WasmPreparationError::UnableToFunc(func_name.to_owned()))?;
         func.signature().params().to_owned()
     };
 
@@ -62,12 +92,16 @@ fn run_wasm(
         let mut vec = Vec::new();
         for (input_arg, func_arg) in cli_args.args.iter().zip(params.into_iter()) {
             let value = match func_arg {
-                casper_wasmi::ValueType::I32 => {
-                    casper_wasmi::RuntimeValue::I32(input_arg.parse().unwrap())
-                }
-                casper_wasmi::ValueType::I64 => {
-                    casper_wasmi::RuntimeValue::I64(input_arg.parse().unwrap())
-                }
+                casper_wasmi::ValueType::I32 => casper_wasmi::RuntimeValue::I32(
+                    input_arg
+                        .parse()
+                        .map_err(|_| WasmPreparationError::TypeCasting)?,
+                ),
+                casper_wasmi::ValueType::I64 => casper_wasmi::RuntimeValue::I64(
+                    input_arg
+                        .parse()
+                        .map_err(|_| WasmPreparationError::TypeCasting)?,
+                ),
                 casper_wasmi::ValueType::F32 => todo!(),
                 casper_wasmi::ValueType::F64 => todo!(),
             };
@@ -83,7 +117,7 @@ fn run_wasm(
         .unwrap_or(chainspec.transaction_config.block_gas_limit);
 
     let mut externals = MinimalWasmiExternals::new(0, gas_limit);
-    let result: Result<Option<RuntimeValue>, casper_wasmi::Error> =
+    let result: Result<Option<RuntimeValue>, Error> =
         instance
             .clone()
             .invoke_export(func_name, &args, &mut externals);
@@ -93,7 +127,7 @@ fn run_wasm(
         gas_used: externals.gas_used,
     };
 
-    (result, info)
+    Ok((result, info))
 }
 use clap::Parser;
 use serde::Deserialize;
@@ -114,14 +148,15 @@ struct Args {
     chainspec_file: Option<PathBuf>,
 }
 
-fn load_wasm_file<P: AsRef<Path>>(path: P) -> Vec<u8> {
+fn load_wasm_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, String> {
     let path = path.as_ref();
-    let bytes = fs::read(path).expect("valid file");
+    let bytes =
+        fs::read(path).map_err(|err| format!("failed to read file {path:?}. Reason {err:?}"))?;
     match path.extension() {
-        Some(ext) if ext.eq_ignore_ascii_case("wat") => {
-            wat::parse_bytes(&bytes).expect("valid wat").into_owned()
-        }
-        None | Some(_) => bytes,
+        Some(ext) if ext.eq_ignore_ascii_case("wat") => wat::parse_bytes(&bytes)
+            .map(|el| el.into_owned())
+            .map_err(|err| format!("Expected valid wat, got error: {err}")),
+        None | Some(_) => Ok(bytes),
     }
 }
 
@@ -140,24 +175,30 @@ struct ChainspecConfig {
     pub transaction_config: TransactionConfig,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let chainspec_file = args.clone().chainspec_file.expect("chainspec file");
+    let chainspec_file = args
+        .clone()
+        .chainspec_file
+        .ok_or("Expected chainspec file to be present")?;
     println!("Using chainspec file {:?}", chainspec_file.display());
-    let chainspec_data = fs::read_to_string(chainspec_file.as_path()).expect("valid file");
-    let chainspec_config: ChainspecConfig =
-        toml::from_str(&chainspec_data).expect("valid chainspec");
+    let chainspec_data = fs::read_to_string(chainspec_file.as_path())
+        .map_err(|err| format!("Error when reading chainspec file: {err}"))?;
+    let chainspec_config: ChainspecConfig = toml::from_str(&chainspec_data)
+        .map_err(|err| format!("Error when parsing chainspec file: {err}"))?;
 
-    let wasm_bytes = load_wasm_file(&args.wasm_file);
+    let wasm_bytes = load_wasm_file(&args.wasm_file)
+        .map_err(|err| format!("Error when loading wasm file: {err}"))?;
 
     if let Some(ref func_name) = args.invoke {
-        let (result, info) = run_wasm(wasm_bytes, &args, &chainspec_config, func_name);
+        let (result, info) = run_wasm(wasm_bytes, &args, &chainspec_config, func_name)?;
 
         println!("result: {:?}", result);
         println!("elapsed: {:?}", info.elapsed);
         println!("gas used: {}", info.gas_used);
     }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -185,14 +226,14 @@ impl ModuleImportResolver for MinimalWasmiResolver {
         &self,
         field_name: &str,
         _signature: &casper_wasmi::Signature,
-    ) -> Result<casper_wasmi::FuncRef, casper_wasmi::Error> {
+    ) -> Result<casper_wasmi::FuncRef, Error> {
         if field_name == "gas" {
             Ok(FuncInstance::alloc_host(
                 Signature::new(&[casper_wasmi::ValueType::I32; 1][..], None),
                 GAS_FUNC_IDX,
             ))
         } else {
-            Err(casper_wasmi::Error::Instantiation(format!(
+            Err(Error::Instantiation(format!(
                 "Export {} not found",
                 field_name
             )))
@@ -203,7 +244,7 @@ impl ModuleImportResolver for MinimalWasmiResolver {
         &self,
         field_name: &str,
         memory_type: &casper_wasmi::MemoryDescriptor,
-    ) -> Result<casper_wasmi::MemoryRef, casper_wasmi::Error> {
+    ) -> Result<casper_wasmi::MemoryRef, Error> {
         if field_name == "memory" {
             Ok(MemoryInstance::alloc(
                 Pages(memory_type.initial() as usize),

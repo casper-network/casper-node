@@ -1,9 +1,9 @@
 //! WASM host function resolver for protocol version 1.x.x.
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 
 /// Enum representing unique IDs of host functions supported in major version 1.
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Clone, Copy)]
+#[derive(Debug, PartialEq, FromPrimitive, Clone, Copy)]
 #[repr(usize)]
 pub(crate) enum FunctionIndex {
     WriteFuncIndex,
@@ -68,14 +68,6 @@ pub(crate) enum FunctionIndex {
     CallPackageVersion,
 }
 
-impl From<FunctionIndex> for usize {
-    fn from(index: FunctionIndex) -> usize {
-        // NOTE: This can't fail as `FunctionIndex` is represented by usize,
-        // so this serves mostly as a syntax sugar.
-        index.to_usize().unwrap()
-    }
-}
-
 impl TryFrom<usize> for FunctionIndex {
     type Error = &'static str;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
@@ -95,7 +87,7 @@ mod tests {
     #[test]
     fn enum_to_primitive() {
         let element = FunctionIndex::UpdateAssociatedKeyFuncIndex;
-        let _primitive: usize = element.into();
+        let _primitive: usize = element as usize;
     }
 
     #[test]

@@ -48,8 +48,13 @@ mod tests {
 
     #[test]
     fn creating_from_invalid_bit_flags_does_not_fail() {
-        let _return_flags = ReturnFlags::from_bits(u32::MAX).unwrap();
-        let _revert = ReturnFlags::from_bits(0x0000_0001).unwrap();
-        let _empty = ReturnFlags::from_bits(0x0000_0000).unwrap();
+        let return_flags_ret_1 = ReturnFlags::from_bits(u32::MAX);
+        assert_eq!(return_flags_ret_1, None);
+
+        let maybe_revert = ReturnFlags::from_bits(0x0000_0001);
+        assert_eq!(maybe_revert, Some(ReturnFlags::REVERT));
+
+        let maybe_empty = ReturnFlags::from_bits(0x0000_0000);
+        assert_eq!(maybe_empty, Some(ReturnFlags::empty()));
     }
 }

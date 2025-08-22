@@ -11,8 +11,8 @@ use bytes::Bytes;
 use casper_executor_wasm_common::error::TrapCode;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
-    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, MeteringPoints,
-    VMError, VMResult, WasmInstance, WasmPreparationError,
+    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, InternalHostError,
+    MeteringPoints, VMError, VMResult, WasmInstance, WasmPreparationError,
 };
 use casper_storage::global_state::GlobalStateReader;
 use middleware::{
@@ -20,6 +20,7 @@ use middleware::{
     gatekeeper::{Gatekeeper, GatekeeperConfig},
 };
 use regex::Regex;
+use tracing::error;
 use wasmer::{
     AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, Function, FunctionEnv,
     FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages,
@@ -110,26 +111,35 @@ pub(crate) struct WasmerCaller<'a, S: GlobalStateReader, E: Executor> {
 }
 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, E> {
-    fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
-        let mem = &self.env.data().exported_runtime().memory;
+    fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> VMResult<T> {
+        let mem = &self.env.data().exported_runtime()?.memory;
         let binding = self.env.as_store_ref();
         let view = mem.view(&binding);
-        f(view)
+        Ok(f(view))
     }
 
-    fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> Ret {
-        let instance = self.env.data().instance.upgrade().expect("Valid instance");
-        f(&instance)
+    fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> VMResult<Ret> {
+        let instance = self.env.data().instance.upgrade().ok_or({
+            error!("Failed to upgrade instance");
+            VMError::Internal(InternalHostError::TypeConversion)
+        })?;
+        Ok(f(&instance))
     }
 
-    fn with_store_and_instance<Ret>(&mut self, f: impl FnOnce(StoreMut, &Instance) -> Ret) -> Ret {
+    fn with_store_and_instance<Ret>(
+        &mut self,
+        f: impl FnOnce(StoreMut, &Instance) -> Ret,
+    ) -> VMResult<Ret> {
         let (data, store) = self.env.data_and_store_mut();
-        let instance = data.instance.upgrade().expect("Valid instance");
-        f(store, &instance)
+        let instance = data.instance.upgrade().ok_or({
+            error!("Failed to upgrade instance");
+            VMError::Internal(InternalHostError::TypeConversion)
+        })?;
+        Ok(f(store, &instance))
     }
 
     /// Returns the amount of gas used.
-    fn get_remaining_points(&mut self) -> MeteringPoints {
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints> {
         self.with_store_and_instance(|mut store, instance| {
             let metering_points = metering::get_remaining_points(&mut store, instance);
             match metering_points {
@@ -139,7 +149,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
         })
     }
     /// Set the amount of gas used.
-    fn set_remaining_points(&mut self, new_value: u64) {
+    fn set_remaining_points(&mut self, new_value: u64) -> VMResult<()> {
         self.with_store_and_instance(|mut store, instance| {
             metering::set_remaining_points(&mut store, instance, new_value);
         })
@@ -149,8 +159,8 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
     type Context = Context<S, E>;
 
-    fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.write(offset.into(), data))
+    fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.write(offset.into(), data))?
             .map_err(from_wasmer_memory_access_error)
     }
 
@@ -162,8 +172,8 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         &mut self.env.data_mut().context
     }
 
-    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.read(offset.into(), output))
+    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.read(offset.into(), output))?
             .map_err(from_wasmer_memory_access_error)
     }
 
@@ -172,20 +182,44 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
 
         let (data, mut store) = self.env.data_and_store_mut();
         let value = data
-            .exported_runtime()
+            .exported_runtime()?
             .exported_table
             .as_ref()
-            .expect("should have table exported") // TODO: if theres no table then no function pointer is stored in the wasm blob -
-            // probably safe
+            .ok_or({
+                // TODO: if theres no table then no function pointer is stored in the wasm blob -
+                // probably safe
+                VMError::Internal(InternalHostError::CorruptExecutionState(
+                    "Exported runtime has no exported table".to_owned(),
+                ))
+            })?
             .get(&mut store.as_store_mut(), idx)
-            .expect("has entry in the table"); // TODO: better error handling - pass 0 as nullptr?
-        let funcref = value.funcref().expect("is funcref");
-        let valid_funcref = funcref.as_ref().expect("valid funcref");
+            .ok_or({
+                // TODO: better error handling - pass 0 as nullptr?
+                VMError::Internal(InternalHostError::CorruptExecutionState(format!(
+                    "Expected exported table entry with index {idx} to exist"
+                )))
+            })?;
+        let funcref =
+            value
+                .funcref()
+                .ok_or(VMError::Internal(InternalHostError::CorruptExecutionState(
+                    "Expected value to be funcref".to_owned(),
+                )))?;
+        let valid_funcref =
+            funcref
+                .as_ref()
+                .ok_or(VMError::Internal(InternalHostError::CorruptExecutionState(
+                    "Expected value to be a valid funcref".to_owned(),
+                )))?;
         let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref
             .typed(&store)
             .unwrap_or_else(|error| panic!("{error:?}"));
+        let size_u32 = size.try_into().map_err(|err| {
+            error!("Failed to convert usize to u32 . Details: {err}");
+            VMError::Internal(InternalHostError::TypeConversion)
+        })?;
         let ptr = alloc_callback
-            .call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)
+            .call(&mut store.as_store_mut(), size_u32, ctx)
             .map_err(handle_wasmer_runtime_error)?;
         Ok(ptr)
     }
@@ -196,7 +230,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
 
     /// Returns the amount of gas used.
     #[inline]
-    fn gas_consumed(&mut self) -> MeteringPoints {
+    fn gas_consumed(&mut self) -> VMResult<MeteringPoints> {
         self.get_remaining_points()
     }
 
@@ -204,13 +238,13 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     ///
     /// This method will cause the VM engine to stop in case remaining gas points are depleted.
     fn consume_gas(&mut self, amount: u64) -> VMResult<()> {
-        let gas_consumed = self.gas_consumed();
+        let gas_consumed = self.gas_consumed()?;
         match gas_consumed {
             MeteringPoints::Remaining(remaining_points) => {
                 let remaining_points = remaining_points
                     .checked_sub(amount)
                     .ok_or(VMError::OutOfGas)?;
-                self.set_remaining_points(remaining_points);
+                self.set_remaining_points(remaining_points)?;
                 Ok(())
             }
             MeteringPoints::Exhausted => Err(VMError::OutOfGas),
@@ -218,7 +252,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     }
 
     #[inline]
-    fn has_export(&self, name: &str) -> bool {
+    fn has_export(&self, name: &str) -> VMResult<bool> {
         self.with_instance(|instance| instance.exports.contains(name))
     }
 }
@@ -233,10 +267,12 @@ impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
             interface_version,
         }
     }
-    pub(crate) fn exported_runtime(&self) -> &ExportedRuntime {
-        self.exported_runtime
-            .as_ref()
-            .expect("Valid instance of exported runtime")
+    pub(crate) fn exported_runtime(&self) -> VMResult<&ExportedRuntime> {
+        self.exported_runtime.as_ref().ok_or({
+            VMError::Internal(InternalHostError::CorruptExecutionState(
+                "Valid instance of exported runtime".to_owned(),
+            ))
+        })
     }
 }
 
@@ -262,7 +298,11 @@ fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
         Err(wasmer_runtime_error) => {
             // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
             // our code.
-            let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
+            let wasmer_trap_code = if let Some(trap_code) = wasmer_runtime_error.to_trap() {
+                trap_code
+            } else {
+                return VMError::Internal(InternalHostError::TypeConversion);
+            };
             VMError::Trap(from_wasmer_trap_code(wasmer_trap_code))
         }
     }
@@ -273,7 +313,7 @@ where
     S: GlobalStateReader + 'static,
     E: Executor + 'static,
 {
-    pub(crate) fn call_export(&mut self, name: &str) -> Result<(), VMError> {
+    pub(crate) fn call_export(&mut self, name: &str) -> VMResult<()> {
         let exported_call_func: TypedFunction<(), ()> = self
             .instance
             .exports
@@ -375,8 +415,12 @@ where
                 if import.module() == "env" {
                     if let Some(caps) = RE.captures(import.name()) {
                         let version = &caps["version"];
-                        let version: u32 = version.parse().expect("valid number"); // SAFETY: regex guarantees this is a number, and imports table guarantees
-                                                                                   // limited set of values.
+                        let version: u32 = version.parse().map_err(|err| {
+                            // SAFETY: regex guarantees this is a number, and imports table
+                            // guarantees limited set of values.
+                            error!("Couln't parse `version` parameter: {err}");
+                            WasmPreparationError::Internal(InternalHostError::TypeConversion)
+                        })?;
                         interface_versions.push(InterfaceVersion::from(version));
                     }
                 }
@@ -424,7 +468,7 @@ where
     E: Executor + 'static,
 {
     type Context = Context<S, E>;
-    fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
+    fn call_export(&mut self, name: &str) -> (VMResult<()>, GasUsage) {
         let vm_result = self.call_export(name);
 
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
