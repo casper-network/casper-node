@@ -458,7 +458,6 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             AuctionMethods::AddReservation => {
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Vec<Reservation>,)>(&input);
                 if let Err(err) = &ret {
-                    println!("{}", err);
                     debug!(?err, "bytesrepr error in native_exec AddReservation");
                 }
                 let unpacked = ret.map_err(|_err| {

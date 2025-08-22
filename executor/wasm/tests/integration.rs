@@ -157,41 +157,31 @@ fn make_execution_request(
 }
 
 fn exec_system_call(system_menu: SystemMenu) {
-    let system_function_option: u32 = system_menu.into();
-    let input_data = borsh::to_vec(&(system_function_option,))
-        .map(Bytes::from)
-        .unwrap();
-
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config")
         .with_vesting_schedule_period_millis(0);
 
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
-
     let block_time = Timestamp::now().into();
-
     let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
 
-    let execute_request = base_execute_builder(&chainspec_config)
-        .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
-        .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(block_time)
-        .with_initiator(account_hash)
-        .with_caller_key(Key::Account(account_hash))
-        .with_transaction_hash(TRANSACTION_HASH)
-        .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
-            VM2_SYSTEM_CALLER_WASM,
-        )))
-        .with_transferred_value(0)
-        .with_input(input_data)
-        .build()
-        .expect("should build");
+    let system_function_option: u32 = system_menu.into();
+    let input_data = borsh::to_vec(&(system_function_option,))
+        .map(Bytes::from)
+        .unwrap();
+    let execute_request = make_execution_request(
+        &chainspec_config,
+        Arc::clone(&address_generator),
+        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+        input_data,
+        0,
+        Some(account_hash),
+        None,
+        Some(block_time),
+    );
 
     let executor = make_executor(&chainspec_config);
-
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
 
     match result {
@@ -243,24 +233,19 @@ fn should_revert_invalid_system_option() {
 
     let block_time = Timestamp::now().into();
 
+    let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
     let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
 
-    let execute_request = base_execute_builder(&chainspec_config)
-        .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
-        .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(block_time)
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
-        .with_transaction_hash(TRANSACTION_HASH)
-        .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
-            VM2_SYSTEM_CALLER_WASM,
-        )))
-        .with_transferred_value(0)
-        .with_input(input_data)
-        .build()
-        .expect("should build");
+    let execute_request = make_execution_request(
+        &chainspec_config,
+        Arc::clone(&address_generator),
+        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+        input_data,
+        0,
+        Some(account_hash),
+        None,
+        Some(block_time),
+    );
 
     let executor = make_executor(&chainspec_config);
 
@@ -268,6 +253,17 @@ fn should_revert_invalid_system_option() {
 
     if let Ok(exec_result) = result {
         assert!(exec_result.host_error.is_some(), "should have error");
+        match exec_result.host_error {
+            Some(CallError::CalleeReverted) => {
+                // noop, expected outcome
+            }
+            Some(err) => {
+                panic!("expected: CalleeReverted actual: {}", err);
+            }
+            None => {
+                panic!("should have error")
+            }
+        }
     }
 }
 
