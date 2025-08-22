@@ -108,7 +108,7 @@ impl ExecuteRequestBuilder {
 
     /// Set the target for execution.
     #[must_use]
-    pub fn with_target(mut self, target: ExecutionKind) -> Self {
+    pub fn with_execution_kind(mut self, target: ExecutionKind) -> Self {
         self.target = Some(target);
         self
     }

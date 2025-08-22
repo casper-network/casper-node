@@ -156,7 +156,7 @@ fn dispatch_userland_to_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         func(runtime)
     };
 
-    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy the
+    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy's
     // effects.
     let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
         .ok()
@@ -456,10 +456,14 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::AddReservation => {
-                let unpacked: (Vec<Reservation>,) = bytesrepr::deserialize_from_slice(&input)
-                    .map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Vec<Reservation>,)>(&input);
+                if let Err(err) = &ret {
+                    println!("{}", err);
+                    debug!(?err, "bytesrepr error in native_exec AddReservation");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
                 let args = AddReservationsArgs::new(unpacked.0);
 
                 system::add_reservations(

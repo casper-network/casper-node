@@ -821,7 +821,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_initiator(caller.context().initiator)
                 .with_caller_key(caller.context().callee)
                 .with_gas_limit(gas_limit)
-                .with_target(ExecutionKind::Stored {
+                .with_execution_kind(ExecutionKind::Stored {
                     address: smart_contract_addr,
                     entry_point: entry_point_name.clone(),
                 })
@@ -954,7 +954,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_initiator(caller.context().initiator)
         .with_caller_key(caller.context().callee)
         .with_gas_limit(gas_limit)
-        .with_target(ExecutionKind::System(option))
+        .with_execution_kind(ExecutionKind::System(option))
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
@@ -1041,7 +1041,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_initiator(caller.context().initiator)
         .with_caller_key(caller.context().callee)
         .with_gas_limit(gas_limit)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: smart_contract_addr,
             entry_point: entry_point.clone(),
         })
@@ -1596,7 +1596,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_initiator(caller.context().initiator)
             .with_caller_key(caller.context().callee)
             .with_gas_limit(gas_limit)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: smart_contract_addr,
                 entry_point: entry_point_name.clone(),
             })

@@ -49,6 +49,32 @@ pub enum DelegatorKind {
     Purse(Address) = 1,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh")]
+pub struct Reservation {
+    /// Delegator kind.
+    delegator_kind: DelegatorKind,
+    /// Validator public key.
+    validator_public_key: PublicKey,
+    /// Individual delegation rate.
+    delegation_rate: u8,
+}
+
+impl Reservation {
+    /// Ctor.
+    pub fn new(
+        delegator_kind: DelegatorKind,
+        validator_public_key: PublicKey,
+        delegation_rate: u8,
+    ) -> Self {
+        Reservation {
+            delegator_kind,
+            validator_public_key,
+            delegation_rate,
+        }
+    }
+}
+
 #[repr(u32)]
 pub enum SystemContractOption {
     Transfer = 0,

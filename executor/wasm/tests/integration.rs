@@ -14,6 +14,7 @@ use casper_executor_wasm::{
         make_global_state_with_genesis, make_runtime_config, read_wasm, run_create_contract,
         run_wasm_session, DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
     },
+    ExecutorV2,
 };
 
 use casper_executor_wasm::{
@@ -23,8 +24,10 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteWithProviderError, ExecutionKind, MintMethods, SystemMenu,
+    AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind,
+    MintMethods, SystemMenu,
 };
+
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -35,15 +38,18 @@ use casper_storage::{
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    KeyPrefix,
+    AddressGenerator, KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, execution::RetValue, BlockHash, Digest, EntityAddr, Key, StoredValue,
-    Timestamp,
+    account::AccountHash,
+    execution::RetValue,
+    system::auction::{BidAddr, BidKind},
+    BlockHash, BlockTime, Digest, EntityAddr, Key, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 
 const VM2_SYSTEM_CALLER_WASM: &str = "vm2_system_caller.wasm";
 
@@ -101,7 +107,7 @@ fn harness() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -121,42 +127,33 @@ fn harness() {
     );
 }
 
-#[test]
-fn should_revert_invalid_system_option() {
-    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
-        .expect("must get chainspec config");
-
-    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
-    let address_generator = make_address_generator();
-
-    let block_time = Timestamp::now().into();
-
-    let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
-
-    let execute_request = base_execute_builder(&chainspec_config)
+fn make_execution_request(
+    chainspec_config: &ChainspecConfig,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    execution_kind: ExecutionKind,
+    input_data: Bytes,
+    transferred_value: u64,
+    account_hash: Option<AccountHash>,
+    caller_key: Option<Key>,
+    block_time: Option<BlockTime>,
+) -> ExecuteRequest {
+    let account_hash = account_hash.unwrap_or(*DEFAULT_ACCOUNT_HASH);
+    let caller_key = caller_key.unwrap_or(Key::Account(account_hash));
+    let block_time = block_time.unwrap_or(Timestamp::now().into());
+    base_execute_builder(chainspec_config)
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_chain_name(DEFAULT_CHAIN_NAME)
-        .with_block_time(block_time)
-        .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_transaction_hash(TRANSACTION_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_target(ExecutionKind::SessionBytes(read_wasm(
-            VM2_SYSTEM_CALLER_WASM,
-        )))
-        .with_transferred_value(0)
+        .with_block_time(block_time)
+        .with_initiator(account_hash)
+        .with_caller_key(caller_key)
+        .with_execution_kind(execution_kind)
+        .with_transferred_value(transferred_value)
         .with_input(input_data)
         .build()
-        .expect("should build");
-
-    let executor = make_executor(&chainspec_config);
-
-    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
-
-    if let Ok(exec_result) = result {
-        assert!(exec_result.host_error.is_some(), "should have error");
-    }
+        .expect("should build")
 }
 
 fn exec_system_call(system_menu: SystemMenu) {
@@ -185,7 +182,7 @@ fn exec_system_call(system_menu: SystemMenu) {
         .with_caller_key(Key::Account(account_hash))
         .with_transaction_hash(TRANSACTION_HASH)
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_target(ExecutionKind::SessionBytes(read_wasm(
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
             VM2_SYSTEM_CALLER_WASM,
         )))
         .with_transferred_value(0)
@@ -204,6 +201,73 @@ fn exec_system_call(system_menu: SystemMenu) {
             }
         }
         Err(err) => panic!("Host error: {err:?}"),
+    }
+}
+
+fn exec_and_commit(
+    executor: &ExecutorV2,
+    global_state: &LmdbGlobalState,
+    state_root_hash: &Digest,
+    request: ExecuteRequest,
+) -> Result<Digest, String> {
+    let pre_state = *state_root_hash;
+    match executor.execute_with_provider(pre_state, global_state, request) {
+        Ok(result) => {
+            let host_error = &result.host_error;
+            if let Some(host_error) = host_error {
+                Err(format!("Host error: {host_error:?}"))
+            } else {
+                match global_state.commit_effects(pre_state, result.effects().clone()) {
+                    Ok(post_state) => Ok(post_state),
+                    Err(gs_err) => {
+                        let msg = format!("GS error: {gs_err:?}");
+                        Err(msg)
+                    }
+                }
+            }
+        }
+        Err(ex_err) => {
+            let msg = format!("Exec error: {ex_err:?}");
+            Err(msg)
+        }
+    }
+}
+
+#[test]
+fn should_revert_invalid_system_option() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let block_time = Timestamp::now().into();
+
+    let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(block_time)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
+            VM2_SYSTEM_CALLER_WASM,
+        )))
+        .with_transferred_value(0)
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let executor = make_executor(&chainspec_config);
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
+
+    if let Ok(exec_result) = result {
+        assert!(exec_result.host_error.is_some(), "should have error");
     }
 }
 
@@ -253,20 +317,104 @@ fn should_call_system_redelegate() {
 }
 
 #[test]
-#[ignore]
-fn should_call_system_add_reservation() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::AddReservation));
-}
-
-#[test]
-#[ignore]
-fn should_call_system_cancel_reservation() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::CancelReservation));
-}
-
-#[test]
 fn should_call_system_change_public_key() {
     exec_system_call(SystemMenu::Auction(AuctionMethods::ChangePublicKey));
+}
+
+// this test handles add and cancel reservations (and covers add_bid upsert as well)
+#[test]
+fn should_handle_reservations() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config")
+        .with_vesting_schedule_period_millis(0);
+
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    let block_time = Timestamp::now().into();
+    let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
+    let executor = make_executor(&chainspec_config);
+
+    // need to bump the delegator reservation limit up to allow add_reservation to work
+    let bid_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::Bid).into();
+        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    state_root_hash = match exec_and_commit(&executor, &global_state, &state_root_hash, bid_request)
+    {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
+
+    // make sure the bid was updated to allow reservations
+    match global_state.query(QueryRequest::new(
+        state_root_hash,
+        Key::BidAddr(BidAddr::Validator(account_hash)),
+        vec![],
+    )) {
+        QueryResult::Success { value, .. } => {
+            if let StoredValue::BidKind(BidKind::Validator(validator)) = *value {
+                assert_eq!(validator.reserved_slots(), 2, "expected 2 slots");
+            } else {
+                panic!("should have validator bid")
+            }
+        }
+        _ => panic!("expected validator bid"),
+    }
+
+    // make a couple of reservations
+    let add_res_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
+        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    state_root_hash =
+        match exec_and_commit(&executor, &global_state, &state_root_hash, add_res_request) {
+            Ok(post_state) => post_state,
+            Err(err_str) => panic!("{err_str}"),
+        };
+
+    // cancel those reservations
+    let cancel_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
+        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    match exec_and_commit(&executor, &global_state, &state_root_hash, cancel_request) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
 }
 
 #[test]
@@ -349,7 +497,7 @@ fn cep18() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(read_wasm(
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
             "vm2_cep18_caller.wasm",
         )))
         .with_serialized_input((create_result.smart_contract_addr(),))
@@ -443,7 +591,7 @@ fn traits() {
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
         .with_serialized_input(())
         .with_shared_address_generator(make_address_generator())
         .build()
@@ -499,7 +647,7 @@ fn upgradable() {
 
     let version_before_upgrade = {
         let execute_request = base_execute_builder(&chainspec_config)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
             })
@@ -524,7 +672,7 @@ fn upgradable() {
     {
         // Increment the value
         let execute_request = base_execute_builder(&chainspec_config)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment".to_string(),
             })
@@ -550,7 +698,7 @@ fn upgradable() {
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: upgradable_address,
             entry_point: "perform_upgrade".to_string(),
         })
@@ -571,7 +719,7 @@ fn upgradable() {
 
     let version_after_upgrade = {
         let execute_request = base_execute_builder(&chainspec_config)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "version".to_string(),
             })
@@ -596,7 +744,7 @@ fn upgradable() {
     {
         // Increment the value
         let execute_request = base_execute_builder(&chainspec_config)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: upgradable_address,
                 entry_point: "increment_by".to_string(),
             })
@@ -763,7 +911,7 @@ fn backwards_compatibility() {
     // Call v2 contract
 
     let call_request = base_execute_builder(&chainspec_config)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: proxy_address,
             entry_point: "perform_test".to_string(),
         })
@@ -779,8 +927,6 @@ fn backwards_compatibility() {
 
     expect_successful_execution(&mut executor, &global_state, state_root_hash, call_request);
 }
-
-// host function tests
 
 #[test]
 fn host_functions_consume_gas() {
@@ -824,7 +970,7 @@ fn non_existing_smart_contract_does_not_panic() {
 
     let non_existing_address = [255; 32];
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: non_existing_address,
             entry_point: "non_existing".to_string(),
         })
@@ -844,7 +990,6 @@ fn non_existing_smart_contract_does_not_panic() {
         ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
 }
 
-// TODO: get this test working.
 #[test]
 fn casper_return_writes_to_execution_journal() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
@@ -880,7 +1025,7 @@ fn casper_return_writes_to_execution_journal() {
 
     // Execute the contract to trigger the return
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret".to_string(),
         })
@@ -970,7 +1115,7 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
 
     // Execute the contract to trigger the return
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: contract_address,
             entry_point: "ret_faulty_flags".to_string(),
         })
@@ -991,7 +1136,6 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
 }
 
 #[test]
-
 fn escrow() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
@@ -1039,7 +1183,7 @@ fn escrow() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: *contract_hash,
             entry_point: "deposit_tokens".to_string(),
         })

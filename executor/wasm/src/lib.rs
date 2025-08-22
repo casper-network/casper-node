@@ -357,7 +357,7 @@ impl ExecutorV2 {
                 let execute_request = ExecuteRequestBuilder::default()
                     .with_initiator(initiator)
                     .with_caller_key(caller_key)
-                    .with_target(ExecutionKind::Stored {
+                    .with_execution_kind(ExecutionKind::Stored {
                         address: smart_contract_addr,
                         entry_point: entry_point_name,
                     })
@@ -1017,7 +1017,7 @@ impl Executor for ExecutorV2 {
             .with_initiator(request.initiator)
             .with_caller_key(Key::Account(request.initiator))
             .with_gas_limit(request.gas_limit) // Use the provided gas limit for protection
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: request.contract_address,
                 entry_point: request.entry_point,
             })
