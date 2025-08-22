@@ -11,7 +11,7 @@ use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
     casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
     log,
-    types::{Address, CallError},
+    types::{Address, CallError, PublicKey},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
@@ -649,8 +649,8 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
     }
 
     {
-        // TODO: This test should leverage PK/Signing abstractions when they're added to the SDK
         next_test(&mut counter, "Secp2561k recover");
+
         let message_bytes = [82, 101, 99, 111, 118, 101, 114, 121, 32, 116, 101, 115, 116];
         let signature_bytes = [
             2, 33, 154, 147, 197, 122, 73, 167, 50, 27, 55, 198, 199, 72, 150, 161, 233, 124, 60,
@@ -659,14 +659,17 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             93, 205, 34, 152, 122, 236, 64, 66,
         ];
         let public_key_bytes = [
-            2, 2, 105, 205, 254, 188, 142, 121, 77, 200, 81, 106, 88, 171, 244, 176, 18, 97, 121,
-            89, 51, 105, 37, 210, 95, 231, 10, 81, 221, 63, 65, 129, 191, 113,
+            2, 105, 205, 254, 188, 142, 121, 77, 200, 81, 106, 88, 171, 244, 176, 18, 97, 121, 89,
+            51, 105, 37, 210, 95, 231, 10, 81, 221, 63, 65, 129, 191, 113,
         ];
 
         let recovered_public_key =
             casper::recover_secp256k1(&message_bytes, &signature_bytes, 1).expect("Should recover");
 
-        assert_eq!(recovered_public_key, public_key_bytes);
+        match recovered_public_key {
+            PublicKey::Secp256k1(bytes) => assert_eq!(bytes, public_key_bytes),
+            _ => panic!("Expected Secp256k1 variant"),
+        }
     }
 
     log!("👋 Goodbye");

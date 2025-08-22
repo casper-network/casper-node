@@ -11,7 +11,7 @@ use crate::{
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{Address, CallError, HashAlgorithm},
+    types::{Address, CallError, HashAlgorithm, PublicKey},
     Message, ToCallData,
 };
 
@@ -567,14 +567,14 @@ pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], C
     result_from_code(ret).map(|_| output)
 }
 
-// TODO: When public keys are added into the SDK, this should return a PublicKey
 #[inline]
 pub fn recover_secp256k1(
     message: &[u8],
     signature: &[u8],
     recovery_id: u32,
-) -> Result<[u8; 34], CommonResult> {
-    let output = [0; 34]; // This is 33 SECP256K1 PK bytes + 1 leading variant tag
+) -> Result<PublicKey, CommonResult> {
+    let output = [0; 34]; // This fits 33 SECP256K1 PK bytes + 1 leading variant tag
+
     let ret = unsafe {
         casper_contract_sdk_sys::casper_recover_secp256k1(
             message.as_ptr(),
@@ -585,7 +585,10 @@ pub fn recover_secp256k1(
             recovery_id,
         )
     };
-    result_from_code(ret).map(|_| output)
+
+    let secp_bytes = output[1..].try_into().unwrap();
+
+    result_from_code(ret).map(|_| PublicKey::Secp256k1(secp_bytes))
 }
 
 #[doc(hidden)]
