@@ -368,6 +368,16 @@ pub trait Auction:
         }
 
         for reservation in reservations {
+            if reservation.validator_public_key().is_system() {
+                warn!("attempt to reserve using system identity as validator");
+                return Err(Error::InvalidPublicKey);
+            }
+            if let Some(del_pub_key) = reservation.delegator_kind().maybe_public_key() {
+                if del_pub_key.is_system() {
+                    warn!("attempt to reserve using system identity as delegator");
+                    return Err(Error::InvalidPublicKey);
+                }
+            }
             if !self
                 .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
             {

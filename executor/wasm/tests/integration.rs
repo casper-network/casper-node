@@ -28,6 +28,7 @@ use casper_executor_wasm_interface::executor::{
     MintMethods, SystemMenu,
 };
 
+use casper_executor_wasm::testing::DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY;
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -133,11 +134,11 @@ fn make_execution_request(
     execution_kind: ExecutionKind,
     input_data: Bytes,
     transferred_value: u64,
-    account_hash: Option<AccountHash>,
+    initiator: Option<AccountHash>,
     caller_key: Option<Key>,
     block_time: Option<BlockTime>,
 ) -> ExecuteRequest {
-    let account_hash = account_hash.unwrap_or(*DEFAULT_ACCOUNT_HASH);
+    let account_hash = initiator.unwrap_or(*DEFAULT_ACCOUNT_HASH);
     let caller_key = caller_key.unwrap_or(Key::Account(account_hash));
     let block_time = block_time.unwrap_or(Timestamp::now().into());
     base_execute_builder(chainspec_config)
@@ -156,7 +157,7 @@ fn make_execution_request(
         .expect("should build")
 }
 
-fn exec_system_call(system_menu: SystemMenu) {
+fn exec_system_call(system_menu: SystemMenu, initiator: Option<AccountHash>) {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config")
         .with_vesting_schedule_period_millis(0);
@@ -164,7 +165,7 @@ fn exec_system_call(system_menu: SystemMenu) {
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
     let block_time = Timestamp::now().into();
-    let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
+    let initiator = initiator.unwrap_or(DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash());
 
     let system_function_option: u32 = system_menu.into();
     let input_data = borsh::to_vec(&(system_function_option,))
@@ -176,7 +177,7 @@ fn exec_system_call(system_menu: SystemMenu) {
         ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
         input_data,
         0,
-        Some(account_hash),
+        Some(initiator),
         None,
         Some(block_time),
     );
@@ -270,51 +271,60 @@ fn should_revert_invalid_system_option() {
 #[test]
 #[ignore]
 fn should_call_system_transfer() {
-    exec_system_call(SystemMenu::Mint(MintMethods::Transfer));
+    exec_system_call(SystemMenu::Mint(MintMethods::Transfer), None);
 }
 
 #[test]
 #[ignore]
 fn should_call_system_burn() {
-    exec_system_call(SystemMenu::Mint(MintMethods::Burn));
+    exec_system_call(SystemMenu::Mint(MintMethods::Burn), None);
 }
 
 #[test]
 fn should_call_system_activate_bid() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Activate));
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Activate), None);
 }
 
 #[test]
 fn should_call_system_bid() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Bid));
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Bid), None);
 }
 
 #[test]
 fn should_call_system_withdraw() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Withdraw));
+    exec_system_call(SystemMenu::Auction(AuctionMethods::Withdraw), None);
+}
+
+#[test]
+fn should_call_system_change_public_key() {
+    exec_system_call(SystemMenu::Auction(AuctionMethods::ChangePublicKey), None);
 }
 
 #[test]
 #[ignore]
 fn should_call_system_delegate() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Delegate));
+    exec_system_call(
+        SystemMenu::Auction(AuctionMethods::Delegate),
+        Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
+    );
 }
 
 #[test]
 #[ignore]
 fn should_call_system_undelegate() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Undelegate));
+    exec_system_call(
+        SystemMenu::Auction(AuctionMethods::Undelegate),
+        Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
+    );
 }
 
 #[test]
 #[ignore]
 fn should_call_system_redelegate() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Redelegate));
-}
-
-#[test]
-fn should_call_system_change_public_key() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::ChangePublicKey));
+    exec_system_call(
+        SystemMenu::Auction(AuctionMethods::Redelegate),
+        Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
+    );
 }
 
 // this test handles add and cancel reservations (and covers add_bid upsert as well)

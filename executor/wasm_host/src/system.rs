@@ -376,24 +376,42 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::Delegate => {
-                let unpacked: (DelegatorKind, PublicKey, U512, u32) =
-                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                let ret = bytesrepr::deserialize_from_slice::<
+                    &Bytes,
+                    (DelegatorKind, PublicKey, u64),
+                >(&input);
+                if let Err(err) = &ret {
+                    debug!(?err, "bytesrepr error in native_exec AddReservation");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
+                if let DelegatorKind::PublicKey(del_pub_key) = &unpacked.0 {
+                    if del_pub_key.is_system() {
+                        info!(?method, "attempt to pass system public key from userland");
+                        return Err(ExecuteError::InternalHost(
+                            InternalHostError::InvalidPublicKey,
+                        ));
+                    }
+                }
                 if unpacked.1.is_system() {
                     info!(?method, "attempt to pass system public key from userland");
                     return Err(ExecuteError::InternalHost(
                         InternalHostError::InvalidPublicKey,
                     ));
                 }
-                let args = DelegateArgs::new(unpacked.0, unpacked.1, unpacked.2, unpacked.3);
-                match system::delegate(
-                    &mut tracking_copy,
+                let args = DelegateArgs::new(
                     runtime_native_config,
                     transaction_hash,
                     Arc::clone(&address_generator),
-                    args,
-                ) {
+                    initiator,
+                    caller_key,
+                    gas_usage.remaining_points().into(),
+                    unpacked.0,
+                    unpacked.1,
+                    unpacked.2.into(),
+                );
+                match system::delegate(&mut tracking_copy, runtime_footprint, args) {
                     Ok(ret) => match ret.to_bytes() {
                         Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
                         Err(_) => Err(DispatchError::Api(ApiError::Formatting)),

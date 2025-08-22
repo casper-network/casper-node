@@ -44,7 +44,14 @@ pub mod exports {
                     .expect("Serialization to succeed");
                 Some(input)
             }
-            SystemContractOption::Delegate => None,
+            SystemContractOption::Delegate => {
+                let kind = DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32]));
+                let validator = PublicKey::Ed25519([1; 32]);
+                let amount = 10u64;
+                let input =
+                    borsh::to_vec(&(kind, validator, amount)).expect("Serialization to succeed");
+                Some(input)
+            }
             SystemContractOption::Undelegate => None,
             SystemContractOption::Redelegate => None,
             SystemContractOption::AddReservation => {

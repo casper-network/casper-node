@@ -50,6 +50,8 @@ pub static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
 
 pub static DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| casper_types::ed25519_imputed(&[1; 32]));
+pub static DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| casper_types::ed25519_imputed(&[255; 32]));
 
 pub const TOKEN: u64 = 10u64.pow(9);
 
@@ -257,7 +259,14 @@ pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         )),
     };
 
-    let default_accounts = vec![acct_1, acct_2];
+    let acct_3 = GenesisAccount::Delegator {
+        validator_public_key: DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.clone(),
+        delegator_public_key: DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.clone(),
+        balance: Motes::new(U512::from(100 * TOKEN)),
+        delegated_amount: Motes::new(U512::from(100 * TOKEN)),
+    };
+
+    let default_accounts = vec![acct_1, acct_2, acct_3];
 
     let (global_state, _state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
