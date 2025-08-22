@@ -10,26 +10,46 @@ use casper_storage::{
     RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
+    account::AccountHash,
     system::auction::{DelegatorKind, METHOD_UNDELEGATE},
-    ApiError, PublicKey, TransactionHash, U512,
+    ApiError, Key, PublicKey, RuntimeFootprint, TransactionHash, U512,
 };
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct UndelegateArgs {
+    runtime_native_config: RuntimeNativeConfig,
+    id: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    initiator: AccountHash,
+    context_key: Key,
+    remaining_spending_limit: U512,
     delegator_kind: DelegatorKind,
     validator_public_key: PublicKey,
     amount: U512,
 }
 
 impl UndelegateArgs {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        runtime_native_config: RuntimeNativeConfig,
+        id: TransactionHash,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+        initiator: AccountHash,
+        context_key: Key,
+        remaining_spending_limit: U512,
         delegator_kind: DelegatorKind,
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Self {
         UndelegateArgs {
+            address_generator,
+            runtime_native_config,
+            id,
+            initiator,
+            context_key,
+            remaining_spending_limit,
             delegator_kind,
             validator_public_key,
             amount,
@@ -39,16 +59,20 @@ impl UndelegateArgs {
 
 pub fn undelegate<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    id: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
+    runtime_footprint: RuntimeFootprint,
     args: UndelegateArgs,
 ) -> Result<U512, DispatchError> {
-    let result = match super::dispatch_system_contract(
+    debug!(?args, METHOD_UNDELEGATE);
+
+    let result = match super::dispatch_userland_to_system_contract(
         tracking_copy,
-        runtime_native_config,
-        id,
-        address_generator,
+        runtime_footprint,
+        args.runtime_native_config,
+        args.id,
+        args.address_generator,
+        args.initiator,
+        args.context_key,
+        args.remaining_spending_limit,
         |mut runtime| {
             runtime.undelegate(
                 args.delegator_kind.clone(),
@@ -66,7 +90,7 @@ pub fn undelegate<R: GlobalStateReader>(
         }
     };
 
-    debug!(?args, ?result, METHOD_UNDELEGATE);
+    debug!(?result, METHOD_UNDELEGATE);
 
     match result {
         Ok(updated_amount) => Ok(updated_amount),
@@ -75,7 +99,7 @@ pub fn undelegate<R: GlobalStateReader>(
         }
         Err(error) => {
             let api_error: ApiError = error.into();
-            error!(%api_error, ?args, "undelegate failed with error");
+            error!(%api_error, "undelegate failed with error");
             Err(DispatchError::Api(api_error))
         }
     }

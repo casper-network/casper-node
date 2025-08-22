@@ -301,7 +301,6 @@ fn should_call_system_change_public_key() {
 }
 
 #[test]
-#[ignore]
 fn should_call_system_delegate() {
     exec_system_call(
         SystemMenu::Auction(AuctionMethods::Delegate),
@@ -310,7 +309,6 @@ fn should_call_system_delegate() {
 }
 
 #[test]
-#[ignore]
 fn should_call_system_undelegate() {
     exec_system_call(
         SystemMenu::Auction(AuctionMethods::Undelegate),
@@ -319,7 +317,6 @@ fn should_call_system_undelegate() {
 }
 
 #[test]
-#[ignore]
 fn should_call_system_redelegate() {
     exec_system_call(
         SystemMenu::Auction(AuctionMethods::Redelegate),
@@ -327,9 +324,20 @@ fn should_call_system_redelegate() {
     );
 }
 
-// this test handles add and cancel reservations (and covers add_bid upsert as well)
+// this test handles both add and cancel reservations
 #[test]
 fn should_handle_reservations() {
+    // this test is more complicated than the other system functions
+    // there is no way to set non-zero reservation slots on genesis bids
+    // thus they are defaulted to 0.
+    //
+    // so, to get a full test across the entire feature, we need to:
+    //  1) upsert a validator bid to allow some number of reservations
+    //  2) then add reservations
+    //  3) then cancel those same reservations
+    //
+    // we also must apply the changes to global state between the steps
+
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config")
         .with_vesting_schedule_period_millis(0);

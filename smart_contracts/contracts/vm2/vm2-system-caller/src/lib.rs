@@ -52,8 +52,25 @@ pub mod exports {
                     borsh::to_vec(&(kind, validator, amount)).expect("Serialization to succeed");
                 Some(input)
             }
-            SystemContractOption::Undelegate => None,
-            SystemContractOption::Redelegate => None,
+            SystemContractOption::Undelegate => {
+                let kind = DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32]));
+                let validator = PublicKey::Ed25519([1; 32]);
+                let amount = 10u64;
+                let input =
+                    borsh::to_vec(&(kind, validator, amount)).expect("Serialization to succeed");
+                Some(input)
+            }
+            SystemContractOption::Redelegate => {
+                let kind = DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32]));
+                let validator = PublicKey::Ed25519([1; 32]);
+                let amount = 10u64;
+                // though there is no good reason to do so,
+                // it is allowed to redelegate back to the original validator,
+                // so doing that here instead of dealing w set up for a 2nd validator
+                let input = borsh::to_vec(&(kind, validator, amount, validator))
+                    .expect("Serialization to succeed");
+                Some(input)
+            }
             SystemContractOption::AddReservation => {
                 let pub_k = PublicKey::Ed25519([1; 32]);
                 let res_pu = Reservation::new(DelegatorKind::Purse([254; 32]), pub_k, 1);

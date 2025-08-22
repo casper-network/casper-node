@@ -10,54 +10,78 @@ use casper_storage::{
     RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
+    account::AccountHash,
     system::auction::{DelegatorKind, METHOD_REDELEGATE},
-    ApiError, PublicKey, TransactionHash, U512,
+    ApiError, Key, PublicKey, RuntimeFootprint, TransactionHash, U512,
 };
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
 #[derive(Debug, Clone)]
 pub struct RedelegateArgs {
+    runtime_native_config: RuntimeNativeConfig,
+    id: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    initiator: AccountHash,
+    context_key: Key,
+    remaining_spending_limit: U512,
     delegator_kind: DelegatorKind,
     validator_public_key: PublicKey,
     amount: U512,
-    new_validator: PublicKey,
+    new_validator_public_key: PublicKey,
 }
 
 impl RedelegateArgs {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        runtime_native_config: RuntimeNativeConfig,
+        id: TransactionHash,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+        initiator: AccountHash,
+        context_key: Key,
+        remaining_spending_limit: U512,
         delegator_kind: DelegatorKind,
         validator_public_key: PublicKey,
         amount: U512,
-        new_validator: PublicKey,
+        new_validator_public_key: PublicKey,
     ) -> Self {
         RedelegateArgs {
+            address_generator,
+            runtime_native_config,
+            id,
+            initiator,
+            context_key,
+            remaining_spending_limit,
             delegator_kind,
             validator_public_key,
             amount,
-            new_validator,
+            new_validator_public_key,
         }
     }
 }
 
 pub fn redelegate<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    id: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
+    runtime_footprint: RuntimeFootprint,
     args: RedelegateArgs,
 ) -> Result<U512, DispatchError> {
-    let result = match super::dispatch_system_contract(
+    debug!(?args, METHOD_REDELEGATE);
+
+    let result = match super::dispatch_userland_to_system_contract(
         tracking_copy,
-        runtime_native_config,
-        id,
-        address_generator,
+        runtime_footprint,
+        args.runtime_native_config,
+        args.id,
+        args.address_generator,
+        args.initiator,
+        args.context_key,
+        args.remaining_spending_limit,
         |mut runtime| {
             runtime.redelegate(
                 args.delegator_kind.clone(),
                 args.validator_public_key.clone(),
                 args.amount,
-                args.new_validator.clone(),
+                args.new_validator_public_key.clone(),
             )
         },
     ) {
@@ -70,7 +94,7 @@ pub fn redelegate<R: GlobalStateReader>(
         }
     };
 
-    debug!(?args, ?result, METHOD_REDELEGATE);
+    debug!(?result, METHOD_REDELEGATE);
 
     match result {
         Ok(updated_amount) => Ok(updated_amount),
@@ -79,7 +103,7 @@ pub fn redelegate<R: GlobalStateReader>(
         }
         Err(error) => {
             let api_error: ApiError = error.into();
-            error!(%api_error, ?args, "redelegate failed with error");
+            error!(%api_error, "redelegate failed with error");
             Err(DispatchError::Api(api_error))
         }
     }
