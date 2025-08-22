@@ -48,6 +48,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
+use casper_types::addressable_entity::Weight;
 use keccak_asm::Digest as KeccakDigest;
 use sha2::Sha256;
 
@@ -188,6 +189,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AssociatedKeys => Keyspace::AssociatedKeys(&key_payload_bytes),
+        KeyspaceTag::RemoveAssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -246,6 +249,44 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
             StoredValue::EntryPoint(entry_point_value)
         }
+        Keyspace::AssociatedKeys(bytes) => {
+            let account_hash = match AccountHash::from_bytes(bytes) {
+                Ok((account_hash, remainder)) => {
+                    if !remainder.is_empty() {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    }
+                    account_hash
+                }
+                Err(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+            };
+            let weight = match Weight::from_bytes(&value) {
+                Ok((weight, remainder)) => {
+                    if !remainder.is_empty() {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    }
+                    weight
+                }
+                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+            };
+
+            let mut entity = match caller.context_mut().tracking_copy.read(&global_state_key) {
+                Ok(Some(StoredValue::AddressableEntity(entity))) => entity,
+                Ok(_) | Err(_) => return Ok(HOST_ERROR_NOT_FOUND),
+            };
+
+            if entity.associated_keys().contains_key(&account_hash) {
+                if let Err(_) = entity.update_associated_key(account_hash, weight) {
+                    return Ok(HOST_ERROR_INVALID_INPUT);
+                }
+            } else {
+                if let Err(_) = entity.add_associated_key(account_hash, weight) {
+                    return Ok(HOST_ERROR_INVALID_INPUT);
+                }
+            }
+
+            StoredValue::AddressableEntity(entity)
+        }
+        Keyspace::RemoveAssociatedKeys(_) => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     metered_write(&mut caller, global_state_key, stored_value)?;
@@ -318,6 +359,8 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::RemoveAssociatedKeys => Keyspace::RemoveAssociatedKeys(&key_payload_bytes),
+        KeyspaceTag::AssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -330,6 +373,29 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
+        Ok(Some(StoredValue::AddressableEntity(mut entity))) => {
+            if let Keyspace::RemoveAssociatedKeys(account_hash_bytes) = keyspace {
+                let account_hash = match AccountHash::from_bytes(account_hash_bytes) {
+                    Ok((account_hash, remainder)) => {
+                        if !remainder.is_empty() {
+                            return Ok(HOST_ERROR_INVALID_INPUT);
+                        }
+                        account_hash
+                    }
+                    Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+                };
+
+                if let Err(_) = entity.remove_associated_key(account_hash) {
+                    return Ok(HOST_ERROR_INVALID_INPUT);
+                }
+                caller
+                    .context_mut()
+                    .tracking_copy
+                    .write(global_state_key, StoredValue::AddressableEntity(entity))
+            } else {
+                return Ok(HOST_ERROR_INVALID_INPUT);
+            }
+        }
         Ok(Some(_stored_value)) => {
             // Produce a prune transform only if value under a given key exists in the global state
             caller.context_mut().tracking_copy.prune(global_state_key);
@@ -530,6 +596,9 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
             let entry_point_addr =
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
             Some(Key::EntryPoint(entry_point_addr))
+        }
+        Keyspace::AssociatedKeys(_) | Keyspace::RemoveAssociatedKeys(_) => {
+            Some(Key::AddressableEntity(entity_addr))
         }
     }
 }
