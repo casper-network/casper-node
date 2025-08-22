@@ -727,16 +727,20 @@ where
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
-                let token = CancellationToken::new();
-
-                effects.extend(self.schedule_incoming_drop(
-                    effect_builder,
-                    peer_id,
-                    token.clone(),
-                    public_addr,
-                    peer_addr,
-                    rng,
-                ));
+                let maybe_token = if self.cfg.flakiness.is_some() {
+                    let token = CancellationToken::new();
+                    effects.extend(self.schedule_incoming_drop(
+                        effect_builder,
+                        peer_id,
+                        token.clone(),
+                        public_addr,
+                        peer_addr,
+                        rng,
+                    ));
+                    Some(token)
+                } else {
+                    None
+                };
 
                 effects.extend(
                     tasks::message_reader(
@@ -747,7 +751,7 @@ where
                         self.channel_management().close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
-                        token,
+                        maybe_token,
                     )
                     .instrument(span)
                     .event(move |result| Event::IncomingClosed {
@@ -925,17 +929,20 @@ where
                     self.connection_completed(peer_id);
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
-                let token = CancellationToken::new();
-
-
-                effects.extend(self.schedule_outgoing_drop(
-                    effect_builder,
-                    peer_id,
-                    token.clone(),
-                    peer_addr,
-                    peer_addr,
-                    rng,
-                ));
+                let maybe_token = if self.cfg.flakiness.is_some() {
+                    let token = CancellationToken::new();
+                    effects.extend(self.schedule_outgoing_drop(
+                        effect_builder,
+                        peer_id,
+                        token.clone(),
+                        peer_addr,
+                        peer_addr,
+                        rng,
+                    ));
+                    Some(token)
+                } else {
+                    None
+                };
 
                 effects.extend(
                     tasks::message_sender(
@@ -944,7 +951,7 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        token,
+                        maybe_token,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
