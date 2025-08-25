@@ -1414,63 +1414,14 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
 
     #[cfg(feature = "__abi_generator")]
     {
-        // Extract the type parameter from the NamedKey<T> type
-        let type_param = match &*constant.ty {
-            Type::Path(path) => {
-                if let Some(segment) = path.path.segments.last() {
-                    if segment.ident == "NamedKey" {
-                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                            if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
-                                ty
-                            } else {
-                                return TokenStream::from(
-                                    syn::Error::new(
-                                        Span::call_site(),
-                                        "NamedKey must have a type parameter",
-                                    )
-                                    .to_compile_error(),
-                                );
-                            }
-                        } else {
-                            return TokenStream::from(
-                                syn::Error::new(
-                                    Span::call_site(),
-                                    "NamedKey must have a type parameter",
-                                )
-                                .to_compile_error(),
-                            );
-                        }
-                    } else {
-                        return TokenStream::from(
-                            syn::Error::new(Span::call_site(), "Expected NamedKey type")
-                                .to_compile_error(),
-                        );
-                    }
-                } else {
-                    return TokenStream::from(
-                        syn::Error::new(Span::call_site(), "Expected NamedKey type")
-                            .to_compile_error(),
-                    );
-                }
-            }
-            _ => {
-                return TokenStream::from(
-                    syn::Error::new(Span::call_site(), "Expected NamedKey type").to_compile_error(),
-                );
-            }
-        };
-
         let crate_path = quote! { casper_contract_sdk };
-
-        let type_decl = type_param.to_token_stream().to_string();
-        let type_decl_lit = syn::LitStr::new(&type_decl, Span::call_site());
 
         maybe_stable_key_collector = quote! {
             const _: () = {
                 #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::ABI_COLLECTORS)]
                 #[linkme(crate = #crate_path::linkme)]
                 static COLLECTOR: fn(&mut #crate_path::abi::Definitions) = |defs| {
-                    defs.populate_one::<#type_param>();
+                    #_const_ident.collect_abi(defs);
                 };
             };
         };
@@ -1481,7 +1432,7 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
                 #[linkme(crate = #crate_path::linkme)]
                 static NAMED_KEY: #crate_path::abi_generator::NamedKey = #crate_path::abi_generator::NamedKey {
                     name: #_const_ident.name(),
-                    decl: #type_decl_lit,
+                    decl: || #_const_ident.declaration(),
                 };
             };
         };

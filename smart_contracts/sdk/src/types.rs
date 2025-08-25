@@ -32,6 +32,24 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
         self.name
     }
 
+    /// Populate ABI definitions for the value type `T` of this named key.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn collect_abi(&self, definitions: &mut crate::abi::Definitions)
+    where
+        T: CasperABI,
+    {
+        definitions.populate_one::<T>();
+    }
+
+    /// Return the ABI declaration string for the value type `T` of this named key.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn declaration(&self) -> Declaration
+    where
+        T: CasperABI,
+    {
+        <T as CasperABI>::declaration()
+    }
+
     pub fn write(&self, value: T) {
         let bytes = borsh::to_vec(&value).unwrap();
         casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();

@@ -36,7 +36,7 @@ pub static NAMED_KEYS: [NamedKey] = [..];
 #[derive(Debug, Clone)]
 pub struct NamedKey {
     pub name: &'static str,
-    pub decl: &'static str,
+    pub decl: fn() -> Declaration,
 }
 
 pub struct Manifest {
@@ -86,7 +86,7 @@ pub fn casper_collect_schema() -> Schema {
         for named_key in NAMED_KEYS {
             named_keys.push(crate::schema::SchemaStableKey {
                 name: named_key.name.to_owned(),
-                decl: named_key.decl.to_owned(),
+                decl: (named_key.decl)(),
             });
         }
 
