@@ -30,7 +30,7 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr, NamedKeyValue,
     },
-    bytesrepr::ToBytes,
+    bytesrepr::{FromBytes, ToBytes},
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,

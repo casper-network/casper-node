@@ -572,7 +572,7 @@ pub fn recover_secp256k1(
     message: &[u8],
     signature: &[u8],
     recovery_id: u32,
-) -> Result<PublicKey, CommonResult> {
+) -> Result<PublicKey, HostResult> {
     let output = [0; 34]; // This fits 33 SECP256K1 PK bytes + 1 leading variant tag
 
     let ret = unsafe {
