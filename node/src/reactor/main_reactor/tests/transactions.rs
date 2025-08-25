@@ -4545,9 +4545,7 @@ async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_ref
             refund_ratio: Ratio::new(75, 100),
         })
         .with_fee_handling(FeeHandling::PayToProposer);
-    //
-    // let base_amount = 100_000_000_000_000_000u64;
-    // let charlie_base_amount = 10_000_000_000u64;
+
     let mut test = SingleTransactionTestCase::new(
         ALICE_SECRET_KEY.clone(),
         BOB_SECRET_KEY.clone(),
