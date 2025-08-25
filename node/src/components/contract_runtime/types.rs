@@ -85,7 +85,13 @@ pub(crate) struct ExecutionArtifactBuilder {
 }
 
 impl ExecutionArtifactBuilder {
-    pub fn new(transaction: &Transaction, min_cost: U512, current_price: u8) -> Self {
+    pub fn new(
+        transaction: &Transaction,
+        limit: Gas,
+        current_price: u8,
+        initial_cost: U512,
+        min_cost: U512,
+    ) -> Self {
         ExecutionArtifactBuilder {
             effects: Effects::new(),
             hash: transaction.hash(),
@@ -95,8 +101,8 @@ impl ExecutionArtifactBuilder {
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
             current_price,
-            cost: U512::zero(),
-            limit: Gas::zero(),
+            cost: initial_cost,
+            limit,
             consumed: Gas::zero(),
             refund: U512::zero(),
             size_estimate: transaction.size_estimate() as u64,
@@ -104,8 +110,35 @@ impl ExecutionArtifactBuilder {
         }
     }
 
+    pub fn pre_condition_failure(
+        transaction: &Transaction,
+        current_price: u8,
+        invalid_transaction: InvalidTransaction,
+    ) -> Self {
+        ExecutionArtifactBuilder {
+            effects: Effects::new(),
+            hash: transaction.hash(),
+            header: transaction.into(),
+            error_message: Some(format!("{}", invalid_transaction)),
+            transfers: vec![],
+            messages: Default::default(),
+            initiator: transaction.initiator_addr(),
+            current_price,
+            cost: U512::zero(),
+            limit: Gas::zero(),
+            consumed: Gas::zero(),
+            refund: U512::zero(),
+            size_estimate: transaction.size_estimate() as u64,
+            min_cost: U512::zero(),
+        }
+    }
+
     pub fn error_message(&self) -> Option<String> {
         self.error_message.clone()
+    }
+
+    pub fn gas_limit(&self) -> Gas {
+        self.limit
     }
 
     pub fn limit(&self) -> U512 {
@@ -125,6 +158,11 @@ impl ExecutionArtifactBuilder {
         } else {
             cost
         }
+    }
+
+    pub fn consume_limit(&mut self) -> &mut Self {
+        self.consumed = self.consumed.saturating_add(self.limit);
+        self
     }
 
     pub fn with_added_consumed(&mut self, consumed: Gas) -> &mut Self {
@@ -314,38 +352,13 @@ impl ExecutionArtifactBuilder {
         Ok(self)
     }
 
-    pub fn with_added_cost(&mut self, cost: U512) -> &mut Self {
-        self.cost = self.cost.saturating_add(cost);
-        self
-    }
-
     pub fn with_cost(&mut self, new_cost: U512) -> &mut Self {
         self.cost = new_cost;
         self
     }
 
-    pub fn with_min_cost(&mut self, min_cost: U512) -> &mut Self {
-        self.min_cost = min_cost;
-        self
-    }
-
-    pub fn with_gas_limit(&mut self, limit: Gas) -> &mut Self {
-        self.limit = limit;
-        self
-    }
-
     pub fn with_refund_amount(&mut self, refund: U512) -> &mut Self {
         self.refund = refund;
-        self
-    }
-
-    pub fn with_invalid_transaction(
-        &mut self,
-        invalid_transaction: &InvalidTransaction,
-    ) -> &mut Self {
-        if self.error_message.is_none() {
-            self.error_message = Some(format!("{}", invalid_transaction));
-        }
         self
     }
 

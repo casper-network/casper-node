@@ -209,17 +209,13 @@ pub fn execute_finalized_block(
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
-        let mut artifact_builder = ExecutionArtifactBuilder::new(
-            &stored_transaction,
-            baseline_motes_amount, // <-- default minimum cost, may be overridden later in logic
-            current_gas_price,
-        );
         let transaction = MetaTransaction::from_transaction(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
             transaction_config,
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
+
         let initiator_addr = transaction.initiator_addr();
         let transaction_hash = transaction.hash();
         let transaction_args = transaction.session_args().clone();
@@ -248,21 +244,25 @@ pub fn execute_finalized_block(
         we check these top level concerns early so that we can skip if there is an error
         */
 
-        // NOTE: this is the allowed computation limit (gas limit)
-        let gas_limit =
-            match stored_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
+        let mut artifact_builder = {
+            // NOTE: this is the allowed computation limit (gas limit)
+            let gas_limit = match transaction.gas_limit(chainspec) {
                 Ok(gas) => gas,
                 Err(ite) => {
                     debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
-                    artifact_builder.with_invalid_transaction(&ite);
-                    artifacts.push(artifact_builder.build());
+                    artifacts.push(
+                        ExecutionArtifactBuilder::pre_condition_failure(
+                            &stored_transaction,
+                            current_gas_price,
+                            ite,
+                        )
+                        .build(),
+                    );
                     continue;
                 }
             };
-        artifact_builder.with_gas_limit(gas_limit);
 
-        // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-        {
+            // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
             let cost = match stored_transaction.gas_cost(
                 chainspec,
                 transaction.transaction_lane(),
@@ -271,13 +271,28 @@ pub fn execute_finalized_block(
                 Ok(motes) => motes.value(),
                 Err(ite) => {
                     debug!(%transaction_hash, "invalid transaction (motes conversion)");
-                    artifact_builder.with_invalid_transaction(&ite);
-                    artifacts.push(artifact_builder.build());
+                    artifacts.push(
+                        ExecutionArtifactBuilder::pre_condition_failure(
+                            &stored_transaction,
+                            current_gas_price,
+                            ite,
+                        )
+                        .build(),
+                    );
                     continue;
                 }
             };
-            artifact_builder.with_added_cost(cost);
-        }
+
+            // this is the minimum we will charge, even if 0 is consumed
+            let min_cost = gas_limit.value().min(baseline_motes_amount);
+            ExecutionArtifactBuilder::new(
+                &stored_transaction,
+                gas_limit,
+                current_gas_price,
+                cost,
+                min_cost,
+            )
+        };
 
         let is_standard_payment = transaction.is_standard_payment();
         let is_custom_payment = !is_standard_payment && transaction.is_custom_payment();
@@ -553,8 +568,7 @@ pub fn execute_finalized_block(
                         state_root_hash = scratch_state
                             .commit_effects(state_root_hash, transfer_result.effects().clone())?;
                         artifact_builder
-                            .with_min_cost(gas_limit.value())
-                            .with_added_consumed(gas_limit)
+                            .consume_limit()
                             .with_transfer_result(transfer_result)
                             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     } else if let TransactionEntryPoint::Burn = entry_point {
@@ -570,8 +584,7 @@ pub fn execute_finalized_block(
                         state_root_hash = scratch_state
                             .commit_effects(state_root_hash, burn_result.effects().clone())?;
                         artifact_builder
-                            .with_min_cost(gas_limit.value())
-                            .with_added_consumed(gas_limit)
+                            .consume_limit()
                             .with_burn_result(burn_result)
                             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     } else {
@@ -601,8 +614,7 @@ pub fn execute_finalized_block(
                                 bidding_result.effects().clone(),
                             )?;
                             artifact_builder
-                                .with_min_cost(gas_limit.value())
-                                .with_added_consumed(gas_limit)
+                                .consume_limit()
                                 .with_bidding_result(bidding_result)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
@@ -627,7 +639,7 @@ pub fn execute_finalized_block(
                             block_height,
                             protocol_version,
                         ),
-                        gas_limit,
+                        artifact_builder.gas_limit(),
                         &session_input_data,
                     ) {
                         Ok(wasm_v1_request) => {
@@ -656,7 +668,7 @@ pub fn execute_finalized_block(
                     }
                 }
                 _ if is_v2_wasm => match WasmV2Request::new(
-                    gas_limit,
+                    artifact_builder.gas_limit(),
                     chainspec.network_config.name.clone(),
                     state_root_hash,
                     parent_block_hash,
@@ -744,7 +756,7 @@ pub fn execute_finalized_block(
                         balance_identifier = BalanceIdentifier::Refund;
                         Some(HandleRefundMode::RefundNoFeeCustomPayment {
                             initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             cost: artifact_builder.cost_to_use(),
                         })
@@ -753,7 +765,7 @@ pub fn execute_finalized_block(
                     }
                 }
                 RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
-                    limit: gas_limit.value(),
+                    limit: artifact_builder.limit(),
                     gas_price: current_gas_price,
                     cost: artifact_builder.cost_to_use(),
                     consumed,
@@ -778,7 +790,7 @@ pub fn execute_finalized_block(
                         let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
                             cost: artifact_builder.cost_to_use(),
@@ -797,7 +809,7 @@ pub fn execute_finalized_block(
                         // multiple permanent records) and then transfer some of it back (which
                         // writes more permanent records).
                         let calculated_refund_amount = HandleRefundMode::CalculateAmount {
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
                             cost: artifact_builder.cost_to_use(),

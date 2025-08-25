@@ -383,6 +383,15 @@ impl Transaction {
             }
             Transaction::V1(v1) => {
                 let pricing_mode = v1.pricing_mode();
+
+                if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
+                    // retro-compatibility for incentivized native transfer cost
+                    if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
+                        let gas = Gas::new(chainspec.system_costs_config.mint_costs().transfer);
+                        return Ok(gas);
+                    };
+                }
+
                 match pricing_mode
                     .gas_limit(chainspec, lane_id)
                     .map_err(InvalidTransaction::from)

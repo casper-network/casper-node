@@ -781,6 +781,11 @@ impl MetaTransactionV1 {
 
     /// Returns the gas limit for the transaction.
     pub(crate) fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, InvalidTransaction> {
+        if self.is_native_transfer() {
+            return Ok(Gas::new(
+                chainspec.system_costs_config.mint_costs().transfer,
+            ));
+        }
         self.pricing_mode()
             .gas_limit(chainspec, self.lane_id)
             .map_err(Into::into)
@@ -821,6 +826,15 @@ impl MetaTransactionV1 {
                 } => *transferred_value,
             },
         }
+    }
+
+    /// Is this a native transfer?
+    pub(crate) fn is_native_transfer(&self) -> bool {
+        if !self.is_native_mint() {
+            return false;
+        }
+
+        matches!(self.entry_point(), TransactionEntryPoint::Transfer)
     }
 }
 
