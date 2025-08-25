@@ -61,6 +61,34 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
     }
 }
 
+/// Bytes for Ed25519 public key.
+pub type AddressEd25519 = [u8; 32];
+
+/// Bytes for Secp256k1 public key.
+pub type AddressSecp256k1 = [u8; 33];
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
+pub enum PublicKey {
+    /// Ed25519 public key bytes.
+    Ed25519(AddressEd25519) = 1,
+    /// secp256k1 public key sec1 bytes.
+    Secp256k1(AddressSecp256k1) = 2,
+}
+
+impl From<AddressEd25519> for PublicKey {
+    fn from(addr: AddressEd25519) -> Self {
+        PublicKey::Ed25519(addr)
+    }
+}
+
+impl From<AddressSecp256k1> for PublicKey {
+    fn from(addr: AddressSecp256k1) -> Self {
+        PublicKey::Secp256k1(addr)
+    }
+}
+
 /// A type of hashing algorithm.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]

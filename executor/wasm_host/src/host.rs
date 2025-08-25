@@ -37,7 +37,7 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
     EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
     EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
-    PackageHash, ProtocolVersion, StoredValue, URef, U512,
+    PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -1901,8 +1901,8 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
 ///
 /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
 /// * `in_size` - size of output pointer
-/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
 /// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
 pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
     in_ptr: u32,
@@ -1915,11 +1915,11 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
 
     // Charge for parameter weights.
-    let generic_hash_host_function = caller.context().config.host_function_costs().generic_hash;
+    let generic_hash_cost = caller.context().config.host_function_costs().generic_hash;
 
     charge_host_function_call(
         &mut caller,
-        &generic_hash_host_function,
+        &generic_hash_cost,
         [
             u64::from(in_ptr),
             u64::from(in_size),
@@ -1965,6 +1965,76 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     };
 
     caller.memory_write(out_ptr, &hashed_bytes)?;
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Recovers a Secp256k1 public key from a signed message
+/// and a signature used in the process of signing.
+///
+/// # Arguments
+///
+/// * `message_ptr` - pointer to the signed data
+/// * `message_size` - length of the signed data in bytes
+/// * `signature_ptr` - pointer to byte-encoded signature
+/// * `signature_size` - length of the byte-encoded signature
+/// * `public_key_ptr` - pointer to a buffer of size PublicKey::SECP256K1_LENGTH which will be
+///   populated with the recovered key's bytes representation
+/// * `recovery_id` - an integer value 0, 1, 2, or 3 used to select the correct public key from the
+///   signature:
+///   - Low bit (0/1): was the y-coordinate of the affine point resulting from the fixed-base
+///     multiplication 𝑘×𝑮 odd?
+///   - Hi bit (3/4): did the affine x-coordinate of 𝑘×𝑮 overflow the order of the scalar field,
+///     requiring a reduction when computing r?
+pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    message_ptr: u32,
+    message_size: u32,
+    signature_ptr: u32,
+    signature_size: u32,
+    public_key_ptr: u32,
+    recovery_id: u32,
+) -> VMResult<u32> {
+    let recover_secp256k1_cost = caller
+        .context()
+        .config
+        .host_function_costs()
+        .recover_secp256k1;
+
+    charge_host_function_call(
+        &mut caller,
+        &recover_secp256k1_cost,
+        [
+            u64::from(message_ptr),
+            u64::from(message_size),
+            u64::from(signature_ptr),
+            u64::from(signature_size),
+            u64::from(public_key_ptr),
+            u64::from(recovery_id),
+        ],
+    )?;
+
+    if recovery_id >= 4 {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
+    let message = caller.memory_read(message_ptr, message_size as usize)?;
+    let signature_bytes = caller.memory_read(signature_ptr, signature_size as usize)?;
+    let Ok((signature, _)) = Signature::from_bytes(&signature_bytes) else {
+        return Ok(HOST_ERROR_INVALID_DATA);
+    };
+
+    let Ok(public_key) =
+        casper_types::crypto::recover_secp256k1(message, &signature, recovery_id as u8)
+    else {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    };
+
+    let Ok(key_bytes) = public_key.to_bytes() else {
+        return Ok(HOST_ERROR_PAYLOAD_TOO_LONG);
+    };
+
+    caller.memory_write(public_key_ptr, &key_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }
