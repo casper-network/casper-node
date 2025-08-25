@@ -322,6 +322,7 @@ mod tests {
             emit: HostFunctionV2::new(113, [0, 1, 2, 3]),
             env_info: HostFunctionV2::new(114, [0, 1]),
             generic_hash: HostFunctionV2::new(115, [0, 1, 2, 3]),
+            recover_secp256k1: HostFunctionV2::new(116, [0, 1, 2, 3, 4, 5]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         let wasm_v1_config = WasmV1Config::new(

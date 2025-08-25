@@ -431,6 +431,7 @@ print = { cost = 0, arguments = [0, 0] }
 emit = { cost = 0, arguments = [0, 0, 0, 0] }
 env_info = { cost = 0, arguments = [0, 0] }
 generic_hash = { cost = 0, arguments = [0, 0, 0, 0] }
+recover_secp256k1 = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
 
 [wasm.messages_limits]
 max_topic_name_size = 256
