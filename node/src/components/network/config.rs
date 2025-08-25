@@ -54,6 +54,7 @@ impl Default for Config {
             blocklist_retain_min_duration: TimeDiff::from_seconds(600),
             blocklist_retain_max_duration: TimeDiff::from_seconds(1600),
             identity: None,
+            flakiness: None,
         }
     }
 }
@@ -123,6 +124,10 @@ pub struct Config {
     /// An identity will be automatically generated when starting up a node if this option is
     /// unspecified.
     pub identity: Option<IdentityConfig>,
+    /// Configuration that enables random disconnect functionality for this node.
+    /// This should be used ONLY for testing purposes to see how the network behaves
+    /// if nodes randomly drop connections to their peers.
+    pub flakiness: Option<NetworkFlakinessConfig>,
 }
 
 #[cfg(test)]
@@ -162,6 +167,37 @@ impl Config {
             ],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
             ..Default::default()
+        }
+    }
+}
+
+#[derive(DataSize, Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+/// Configuration which specifies what is the schedule of this particular node to drop connections.
+/// This should be used ONLY in test networks since it can only degrade the network. There is no
+/// requirement to apply this config to all the nodes in the network. PLEASE NOTE - it is possible
+/// to specify values that (when applied to enough portion of the network) WILL make it not able to
+/// produce new blocks
+pub struct NetworkFlakinessConfig {
+    /// Minimum time before a peer connection is dropped.
+    pub drop_peer_after_min: TimeDiff,
+    /// Maximum time before a peer connection is dropped.
+    pub drop_peer_after_max: TimeDiff,
+    /// After a peer drop happens, this is the minimum time it will remain in "blocked" state (new
+    /// connections from it won't be accepted)
+    pub block_peer_after_drop_min: TimeDiff,
+    /// After a peer drop happens, this is the maximum time it will remain in "blocked" state (new
+    /// connections from it won't be accepted)
+    pub block_peer_after_drop_max: TimeDiff,
+}
+
+impl Default for NetworkFlakinessConfig {
+    fn default() -> Self {
+        Self {
+            drop_peer_after_min: TimeDiff::from_seconds(600),
+            drop_peer_after_max: TimeDiff::from_seconds(1600),
+            block_peer_after_drop_min: TimeDiff::from_seconds(30),
+            block_peer_after_drop_max: TimeDiff::from_seconds(120),
         }
     }
 }
