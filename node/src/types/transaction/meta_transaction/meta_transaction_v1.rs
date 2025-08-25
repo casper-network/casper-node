@@ -370,6 +370,9 @@ impl MetaTransactionV1 {
                         payment_amount,
                         ..
                     } => {
+                        // the transaction acceptor enforces this on an actual network,
+                        // rejecting 0 payment txn's right away.
+                        // however, direct tests don't engage the acceptor.
                         if payment_amount == 0u64 {
                             return Err(InvalidTransactionV1::InvalidPaymentAmount);
                         }

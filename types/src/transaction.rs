@@ -364,14 +364,45 @@ impl Transaction {
     /// Calcualates the gas limit for the transaction.
     pub fn gas_limit(&self, chainspec: &Chainspec, lane_id: u8) -> Result<Gas, InvalidTransaction> {
         match self {
-            Transaction::Deploy(deploy) => deploy
-                .gas_limit(chainspec)
-                .map_err(InvalidTransaction::from),
+            Transaction::Deploy(deploy) => {
+                match deploy
+                    .gas_limit(chainspec)
+                    .map_err(InvalidTransaction::from)
+                {
+                    Ok(gas) => {
+                        if gas.value() == crate::U512::zero() {
+                            Err(InvalidTransaction::Deploy(
+                                InvalidDeploy::InvalidPaymentAmount,
+                            ))
+                        } else {
+                            Ok(gas)
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
+            }
             Transaction::V1(v1) => {
                 let pricing_mode = v1.pricing_mode();
-                pricing_mode
+                match pricing_mode
                     .gas_limit(chainspec, lane_id)
                     .map_err(InvalidTransaction::from)
+                {
+                    Ok(gas) => {
+                        // the transaction acceptor enforces this on an actual network,
+                        // rejecting 0 payment txn's right away.
+                        // however, direct tests don't engage the acceptor.
+                        // so, also checking here so those tests are consistent
+                        // and also defense in depth
+                        if gas.value() == crate::U512::zero() {
+                            Err(InvalidTransaction::V1(
+                                InvalidTransactionV1::InvalidPaymentAmount,
+                            ))
+                        } else {
+                            Ok(gas)
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
             }
         }
     }

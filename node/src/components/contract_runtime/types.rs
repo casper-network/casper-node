@@ -108,6 +108,10 @@ impl ExecutionArtifactBuilder {
         self.error_message.clone()
     }
 
+    pub fn limit(&self) -> U512 {
+        self.limit.value()
+    }
+
     pub fn consumed(&self) -> U512 {
         self.consumed.value()
     }
@@ -279,11 +283,17 @@ impl ExecutionArtifactBuilder {
         if let HandleFeeResult::RootNotFound = handle_fee_result {
             return Err(());
         }
-        if let (None, HandleFeeResult::Failure(err)) = (&self.error_message, handle_fee_result) {
-            self.error_message = Some(format!("{}", err));
+        if let HandleFeeResult::Success {
+            effects, transfers, ..
+        } = handle_fee_result
+        {
+            self.with_appended_transfers(&mut transfers.clone())
+                .with_appended_effects(effects.clone());
+        }
+        if let (None, HandleFeeResult::Failure(_)) = (&self.error_message, handle_fee_result) {
+            self.error_message = handle_fee_result.error_message();
             return Ok(self);
         }
-        self.with_appended_effects(handle_fee_result.effects());
         Ok(self)
     }
 
@@ -294,16 +304,23 @@ impl ExecutionArtifactBuilder {
         if let BalanceHoldResult::RootNotFound = hold_result {
             return Err(());
         }
-        if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
-            self.error_message = Some(format!("{}", err));
+        if let BalanceHoldResult::Success { effects, .. } = hold_result {
+            self.with_appended_effects(*effects.clone());
+        }
+        if let (None, BalanceHoldResult::Failure(_)) = (&self.error_message, hold_result) {
+            self.error_message = hold_result.error_message();
             return Ok(self);
         }
-        self.with_appended_effects(hold_result.effects());
         Ok(self)
     }
 
     pub fn with_added_cost(&mut self, cost: U512) -> &mut Self {
         self.cost = self.cost.saturating_add(cost);
+        self
+    }
+
+    pub fn with_cost(&mut self, new_cost: U512) -> &mut Self {
+        self.cost = new_cost;
         self
     }
 
