@@ -259,11 +259,7 @@ pub trait Caller {
     /// Check if an export is present in the module.
     fn has_export(&self, name: &str) -> VMResult<bool>;
 
-    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
-        let mut vec = vec![0; size];
-        self.memory_read_into(offset, &mut vec)?;
-        Ok(vec)
-    }
+    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>>;
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()>;
     fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()>;
     /// Allocates memory inside the Wasm VM by calling an export.

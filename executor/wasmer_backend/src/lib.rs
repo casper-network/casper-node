@@ -172,6 +172,11 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         &mut self.env.data_mut().context
     }
 
+    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
+        self.with_memory(|mem| mem.copy_range_to_vec(offset as u64..size as u64 + offset as u64))?
+            .map_err(from_wasmer_memory_access_error)
+    }
+
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()> {
         self.with_memory(|mem| mem.read(offset.into(), output))?
             .map_err(from_wasmer_memory_access_error)

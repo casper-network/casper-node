@@ -927,6 +927,45 @@ mod symbols {
     ) -> u32 {
         todo!()
     }
+
+    #[no_mangle]
+    pub extern "C" fn casper_alt_bn128_add(
+        _x1_ptr: *const u8,
+        _x1_size: usize,
+        _y1_ptr: *const u8,
+        _y1_size: usize,
+        _x2_ptr: *const u8,
+        _x2_size: usize,
+        _y2_ptr: *const u8,
+        _y2_size: usize,
+        _result_x_ptr: *mut u8,
+        _result_y_ptr: *mut u8,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_alt_bn128_mul(
+        _x_ptr: *const u8,
+        _x_size: usize,
+        _y_ptr: *const u8,
+        _y_size: usize,
+        _scalar_ptr: *const u8,
+        _scalar_size: usize,
+        _result_x_ptr: *mut u8,
+        _result_y_ptr: *mut u8,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_alt_bn128_pairing(
+        _elements_ptr: *const u8,
+        _elements_size: usize,
+        _result_ptr: *mut u32,
+    ) -> u32 {
+        todo!()
+    }
 }
 
 #[cfg(test)]

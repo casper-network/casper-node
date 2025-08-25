@@ -69,6 +69,9 @@ macro_rules! for_each_host_function {
             pub fn casper_emit(topic_ptr: *const u8, topic_size: usize, payload_ptr: *const u8, payload_size: usize,) -> u32;
             pub fn casper_generic_hash(in_ptr: *const u8, in_size: usize, out_ptr: *const u8, hash_algorithm: usize,) -> u32;
             pub fn casper_recover_secp256k1(message_ptr: *const u8, message_size: usize, signature_ptr: *const u8, signature_size: usize, public_key_ptr: *const u8, recovery_id: u32,) -> u32;
+            pub fn casper_alt_bn128_add(x1_ptr: *const u8, x1_ptr_size: u32, y1_ptr: *const u8, y1_ptr_size: u32, x2_ptr: *const u8, x2_ptr_size: u32, y2_ptr: *const u8, y2_ptr_size: u32, result_x_ptr: *mut u8, result_y_ptr: *mut u8,) -> u32;
+            pub fn casper_alt_bn128_mul(x_ptr: *const u8, x_ptr_size: u32, y_ptr: *const u8, y_ptr_size: u32, scalar_ptr: *const u8, scalar_ptr_size: u32, result_x_ptr: *mut u8, result_y_ptr: *mut u8,) -> u32;
+            pub fn casper_alt_bn128_pairing(elements_ptr: *const core::ffi::c_void, elements_size: usize, result_ptr: *mut u32,) -> u32;
         }
     };
 }

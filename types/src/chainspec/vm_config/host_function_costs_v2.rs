@@ -202,6 +202,11 @@ const DEFAULT_GENERIC_HASH_SIZE_WEIGHT: Cost = 0;
 
 const DEFAULT_RECOVER_SECP256K1_COST: Cost = 0;
 const DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT: Cost = 0;
+const DEFAULT_ALT_BN128_ADD_COST: Cost = 1_000_000;
+const DEFAULT_ALT_BN128_MUL_COST: Cost = 1_000_000;
+const DEFAULT_ALT_BN128_PAIRING_COST: Cost = 1_000_000;
+
+const DEFAULT_ARG_CHARGE: Cost = 120_000;
 
 /// Definition of a host function cost table.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -238,6 +243,12 @@ pub struct HostFunctionCostsV2 {
     pub generic_hash: HostFunctionV2<[Cost; 4]>,
     /// Cost of calling the `` host function.
     pub recover_secp256k1: HostFunctionV2<[Cost; 6]>,
+    /// Cost of calling the `alt_bn128_add` host function.
+    pub alt_bn128_add: HostFunctionV2<[Cost; 10]>,
+    /// Cost of calling the `alt_bn128_mul` host function.
+    pub alt_bn128_mul: HostFunctionV2<[Cost; 7]>,
+    /// Cost of calling the `alt_bn128_pairing` host function.
+    pub alt_bn128_pairing: HostFunctionV2<[Cost; 3]>,
 }
 
 impl HostFunctionCostsV2 {
@@ -258,6 +269,9 @@ impl HostFunctionCostsV2 {
             env_info: HostFunctionV2::zero(),
             generic_hash: HostFunctionV2::zero(),
             recover_secp256k1: HostFunctionV2::zero(),
+            alt_bn128_add: HostFunctionV2::zero(),
+            alt_bn128_mul: HostFunctionV2::zero(),
+            alt_bn128_pairing: HostFunctionV2::zero(),
         }
     }
 }
@@ -351,6 +365,23 @@ impl Default for HostFunctionCostsV2 {
                     NOT_USED,
                 ],
             ),
+            alt_bn128_add: HostFunctionV2::new(
+                DEFAULT_ALT_BN128_ADD_COST,
+                [
+                    NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED,
+                    NOT_USED, NOT_USED,
+                ],
+            ),
+            alt_bn128_mul: HostFunctionV2::new(
+                DEFAULT_ALT_BN128_MUL_COST,
+                [
+                    NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED,
+                ],
+            ),
+            alt_bn128_pairing: HostFunctionV2::new(
+                DEFAULT_ALT_BN128_PAIRING_COST,
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED],
+            ),
         }
     }
 }
@@ -373,6 +404,9 @@ impl ToBytes for HostFunctionCostsV2 {
         ret.append(&mut self.env_info.to_bytes()?);
         ret.append(&mut self.generic_hash.to_bytes()?);
         ret.append(&mut self.recover_secp256k1.to_bytes()?);
+        ret.append(&mut self.alt_bn128_add.to_bytes()?);
+        ret.append(&mut self.alt_bn128_mul.to_bytes()?);
+        ret.append(&mut self.alt_bn128_pairing.to_bytes()?);
         Ok(ret)
     }
 
@@ -392,6 +426,9 @@ impl ToBytes for HostFunctionCostsV2 {
             + self.env_info.serialized_length()
             + self.generic_hash.serialized_length()
             + self.recover_secp256k1.serialized_length()
+            + self.alt_bn128_add.serialized_length()
+            + self.alt_bn128_mul.serialized_length()
+            + self.alt_bn128_pairing.serialized_length()
     }
 }
 
@@ -412,6 +449,9 @@ impl FromBytes for HostFunctionCostsV2 {
         let (env_info, rem) = FromBytes::from_bytes(rem)?;
         let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
         let (recover_secp256k1, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_add, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_mul, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_pairing, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCostsV2 {
                 read,
@@ -429,6 +469,9 @@ impl FromBytes for HostFunctionCostsV2 {
                 env_info,
                 generic_hash,
                 recover_secp256k1,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing,
             },
             rem,
         ))
@@ -454,6 +497,9 @@ impl Distribution<HostFunctionCostsV2> for Standard {
             env_info: rng.gen(),
             generic_hash: rng.gen(),
             recover_secp256k1: rng.gen(),
+            alt_bn128_add: rng.gen(),
+            alt_bn128_mul: rng.gen(),
+            alt_bn128_pairing: rng.gen(),
         }
     }
 }
@@ -489,6 +535,9 @@ pub mod gens {
             env_info in host_function_cost_v2_arb(),
             generic_hash in host_function_cost_v2_arb(),
             recover_secp256k1 in host_function_cost_v2_arb(),
+            alt_bn128_add in host_function_cost_v2_arb(),
+            alt_bn128_mul in host_function_cost_v2_arb(),
+            alt_bn128_pairing in host_function_cost_v2_arb(),
         ) -> HostFunctionCostsV2 {
             HostFunctionCostsV2 {
                 read,
@@ -506,6 +555,9 @@ pub mod gens {
                 env_info,
                 generic_hash,
                 recover_secp256k1,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing
             }
         }
     }

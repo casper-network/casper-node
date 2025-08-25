@@ -333,6 +333,9 @@ pub fn call_dummy_host_fn_by_name(
                 env_info: HostFunctionV2::fixed(1),
                 generic_hash: HostFunctionV2::fixed(1),
                 recover_secp256k1: HostFunctionV2::fixed(1),
+                alt_bn128_add: HostFunctionV2::fixed(1),
+                alt_bn128_mul: HostFunctionV2::fixed(1),
+                alt_bn128_pairing: HostFunctionV2::fixed(1),
             },
         );
         let executor_config = ExecutorConfigBuilder::default()

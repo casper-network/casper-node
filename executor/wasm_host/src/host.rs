@@ -1,3 +1,5 @@
+mod altbn128;
+
 use std::{borrow::Cow, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
@@ -37,7 +39,7 @@ use casper_types::{
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
     EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package, PackageHash,
-    ProtocolVersion, Signature, StoredValue, URef, U512,
+    ProtocolVersion, Signature, StoredValue, URef, U256, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -54,6 +56,7 @@ use sha2::Sha256;
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
+    host::altbn128::to_le_bytes,
     system::{self, DispatchError, MintTransferArgs},
 };
 
@@ -1980,4 +1983,235 @@ pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
     caller.memory_write(public_key_ptr, &key_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Adds two points on the alt_bn128 elliptic curve.
+///
+/// This function performs the addition of two points on the alt_bn128 elliptic curve and stores
+/// the result in the provided pointers.
+///
+/// # Parameters
+///
+/// - `x1_ptr`: A pointer to the x-coordinate of the first point.
+/// - `x1_ptr_size`: number of bytes that the `x1_ptr` points to
+/// - `y1_ptr`: A pointer to the y-coordinate of the first point.
+/// - `y1_ptr_size`: number of bytes that the `y1_ptr` points to
+/// - `x2_ptr`: A pointer to the x-coordinate of the second point.
+/// - `x2_ptr_size`: number of bytes that the `x2_ptr` points to
+/// - `y2_ptr`: A pointer to the y-coordinate of the second point.
+/// - `y2_ptr_size`: number of bytes that the `y2_ptr` points to
+/// - `result_x_ptr`: A mutable pointer to store the x-coordinate of the resulting point.
+/// - `result_y_ptr`: A mutable pointer to store the y-coordinate of the resulting point.
+///
+/// # Returns
+///
+/// - `0` if the addition was successful.
+/// - `1` if the X is an invalid coordinate.
+/// - `2` if the Y is an invalid coordinate.
+/// - `3` if the point is not on a curve.
+#[allow(clippy::too_many_arguments)]
+pub fn casper_alt_bn128_add<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    x1_ptr: u32,
+    x1_ptr_size: u32,
+    y1_ptr: u32,
+    y1_ptr_size: u32,
+    x2_ptr: u32,
+    x2_ptr_size: u32,
+    y2_ptr: u32,
+    y2_ptr_size: u32,
+    result_x_ptr: u32,
+    result_y_ptr: u32,
+) -> VMResult<u32> {
+    debug_assert_eq!(x1_ptr_size, 32);
+    debug_assert_eq!(y1_ptr_size, 32);
+    debug_assert_eq!(x2_ptr_size, 32);
+    debug_assert_eq!(y2_ptr_size, 32);
+    // Charge for parameter weights.
+    let alt_bn128_add_host_function = caller.context().config.host_function_costs().alt_bn128_add;
+
+    charge_host_function_call(
+        &mut caller,
+        &alt_bn128_add_host_function,
+        [
+            u64::from(x1_ptr),
+            u64::from(x1_ptr_size),
+            u64::from(y1_ptr),
+            u64::from(y1_ptr_size),
+            u64::from(x2_ptr),
+            u64::from(x2_ptr_size),
+            u64::from(y2_ptr),
+            u64::from(y2_ptr_size),
+            u64::from(result_x_ptr),
+            u64::from(result_y_ptr),
+        ],
+    )?;
+
+    let x1: Vec<u8> = caller.memory_read(x1_ptr, x1_ptr_size as usize)?;
+    let y1: Vec<u8> = caller.memory_read(y1_ptr, y1_ptr_size as usize)?;
+
+    let x2: Vec<u8> = caller.memory_read(x2_ptr, x2_ptr_size as usize)?;
+    let y2: Vec<u8> = caller.memory_read(y2_ptr, y2_ptr_size as usize)?;
+
+    let x1: U256 = U256::from_little_endian(&x1);
+    let y1: U256 = U256::from_little_endian(&y1);
+
+    let x2: U256 = U256::from_little_endian(&x2);
+    let y2: U256 = U256::from_little_endian(&y2);
+    match altbn128::alt_bn128_add(x1, y1, x2, y2) {
+        Ok((x, y)) => {
+            let x_bytes = to_le_bytes(x);
+            let y_bytes = to_le_bytes(y);
+            caller.memory_write(result_x_ptr, &x_bytes)?;
+            caller.memory_write(result_y_ptr, &y_bytes)?;
+            Ok(HOST_ERROR_SUCCESS)
+        }
+        Err(err) => Ok(err as u32),
+    }
+}
+
+/// Multiplies a point on the alt_bn128 elliptic curve by a scalar.
+///
+/// This function performs scalar multiplication of a point on the alt_bn128 elliptic curve and
+/// stores the result in the provided pointers.
+///
+/// # Parameters
+///
+/// - `x_ptr`: A pointer to the x-coordinate of the point.
+/// - `x_ptr_size`: number of bytes that the `x_ptr` points to
+/// - `y_ptr`: A pointer to the y-coordinate of the point.
+/// - `y_ptr_size`: number of bytes that the `y_ptr` points to
+/// - `scalar_ptr`: A pointer to the scalar value.
+/// - `result_x_ptr`: A mutable pointer to store the x-coordinate of the resulting point.
+/// - `result_y_ptr`: A mutable pointer to store the y-coordinate of the resulting point.
+///
+/// # Returns
+///
+/// - `0` if the multiplication was successful.
+/// - A non-zero integer if there was an error.
+#[allow(clippy::too_many_arguments)]
+pub fn casper_alt_bn128_mul<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    x_ptr: u32,
+    x_ptr_size: u32,
+    y_ptr: u32,
+    y_ptr_size: u32,
+    scalar_ptr: u32,
+    scalar_ptr_size: u32,
+    result_x_ptr: u32,
+    result_y_ptr: u32,
+) -> VMResult<u32> {
+    debug_assert_eq!(x_ptr_size, 32);
+    debug_assert_eq!(y_ptr_size, 32);
+    debug_assert_eq!(scalar_ptr_size, 32);
+    // Charge for parameter weights.
+    let alt_bn128_mul_host_function = caller.context().config.host_function_costs().alt_bn128_mul;
+    charge_host_function_call(
+        &mut caller,
+        &alt_bn128_mul_host_function,
+        [
+            u64::from(x_ptr),
+            u64::from(x_ptr_size),
+            u64::from(y_ptr),
+            u64::from(y_ptr_size),
+            u64::from(scalar_ptr),
+            u64::from(result_x_ptr),
+            u64::from(result_y_ptr),
+        ],
+    )?;
+    let x: Vec<u8> = caller.memory_read(x_ptr, x_ptr_size as usize)?;
+    let y: Vec<u8> = caller.memory_read(y_ptr, y_ptr_size as usize)?;
+
+    let scalar: Vec<u8> = caller.memory_read(scalar_ptr, scalar_ptr_size as usize)?;
+
+    let x: U256 = U256::from_little_endian(&x);
+    let y: U256 = U256::from_little_endian(&y);
+
+    let scalar: U256 = U256::from_little_endian(&scalar);
+
+    match altbn128::alt_bn128_mul(x, y, scalar) {
+        Ok((x, y)) => {
+            let x_bytes = to_le_bytes(x);
+            let y_bytes = to_le_bytes(y);
+            caller.memory_write(result_x_ptr, &x_bytes)?;
+            caller.memory_write(result_y_ptr, &y_bytes)?;
+            Ok(HOST_ERROR_SUCCESS)
+        }
+        Err(err) => Ok(err as u32),
+    }
+}
+
+/// Performs a pairing check on the alt_bn128 elliptic curve.
+///
+/// This function performs a pairing check on the alt_bn128 elliptic curve using the provided
+/// elements and stores the result in the provided pointer.
+///
+/// # Parameters
+///
+/// - `elements_ptr`: A pointer to the elements to be checked. This should be pointed at byte array
+///   of multiple of 6 elements representing (ax, ay, bax, bay, bbx, bby). Each point is 32 bytes
+///   long.
+/// - `elements_size`: The size of the elements in bytes.
+/// - `result_ptr`: A mutable pointer to store the result of the pairing check. The result will be
+///   `1` if the pairing check is successful, and `0` otherwise.
+///
+/// # Returns
+///
+/// - `0` if the pairing check was successful.
+/// - A non-zero integer if there was an error.
+#[allow(clippy::too_many_arguments)]
+pub fn casper_alt_bn128_pairing<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    elements_ptr: u32,
+    elements_size: u32,
+    result_ptr: u32,
+) -> VMResult<u32> {
+    // Charge for parameter weights.
+    let alt_bn128_pairing_host_function = caller
+        .context()
+        .config
+        .host_function_costs()
+        .alt_bn128_pairing;
+    charge_host_function_call(
+        &mut caller,
+        &alt_bn128_pairing_host_function,
+        [
+            u64::from(elements_ptr),
+            u64::from(elements_size),
+            u64::from(result_ptr),
+        ],
+    )?;
+    const PAIR_ELEMENT_LEN: usize = 6 * core::mem::size_of::<U256>();
+    if (elements_size as usize) % PAIR_ELEMENT_LEN != 0 {
+        return Ok(altbn128::AltBN128Error::InvalidLength as _);
+    }
+    let chunk = caller.memory_read(elements_ptr as _, elements_size as _)?;
+    let inputs = chunk
+        .chunks_exact(PAIR_ELEMENT_LEN)
+        .map(|pair| {
+            debug_assert_eq!(pair.len(), 192);
+            let (ax, ay, bax, bay, bbx, bby) = (
+                // These values are coming from a byte representation of an
+                // array, so we can't expect the memory layout of individual
+                // [u8;32] individual values are in little endian form.
+                U256::from_little_endian(&pair[0..32]),
+                U256::from_little_endian(&pair[32..64]),
+                U256::from_little_endian(&pair[64..96]),
+                U256::from_little_endian(&pair[96..128]),
+                U256::from_little_endian(&pair[128..160]),
+                U256::from_little_endian(&pair[160..192]),
+            );
+            (ax, ay, bay, bax, bby, bbx)
+        })
+        .collect::<Vec<_>>();
+
+    match altbn128::alt_bn128_pairing(inputs) {
+        Ok(result) => {
+            let result_value = result as u32;
+            let result_bytes = result_value.to_le_bytes();
+            caller.memory_write(result_ptr, &result_bytes)?;
+            Ok(HOST_ERROR_SUCCESS)
+        }
+        Err(err) => Ok(err as u32),
+    }
 }

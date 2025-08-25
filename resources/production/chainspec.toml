@@ -432,6 +432,9 @@ emit = { cost = 0, arguments = [0, 0, 0, 0] }
 env_info = { cost = 0, arguments = [0, 0] }
 generic_hash = { cost = 0, arguments = [0, 0, 0, 0] }
 recover_secp256k1 = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
+alt_bn128_add = { cost = 1_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+alt_bn128_mul = { cost = 1_000_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
+alt_bn128_pairing = { cost = 1_000_000, arguments = [0, 2_000, 0] }
 
 [wasm.messages_limits]
 max_topic_name_size = 256

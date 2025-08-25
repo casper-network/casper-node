@@ -717,6 +717,7 @@ dependencies = [
  "casper-contract-macros",
  "casper-contract-sdk-sys",
  "casper-executor-wasm-common",
+ "casper-types",
  "cfg-if 1.0.1",
  "clap 4.5.45",
  "const-fnv1a-hash",
@@ -857,6 +858,7 @@ dependencies = [
  "uint",
  "walrus",
  "wat",
+ "zeropool-bn",
 ]
 
 [[package]]
@@ -928,6 +930,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.14",
  "tracing",
+ "zeropool-bn",
 ]
 
 [[package]]
@@ -3725,6 +3728,9 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+dependencies = [
+ "spin 0.9.8",
+]
 
 [[package]]
 name = "leb128"
@@ -5545,6 +5551,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
+name = "rustc-hex"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7229,6 +7241,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "vm2-altbn128"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "casper-contract-sdk",
+ "zeropool-bn",
+]
+
+[[package]]
 name = "vm2-cargo-casper"
 version = "0.1.0"
 dependencies = [
@@ -8242,6 +8263,19 @@ name = "zeroize"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
+
+[[package]]
+name = "zeropool-bn"
+version = "0.5.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e61de68ede9ffdd69c01664f65a178c5188b73f78faa21f0936016a888ff7c"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "lazy_static",
+ "rand 0.8.5",
+ "rustc-hex",
+]
 
 [[package]]
 name = "zerotrie"
