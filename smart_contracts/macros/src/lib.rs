@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
-    LitStr, Type,
+    parse_macro_input, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
+    ItemUnion, LitStr, Type,
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -138,6 +138,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         match func_meta {
             ItemFnMeta::Export => generate_export_function(&func),
         }
+    } else if let Ok(constant) = syn::parse::<ItemConst>(item.clone()) {
+        process_casper_stable_key_constant(&constant)
     } else {
         let err = syn::Error::new(
             Span::call_site(),
@@ -1400,6 +1402,53 @@ fn process_casper_contract_state_for_struct(
         }
 
         #maybe_casper_schema
+    }
+    .into()
+}
+
+fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
+    let _const_ident = &constant.ident;
+
+    let maybe_stable_key_collector;
+    let maybe_stable_key_def;
+
+    #[cfg(feature = "__abi_generator")]
+    {
+        let crate_path = quote! { casper_contract_sdk };
+
+        maybe_stable_key_collector = quote! {
+            const _: () = {
+                #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::ABI_COLLECTORS)]
+                #[linkme(crate = #crate_path::linkme)]
+                static COLLECTOR: fn(&mut #crate_path::abi::Definitions) = |defs| {
+                    #_const_ident.collect_abi(defs);
+                };
+            };
+        };
+
+        maybe_stable_key_def = quote! {
+            const _: () = {
+                #[#crate_path::linkme::distributed_slice(#crate_path::abi_generator::NAMED_KEYS)]
+                #[linkme(crate = #crate_path::linkme)]
+                static NAMED_KEY: #crate_path::abi_generator::NamedKey = #crate_path::abi_generator::NamedKey {
+                    name: #_const_ident.name(),
+                    decl: || #_const_ident.declaration(),
+                };
+            };
+        };
+    }
+
+    #[cfg(not(feature = "__abi_generator"))]
+    {
+        maybe_stable_key_collector = quote! {};
+        maybe_stable_key_def = quote! {};
+    }
+
+    quote! {
+        #constant
+
+        #maybe_stable_key_collector
+        #maybe_stable_key_def
     }
     .into()
 }

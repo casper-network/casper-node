@@ -33,11 +33,11 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
-    AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
-    EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package, PackageHash,
-    ProtocolVersion, Signature, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
+    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
+    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
+    PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -206,20 +206,42 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             StoredValue::CLValue(cl_value_any)
         }
         Keyspace::NamedKey(name) => {
-            let key = match Key::from_bytes(&value) {
-                Ok((key, remainder)) => {
-                    if !remainder.is_empty() {
-                        return Ok(HOST_ERROR_INVALID_INPUT);
+            // NamedKey points to a URef which holds CLValue::Any bytes
+            let maybe_existing_uref = caller
+                .context_mut()
+                .tracking_copy
+                .read(&global_state_key)
+                .map_err(|_| InternalHostError::TrackingCopy)?;
+
+            let uref_to_use: URef =
+                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
+                    if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
+                        existing_uref
+                    } else {
+                        let mut address_generator = caller.context().address_generator.write();
+                        address_generator.new_uref(AccessRights::NONE)
                     }
-                    key
-                }
-                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+                } else {
+                    let mut address_generator = caller.context().address_generator.write();
+                    address_generator.new_uref(AccessRights::NONE)
+                };
+
+            // Write payload bytes under the URef as CLValue::Any
+            let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
+            metered_write(
+                &mut caller,
+                Key::URef(uref_to_use),
+                StoredValue::CLValue(cl_value_any),
+            )?;
+
+            // Point the named key to the URef
+            let named_key = Key::URef(uref_to_use);
+            let key_name = name.to_string();
+            let Ok(named_key_value) = NamedKeyValue::from_concrete_values(named_key, key_name)
+            else {
+                return Ok(HOST_ERROR_INVALID_DATA);
             };
 
-            let named_key_value = match NamedKeyValue::from_concrete_values(key, name.to_string()) {
-                Ok(named_key_value) => named_key_value,
-                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
-            };
             StoredValue::NamedKey(named_key_value)
         }
         Keyspace::PaymentInfo(_) => {
@@ -330,8 +352,19 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
-        Ok(Some(_stored_value)) => {
-            // Produce a prune transform only if value under a given key exists in the global state
+        Ok(Some(_)) => {
+            // If it's a named key pointing to a URef, prune both the named key and the URef.
+            if let Keyspace::NamedKey(_) = keyspace {
+                if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
+                    caller.context_mut().tracking_copy.read(&global_state_key)
+                {
+                    if let Ok(Key::URef(uref)) = named_key_value.get_key() {
+                        caller.context_mut().tracking_copy.prune(Key::URef(uref));
+                    }
+                }
+            }
+
+            // Produce a prune transform for the named key
             caller.context_mut().tracking_copy.prune(global_state_key);
         }
         Ok(None) => {
@@ -453,6 +486,30 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                 return Err(InternalHostError::TypeConversion)?;
             };
             Cow::Owned(cl_value.inner_bytes().to_owned())
+        }
+        Ok(Some(StoredValue::NamedKey(named_key_value))) => {
+            // Dereference named key to its URef and return the underlying Any bytes
+            let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    let CLType::Any = cl_value.cl_type() else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
+                    Cow::Owned(cl_value.inner_bytes().to_owned())
+                }
+                Ok(Some(_)) => {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                }
+                Ok(None) => {
+                    return Ok(HOST_ERROR_NOT_FOUND);
+                }
+                Err(_error) => {
+                    return Err(InternalHostError::TrackingCopy.into());
+                }
+            }
         }
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             match entry_point.entry_point_payment() {
@@ -926,7 +983,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     )?;
 
     // 1. Look up address in the storage
-    // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
+    // 1a. if it's VM1 contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
     // you can't pass value (tokens) to called contracts. 1b. if it's new contract, wire up
     // another VM as according to the bytecode format. 2. Depends on the VM used (old or new) at

@@ -432,14 +432,14 @@ impl ExecutorV2 {
                 entry_point,
             } => {
                 let smart_contract_key = Key::SmartContract(*smart_contract_addr);
-                let legacy_key = Key::Hash(*smart_contract_addr);
+                let vm1_key = Key::Hash(*smart_contract_addr);
 
                 let mut contract = tracking_copy
-                    .read_first(&[&legacy_key, &smart_contract_key])
+                    .read_first(&[&vm1_key, &smart_contract_key])
                     .map_err(|read_error| {
                         error!(
                             "error reading contract under path: {:?}. Details: {read_error}",
-                            [&legacy_key, &smart_contract_key]
+                            [&vm1_key, &smart_contract_key]
                         );
                         ExecuteError::InternalHost(InternalHostError::TrackingCopy)
                     })?;
@@ -453,7 +453,7 @@ impl ExecutorV2 {
                         //#TODO this probably should not be a node stopping error?
                         error!(
                             "Couldn't find an active version for smart contract under path {:?}",
-                            [&legacy_key, &smart_contract_key]
+                            [&vm1_key, &smart_contract_key]
                         );
                         return Err(ExecuteError::NoActiveContract(smart_contract_key));
                     };
@@ -488,7 +488,7 @@ impl ExecutorV2 {
 
                                 let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
 
-                                return self.execute_legacy_wasm_byte_code(
+                                return self.execute_vm1_wasm_byte_code(
                                     initiator,
                                     &entity_addr,
                                     entry_point.clone(),
@@ -572,7 +572,7 @@ impl ExecutorV2 {
 
                         (Bytes::from(wasm_bytes), entry_point.as_str())
                     }
-                    Some(StoredValue::Contract(_legacy_contract)) => {
+                    Some(StoredValue::Contract(_vm1_contract)) => {
                         let block_info = BlockInfo::new(
                             state_hash,
                             block_time,
@@ -583,7 +583,7 @@ impl ExecutorV2 {
 
                         let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
 
-                        return self.execute_legacy_wasm_byte_code(
+                        return self.execute_vm1_wasm_byte_code(
                             initiator,
                             &entity_addr,
                             entry_point.clone(),
@@ -765,7 +765,7 @@ impl ExecutorV2 {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn execute_legacy_wasm_byte_code<R>(
+    fn execute_vm1_wasm_byte_code<R>(
         &self,
         initiator: AccountHash,
         entity_addr: &EntityAddr,
