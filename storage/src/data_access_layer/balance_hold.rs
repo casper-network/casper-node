@@ -236,7 +236,7 @@ pub enum BalanceHoldResult {
         hold: Box<U512>,
         /// How much did we actually hold?
         held: Box<U512>,
-        /// Effects of bidding interaction.
+        /// Effects of balance interaction.
         effects: Box<Effects>,
     },
     /// Failed to place balance hold.
@@ -338,11 +338,11 @@ impl BalanceHoldResult {
     }
 
     /// Error message.
-    pub fn error_message(&self) -> String {
-        match self {
+    pub fn error_message(&self) -> Option<String> {
+        let msg = match self {
             BalanceHoldResult::Success { hold, held, .. } => {
                 if hold == held {
-                    String::default()
+                    return None;
                 } else {
                     format!(
                         "insufficient balance to cover hold amount: {}, held remaining amount: {}",
@@ -355,7 +355,8 @@ impl BalanceHoldResult {
             BalanceHoldResult::Failure(bhe) => {
                 format!("{:?}", bhe)
             }
-        }
+        };
+        Some(msg)
     }
 }
 

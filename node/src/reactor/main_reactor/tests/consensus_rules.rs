@@ -34,9 +34,18 @@ async fn run_equivocator_network() {
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
     let mut stakes = BTreeMap::new();
-    stakes.insert(alice_public_key.clone(), U512::from(1));
-    stakes.insert(bob_public_key.clone(), U512::from(1));
-    stakes.insert(charlie_public_key, U512::from(u64::MAX));
+    stakes.insert(
+        alice_public_key.clone(),
+        (U512::from(u64::MAX), U512::from(1)),
+    );
+    stakes.insert(
+        bob_public_key.clone(),
+        (U512::from(u64::MAX), U512::from(1)),
+    );
+    stakes.insert(
+        charlie_public_key,
+        (U512::from(u64::MAX), U512::from(u64::MAX)),
+    );
 
     // Here's where things go wrong: Bob doesn't run a node at all, and Alice runs two!
     let secret_keys = vec![
@@ -205,12 +214,12 @@ async fn run_equivocator_network() {
                 .expect("should have bid for public key {public_key} in era {era}");
             let staked_amount = bid.staked_amount();
             assert!(
-                staked_amount >= *stake,
+                staked_amount >= stake.1,
                 "expected stake {} for public key {} in era {}, found {}",
                 staked_amount,
                 public_key,
                 era,
-                stake
+                stake.1
             );
         }
     }
