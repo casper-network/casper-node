@@ -7325,6 +7325,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-named-args"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+]
+
+[[package]]
 name = "vm2-trait"
 version = "0.1.0"
 dependencies = [

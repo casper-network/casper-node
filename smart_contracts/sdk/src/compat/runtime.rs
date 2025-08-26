@@ -1,5 +1,5 @@
 use borsh::BorshDeserialize;
-use casper_executor_wasm_common::{error::CommonResult, flags::ReturnFlags};
+use casper_executor_wasm_common::{error::HostResult, flags::ReturnFlags};
 
 use crate::{
     casper,
@@ -69,7 +69,7 @@ pub fn get_immediate_caller() -> [u8; 32] {
 }
 
 #[inline]
-pub fn emit_message(topic_name: &str, message: &[u8]) -> Result<(), CommonResult> {
+pub fn emit_message(topic_name: &str, message: &[u8]) -> Result<(), HostResult> {
     casper::emit(topic_name, message)
 }
 
