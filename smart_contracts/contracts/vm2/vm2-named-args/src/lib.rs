@@ -144,6 +144,7 @@ mod tests {
         let env = Environment::default().with_input_data(borsh::to_vec(&runtime_args).unwrap());
 
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
+
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
             native::invoke_export_by_name("ContractTrait_trait_args_with_default_abi_convention")
         })
@@ -172,5 +173,52 @@ mod tests {
         let result: Vec<u32> =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
         assert_eq!(result, vec![123, 456, 789]);
+    }
+
+    #[test]
+    fn foobar() {
+        let abi_items = casper_contract_sdk::abi_generator::ABI_ITEMS
+            .iter()
+            .collect::<Vec<_>>();
+
+        let smart_contract = abi_items
+            .iter()
+            .find_map(|item| item.as_smart_contract())
+            .expect("Expected smart contract item");
+        assert_eq!(smart_contract.abi_convention, AbiConvention::Named);
+
+        let ctor = abi_items
+            .iter()
+            .filter_map(|item| item.as_abi_entry_point())
+            .find(|e| e.name == "new")
+            .expect("Expected entry point");
+
+        assert!(ctor.is_constructor);
+
+        let e1 = abi_items
+            .iter()
+            .filter_map(|item| item.as_abi_entry_point())
+            .find(|e| e.name == "add_with_overriden_abi_convention")
+            .expect("Expected entry point");
+        assert_eq!(e1.abi_convention, AbiConvention::Positional);
+        assert_eq!(e1.result_decl.type_name, "u32");
+        assert_eq!(e1.result_decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params.len(), 3);
+        assert_eq!(e1.params[0].name, "a");
+        assert_eq!(e1.params[0].decl.type_name, "u32");
+        assert_eq!(e1.params[0].decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params[1].name, "b");
+        assert_eq!(e1.params[1].decl.type_name, "u32");
+        assert_eq!(e1.params[1].decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params[2].name, "c");
+        assert_eq!(e1.params[2].decl.type_name, "u32");
+        assert_eq!(e1.params[2].decl.cl_type(), CLType::U32);
+
+        let e2 = abi_items
+            .iter()
+            .filter_map(|item| item.as_abi_entry_point())
+            .find(|e| e.name == "add_with_default_abi_convention")
+            .expect("Expected entry point");
+        assert_eq!(e2.abi_convention, AbiConvention::Named);
     }
 }

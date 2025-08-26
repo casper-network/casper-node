@@ -224,7 +224,11 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn approve(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn approve(
+        &mut self,
+        spender: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -241,7 +245,11 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn decrease_allowance(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn decrease_allowance(
+        &mut self,
+        spender: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -254,7 +262,11 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn increase_allowance(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn increase_allowance(
+        &mut self,
+        spender: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -267,7 +279,11 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn transfer(&mut self, recipient: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn transfer(
+        &mut self,
+        recipient: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         let sender = casper::get_caller();
         if sender == recipient {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -294,7 +310,7 @@ pub trait CEP18 {
         owner: Entity,
         recipient: Entity,
         amount: U256,
-    ) -> Result<(), Cep18Error> {
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         let spender = casper::get_caller();
         if owner == recipient {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -334,9 +350,13 @@ pub trait CEP18 {
 #[casper(path = crate, export = true)]
 pub trait Mintable: CEP18 + AccessControl {
     #[casper(revert_on_error)]
-    fn mint(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn mint(
+        &mut self,
+        owner: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         if !CEP18::state(self).enable_mint_burn {
-            return Err(Cep18Error::MintBurnDisabled);
+            return Err(casper_contract_sdk::contrib::cep18::Cep18Error::MintBurnDisabled);
         }
 
         AccessControl::require_any_role(self, &[ADMIN_ROLE, MINTER_ROLE])?;
@@ -363,13 +383,17 @@ pub trait Mintable: CEP18 + AccessControl {
 #[casper(path = crate, export = true)]
 pub trait Burnable: CEP18 {
     #[casper(revert_on_error)]
-    fn burn(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {
+    fn burn(
+        &mut self,
+        owner: Entity,
+        amount: U256,
+    ) -> Result<(), casper_contract_sdk::contrib::cep18::Cep18Error> {
         if !self.state().enable_mint_burn {
-            return Err(Cep18Error::MintBurnDisabled);
+            return Err(casper_contract_sdk::contrib::cep18::Cep18Error::MintBurnDisabled);
         }
 
         if owner != casper::get_caller() {
-            return Err(Cep18Error::InvalidBurnTarget);
+            return Err(casper_contract_sdk::contrib::cep18::Cep18Error::InvalidBurnTarget);
         }
 
         let balance = self.state().balances.get(&owner).unwrap_or_default();

@@ -85,6 +85,7 @@ mod tests {
     use super::*;
 
     use casper_contract_sdk::{
+        abi_generator::ABI_ITEMS,
         casper::{
             self,
             native::{
@@ -95,6 +96,7 @@ mod tests {
         },
         casper_executor_wasm_common::keyspace::Keyspace,
         contrib::cep18::Cep18Error,
+        serializers::AbiConvention,
         ContractHandle, ToCallData,
     };
 
@@ -273,9 +275,8 @@ mod tests {
     }
 
     #[test]
-    fn foobar() {
-        dbg!(casper_contract_sdk::abi_generator::ABI_ITEMS
-            .iter()
-            .collect::<Vec<_>>());
+    fn foo() {
+        let vec = ABI_ITEMS.iter().collect::<Vec<_>>();
+        dbg!(vec);
     }
 }

@@ -183,6 +183,7 @@ fn cep18() {
         topics_1
             .sort_by_key(|topic| (topic.topic_name(), topic.blocktime(), topic.message_count()));
 
+        assert_ne!(topics_1.len(), 0);
         assert_eq!(topics_1[0].topic_name(), "Transfer");
         assert_eq!(topics_1[0].message_count(), 1);
         assert_eq!(topics_1[0].blocktime(), block_time_1);
