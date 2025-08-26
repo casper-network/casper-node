@@ -541,7 +541,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by its address
+    // Calling VM1 contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -592,7 +592,7 @@ fn backwards_compatibility() {
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_legacy_counter_proxy.wasm"))
+        .with_wasm_bytes(read_wasm("vm2_counter_proxy.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
