@@ -382,8 +382,6 @@ impl Transaction {
                 }
             }
             Transaction::V1(v1) => {
-                let pricing_mode = v1.pricing_mode();
-
                 if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
                     // retro-compatibility for incentivized native transfer cost
                     if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
@@ -392,6 +390,7 @@ impl Transaction {
                     };
                 }
 
+                let pricing_mode = v1.pricing_mode();
                 match pricing_mode
                     .gas_limit(chainspec, lane_id)
                     .map_err(InvalidTransaction::from)
@@ -430,6 +429,14 @@ impl Transaction {
                 .gas_cost(chainspec, gas_price)
                 .map_err(InvalidTransaction::from),
             Transaction::V1(v1) => {
+                if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
+                    // retro-compatibility for incentivized native transfer cost
+                    if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
+                        return Ok(Motes::new(
+                            chainspec.system_costs_config.mint_costs().transfer,
+                        ));
+                    };
+                }
                 let pricing_mode = v1.pricing_mode();
                 pricing_mode
                     .gas_cost(chainspec, lane_id, gas_price)

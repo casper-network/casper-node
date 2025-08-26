@@ -13,7 +13,7 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AccessRights, AddressableEntity, Digest, EntityAddr, ExecutableDeployItem, ExecutionInfo,
-    TransactionRuntimeParams, URef, URefAddr,
+    TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -3723,9 +3723,7 @@ async fn insufficient_funds_transfer_from_account() {
             .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
             .build()
             .unwrap();
-    let price = txn_v1
-        .payment_amount()
-        .expect("must have payment amount as txns are using payment_limited");
+
     let mut txn = Transaction::from(txn_v1);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3733,7 +3731,7 @@ async fn insufficient_funds_transfer_from_account() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let expected_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
     assert_eq!(result.cost, expected_cost);
@@ -3857,7 +3855,7 @@ async fn insufficient_funds_transfer_from_purse() {
     .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
     .build()
     .unwrap();
-    let price = txn.payment_amount().expect("must get payment amount");
+
     let mut txn = Transaction::from(txn);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3865,10 +3863,10 @@ async fn insufficient_funds_transfer_from_purse() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let transfer_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
-    assert_eq!(result.cost, transfer_cost);
+    assert_eq!(result.cost, expected_cost);
 }
 
 #[tokio::test]
@@ -3900,7 +3898,7 @@ async fn insufficient_funds_when_caller_lacks_minimum_balance() {
             .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
             .build()
             .unwrap();
-    let price = txn.payment_amount().expect("must get payment amount");
+
     let mut txn = Transaction::from(txn);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3908,10 +3906,10 @@ async fn insufficient_funds_when_caller_lacks_minimum_balance() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let transfer_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
-    assert_eq!(result.cost, transfer_cost);
+    assert_eq!(result.cost, expected_cost);
 }
 
 #[tokio::test]
@@ -4430,8 +4428,9 @@ async fn should_charge_for_insufficient_funds_deploy_payment_limited_refund_fee(
         .expect("should have charlie balance")
         .available;
 
-    assert!(
-        charlie_balance == U512::from(u32::MAX - 1),
+    assert_eq!(
+        charlie_balance,
+        U512::from(u32::MAX - 1),
         "charlie balance should be u32::MAX - 1"
     );
     let payment_amount = charlie_balance.saturating_add(U512::from(1)).as_u64();
@@ -4510,8 +4509,9 @@ async fn should_charge_for_marginal_insufficient_funds_deploy_payment_limited_re
         .expect("should have charlie balance")
         .available;
 
-    assert!(
-        charlie_balance == U512::from(charlie_base_amount),
+    assert_eq!(
+        charlie_balance,
+        U512::from(charlie_base_amount),
         "charlie balance should be charlie_base_amount"
     );
     // make payment 1 more than charlie has
@@ -5269,7 +5269,13 @@ async fn should_allow_native_transfer_v1() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let expected_cost: U512 = U512::from(payment) * MIN_GAS_PRICE;
+
+    assert_ne!(
+        U512::from(payment),
+        result.cost,
+        "native transfer costing is system limited"
+    );
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(result.error_message.as_deref(), None);
     assert_eq!(result.cost, expected_cost);
     assert_eq!(result.transfers.len(), 1, "should have exactly 1 transfer");
