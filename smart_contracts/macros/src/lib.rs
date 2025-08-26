@@ -1093,7 +1093,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 let export_ident = format_ident!("{trait_name}_{func_name_str}");
 
-                // #[cfg(feature = "__abi_generator")]
                 let result = match &func.sig.output {
                     syn::ReturnType::Default => {
                         populate_definitions.push(quote! {
@@ -1256,16 +1255,11 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 let args: Arguments = {
                                     match #resolve_abi_convention {
                                         casper_contract_sdk::serializers::AbiConvention::Positional => {
-                                            // eprintln!("{} Positional ABI convention is deprecated, use Named instead", stringify!(#func_name));
-
                                             casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
                                         }
                                         casper_contract_sdk::serializers::AbiConvention::Named => {
                                             let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
                                                 casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
-                                                // panic!("runtime_args {runtime_args:?}");
-
-                                                //  eprintln!("{} Runtime args {:?}", stringify!(#func_name), &runtime_args);
                                             #(
                                                 let #arg_names: #arg_types = {
                                                     let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
@@ -1288,8 +1282,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 #crate_path::casper::write_state(&instance).unwrap();
 
-                                // let ret_bytes = #crate_path::serializers::borsh::to_vec(&ret).unwrap();
-                                // #crate_path::casper::ret(flags, Some(&ret_bytes));
                                 #handle_ret
                             }
                         }
