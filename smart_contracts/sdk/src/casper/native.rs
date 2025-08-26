@@ -941,6 +941,18 @@ mod symbols {
     ) -> u32 {
         todo!()
     }
+
+    #[no_mangle]
+    pub fn casper_recover_secp256k1(
+        _message_ptr: *const u8,
+        _message_size: usize,
+        _signature_ptr: *const u8,
+        _signature_size: usize,
+        _public_key_ptr: *const u8,
+        _recovery_id: u32,
+    ) -> u32 {
+        todo!()
+    }
 }
 
 #[cfg(test)]

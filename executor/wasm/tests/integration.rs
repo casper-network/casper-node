@@ -100,6 +100,7 @@ fn harness() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
         .with_serialized_input((flipper_address,))
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(address_generator)
         .with_block_time(Timestamp::now().into())
         .with_state_hash(state_root_hash)
@@ -199,6 +200,7 @@ fn cep18() {
             "vm2_cep18_caller.wasm",
         )))
         .with_serialized_input((create_result.smart_contract_addr(),))
+        .expect("expected serialized input to be correct")
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(block_time_2)
@@ -289,6 +291,7 @@ fn traits() {
     let execute_request = base_execute_builder(&chainspec_config)
         .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
         .with_serialized_input(())
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(make_address_generator())
         .build()
         .expect("should build");
@@ -400,6 +403,7 @@ fn upgradable() {
         })
         .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
         .with_serialized_input((new_code,))
+        .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
@@ -445,6 +449,7 @@ fn upgradable() {
                 entry_point: "increment_by".to_string(),
             })
             .with_serialized_input((10u64,))
+            .expect("expected serialized input to be correct")
             .with_gas_limit(DEFAULT_GAS_LIMIT)
             .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
@@ -531,7 +536,7 @@ fn backwards_compatibility() {
     };
 
     //
-    // Calling legacy contract directly by its address
+    // Calling VM1 contract directly by its address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -582,7 +587,7 @@ fn backwards_compatibility() {
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_legacy_counter_proxy.wasm"))
+        .with_wasm_bytes(read_wasm("vm2_counter_proxy.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -655,6 +660,7 @@ fn host_functions_consume_gas() {
     assert_consumes_gas(&chainspec_config, "upgrade");
     assert_consumes_gas(&chainspec_config, "write");
     assert_consumes_gas(&chainspec_config, "generic_hash");
+    assert_consumes_gas(&chainspec_config, "recover_secp256k1");
 }
 
 #[test]
@@ -885,6 +891,7 @@ fn escrow() {
             entry_point: "deposit_tokens".to_string(),
         })
         .with_serialized_input(())
+        .expect("expected serialized input to be correct")
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(1234567890.into())

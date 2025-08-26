@@ -9,6 +9,8 @@ use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
 };
+use casper_types::bytesrepr::Error as BytesreprError;
+use serde::Serialize;
 
 #[cfg(test)]
 pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
@@ -79,7 +81,7 @@ pub enum MemoryError {
 }
 
 /// Represents a catastrophic internal host error.
-#[derive(Debug, Error)]
+#[derive(Error, Debug, Clone, Serialize)]
 pub enum InternalHostError {
     #[error("type conversion failure")]
     TypeConversion,
@@ -105,6 +107,16 @@ pub enum InternalHostError {
     DispatchSystemContract,
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
+    #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
+    Bytesrepr(BytesreprError),
+    #[error(
+        "Successfull execution of VM1 contract returned an output which is undefined behavior"
+    )]
+    UnexpectedOutput,
+    #[error("Executor in a state that made in unable to proceed. Details: {0}")]
+    CorruptExecutionState(String),
+    #[error("Error when creating config: {0}")]
+    ConfigBuilderError(String),
 }
 
 /// The outcome of a call.
@@ -195,17 +207,25 @@ impl ConfigBuilder {
     }
 
     /// Build the configuration.
-    #[must_use]
-    pub fn build(self) -> Config {
-        let gas_limit = self.gas_limit.expect("Required field missing: gas_limit");
+    pub fn build(self) -> Result<Config, ConfigBuilderError> {
+        let gas_limit = self
+            .gas_limit
+            .ok_or(ConfigBuilderError::MissingField("gas_limit".to_owned()))?;
         let memory_limit = self
             .memory_limit
-            .expect("Required field missing: memory_limit");
-        Config {
+            .ok_or(ConfigBuilderError::MissingField("memory_limit".to_owned()))?;
+        Ok(Config {
             gas_limit,
             memory_limit,
-        }
+        })
     }
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ConfigBuilderError {
+    #[error("Could not build config. Missing field: {0}")]
+    MissingField(String),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -237,7 +257,7 @@ pub trait Caller {
     fn bytecode(&self) -> Bytes;
 
     /// Check if an export is present in the module.
-    fn has_export(&self, name: &str) -> bool;
+    fn has_export(&self, name: &str) -> VMResult<bool>;
 
     fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
         let mut vec = vec![0; size];
@@ -251,7 +271,7 @@ pub trait Caller {
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32>;
     /// Returns the amount of gas used.
-    fn gas_consumed(&mut self) -> MeteringPoints;
+    fn gas_consumed(&mut self) -> VMResult<MeteringPoints>;
     /// Set the amount of gas used.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
 }
@@ -266,6 +286,8 @@ pub enum WasmPreparationError {
     Memory(String),
     #[error("Instantiation error: {0}")]
     Instantiation(String),
+    #[error("Internal host error {0}")]
+    Internal(#[from] InternalHostError),
 }
 
 #[derive(Debug)]

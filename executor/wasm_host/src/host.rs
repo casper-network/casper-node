@@ -27,15 +27,17 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
-    bytesrepr::ToBytes,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr, NamedKeyValue,
+    },
+    bytesrepr::{FromBytes, ToBytes},
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
-    AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
-    EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package, PackageHash,
-    ProtocolVersion, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
+    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
+    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
+    PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -179,7 +181,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -199,9 +201,48 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     let value = caller.memory_read(value_ptr, value_size.try_into_wrapped()?)?;
 
     let stored_value = match keyspace {
-        Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
+        Keyspace::State | Keyspace::Context(_) => {
             let cl_value_any = CLValue::from_components(CLType::Any, value);
             StoredValue::CLValue(cl_value_any)
+        }
+        Keyspace::NamedKey(name) => {
+            // NamedKey points to a URef which holds CLValue::Any bytes
+            let maybe_existing_uref = caller
+                .context_mut()
+                .tracking_copy
+                .read(&global_state_key)
+                .map_err(|_| InternalHostError::TrackingCopy)?;
+
+            let uref_to_use: URef =
+                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
+                    if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
+                        existing_uref
+                    } else {
+                        let mut address_generator = caller.context().address_generator.write();
+                        address_generator.new_uref(AccessRights::NONE)
+                    }
+                } else {
+                    let mut address_generator = caller.context().address_generator.write();
+                    address_generator.new_uref(AccessRights::NONE)
+                };
+
+            // Write payload bytes under the URef as CLValue::Any
+            let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
+            metered_write(
+                &mut caller,
+                Key::URef(uref_to_use),
+                StoredValue::CLValue(cl_value_any),
+            )?;
+
+            // Point the named key to the URef
+            let named_key = Key::URef(uref_to_use);
+            let key_name = name.to_string();
+            let Ok(named_key_value) = NamedKeyValue::from_concrete_values(named_key, key_name)
+            else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            StoredValue::NamedKey(named_key_value)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -292,7 +333,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -311,8 +352,19 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
-        Ok(Some(_stored_value)) => {
-            // Produce a prune transform only if value under a given key exists in the global state
+        Ok(Some(_)) => {
+            // If it's a named key pointing to a URef, prune both the named key and the URef.
+            if let Keyspace::NamedKey(_) = keyspace {
+                if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
+                    caller.context_mut().tracking_copy.read(&global_state_key)
+                {
+                    if let Ok(Key::URef(uref)) = named_key_value.get_key() {
+                        caller.context_mut().tracking_copy.prune(Key::URef(uref));
+                    }
+                }
+            }
+
+            // Produce a prune transform for the named key
             caller.context_mut().tracking_copy.prune(global_state_key);
         }
         Ok(None) => {
@@ -411,7 +463,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state read
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
@@ -434,6 +486,30 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                 return Err(InternalHostError::TypeConversion)?;
             };
             Cow::Owned(cl_value.inner_bytes().to_owned())
+        }
+        Ok(Some(StoredValue::NamedKey(named_key_value))) => {
+            // Dereference named key to its URef and return the underlying Any bytes
+            let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    let CLType::Any = cl_value.cl_type() else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
+                    Cow::Owned(cl_value.inner_bytes().to_owned())
+                }
+                Ok(Some(_)) => {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                }
+                Ok(None) => {
+                    return Ok(HOST_ERROR_NOT_FOUND);
+                }
+                Err(_error) => {
+                    return Err(InternalHostError::TrackingCopy.into());
+                }
+            }
         }
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             match entry_point.entry_point_payment() {
@@ -550,10 +626,10 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
         &copy_input_cost,
         [
             u64::from(out_ptr),
-            input
-                .len()
-                .try_into()
-                .expect("usize is at least the same size as u64"),
+            input.len().try_into().map_err(|err| {
+                error!("Failed to convert u64 to usize. Details: {err}");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?,
         ],
     )?;
 
@@ -657,7 +733,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             return Ok(CALLEE_NOT_CALLABLE);
         }
         let seed_bytes = caller.memory_read(seed_ptr, seed_len as usize)?;
-        let seed_bytes: [u8; 32] = seed_bytes.try_into().unwrap(); // SAFETY: We checked for length.
+        let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
+            // SAFETY: We checked for length. This shouldn't happen
+            error!("Error when converting seed_bytes from vec to static array");
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?;
         Some(seed_bytes)
     } else {
         None
@@ -783,7 +863,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         Some(entry_point_name) => {
             // Take the gas spent so far and use it as a limit for the new VM.
             let gas_limit = caller
-                .gas_consumed()
+                .gas_consumed()?
                 .try_into_remaining()
                 .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -903,7 +983,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     )?;
 
     // 1. Look up address in the storage
-    // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
+    // 1a. if it's VM1 contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
     // you can't pass value (tokens) to called contracts. 1b. if it's new contract, wire up
     // another VM as according to the bytecode format. 2. Depends on the VM used (old or new) at
@@ -932,7 +1012,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     // Take the gas spent so far and use it as a limit for the new VM.
     let gas_limit = caller
-        .gas_consumed()
+        .gas_consumed()?
         .try_into_remaining()
         .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -1071,8 +1151,11 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 return Ok(HOST_ERROR_SUCCESS);
             }
             let hash_bytes = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            let hash_bytes: [u8; 32] = hash_bytes.try_into().unwrap(); // SAFETY: We checked for length.
-
+            let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
+                // SAFETY: We checked for length. This shouldn't happen
+                error!("Error when converting hash_bytes from vec to static array");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?;
             let smart_contract_key = Key::SmartContract(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
@@ -1185,9 +1268,11 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let (target_entity_addr, _runtime_footprint) = {
         let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
         debug_assert_eq!(entity_addr.len(), 32);
-
-        // SAFETY: entity_addr is 32 bytes long
-        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
+        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().map_err(|_| {
+            // SAFETY: We checked for length (32 bytes). This shouldn't happen
+            error!("Error when converting entity_addr from vec to account_hash");
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?);
 
         let protocol_version = ProtocolVersion::V2_0_0;
         let (entity_addr, runtime_footprint) = match caller
@@ -1471,7 +1556,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     if let Some(entry_point_name) = entry_point {
         // Take the gas spent so far and use it as a limit for the new VM.
         let gas_limit = caller
-            .gas_consumed()
+            .gas_consumed()?
             .try_into_remaining()
             .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -1827,8 +1912,8 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
 ///
 /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
 /// * `in_size` - size of output pointer
-/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
 /// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
 pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
     in_ptr: u32,
@@ -1841,11 +1926,11 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
 
     // Charge for parameter weights.
-    let generic_hash_host_function = caller.context().config.host_function_costs().generic_hash;
+    let generic_hash_cost = caller.context().config.host_function_costs().generic_hash;
 
     charge_host_function_call(
         &mut caller,
-        &generic_hash_host_function,
+        &generic_hash_cost,
         [
             u64::from(in_ptr),
             u64::from(in_size),
@@ -1860,7 +1945,11 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     let hashed_bytes = match hash_algorithm {
         HashAlgorithm::Blake2b => {
             let mut result = [0; DIGEST_LENGTH];
-            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
+                ExecuteError::InternalHost(InternalHostError::CorruptExecutionState(
+                    "Error when creating instance of Blake2bVar hashing".to_owned(),
+                ))
+            })?;
             hasher.update(in_bytes.as_ref());
             hasher.finalize_variable(&mut result).ok();
             result
@@ -1887,6 +1976,76 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     };
 
     caller.memory_write(out_ptr, &hashed_bytes)?;
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Recovers a Secp256k1 public key from a signed message
+/// and a signature used in the process of signing.
+///
+/// # Arguments
+///
+/// * `message_ptr` - pointer to the signed data
+/// * `message_size` - length of the signed data in bytes
+/// * `signature_ptr` - pointer to byte-encoded signature
+/// * `signature_size` - length of the byte-encoded signature
+/// * `public_key_ptr` - pointer to a buffer of size PublicKey::SECP256K1_LENGTH which will be
+///   populated with the recovered key's bytes representation
+/// * `recovery_id` - an integer value 0, 1, 2, or 3 used to select the correct public key from the
+///   signature:
+///   - Low bit (0/1): was the y-coordinate of the affine point resulting from the fixed-base
+///     multiplication 𝑘×𝑮 odd?
+///   - Hi bit (3/4): did the affine x-coordinate of 𝑘×𝑮 overflow the order of the scalar field,
+///     requiring a reduction when computing r?
+pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    message_ptr: u32,
+    message_size: u32,
+    signature_ptr: u32,
+    signature_size: u32,
+    public_key_ptr: u32,
+    recovery_id: u32,
+) -> VMResult<u32> {
+    let recover_secp256k1_cost = caller
+        .context()
+        .config
+        .host_function_costs()
+        .recover_secp256k1;
+
+    charge_host_function_call(
+        &mut caller,
+        &recover_secp256k1_cost,
+        [
+            u64::from(message_ptr),
+            u64::from(message_size),
+            u64::from(signature_ptr),
+            u64::from(signature_size),
+            u64::from(public_key_ptr),
+            u64::from(recovery_id),
+        ],
+    )?;
+
+    if recovery_id >= 4 {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
+    let message = caller.memory_read(message_ptr, message_size as usize)?;
+    let signature_bytes = caller.memory_read(signature_ptr, signature_size as usize)?;
+    let Ok((signature, _)) = Signature::from_bytes(&signature_bytes) else {
+        return Ok(HOST_ERROR_INVALID_DATA);
+    };
+
+    let Ok(public_key) =
+        casper_types::crypto::recover_secp256k1(message, &signature, recovery_id as u8)
+    else {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    };
+
+    let Ok(key_bytes) = public_key.to_bytes() else {
+        return Ok(HOST_ERROR_PAYLOAD_TOO_LONG);
+    };
+
+    caller.memory_write(public_key_ptr, &key_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }

@@ -5,6 +5,7 @@ use casper_types::{InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
 
+use crate::contract_runtime::EngineStateError;
 use casper_execution_engine::engine_state::{
     Error, InvalidRequest as InvalidWasmV1Request, WasmV1Result,
 };
@@ -452,9 +453,15 @@ impl ExecutionArtifactBuilder {
 
     /// Adds the error message from a `WasmV2Error` to the artifact.
     #[inline]
-    pub(crate) fn with_wasm_v2_error(&mut self, error: WasmV2Error) -> &mut Self {
+    pub(crate) fn with_wasm_v2_error(
+        &mut self,
+        error: WasmV2Error,
+    ) -> Result<&mut Self, EngineStateError> {
+        if error.as_internal_host_error().is_some() {
+            return Err(EngineStateError::Catastrophic(error.to_string()));
+        }
         self.with_error_message(error.to_string());
-        self
+        Ok(self)
     }
 }
 

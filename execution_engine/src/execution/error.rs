@@ -198,6 +198,12 @@ pub enum Error {
     /// Ambiguous entity version and unable to determine entity version key.
     #[error("Ambiguous entity version")]
     AmbiguousEntityVersion,
+    /// Unable to find main purse of entity.
+    #[error("Main purse for entity not found")]
+    MainPurseForEntityNotFound,
+    /// Error when casting types.
+    #[error("Couldn't cast types {0}")]
+    TypeCast(&'static str),
 }
 
 impl From<PreprocessingError> for Error {
