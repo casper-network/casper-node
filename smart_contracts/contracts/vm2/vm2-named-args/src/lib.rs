@@ -5,12 +5,12 @@ use casper_contract_sdk::{prelude::*, serializers::AbiConvention};
 
 #[casper(abi_convention = AbiConvention::Named)]
 pub trait ContractTrait {
-    fn trait_add_with_default_abi_convention(a: u32, b: u32) -> u32 {
-        a + b
+    fn trait_args_with_default_abi_convention(a: u32, b: u32) -> Vec<u32> {
+        vec![a, b]
     }
     #[casper(abi_convention = AbiConvention::Positional)]
-    fn trait_add_with_different_abi_convention(a: u32, b: u32, c: u32) -> u32 {
-        a + b + c
+    fn trait_args_with_different_abi_convention(a: u32, b: u32, c: u32) -> Vec<u32> {
+        vec![a, b, c]
     }
 }
 
@@ -27,8 +27,8 @@ impl Contract {
     pub fn new(value: u32) -> Self {
         Self { value }
     }
-    pub fn add_with_default_abi_convention(a: u32, b: u32) -> u32 {
-        a + b
+    pub fn args_with_default_abi_convention(a: u32, b: u32) -> Vec<u32> {
+        vec![a, b]
     }
 
     pub fn unit_ret_value_with_default_abi_convention() {
@@ -36,8 +36,8 @@ impl Contract {
     }
 
     #[casper(abi_convention = AbiConvention::Positional)]
-    pub fn add_with_overriden_abi_convention(a: u32, b: u32, c: u32) -> u32 {
-        a + b + c
+    pub fn args_with_overriden_abi_convention(a: u32, b: u32, c: u32) -> Vec<u32> {
+        vec![a, b, c]
     }
 }
 
@@ -49,7 +49,7 @@ mod tests {
     use super::*;
     use casper_contract_sdk::{
         casper::native::{self, Environment, NativeTrap},
-        compat::types::{CLType, CLValue, RuntimeArgs},
+        compat::types::{CLTyped, CLValue, RuntimeArgs},
         serializers::{borsh, AbiConfig},
     };
 
@@ -68,7 +68,7 @@ mod tests {
 
         // This should panic with the expected message
         native::dispatch_with(env, || {
-            native::invoke_export_by_name("add_with_default_abi_convention")
+            native::invoke_export_by_name("args_with_default_abi_convention")
         })
         .unwrap_err();
     }
@@ -84,7 +84,7 @@ mod tests {
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
 
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
-            native::invoke_export_by_name("add_with_default_abi_convention")
+            native::invoke_export_by_name("args_with_default_abi_convention")
         })
         .unwrap_err() else {
             panic!("expected ret")
@@ -92,8 +92,8 @@ mod tests {
 
         let ret_clvalue: CLValue =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
-        assert_eq!(ret_clvalue.cl_type(), &CLType::U32);
-        assert_eq!(ret_clvalue.to_t::<u32>().unwrap(), 579);
+        assert_eq!(ret_clvalue.cl_type(), &Vec::<u32>::cl_type());
+        assert_eq!(ret_clvalue.to_t::<Vec<u32>>().unwrap(), vec![123, 456]);
     }
 
     #[test]
@@ -124,15 +124,15 @@ mod tests {
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
 
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
-            native::invoke_export_by_name("add_with_overriden_abi_convention")
+            native::invoke_export_by_name("args_with_overriden_abi_convention")
         })
         .unwrap_err() else {
             panic!("expected ret")
         };
 
-        let ret_value: u32 =
+        let ret_value: Vec<u32> =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
-        assert_eq!(ret_value, 123 + 456 + 789);
+        assert_eq!(ret_value, vec![123, 456, 789]);
     }
 
     #[test]
@@ -145,15 +145,15 @@ mod tests {
 
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
-            native::invoke_export_by_name("ContractTrait_trait_add_with_default_abi_convention")
+            native::invoke_export_by_name("ContractTrait_trait_args_with_default_abi_convention")
         })
         .unwrap_err() else {
             panic!("expected ret")
         };
         let ret_clvalue: CLValue =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
-        assert_eq!(ret_clvalue.cl_type(), &CLType::U32);
-        assert_eq!(ret_clvalue.to_t::<u32>().unwrap(), 579);
+        assert_eq!(ret_clvalue.cl_type(), &<Vec<u32>>::cl_type());
+        assert_eq!(ret_clvalue.to_t::<Vec<u32>>().unwrap(), vec![123, 456]);
     }
 
     #[test]
@@ -164,13 +164,13 @@ mod tests {
 
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
         let NativeTrap::Return(_return_flags, return_bytes) = native::dispatch_with(env, || {
-            native::invoke_export_by_name("ContractTrait_trait_add_with_different_abi_convention")
+            native::invoke_export_by_name("ContractTrait_trait_args_with_different_abi_convention")
         })
         .unwrap_err() else {
             panic!("expected ret")
         };
-        let result: u32 =
+        let result: Vec<u32> =
             borsh::from_slice(&return_bytes).expect("Failed to deserialize return value");
-        assert_eq!(result, 123 + 456 + 789);
+        assert_eq!(result, vec![123, 456, 789]);
     }
 }

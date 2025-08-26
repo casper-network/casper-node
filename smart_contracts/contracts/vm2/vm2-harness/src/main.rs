@@ -8,7 +8,7 @@ extern crate alloc;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, emit_message, emit, Entity},
+    casper::{self, emit, emit_message, Entity},
     casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
     log,
     types::{Address, CallError, NamedKey, PublicKey},
@@ -596,10 +596,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let large_topic_name = "a".repeat(257);
         let large_payload_data = vec![0; 16384];
 
-        assert_eq!(
-            emit(&large_topic_name, &[]),
-            Err(HostResult::TopicTooLong)
-        );
+        assert_eq!(emit(&large_topic_name, &[]), Err(HostResult::TopicTooLong));
         assert_eq!(
             emit(&small_topic_name, &large_payload_data),
             Err(HostResult::PayloadTooLong)

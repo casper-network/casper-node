@@ -224,8 +224,6 @@ pub enum InvalidTransaction {
         /// The expected runtime as specified by the chainspec.
         expected: ContractRuntimeTag,
     },
-    #[allow(deprecated)]
-    #[deprecated]
     /// The transaction is missing a seed field.
     MissingSeed,
     // Pricing mode not implemented yet
@@ -582,7 +580,6 @@ impl StdError for InvalidTransaction {
             InvalidTransaction::ExpectedNamedArguments
             | InvalidTransaction::ExpectedBytesArguments
             | InvalidTransaction::InvalidTransactionRuntime { .. }
-
             | InvalidTransaction::PricingModeNotSupported
             | InvalidTransaction::InvalidPaymentAmount
             | InvalidTransaction::InsufficientBurnAmount { .. }
@@ -596,7 +593,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
 
             #[allow(deprecated)]
-             InvalidTransaction::MissingSeed => None,
+            InvalidTransaction::MissingSeed => None,
         }
     }
 }

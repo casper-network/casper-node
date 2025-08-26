@@ -325,7 +325,6 @@ pub enum ErrorCode {
     #[error("expected bytes arguments")]
     InvalidTransactionExpectedBytesArguments = 101,
     /// Missing seed field in transaction
-    #[deprecated]
     #[error("Missing seed field in transaction")]
     InvalidTransactionMissingSeed = 102,
     /// Pricing mode not supported
