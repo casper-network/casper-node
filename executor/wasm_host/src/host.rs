@@ -193,8 +193,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         KeyspaceTag::RemoveAssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
-    println!("{:?}", keyspace);
-
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
@@ -277,16 +275,12 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             };
 
             if entity.associated_keys().contains_key(&account_hash) {
-                if let Err(_) = entity.update_associated_key(account_hash, weight) {
+                if entity.update_associated_key(account_hash, weight).is_err() {
                     return Ok(HOST_ERROR_INVALID_INPUT);
                 }
-            } else {
-                if let Err(_) = entity.add_associated_key(account_hash, weight) {
-                    return Ok(HOST_ERROR_INVALID_INPUT);
-                }
+            } else if entity.add_associated_key(account_hash, weight).is_err() {
+                return Ok(HOST_ERROR_INVALID_INPUT);
             }
-
-            println!("{:?}", entity);
 
             StoredValue::AddressableEntity(entity)
         }
@@ -389,7 +383,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                     Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
                 };
 
-                if let Err(_) = entity.remove_associated_key(account_hash) {
+                if entity.remove_associated_key(account_hash).is_err() {
                     return Ok(HOST_ERROR_INVALID_INPUT);
                 }
                 caller
