@@ -113,6 +113,12 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
+        Keyspace::AssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
+        }
+        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
+        }
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
@@ -159,6 +165,12 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
+        Keyspace::AssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
+        }
+        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
+        }
     };
     let ret = unsafe {
         casper_contract_sdk_sys::casper_write(
@@ -179,6 +191,12 @@ pub fn remove(key: Keyspace) -> Result<(), CommonResult> {
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
+        Keyspace::AssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
+        }
+        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
+            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
+        }
     };
     let ret = unsafe {
         casper_contract_sdk_sys::casper_remove(key_space, key_bytes.as_ptr(), key_bytes.len())

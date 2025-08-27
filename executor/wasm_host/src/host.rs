@@ -193,6 +193,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         KeyspaceTag::RemoveAssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
+    println!("{:?}", keyspace);
+
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
@@ -283,6 +285,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                     return Ok(HOST_ERROR_INVALID_INPUT);
                 }
             }
+
+            println!("{:?}", entity);
 
             StoredValue::AddressableEntity(entity)
         }
@@ -502,6 +506,8 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             }
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AssociatedKeys => Keyspace::AssociatedKeys(&key_payload_bytes),
+        KeyspaceTag::RemoveAssociatedKeys => Keyspace::RemoveAssociatedKeys(&key_payload_bytes),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -514,6 +520,13 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
     let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
+        Ok(Some(StoredValue::AddressableEntity(entity))) => {
+            let entity_bytes = match entity.to_bytes() {
+                Ok(bytes) => bytes,
+                Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+            };
+            Cow::Owned(entity_bytes)
+        }
         Ok(Some(StoredValue::CLValue(cl_value))) => {
             let CLType::Any = cl_value.cl_type() else {
                 return Err(InternalHostError::TypeConversion)?;

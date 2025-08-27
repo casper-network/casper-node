@@ -37,8 +37,10 @@ use casper_storage::{
     KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, execution::RetValue, BlockHash, Digest, EntityAddr,
-    Key, StoredValue, Timestamp,
+    account::AccountHash,
+    bytesrepr::ToBytes,
+    execution::{RetValue, TransformKindV2},
+    BlockHash, Digest, EntityAddr, Key, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -307,6 +309,85 @@ fn traits() {
         state_root_hash,
         execute_request,
     );
+}
+
+#[test]
+fn assoc_keys() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_target(ExecutionKind::SessionBytes(read_wasm(
+            "vm2_assoc_keys.wasm",
+        )))
+        .with_serialized_input(3u8)
+        .expect("expected serialized input to be correct")
+        .with_shared_address_generator(make_address_generator())
+        .build()
+        .expect("should build");
+
+    let add_assoc_keys_result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    let state_root_hash = global_state
+        .commit_effects(state_root_hash, add_assoc_keys_result.effects().clone())
+        .expect("Should commit");
+
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::AddressableEntity(EntityAddr::Account(DEFAULT_ACCOUNT_HASH.value())),
+        vec![],
+    );
+
+    let query_result = global_state.query(query_request);
+    if let QueryResult::Success { value, .. } = query_result {
+        let entity = value.as_addressable_entity().expect("must get entity");
+        assert!(entity.associated_keys().len() == 2)
+    } else {
+        panic!("Unexpected query result")
+    }
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_target(ExecutionKind::SessionBytes(read_wasm(
+            "vm2_assoc_keys.wasm",
+        )))
+        .with_serialized_input(0u8)
+        .expect("expected serialized input to be correct")
+        .with_shared_address_generator(make_address_generator())
+        .build()
+        .expect("should build");
+
+    let remove_assoc_key = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    let state_root_hash = global_state
+        .commit_effects(state_root_hash, remove_assoc_key.effects().clone())
+        .expect("Should commit");
+
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::AddressableEntity(EntityAddr::Account(DEFAULT_ACCOUNT_HASH.value())),
+        vec![],
+    );
+
+    let query_result = global_state.query(query_request);
+    if let QueryResult::Success { value, .. } = query_result {
+        let entity = value.as_addressable_entity().expect("must get entity");
+        assert!(entity.associated_keys().len() == 1)
+    } else {
+        panic!("Unexpected query result")
+    }
 }
 
 #[test]

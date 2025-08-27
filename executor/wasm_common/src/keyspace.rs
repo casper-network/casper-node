@@ -47,9 +47,8 @@ impl Keyspace<'_> {
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
             Keyspace::PaymentInfo(_) => KeyspaceTag::PaymentInfo,
-            Keyspace::AddAssociatedKeys => KeyspaceTag::AssociatedKeys,
-            Keyspace::UpdateAssociatedKeys => KeyspaceTag::UpdateAssociatedKeys,
-            Keyspace::RemoveAssociatedKeys => KeyspaceTag::RemoveAssociatedKeys,
+            Keyspace::AssociatedKeys(_) => KeyspaceTag::AssociatedKeys,
+            Keyspace::RemoveAssociatedKeys(_) => KeyspaceTag::RemoveAssociatedKeys,
         }
     }
 

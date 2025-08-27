@@ -4,6 +4,7 @@ set -e
 VM2_BINS=(
   "vm2-harness"
   "vm2-cep18-caller"
+  "vm2-assoc-keys"
 )
 
 VM2_LIBS=(
