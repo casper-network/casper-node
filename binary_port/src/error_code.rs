@@ -573,6 +573,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
                 ErrorCode::UnsupportedInvocationTarget
             }
+            InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
             _other => ErrorCode::InvalidTransactionUnspecified,
         }
     }
