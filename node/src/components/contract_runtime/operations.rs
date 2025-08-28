@@ -485,6 +485,7 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
+        artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
         let lane_id = transaction.transaction_lane();
 
         let allow_execution = {
@@ -494,21 +495,14 @@ pub fn execute_finalized_block(
             // amount in the happy path or the penalty amount in the sad path...in whichever case
             // the sad path is handled by is_penalty and the balance in the payment purse is
             // the penalty payment or the full amount but is 'sufficient' either way
-            let cost = artifact_builder.cost_to_use();
+            let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let is_sufficient_balance =
-                is_custom_payment || post_payment_balance_result.is_sufficient(cost);
+                is_custom_payment || post_payment_balance_result.is_sufficient(actual_cost);
             let is_allowed_by_chainspec = chainspec.is_supported(lane_id);
             let allow = is_not_penalized && is_sufficient_balance && is_allowed_by_chainspec;
             if !allow {
                 let err_msg = {
                     if !is_sufficient_balance {
-                        if let Some(available) = post_payment_balance_result.available_balance() {
-                            // they can't afford it so take available
-                            let available = *available;
-                            if available < cost {
-                                artifact_builder.with_cost(available);
-                            }
-                        }
                         "Insufficient funds".to_string()
                     } else {
                         format!(
@@ -741,10 +735,12 @@ pub fn execute_finalized_block(
         let refund_amount = {
             let consumed =
                 if balance_identifier.is_penalty() || artifact_builder.error_message().is_some() {
-                    artifact_builder.limit() // no refund for penalty
+                    artifact_builder.cost_to_use() // no refund for penalty
                 } else {
                     artifact_builder.consumed()
                 };
+
+            let available = artifact_builder.available().unwrap_or(U512::zero());
 
             let refund_mode = match refund_handling {
                 RefundHandling::NoRefund => {
@@ -771,6 +767,7 @@ pub fn execute_finalized_block(
                     consumed,
                     source: Box::new(balance_identifier.clone()),
                     ratio: refund_ratio,
+                    available,
                 }),
                 RefundHandling::Refund { refund_ratio } => {
                     let source = Box::new(balance_identifier.clone());
@@ -787,7 +784,6 @@ pub fn execute_finalized_block(
                         // purposes of refund. instead, `BalanceIdentifier::Refund` is used by outer
                         // logic, which is interpreted by inner logic to use the currently set
                         // refund purse.
-                        let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
                             limit: artifact_builder.limit(),
@@ -796,7 +792,8 @@ pub fn execute_finalized_block(
                             cost: artifact_builder.cost_to_use(),
                             ratio: refund_ratio,
                             source,
-                            target,
+                            target: Box::new(BalanceIdentifier::Refund),
+                            available,
                         })
                     } else {
                         // in normal payment handling we put a temporary processing hold
@@ -808,15 +805,14 @@ pub fn execute_finalized_block(
                         // the churn of taking the token up front via transfer (which writes
                         // multiple permanent records) and then transfer some of it back (which
                         // writes more permanent records).
-                        let calculated_refund_amount = HandleRefundMode::CalculateAmount {
+                        Some(HandleRefundMode::CalculateAmount {
                             limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
                             cost: artifact_builder.cost_to_use(),
                             ratio: refund_ratio,
-                            source,
-                        };
-                        Some(calculated_refund_amount)
+                            available,
+                        })
                     }
                 }
             };
@@ -843,16 +839,22 @@ pub fn execute_finalized_block(
             }
         };
         artifact_builder.with_refund_amount(refund_amount);
+
+        // take the lower of the difference between cost - refund OR available
+        let fee_amount = artifact_builder
+            .cost_to_use()
+            .saturating_sub(refund_amount)
+            .min(artifact_builder.available().unwrap_or(U512::zero()));
+
         // handle fees per the chainspec determined setting.
         let handle_fee_result = match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a gas hold is placed on the payer's purse.
-                let amount = artifact_builder.cost_to_use().saturating_sub(refund_amount);
                 let hold_request = BalanceHoldRequest::new_gas_hold(
                     state_root_hash,
                     protocol_version,
                     balance_identifier,
-                    amount,
+                    fee_amount,
                     insufficient_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
@@ -866,25 +868,23 @@ pub fn execute_finalized_block(
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandleFeeMode::credit(proposer.clone(), amount, era_id),
+                    HandleFeeMode::credit(proposer.clone(), fee_amount, era_id),
                 );
                 scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Burn => {
                 // in this mode, the fee portion is burned.
-                let amount = artifact_builder.cost_to_use().saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandleFeeMode::burn(balance_identifier, Some(amount)),
+                    HandleFeeMode::burn(balance_identifier, Some(fee_amount)),
                 );
                 scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::PayToProposer => {
                 // in this mode, the consumed gas is paid as a fee to the block proposer
-                let amount = artifact_builder.cost_to_use().saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
@@ -894,7 +894,7 @@ pub fn execute_finalized_block(
                         Box::new(initiator_addr.clone()),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
-                        amount,
+                        fee_amount,
                     ),
                 );
                 scratch_state.handle_fee(handle_fee_request)
@@ -902,7 +902,6 @@ pub fn execute_finalized_block(
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse
                 // for later distribution
-                let amount = artifact_builder.cost_to_use().saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
@@ -912,7 +911,7 @@ pub fn execute_finalized_block(
                         Box::new(initiator_addr.clone()),
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
-                        amount,
+                        fee_amount,
                     ),
                 );
                 scratch_state.handle_fee(handle_fee_request)

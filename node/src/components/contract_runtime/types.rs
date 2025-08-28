@@ -82,6 +82,7 @@ pub(crate) struct ExecutionArtifactBuilder {
     refund: U512,
     size_estimate: u64,
     min_cost: U512,
+    available: Option<U512>,
 }
 
 impl ExecutionArtifactBuilder {
@@ -107,6 +108,7 @@ impl ExecutionArtifactBuilder {
             refund: U512::zero(),
             size_estimate: transaction.size_estimate() as u64,
             min_cost,
+            available: None,
         }
     }
 
@@ -130,6 +132,7 @@ impl ExecutionArtifactBuilder {
             refund: U512::zero(),
             size_estimate: transaction.size_estimate() as u64,
             min_cost: U512::zero(),
+            available: None,
         }
     }
 
@@ -149,14 +152,36 @@ impl ExecutionArtifactBuilder {
         self.consumed.value()
     }
 
+    pub fn available(&self) -> Option<U512> {
+        self.available
+    }
+
+    pub fn actual_cost(&self) -> U512 {
+        self.cost
+    }
+
     pub fn cost_to_use(&self) -> U512 {
         // to prevent do-nothing exhaustion and other 0 cost scenarios,
         // we raise cost to min_cost if less than that
-        let cost = self.cost;
-        if cost < self.min_cost {
-            self.min_cost
-        } else {
-            cost
+
+        let cost = {
+            let cost = self.cost;
+            if cost < self.min_cost {
+                self.min_cost
+            } else {
+                cost
+            }
+        };
+
+        match self.available {
+            Some(available) => {
+                if available < self.cost {
+                    available
+                } else {
+                    cost
+                }
+            }
+            None => cost,
         }
     }
 
@@ -352,11 +377,6 @@ impl ExecutionArtifactBuilder {
         Ok(self)
     }
 
-    pub fn with_cost(&mut self, new_cost: U512) -> &mut Self {
-        self.cost = new_cost;
-        self
-    }
-
     pub fn with_refund_amount(&mut self, refund: U512) -> &mut Self {
         self.refund = refund;
         self
@@ -437,6 +457,11 @@ impl ExecutionArtifactBuilder {
     #[allow(unused)]
     pub fn with_initiator_addr(&mut self, initiator_addr: InitiatorAddr) -> &mut Self {
         self.initiator = initiator_addr;
+        self
+    }
+
+    pub fn with_available(&mut self, available: Option<U512>) -> &mut Self {
+        self.available = available;
         self
     }
 
