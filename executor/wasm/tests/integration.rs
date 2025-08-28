@@ -1008,6 +1008,7 @@ fn supports_named_args_convention() {
             entry_point: "deposit_tokens".to_string(),
         })
         .with_serialized_input(())
+        .unwrap()
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(1234567890.into())
