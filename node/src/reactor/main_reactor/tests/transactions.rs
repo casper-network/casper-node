@@ -4537,15 +4537,11 @@ async fn should_charge_for_marginal_insufficient_funds_deploy_payment_limited_re
     assert_eq!(result.cost, expected_cost);
 }
 
-#[tokio::test]
-async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_refund_fee() {
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_pricing_handling(PricingHandling::PaymentLimited)
-        .with_refund_handling(RefundHandling::Refund {
-            refund_ratio: Ratio::new(75, 100),
-        })
-        .with_fee_handling(FeeHandling::PayToProposer);
-
+async fn make_new_account_and_exec_wasm(
+    config: ConfigsOverride,
+    initial_balance: u64,
+    wasm_payment_amount: u64,
+) -> Result<ExecutionResult, String> {
     let mut test = SingleTransactionTestCase::new(
         ALICE_SECRET_KEY.clone(),
         BOB_SECRET_KEY.clone(),
@@ -4559,57 +4555,122 @@ async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_ref
         .await;
 
     // fund a new account
-
     let dan_secret_key =
         Arc::new(SecretKey::ed25519_from_bytes([0xDD; SecretKey::ED25519_LENGTH]).unwrap());
     let dan_public_key = PublicKey::from(&*dan_secret_key.clone());
     let _dan_account_hash = dan_public_key.to_account_hash();
 
     let transfer_payment_amount = 100_000_000u64;
-    let dan_base_amount = 10_000_000_000u64;
     let txn = transfer_txn(
         ALICE_SECRET_KEY.clone(),
         &dan_public_key,
         PricingMode::PaymentLimited {
             payment_amount: transfer_payment_amount,
-            gas_price_tolerance: 1,
+            gas_price_tolerance: 3,
             standard_payment: true,
         },
-        dan_base_amount,
+        initial_balance,
     );
 
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     let ExecutionResult::V2(result) = exec_result else {
-        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+        return Err(format!(
+            "Expected ExecutionResult::V2 but got {:?}",
+            exec_result
+        ));
     };
 
     assert!(!result.effects.is_empty(), "should have effects");
     assert!(
         result.error_message.is_none(),
-        "transfer to dan should not have error msg"
+        "transfer to create new account should not have error msg"
     );
 
-    // pay more than available with the new account
-    let payment_amount = dan_base_amount.saturating_add(100);
     let txn = valid_wasm_txn(
         dan_secret_key.clone(),
         PricingMode::PaymentLimited {
-            payment_amount,
-            gas_price_tolerance: 1,
+            payment_amount: wasm_payment_amount,
+            gas_price_tolerance: 3,
             standard_payment: true,
         },
     );
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
-    let ExecutionResult::V2(result) = exec_result else {
-        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
-    };
 
-    assert!(!result.effects.is_empty(), "should have effects");
-    let expected_cost: U512 = dan_base_amount.into();
+    Ok(exec_result)
+}
 
-    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
-    assert_eq!(result.cost, expected_cost, "cost should be expected val");
-    assert_eq!(result.refund, U512::zero(), "refund should be 0");
+#[tokio::test]
+async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_refund_fee() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let dan_base_amount = 10_000_000_000u64;
+    // pay more than available with the new account
+    let wasm_payment_amount = dan_base_amount.saturating_add(100);
+    match make_new_account_and_exec_wasm(config, dan_base_amount, wasm_payment_amount).await {
+        Ok(exec_result) => {
+            let ExecutionResult::V2(exec_result) = exec_result else {
+                panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+            };
+            assert!(!exec_result.effects.is_empty(), "should have effects");
+            let expected_cost: U512 = dan_base_amount.into();
+
+            assert_eq!(
+                exec_result.error_message.as_deref(),
+                Some("Insufficient funds")
+            );
+            assert_eq!(
+                exec_result.cost, expected_cost,
+                "cost should be expected val"
+            );
+            assert_eq!(exec_result.refund, U512::zero(), "refund should be 0");
+        }
+        Err(err_str) => {
+            panic!("{}", err_str)
+        }
+    }
+}
+
+#[tokio::test]
+async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_refund_fee_price_2() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_min_gas_price(2)
+        .with_max_gas_price(3);
+
+    let dan_base_amount = 10_000_000_000u64;
+    // pay more than available with the new account
+    let wasm_payment_amount = dan_base_amount.saturating_add(100);
+    match make_new_account_and_exec_wasm(config, dan_base_amount, wasm_payment_amount).await {
+        Ok(exec_result) => {
+            let ExecutionResult::V2(exec_result) = exec_result else {
+                panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+            };
+            assert!(!exec_result.effects.is_empty(), "should have effects");
+            let expected_cost: U512 = dan_base_amount.into();
+
+            assert_eq!(
+                exec_result.error_message.as_deref(),
+                Some("Insufficient funds")
+            );
+            assert_eq!(
+                exec_result.cost, expected_cost,
+                "cost should be expected val"
+            );
+            assert_eq!(exec_result.refund, U512::zero(), "refund should be 0");
+        }
+        Err(err_str) => {
+            panic!("{}", err_str)
+        }
+    }
 }
 
 #[tokio::test]

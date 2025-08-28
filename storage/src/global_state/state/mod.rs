@@ -1411,21 +1411,12 @@ pub trait StateProvider: Send + Sync + Sized {
                 gas_price,
                 consumed,
                 ratio,
-                source,
+                available,
             } => {
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
-                };
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => Some(refund),
                     Err(hpe) => {
@@ -1445,6 +1436,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 ratio,
                 source,
                 target,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1453,12 +1445,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1493,20 +1480,35 @@ pub trait StateProvider: Send + Sync + Sized {
                 cost,
                 gas_price,
             } => {
-                let source = BalanceIdentifier::Payment;
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
+                let balance_result = self.balance(BalanceRequest::new(
+                    state_hash,
+                    protocol_version,
+                    BalanceIdentifier::Payment,
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
+                ));
+                let available_balance = match balance_result {
+                    BalanceResult::RootNotFound => {
+                        return HandleRefundResult::RootNotFound;
+                    }
+                    BalanceResult::Failure(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                    BalanceResult::Success {
+                        available_balance, ..
+                    } => available_balance,
                 };
+
                 let consumed = U512::zero();
                 let ratio = Ratio::new_raw(U512::one(), U512::one());
+
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
                     limit,
                     gas_price,
                     cost,
                     consumed,
-                    source_purse,
                     ratio,
+                    available_balance,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1515,8 +1517,15 @@ pub trait StateProvider: Send + Sync + Sized {
                         ));
                     }
                 };
-                let target = BalanceIdentifier::Refund;
-                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                let source_purse = match BalanceIdentifier::Payment
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let target_purse = match BalanceIdentifier::Refund
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
                     Ok(value) => value,
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
@@ -1542,6 +1551,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 consumed,
                 source,
                 ratio,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1550,12 +1560,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let burn_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((amount, _)) => Some(amount),
                     Err(hpe) => {
