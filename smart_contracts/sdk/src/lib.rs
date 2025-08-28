@@ -12,7 +12,7 @@ pub mod serializers;
 pub use linkme;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub mod abi_generator;
+pub mod abi_collector;
 pub mod casper;
 pub mod collections;
 pub mod contrib;

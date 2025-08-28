@@ -702,7 +702,7 @@ pub fn yet_another_exported_function(arg1: u64, arg2: String) {
 
 #[cfg(test)]
 mod tests {
-    use casper::native::{dispatch_with, EntryPointKind, Environment, ENTRY_POINTS};
+    use casper::native::{dispatch_with, Environment};
     use casper_contract_sdk::casper::native::{self, dispatch};
     use contracts::harness::{Harness, INITIAL_GREETING};
 
@@ -721,13 +721,6 @@ mod tests {
             native::invoke_export_by_name("yet_another_exported_function");
         })
         .unwrap();
-    }
-
-    #[test]
-    fn exports() {
-        assert!(ENTRY_POINTS
-            .iter()
-            .any(|export| export.kind == EntryPointKind::Function { name: "call" }));
     }
 
     #[test]

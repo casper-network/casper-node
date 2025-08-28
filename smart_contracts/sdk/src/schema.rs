@@ -81,25 +81,3 @@ pub struct Schema {
     pub messages: Vec<SchemaMessage>,
     pub named_keys: Vec<SchemaStableKey>,
 }
-
-#[derive(Debug)]
-pub struct EntryPoint<'a, F: Fn()> {
-    pub name: &'a str,
-    pub params: &'a [&'a str],
-    pub func: F,
-}
-
-#[cfg(not(target_family = "wasm"))]
-use std::{cell::RefCell, collections::BTreeMap};
-
-#[cfg(not(target_family = "wasm"))]
-thread_local! {
-    pub static DISPATCHER: RefCell<BTreeMap<String, extern "C" fn()>> = RefCell::default();
-}
-
-// #[cfg(not(target_family = "wasm"))]
-// #[no_mangle]
-// pub unsafe fn register_func(name: &str, f: extern "C" fn() -> ()) {
-//     println!("registering function {}", name);
-//     DISPATCHER.with(|foo| foo.borrow_mut().insert(name.to_string(), f));
-// }

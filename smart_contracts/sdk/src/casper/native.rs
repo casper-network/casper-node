@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::linkme::distributed_slice;
+use crate::{abi_collector::ABI_ITEMS, linkme::distributed_slice};
 use bytes::Bytes;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
@@ -25,113 +25,26 @@ use rand::Rng;
 use super::Entity;
 use crate::types::Address;
 
-/// The kind of export that is being registered.
-///
-/// This is used to identify the type of export and its name.
-///
-/// Depending on the location of given function it may be registered as a:
-///
-/// * `SmartContract` (if it's part of a `impl Contract` block),
-/// * `TraitImpl` (if it's part of a `impl Trait for Contract` block),
-/// * `Function` (if it's a standalone function).
-///
-/// This is used to dispatch exports under native code i.e. you want to write a test that calls
-/// "foobar" regardless of location.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EntryPointKind {
-    /// Smart contract.
-    ///
-    /// This is used to identify the smart contract and its name.
-    ///
-    /// The `struct_name` is the name of the smart contract that is being registered.
-    /// The `name` is the name of the function that is being registered.
-    SmartContract {
-        struct_name: &'static str,
-        name: &'static str,
-    },
-    /// Trait implementation.
-    ///
-    /// This is used to identify the trait implementation and its name.
-    ///
-    /// The `trait_name` is the name of the trait that is being implemented.
-    /// The `impl_name` is the name of the implementation.
-    /// The `name` is the name of the function that is being implemented.
-    TraitImpl {
-        trait_name: &'static str,
-        impl_name: &'static str,
-        name: &'static str,
-    },
-    /// Function export.
-    ///
-    /// This is used to identify the function export and its name.
-    ///
-    /// The `name` is the name of the function that is being exported.
-    Function { name: &'static str },
-}
-
-impl EntryPointKind {
-    pub fn name(&self) -> &'static str {
-        match self {
-            EntryPointKind::SmartContract { name, .. }
-            | EntryPointKind::TraitImpl { name, .. }
-            | EntryPointKind::Function { name } => name,
-        }
-    }
-}
-
-/// Export is a structure that contains information about the exported function.
-///
-/// This is used to register the export and its name and physical location in the smart contract
-/// source code.
-pub struct EntryPoint {
-    /// The kind of entry point that is being registered.
-    pub kind: EntryPointKind,
-    pub fptr: fn() -> (),
-    pub module_path: &'static str,
-    pub file: &'static str,
-    pub line: u32,
-}
-
-#[distributed_slice]
-#[linkme(crate = crate::linkme)]
-pub static ENTRY_POINTS: [EntryPoint];
-
-impl fmt::Debug for EntryPoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            fptr: _,
-            module_path,
-            file,
-            line,
-        } = self;
-
-        f.debug_struct("Export")
-            .field("kind", kind)
-            .field("fptr", &"<fptr>")
-            .field("module_path", module_path)
-            .field("file", file)
-            .field("line", line)
-            .finish()
-    }
-}
-
-/// Invokes an export by its name.
+/// Invokes an export by its exported name.
 ///
 /// This function is used to invoke an export by its name regardless of its location in the smart
 /// contract.
-pub fn invoke_export_by_name(name: &str) {
-    let all_entry_points = ENTRY_POINTS.iter().collect::<Vec<_>>();
+#[track_caller]
+pub fn invoke_export_by_name(export_name: &str) {
+    let all_entry_points: Vec<_> = ABI_ITEMS
+        .iter()
+        .filter_map(|abi_item| abi_item.as_abi_entry_point())
+        .collect();
 
     let exports_by_name: Vec<_> = all_entry_points
         .iter()
-        .filter(|export| export.kind.name() == name)
+        .filter(|entry_point| entry_point.export_name == export_name)
         .collect();
 
     if exports_by_name.len() != 1 {
         panic!(
             "Expected exactly one export {} found, but got {:?} ({:?})",
-            name, exports_by_name, all_entry_points
+            export_name, exports_by_name, all_entry_points
         );
     }
 
@@ -422,88 +335,89 @@ impl Environment {
         seed_size: usize,
         result_ptr: *mut casper_contract_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
-        // let manifest =
-        //     NonNull::new(manifest_ptr as *mut casper_contract_sdk_sys::Manifest).expect("Manifest
-        // instance");
-        let code = if code_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(code_ptr, code_size) })
-        };
+        // // let manifest =
+        // //     NonNull::new(manifest_ptr as *mut
+        // casper_contract_sdk_sys::Manifest).expect("Manifest // instance");
+        // let code = if code_ptr.is_null() {
+        //     None
+        // } else {
+        //     Some(unsafe { slice::from_raw_parts(code_ptr, code_size) })
+        // };
 
-        if code.is_some() {
-            panic!("Supplying code is not supported yet in native mode");
-        }
+        // if code.is_some() {
+        //     panic!("Supplying code is not supported yet in native mode");
+        // }
 
-        let constructor = if constructor_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(constructor_ptr, constructor_size) })
-        };
+        // let constructor = if constructor_ptr.is_null() {
+        //     None
+        // } else {
+        //     Some(unsafe { slice::from_raw_parts(constructor_ptr, constructor_size) })
+        // };
 
-        let input_data = if input_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
-        };
+        // let input_data = if input_ptr.is_null() {
+        //     None
+        // } else {
+        //     Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
+        // };
 
-        let _seed = if seed_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(seed_ptr, seed_size) })
-        };
+        // let _seed = if seed_ptr.is_null() {
+        //     None
+        // } else {
+        //     Some(unsafe { slice::from_raw_parts(seed_ptr, seed_size) })
+        // };
 
-        assert_eq!(
-            transferred_value, 0,
-            "Creating new contracts with transferred value is not supported in native mode"
-        );
+        // assert_eq!(
+        //     transferred_value, 0,
+        //     "Creating new contracts with transferred value is not supported in native mode"
+        // );
 
-        let mut rng = rand::thread_rng();
-        let contract_address = rng.gen();
-        let package_address = rng.gen();
+        // let mut rng = rand::thread_rng();
+        // let contract_address = rng.gen();
+        // let package_address = rng.gen();
 
-        let mut result = NonNull::new(result_ptr).expect("Valid pointer");
-        unsafe {
-            result.as_mut().contract_address = package_address;
-        }
+        // let mut result = NonNull::new(result_ptr).expect("Valid pointer");
+        // unsafe {
+        //     result.as_mut().contract_address = package_address;
+        // }
 
-        let mut contracts = self.contracts.write().unwrap();
-        contracts.insert(contract_address);
+        // let mut contracts = self.contracts.write().unwrap();
+        // contracts.insert(contract_address);
 
-        if let Some(entry_point) = constructor {
-            let entry_point = ENTRY_POINTS
-                .iter()
-                .find(|export| export.kind.name().as_bytes() == entry_point)
-                .expect("Entry point exists");
+        // if let Some(entry_point) = constructor {
+        //     let entry_point = ENTRY_POINTS
+        //         .iter()
+        //         .find(|export| export.kind.name().as_bytes() == entry_point)
+        //         .expect("Entry point exists");
 
-            let mut stub = with_current_environment(|stub| stub);
-            stub.input_data = input_data.map(Bytes::copy_from_slice);
+        //     let mut stub = with_current_environment(|stub| stub);
+        //     stub.input_data = input_data.map(Bytes::copy_from_slice);
 
-            stub.caller = stub.callee;
-            stub.callee = Entity::Contract(package_address);
+        //     stub.caller = stub.callee;
+        //     stub.callee = Entity::Contract(package_address);
 
-            // stub.callee
-            // Call constructor, expect a trap
-            let result = dispatch_with(stub, || {
-                // TODO: Handle panic inside constructor
-                (entry_point.fptr)();
-            });
+        //     // stub.callee
+        //     // Call constructor, expect a trap
+        //     let result = dispatch_with(stub, || {
+        //         // TODO: Handle panic inside constructor
+        //         (entry_point.fptr)();
+        //     });
 
-            match result {
-                Ok(()) => {}
-                Err(NativeTrap::Return(flags, bytes)) => {
-                    if flags.contains(ReturnFlags::REVERT) {
-                        todo!("Constructor returned with a revert flag");
-                    }
-                    assert!(bytes.is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
-                }
-                Err(NativeTrap::Panic(_panic)) => {
-                    todo!();
-                }
-            }
-        }
+        //     match result {
+        //         Ok(()) => {}
+        //         Err(NativeTrap::Return(flags, bytes)) => {
+        //             if flags.contains(ReturnFlags::REVERT) {
+        //                 todo!("Constructor returned with a revert flag");
+        //             }
+        //             assert!(bytes.is_empty(), "When returning from the constructor it is expected
+        // that no bytes are passed in a return function");         }
+        //         Err(NativeTrap::Panic(_panic)) => {
+        //             todo!();
+        //         }
+        //     }
+        // }
 
-        Ok(HOST_ERROR_SUCCESS)
+        // Ok(HOST_ERROR_SUCCESS)
+        todo!()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -520,68 +434,69 @@ impl Environment {
                                                                          * data */
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
-        let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
-        let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
-        let entry_point = {
-            let entry_point_ptr = NonNull::new(entry_point_ptr.cast_mut()).expect("Valid pointer");
-            let entry_point =
-                unsafe { slice::from_raw_parts(entry_point_ptr.as_ptr(), entry_point_size) };
-            let entry_point = std::str::from_utf8(entry_point).expect("Valid UTF-8 string");
-            entry_point.to_string()
-        };
+        todo!()
+        // let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
+        // let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
+        // let entry_point = {
+        //     let entry_point_ptr = NonNull::new(entry_point_ptr.cast_mut()).expect("Valid
+        // pointer");     let entry_point =
+        //         unsafe { slice::from_raw_parts(entry_point_ptr.as_ptr(), entry_point_size) };
+        //     let entry_point = std::str::from_utf8(entry_point).expect("Valid UTF-8 string");
+        //     entry_point.to_string()
+        // };
 
-        assert_eq!(
-            transferred_value, 0,
-            "Transferred value is not supported in native mode"
-        );
+        // assert_eq!(
+        //     transferred_value, 0,
+        //     "Transferred value is not supported in native mode"
+        // );
 
-        let export = ENTRY_POINTS
-            .iter()
-            .find(|export|
-                matches!(export.kind, EntryPointKind::SmartContract { name, .. } | EntryPointKind::TraitImpl { name, .. }
-                    if name == entry_point)
-            )
-            .expect("Existing entry point");
+        // let export = ENTRY_POINTS
+        //     .iter()
+        //     .find(|export|
+        //         matches!(export.kind, EntryPointKind::SmartContract { name, .. } |
+        // EntryPointKind::TraitImpl { name, .. }             if name == entry_point)
+        //     )
+        //     .expect("Existing entry point");
 
-        let mut new_stub = with_current_environment(|stub| stub.clone());
-        new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
-        new_stub.caller = new_stub.callee;
-        new_stub.callee = Entity::Contract(address.try_into().expect("Size to match"));
+        // let mut new_stub = with_current_environment(|stub| stub.clone());
+        // new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
+        // new_stub.caller = new_stub.callee;
+        // new_stub.callee = Entity::Contract(address.try_into().expect("Size to match"));
 
-        let ret = dispatch_with(new_stub, || {
-            // We need to convert any panic inside the entry point into a native trap. This probably
-            // should be done in a more configurable way.
-            dispatch_export_call(|| {
-                (export.fptr)();
-            })
-        });
+        // let ret = dispatch_with(new_stub, || {
+        //     // We need to convert any panic inside the entry point into a native trap. This
+        // probably     // should be done in a more configurable way.
+        //     dispatch_export_call(|| {
+        //         (export.fptr)();
+        //     })
+        // });
 
-        let unfolded = match ret {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) | Err(error) => Err(error),
-        };
+        // let unfolded = match ret {
+        //     Ok(Ok(())) => Ok(()),
+        //     Ok(Err(error)) | Err(error) => Err(error),
+        // };
 
-        match unfolded {
-            Ok(()) => Ok(CALLEE_SUCCEEDED),
-            Err(NativeTrap::Return(flags, bytes)) => {
-                let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx.cast_mut()));
-                if let Some(output_ptr) = ptr {
-                    unsafe {
-                        ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr.as_ptr(), bytes.len());
-                    }
-                }
+        // match unfolded {
+        //     Ok(()) => Ok(CALLEE_SUCCEEDED),
+        //     Err(NativeTrap::Return(flags, bytes)) => {
+        //         let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx.cast_mut()));
+        //         if let Some(output_ptr) = ptr {
+        //             unsafe {
+        //                 ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr.as_ptr(),
+        // bytes.len());             }
+        //         }
 
-                if flags.contains(ReturnFlags::REVERT) {
-                    Ok(CALLEE_REVERTED)
-                } else {
-                    Ok(CALLEE_SUCCEEDED)
-                }
-            }
-            Err(NativeTrap::Panic(panic)) => {
-                eprintln!("Panic {panic:?}");
-                Ok(CALLEE_TRAPPED)
-            }
-        }
+        //         if flags.contains(ReturnFlags::REVERT) {
+        //             Ok(CALLEE_REVERTED)
+        //         } else {
+        //             Ok(CALLEE_SUCCEEDED)
+        //         }
+        //     }
+        //     Err(NativeTrap::Panic(panic)) => {
+        //         eprintln!("Panic {panic:?}");
+        //         Ok(CALLEE_TRAPPED)
+        //     }
+        // }
     }
 
     #[doc = r"Obtain data from the blockchain environemnt of current wasm invocation.

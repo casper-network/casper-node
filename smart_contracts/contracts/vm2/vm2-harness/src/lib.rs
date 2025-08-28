@@ -13,7 +13,7 @@ pub const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
 #[cfg(test)]
 mod tests {
 
-    use casper_contract_sdk::casper::native::{self, dispatch, EntryPointKind};
+    use casper_contract_sdk::casper::native::{self, dispatch};
 
     use crate::contracts::harness::{Harness, HarnessRef, INITIAL_GREETING};
 
@@ -23,19 +23,6 @@ mod tests {
             native::invoke_export_by_name("call");
         })
         .unwrap();
-    }
-
-    #[test]
-    fn exports() {
-        let exports = native::ENTRY_POINTS
-            .into_iter()
-            .filter_map(|e| match e.kind {
-                EntryPointKind::SmartContract { .. } => None,
-                EntryPointKind::TraitImpl { .. } => None,
-                EntryPointKind::Function { name } => Some(name),
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(exports, vec!["call"]);
     }
 
     #[test]

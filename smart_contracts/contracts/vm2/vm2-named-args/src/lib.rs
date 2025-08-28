@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn foobar() {
-        let abi_items = casper_contract_sdk::abi_generator::ABI_ITEMS
+        let abi_items = casper_contract_sdk::abi_collector::ABI_ITEMS
             .iter()
             .collect::<Vec<_>>();
 
@@ -198,26 +198,26 @@ mod tests {
         let e1 = abi_items
             .iter()
             .filter_map(|item| item.as_abi_entry_point())
-            .find(|e| e.name == "add_with_overriden_abi_convention")
+            .find(|e| e.name == "args_with_overriden_abi_convention")
             .expect("Expected entry point");
         assert_eq!(e1.abi_convention, AbiConvention::Positional);
-        assert_eq!(e1.result_decl.type_name, "u32");
-        assert_eq!(e1.result_decl.cl_type(), CLType::U32);
+        assert_eq!(e1.result_decl.type_name, "Vec < u32 >");
+        assert_eq!(e1.result_decl.cl_type(), Vec::<u32>::cl_type());
         assert_eq!(e1.params.len(), 3);
         assert_eq!(e1.params[0].name, "a");
         assert_eq!(e1.params[0].decl.type_name, "u32");
-        assert_eq!(e1.params[0].decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params[0].decl.cl_type(), u32::cl_type());
         assert_eq!(e1.params[1].name, "b");
         assert_eq!(e1.params[1].decl.type_name, "u32");
-        assert_eq!(e1.params[1].decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params[1].decl.cl_type(), u32::cl_type());
         assert_eq!(e1.params[2].name, "c");
         assert_eq!(e1.params[2].decl.type_name, "u32");
-        assert_eq!(e1.params[2].decl.cl_type(), CLType::U32);
+        assert_eq!(e1.params[2].decl.cl_type(), u32::cl_type());
 
         let e2 = abi_items
             .iter()
             .filter_map(|item| item.as_abi_entry_point())
-            .find(|e| e.name == "add_with_default_abi_convention")
+            .find(|e| e.export_name == "args_with_default_abi_convention")
             .expect("Expected entry point");
         assert_eq!(e2.abi_convention, AbiConvention::Named);
     }

@@ -213,7 +213,7 @@ impl Harness {
         self.greeting = greeting;
     }
 
-    pub fn emit_unreachable_trap(&mut self) -> ! {
+    pub fn emit_unreachable_trap(&mut self) {
         self.counter += 1;
         panic!("unreachable");
     }
@@ -238,7 +238,7 @@ impl Harness {
         Err(CustomError::Bar)
     }
 
-    pub fn emit_revert_without_data(&mut self) -> ! {
+    pub fn emit_revert_without_data(&mut self) {
         self.counter += 1;
         revert!()
     }
