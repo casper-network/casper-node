@@ -72,6 +72,12 @@ pub enum CustomError {
     Deposit(CallError),
 }
 
+#[derive(Debug, PartialEq)]
+#[casper]
+pub struct PublicStructUsedOnlyByPrivateEntrypoint {
+    pub value: u64,
+}
+
 impl Default for Harness {
     fn default() -> Self {
         Self {
@@ -448,5 +454,10 @@ impl Harness {
         _arg23: u64,
     ) {
         log!("Nothing");
+    }
+
+    #[casper(private)]
+    pub fn private_only_uses_public_struct(&self, _arg: PublicStructUsedOnlyByPrivateEntrypoint) {
+        log!("This function should be private and its arg type should not appear in schema");
     }
 }
