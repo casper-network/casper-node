@@ -710,7 +710,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         definitions.populate_one::<()>();
                     });
 
-                    quote! { <() as casper_contract_sdk::abi::CasperABI>::declaration() }
+                    quote! { None }
                 }
                 syn::ReturnType::Type(_, ty) => match ty.as_ref() {
                     Type::Never(_) => {
@@ -718,14 +718,14 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             definitions.populate_one::<()>();
                         });
 
-                        quote! { <() as casper_contract_sdk::abi::CasperABI>::declaration() }
+                        quote! { None }
                     }
                     _ => {
                         populate_definitions.push(quote! {
                             definitions.populate_one::<#ty>();
                         });
 
-                        quote! { <#ty as casper_contract_sdk::abi::CasperABI>::declaration() }
+                        quote! { Some(<#ty as casper_contract_sdk::abi::CasperABI>::declaration()) }
                     }
                 },
             };
@@ -1014,7 +1014,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             definitions.populate_one::<()>();
                         });
 
-                        quote! { <() as #crate_path::abi::CasperABI>::declaration() }
+                        quote! { None }
                     }
                     syn::ReturnType::Type(_, ty) => {
                         if let Type::Never(_) = ty.as_ref() {
@@ -1022,13 +1022,13 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 definitions.populate_one::<()>();
                             });
 
-                            quote! { <() as #crate_path::abi::CasperABI>::declaration() }
+                            quote! { None }
                         } else {
                             populate_definitions.push(quote! {
                                 definitions.populate_one::<#ty>();
                             });
 
-                            quote! { <#ty as #crate_path::abi::CasperABI>::declaration() }
+                            quote! { Some(<#ty as #crate_path::abi::CasperABI>::declaration()) }
                         }
                     }
                 };
