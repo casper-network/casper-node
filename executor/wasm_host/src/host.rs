@@ -173,21 +173,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state write
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-
-            Keyspace::PaymentInfo(key_name)
-        }
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -243,30 +228,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             };
 
             StoredValue::NamedKey(named_key_value)
-        }
-        Keyspace::PaymentInfo(_) => {
-            let entry_point_payment = match value.as_slice() {
-                [ENTRY_POINT_PAYMENT_CALLER] => EntryPointPayment::Caller,
-                [ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY] => {
-                    EntryPointPayment::DirectInvocationOnly
-                }
-                [ENTRY_POINT_PAYMENT_SELF_ONWARD] => EntryPointPayment::SelfOnward,
-                _ => {
-                    // Invalid entry point payment variant
-                    return Ok(HOST_ERROR_INVALID_INPUT);
-                }
-            };
-
-            let entry_point = EntityEntryPoint::new(
-                "_",
-                Vec::new(),
-                CLType::Unit,
-                EntryPointAccess::Public,
-                EntryPointType::Called,
-                entry_point_payment,
-            );
-            let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
-            StoredValue::EntryPoint(entry_point_value)
         }
     };
 
@@ -324,21 +285,6 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
             };
 
             Keyspace::NamedKey(key_name)
-        }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state write
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-
-            Keyspace::PaymentInfo(key_name)
         }
     };
 
@@ -456,19 +402,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
 
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state read
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-            Keyspace::PaymentInfo(key_name)
-        }
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -582,11 +515,6 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 entity_addr,
                 digest.value(),
             )))
-        }
-        Keyspace::PaymentInfo(payload) => {
-            let entry_point_addr =
-                EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
-            Some(Key::EntryPoint(entry_point_addr))
         }
     }
 }

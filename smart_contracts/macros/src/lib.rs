@@ -252,7 +252,10 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
         arg_types.push(ty);
     }
 
-    let ret = &func.sig.output;
+    let ret = match &func.sig.output {
+        syn::ReturnType::Default => quote! { () },
+        syn::ReturnType::Type(_, ty) => quote! { #ty },
+    };
 
     let _ctor_name = format_ident!("{func_name}_ctor");
 
@@ -309,7 +312,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                 result_decl: {
                     casper_contract_sdk::abi_collector::AbiType {
                         type_name: stringify!(#ret),
-                        cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                        cl_type: || { <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
                     }
                 },
                 kind: casper_contract_sdk::abi_collector::AbiKind::Function,
@@ -318,7 +321,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                     line: line!(),
                     col: column!(),
                 },
-                fptr: || -> () { $name(); },
+                fptr: || -> () { #exported_func_name(); },
             });
         };
     }.into()

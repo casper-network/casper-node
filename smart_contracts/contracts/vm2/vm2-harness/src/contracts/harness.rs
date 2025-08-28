@@ -97,36 +97,6 @@ impl Harness {
 
         log!("👋 Hello from constructor with args: {who}");
 
-        assert_eq!(
-            casper::write(Keyspace::PaymentInfo("this does not exists"), &[0]),
-            Err(HostResult::NotFound)
-        );
-
-        {
-            for payment_info in [
-                ENTRY_POINT_PAYMENT_CALLER,
-                ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-                ENTRY_POINT_PAYMENT_SELF_ONWARD,
-            ] {
-                casper::write(Keyspace::PaymentInfo("counter"), &[payment_info]).unwrap();
-
-                let mut buffer = [255; 1];
-                assert_eq!(
-                    casper::read(Keyspace::PaymentInfo("counter"), |size| {
-                        assert_eq!(size, 1, "Size should be 1");
-                        NonNull::new(&mut buffer[0])
-                    }),
-                    Ok(Some(()))
-                );
-                assert_eq!(&buffer, &[payment_info]);
-            }
-
-            assert_eq!(
-                casper::write(Keyspace::PaymentInfo("counter"), &[255, 255]),
-                Err(HostResult::InvalidInput)
-            );
-        }
-
         Self {
             counter: 0,
             greeting: format!("Hello, {who}!"),
