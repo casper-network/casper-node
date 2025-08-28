@@ -41,7 +41,7 @@ pub struct SchemaArgument {
 pub struct SchemaEntryPoint {
     pub name: String,
     pub arguments: Vec<SchemaArgument>,
-    pub result: Declaration,
+    pub result: Option<Declaration>,
     #[serde(
         serialize_with = "serialize_bits",
         deserialize_with = "deserialize_bits"
