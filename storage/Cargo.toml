@@ -1,6 +1,6 @@
 [package]
 name = "casper-storage"
-version = "2.1.1"
+version = "3.0.0"
 edition = "2018"
 authors = ["Ed Hastings <ed@casper.network>"]
 description = "Storage for a node on the Casper network."
