@@ -1669,7 +1669,13 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
     let transferred_value = caller.context().transferred_value;
 
     let block_time = caller.context().block_time.value();
-
+    let protocol_version = caller
+        .context()
+        .runtime_native_config
+        .protocol_version()
+        .value();
+    let parent_block_hash = caller.context().parent_block_hash;
+    let block_height = caller.context().block_height;
     // `EnvInfo` in little-endian representation.
     let env_info_le = EnvInfo {
         caller_addr,
@@ -1678,6 +1684,11 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         callee_kind: callee_kind.to_le(),
         transferred_value: transferred_value.to_le(),
         block_time: block_time.to_le(),
+        protocol_version_major: protocol_version.major.to_le(),
+        protocol_version_minor: protocol_version.minor.to_le(),
+        protocol_version_patch: protocol_version.patch.to_le(),
+        parent_block_hash,
+        block_height,
     };
 
     let env_info_bytes = safe_transmute::transmute_one_to_bytes(&env_info_le);

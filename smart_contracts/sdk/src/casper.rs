@@ -3,6 +3,7 @@ pub mod native;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
+    compat::types::{CLType, CLTyped},
     prelude::{
         ffi::c_void,
         marker::PhantomData,
@@ -433,6 +434,12 @@ pub enum Entity {
     Contract([u8; 32]),
 }
 
+impl CLTyped for Entity {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
 impl Entity {
     /// Get the tag of the entity.
     #[must_use]
@@ -592,7 +599,7 @@ pub fn recover_secp256k1(
 }
 
 #[doc(hidden)]
-pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), HostResult> {
+pub fn emit(topic: &str, payload: &[u8]) -> Result<(), HostResult> {
     let ret = unsafe {
         casper_contract_sdk_sys::casper_emit(
             topic.as_ptr(),
@@ -605,11 +612,11 @@ pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), HostResult> {
 }
 
 /// Emit a message.
-pub fn emit<M>(message: M) -> Result<(), HostResult>
+pub fn emit_message<M>(message: M) -> Result<(), HostResult>
 where
     M: Message,
 {
     let topic = M::TOPIC;
     let payload = message.payload();
-    emit_raw(topic, &payload)
+    emit(topic, &payload)
 }

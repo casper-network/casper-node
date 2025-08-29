@@ -6,9 +6,7 @@ mod tests;
 
 use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
-use casper_types::{
-    contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
-};
+use casper_types::{contracts::ProtocolVersionMajor, ContractRuntimeTag};
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
@@ -141,19 +139,6 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
         ));
-
-        if meta_transaction.is_install_or_upgrade()
-            && meta_transaction.is_v2_wasm()
-            && meta_transaction.seed().is_none()
-        {
-            return self.reject_transaction(
-                effect_builder,
-                *event_metadata,
-                Error::InvalidTransaction(InvalidTransaction::V1(
-                    InvalidTransactionV1::MissingSeed,
-                )),
-            );
-        }
 
         let is_config_compliant = event_metadata
             .meta_transaction

@@ -642,6 +642,8 @@ impl ExecutorV2 {
             message_limits: self.config.message_limits,
             sandboxed,
             runtime_native_config,
+            parent_block_hash: parent_block_hash.inner().value(),
+            block_height,
         };
 
         // Check that the input argument size does not exceed the VM memory limit

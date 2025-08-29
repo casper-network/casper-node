@@ -340,46 +340,50 @@ pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
         Just(CLType::String),
         Just(CLType::Key),
         Just(CLType::URef),
+        Just(CLType::PublicKey),
+        Just(CLType::Any),
+        any::<u32>().prop_map(CLType::ByteArray),
     ]
 }
 
 pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
-    cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
-        prop_oneof![
-            // We want to produce basic types too
-            element.clone(),
-            // For complex type
-            element
-                .clone()
-                .prop_map(|val| CLType::Option(Box::new(val))),
-            element.clone().prop_map(|val| CLType::List(Box::new(val))),
-            // Realistic Result type generator: ok is anything recursive, err is simple type
-            (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
-                ok: Box::new(ok),
-                err: Box::new(err)
-            }),
-            // Realistic Map type generator: key is simple type, value is complex recursive type
-            (cl_simple_type_arb(), element.clone()).prop_map(|(key, value)| CLType::Map {
-                key: Box::new(key),
-                value: Box::new(value)
-            }),
-            // Various tuples
-            element
-                .clone()
-                .prop_map(|cl_type| CLType::Tuple1([Box::new(cl_type)])),
-            (element.clone(), element.clone()).prop_map(|(cl_type1, cl_type2)| CLType::Tuple2([
-                Box::new(cl_type1),
-                Box::new(cl_type2)
-            ])),
-            (element.clone(), element.clone(), element).prop_map(
-                |(cl_type1, cl_type2, cl_type3)| CLType::Tuple3([
-                    Box::new(cl_type1),
-                    Box::new(cl_type2),
-                    Box::new(cl_type3)
-                ])
-            ),
-        ]
-    })
+    prop_oneof![
+        cl_simple_type_arb(),
+        cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
+            prop_oneof![
+                // For complex type
+                element
+                    .clone()
+                    .prop_map(|val| CLType::Option(Box::new(val))),
+                element.clone().prop_map(|val| CLType::List(Box::new(val))),
+                // Realistic Result type generator: ok is anything recursive, err is simple type
+                (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
+                    ok: Box::new(ok),
+                    err: Box::new(err)
+                }),
+                // Realistic Map type generator: key is simple type, value is complex recursive
+                // type
+                (cl_simple_type_arb(), element.clone()).prop_map(|(key, value)| CLType::Map {
+                    key: Box::new(key),
+                    value: Box::new(value)
+                }),
+                // Various tuples
+                element
+                    .clone()
+                    .prop_map(|cl_type| CLType::Tuple1([Box::new(cl_type)])),
+                (element.clone(), element.clone()).prop_map(|(cl_type1, cl_type2)| CLType::Tuple2(
+                    [Box::new(cl_type1), Box::new(cl_type2)]
+                )),
+                (element.clone(), element.clone(), element).prop_map(
+                    |(cl_type1, cl_type2, cl_type3)| CLType::Tuple3([
+                        Box::new(cl_type1),
+                        Box::new(cl_type2),
+                        Box::new(cl_type3)
+                    ])
+                ),
+            ]
+        })
+    ]
 }
 
 pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {

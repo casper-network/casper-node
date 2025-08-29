@@ -439,7 +439,7 @@ impl Harness {
         _arg8: i8,
         _arg9: String,
         _arg10: Vec<u8>,
-        _arg11: [i32; 5],
+        _arg11: [u32; 5],
         _arg12: Option<String>,
         _arg13: Result<(), ()>,
         _arg14: Box<i32>,

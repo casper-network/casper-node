@@ -8,7 +8,7 @@ extern crate alloc;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, emit, emit_raw, Entity},
+    casper::{self, emit, emit_message, Entity},
     casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
     log,
     types::{Address, CallError, NamedKey, PublicKey},
@@ -585,7 +585,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         for i in 0..10 {
             assert_eq!(
-                emit(TestMessage {
+                emit_message(TestMessage {
                     message: format!("Hello, world: {i}!"),
                 }),
                 Ok(())
@@ -596,25 +596,22 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let large_topic_name = "a".repeat(257);
         let large_payload_data = vec![0; 16384];
 
+        assert_eq!(emit(&large_topic_name, &[]), Err(HostResult::TopicTooLong));
         assert_eq!(
-            emit_raw(&large_topic_name, &[]),
-            Err(HostResult::TopicTooLong)
-        );
-        assert_eq!(
-            emit_raw(&small_topic_name, &large_payload_data),
+            emit(&small_topic_name, &large_payload_data),
             Err(HostResult::PayloadTooLong)
         );
 
         for i in 0..127u64 {
             assert_eq!(
-                emit_raw(&format!("Topic{i}"), &i.to_be_bytes()),
+                emit(&format!("Topic{i}"), &i.to_be_bytes()),
                 Ok(()),
                 "Emitting message with small payload failed"
             );
         }
 
         assert_eq!(
-            emit_raw(&format!("Topic128"), &[128]),
+            emit(&format!("Topic128"), &[128]),
             Err(HostResult::TooManyTopics),
             "Emitting message with small payload failed"
         );
