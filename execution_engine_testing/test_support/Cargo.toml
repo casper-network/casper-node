@@ -12,7 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 blake2 = "0.9.0"
-casper-storage = { version = "2.1.1", path = "../../storage" }
+casper-storage = { version = "3.0.0", path = "../../storage" }
 casper-types = { version = "6.0.1", path = "../../types" }
 env_logger = "0.10.0"
 casper-execution-engine = { version = "8.1.1", path = "../../execution_engine", features = ["test-support"] }
