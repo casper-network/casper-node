@@ -11,7 +11,7 @@ use casper_contract_sdk::{
             ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
             ENTRY_POINT_PAYMENT_SELF_ONWARD,
         },
-        error::CommonResult,
+        error::HostResult,
         keyspace::Keyspace,
     },
     collections::Map,
@@ -72,6 +72,12 @@ pub enum CustomError {
     Deposit(CallError),
 }
 
+#[derive(Debug, PartialEq)]
+#[casper]
+pub struct PublicStructUsedOnlyByPrivateEntrypoint {
+    pub value: u64,
+}
+
 impl Default for Harness {
     fn default() -> Self {
         Self {
@@ -99,7 +105,7 @@ impl Harness {
 
         assert_eq!(
             casper::write(Keyspace::PaymentInfo("this does not exists"), &[0]),
-            Err(CommonResult::NotFound)
+            Err(HostResult::NotFound)
         );
 
         {
@@ -123,7 +129,7 @@ impl Harness {
 
             assert_eq!(
                 casper::write(Keyspace::PaymentInfo("counter"), &[255, 255]),
-                Err(CommonResult::InvalidInput)
+                Err(HostResult::InvalidInput)
             );
         }
 
@@ -433,7 +439,7 @@ impl Harness {
         _arg8: i8,
         _arg9: String,
         _arg10: Vec<u8>,
-        _arg11: [i32; 5],
+        _arg11: [u32; 5],
         _arg12: Option<String>,
         _arg13: Result<(), ()>,
         _arg14: Box<i32>,
@@ -448,5 +454,10 @@ impl Harness {
         _arg23: u64,
     ) {
         log!("Nothing");
+    }
+
+    #[casper(private)]
+    pub fn private_only_uses_public_struct(&self, _arg: PublicStructUsedOnlyByPrivateEntrypoint) {
+        log!("This function should be private and its arg type should not appear in schema");
     }
 }

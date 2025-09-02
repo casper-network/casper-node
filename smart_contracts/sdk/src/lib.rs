@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod abi;
+pub mod compat;
 pub mod prelude;
 pub mod serializers;
 #[cfg(not(target_arch = "wasm32"))]

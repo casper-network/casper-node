@@ -2891,7 +2891,7 @@ async fn should_reject_transaction_from_peer_with_unexpected_fields() {
 }
 
 #[tokio::test]
-async fn should_reject_transaction_with_invalid_transaction_args() {
+async fn should_reject_transaction_v1_with_invalid_transaction_args() {
     let result = run_transaction_acceptor(TestScenario::InvalidArgumentsKind).await;
     assert!(matches!(
         result,

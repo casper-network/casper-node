@@ -59,6 +59,7 @@ mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
+pub mod public_key;
 pub mod runtime_footprint;
 mod semver;
 pub(crate) mod serde_helpers;

@@ -43,6 +43,10 @@ impl<Arg1: WasmerConvert, Arg2: WasmerConvert, Ret: WasmerConvert> WasmerConvert
     type Output = u32; // Function pointers are 32-bit addressable
 }
 
+impl<T: WasmerConvert> WasmerConvert for Option<T> {
+    type Output = T::Output; // Function pointers are 32-bit addressable
+}
+
 const DEFAULT_ENV_NAME: &str = "env";
 
 /// This function will populate imports object with all host functions that are defined.
@@ -57,7 +61,7 @@ pub(crate) fn generate_casper_imports<S: GlobalStateReader + 'static, E: Executo
             <$ret as $crate::imports::WasmerConvert>::Output
         };
         (@convert_ret) => { () };
-        ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+        ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)*)* ))? $(-> $ret:ty)?;)+) => {
             $(
                 imports.define($crate::imports::DEFAULT_ENV_NAME, stringify!($name), wasmer::Function::new_typed_with_env(
                     store,

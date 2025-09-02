@@ -500,10 +500,13 @@ impl Codegen {
             let func = client_impl.new_fn(&entry_point.name);
             func.vis("pub");
 
-            let result_type = self
-                .type_mapping
-                .get(&entry_point.result)
-                .unwrap_or_else(|| panic!("Missing type mapping for {}", entry_point.result));
+            let result_type = if let Some(result_decl) = &entry_point.result {
+                self.type_mapping
+                    .get(result_decl)
+                    .unwrap_or_else(|| panic!("Missing type mapping for {}", result_decl))
+            } else {
+                "()"
+            };
 
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 func.ret(Type::new(format!(
@@ -513,9 +516,15 @@ impl Codegen {
                 .generic("C")
                 .bound("C", "casper_contract_sdk::Contract");
             } else {
-                func.ret(Type::new(format!(
-                    "Result<casper_contract_sdk::host::CallResult<{result_type}>, casper_contract_sdk::types::CallError>"
-                )));
+                if entry_point.result.is_some() {
+                    func.ret(Type::new(format!(
+                        "Result<casper_contract_sdk::host::CallResult<{result_type}>, casper_contract_sdk::types::CallError>"
+                    )));
+                } else {
+                    func.ret(Type::new(
+                        "Result<(), casper_contract_sdk::types::CallError>",
+                    ));
+                }
                 func.arg_ref_self();
             }
 

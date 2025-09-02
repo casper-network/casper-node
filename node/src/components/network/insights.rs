@@ -140,6 +140,7 @@ impl OutgoingStateInsight {
                 since,
                 justification,
                 until,
+                maybe_peer_id: _,
             } => OutgoingStateInsight::Blocked {
                 since: anchor.convert(*since),
                 justification: justification.to_string(),

@@ -307,7 +307,7 @@ impl FaucetContract {
                 return Err(FaucetError::TransferFailed);
             }
         }
-        casper::emit(FaucetTokensTransferred { target, amount }).unwrap();
+        casper::emit_message(FaucetTokensTransferred { target, amount }).unwrap();
         Ok(())
     }
 

@@ -181,8 +181,9 @@ impl Cli {
                 if !validate_chainspec(&chainspec) {
                     bail!("invalid chainspec");
                 }
+                let chain_name = &chainspec.network_config.name;
 
-                if !validate_config(reactor_config.value()) {
+                if !validate_config(chain_name, reactor_config.value()) {
                     bail!("invalid config");
                 }
 
