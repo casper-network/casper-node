@@ -1,34 +1,58 @@
 pub mod for_each_host_function;
 
-#[repr(C)]
-pub struct Param {
-    pub name_ptr: *const u8,
-    pub name_len: usize,
-}
+
 
 /// Signature of a function pointer that a host understands.
 pub type Fptr = extern "C" fn() -> ();
 
 #[derive(Debug)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct ReadInfo {
-    pub data: *const u8,
-    /// Size in bytes.
-    pub size: usize,
+    pub data_ptr: *const u8,
+    /// Size in bytes
+    pub data_size: usize,
+    /// UID of the stored type
+    pub data_type_uid: u64,
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct CreateResult {
     pub contract_address: [u8; 32],
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct UpgradeResult {
     pub package_address: [u8; 32],
     pub contract_address: [u8; 32],
     pub version: u32,
+}
+
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct EnvInfo {
+    pub block_time: u64,
+    pub transferred_value: u64,
+    pub caller_addr: [u8; 32],
+    pub caller_kind: u32,
+    pub callee_addr: [u8; 32],
+    pub callee_kind: u32,
+}
+
+#[repr(C, packed)]
+#[derive(Debug)]
+pub struct CallResult {
+    /// Gas limit used for the call.
+    pub call_outcome: u32,
+    /// Pointer to the data as returned from user's callback code.
+    pub data_ptr: u32,
+    /// Size in bytes.
+    pub data_size: u32,
+    /// Type UID of the data.
+    ///
+    /// This is a 64-bit unsigned integer that represents the type of the data.
+    pub data_type: u64,
 }
 
 macro_rules! visit_host_function {

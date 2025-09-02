@@ -914,6 +914,7 @@ dependencies = [
  "base16",
  "blake2 0.10.6",
  "blake3",
+ "borsh",
  "bytes",
  "casper-executor-wasm-common",
  "casper-executor-wasm-interface",
