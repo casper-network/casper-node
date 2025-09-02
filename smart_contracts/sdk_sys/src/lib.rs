@@ -1,7 +1,5 @@
 pub mod for_each_host_function;
 
-
-
 /// Signature of a function pointer that a host understands.
 pub type Fptr = extern "C" fn() -> ();
 

@@ -591,7 +591,10 @@ Example paths:
     }
 
     fn casper_env_info(&self, info_ptr: *const u8, info_size: u32) -> Result<u32, NativeTrap> {
-        assert_eq!(info_size as usize, size_of::<casper_contract_sdk_sys::EnvInfo>());
+        assert_eq!(
+            info_size as usize,
+            size_of::<casper_contract_sdk_sys::EnvInfo>()
+        );
         let mut env_info = NonNull::new(info_ptr as *mut u8)
             .expect("Valid ptr")
             .cast::<casper_contract_sdk_sys::EnvInfo>();

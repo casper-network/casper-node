@@ -160,8 +160,15 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     type Context = Context<S, E>;
 
     fn memory_write(&self, offset: usize, data: &[u8]) -> VMResult<()> {
-        self.with_memory(|mem| mem.write(offset.try_into().map_err(|_| wasmer::MemoryAccessError::Overflow)?, data))?
-            .map_err(from_wasmer_memory_access_error)
+        self.with_memory(|mem| {
+            mem.write(
+                offset
+                    .try_into()
+                    .map_err(|_| wasmer::MemoryAccessError::Overflow)?,
+                data,
+            )
+        })?
+        .map_err(from_wasmer_memory_access_error)
     }
 
     fn context(&self) -> &Context<S, E> {
@@ -173,8 +180,15 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     }
 
     fn memory_read_into(&self, offset: usize, output: &mut [u8]) -> VMResult<()> {
-        self.with_memory(|mem| mem.read(offset.try_into().map_err(|_| wasmer::MemoryAccessError::Overflow)?, output))?
-            .map_err(from_wasmer_memory_access_error)
+        self.with_memory(|mem| {
+            mem.read(
+                offset
+                    .try_into()
+                    .map_err(|_| wasmer::MemoryAccessError::Overflow)?,
+                output,
+            )
+        })?
+        .map_err(from_wasmer_memory_access_error)
     }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
