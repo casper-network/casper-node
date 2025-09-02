@@ -393,19 +393,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
-        Ok(Some(_)) => {
-            // If it's a named key pointing to a URef, prune both the named key and the URef.
-            if let Keyspace::NamedKey(_) = keyspace {
-                if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
-                    caller.context_mut().tracking_copy.read(&global_state_key)
-                {
-                    if let Ok(Key::URef(uref)) = named_key_value.get_key() {
-                        caller.context_mut().tracking_copy.prune(Key::URef(uref));
-                    }
-                }
-            }
-
-            // Produce a prune transform for the named key
+        // Produce a prune transform for the named key
         Ok(Some(StoredValue::AddressableEntity(mut entity))) => {
             if let Keyspace::RemoveAssociatedKeys(account_hash_bytes) = keyspace {
                 let account_hash = match AccountHash::from_bytes(account_hash_bytes) {
@@ -429,9 +417,17 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                 return Ok(HOST_ERROR_INVALID_INPUT);
             }
         }
-        Ok(Some(_stored_value)) => {
-            // Produce a prune transform only if value under a given key exists in the global state
-            caller.context_mut().tracking_copy.prune(global_state_key);
+        Ok(Some(_)) => {
+            // If it's a named key pointing to a URef, prune both the named key and the URef.
+            if let Keyspace::NamedKey(_) = keyspace {
+                if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
+                    caller.context_mut().tracking_copy.read(&global_state_key)
+                {
+                    if let Ok(Key::URef(uref)) = named_key_value.get_key() {
+                        caller.context_mut().tracking_copy.prune(Key::URef(uref));
+                    }
+                }
+            }
         }
         Ok(None) => {
             // Entry does not exist, and we can't proceed with the prune operation
