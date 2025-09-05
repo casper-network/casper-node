@@ -1,11 +1,15 @@
 use crate::{
-    abi::{CasperABI, Declaration, Definition, Definitions, StructField},
+    abi::{CasperABI, Declaration, Definition, StructField},
     casper::{self, read_into_vec},
+    compat::types::{CLType, CLTyped},
     prelude::{cmp::Ordering, marker::PhantomData},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::{
+    keyspace::Keyspace,
+    type_uid::{TypeUid, Uid},
+};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 #[borsh(crate = "crate::serializers::borsh")]
@@ -15,9 +19,11 @@ pub struct Vector<T> {
     pub(crate) _marker: PhantomData<T>,
 }
 
-impl<T: CasperABI> CasperABI for Vector<T> {
-    fn populate_definitions(_definitions: &mut Definitions) {}
+impl<T: TypeUid> TypeUid for Vector<T> {
+    const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID, T::UID]);
+}
 
+impl<T: CasperABI> CasperABI for Vector<T> {
     fn declaration() -> Declaration {
         format!("Vector<{}>", T::declaration())
     }
@@ -35,6 +41,12 @@ impl<T: CasperABI> CasperABI for Vector<T> {
                 },
             ],
         }
+    }
+}
+
+impl<T: CLTyped> CLTyped for Vector<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
     }
 }
 

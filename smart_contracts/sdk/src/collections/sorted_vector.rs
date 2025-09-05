@@ -1,4 +1,9 @@
-use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
+use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
+
+use crate::{
+    compat::types::CLTyped,
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
+};
 
 use crate::abi::CasperABI;
 
@@ -10,9 +15,13 @@ pub struct SortedVector<T: Ord> {
     vector: Vector<T>,
 }
 
+impl<T: TypeUid + Ord> TypeUid for SortedVector<T> {
+    const UID: Uid = Uid::from_fields("SortedVector", &[T::UID]);
+}
+
 impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
-    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
-        T::populate_definitions(definitions)
+    fn visit(visitor: &mut dyn crate::abi::ABIVisitor) {
+        T::visit(visitor);
     }
 
     fn declaration() -> crate::abi::Declaration {
@@ -85,6 +94,15 @@ where
         F: FnMut(&T) -> bool,
     {
         self.vector.retain(f);
+    }
+}
+
+impl<T> CLTyped for SortedVector<T>
+where
+    T: CLTyped + Ord,
+{
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::List(Box::new(T::cl_type()))
     }
 }
 

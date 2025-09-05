@@ -68,7 +68,10 @@ pub(crate) fn generate_casper_imports<S: GlobalStateReader + 'static, E: Executo
                     env,
                     |
                         env: FunctionEnvMut<WasmerEnv<S, E>>,
-                        // List all types and statically mapped C types into wasm types
+
+                        // wasm: (call $foo arg1 arg2))
+
+                                                    // List all types and statically mapped C types into wasm types
                         $($($arg: <$argty as $crate::imports::WasmerConvert>::Output,)*)?
                     | -> VMResult<visit_host_function!(@convert_ret $($ret)?)> {
                         let wasmer_caller = $crate::WasmerCaller { env };

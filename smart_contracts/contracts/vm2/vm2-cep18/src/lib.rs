@@ -50,6 +50,10 @@ impl TokenContract {
             .get(&casper::get_caller())
             .unwrap_or_default()
     }
+
+    pub fn this_is_using_nested_types(&self, maybe: Option<Entity>) {
+        log!("Hello {maybe:?}");
+    }
 }
 
 #[casper(path = casper_contract_sdk::contrib::cep18)]

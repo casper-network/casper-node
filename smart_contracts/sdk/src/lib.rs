@@ -16,7 +16,7 @@ pub mod abi_collector;
 pub mod casper;
 pub mod collections;
 pub mod contrib;
-#[cfg(feature = "std")]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod schema;
 pub mod types;
 
@@ -26,7 +26,7 @@ use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper::{CallResult, Entity};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
-pub use casper_executor_wasm_common;
+pub use casper_executor_wasm_common as common;
 use types::{Address, CallError};
 
 cfg_if::cfg_if! {

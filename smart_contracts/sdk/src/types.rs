@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 
+use casper_contract_macros::TypeUid;
 use casper_executor_wasm_common::{
     error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
     keyspace::Keyspace,
@@ -8,13 +9,14 @@ use casper_executor_wasm_common::{
 use crate::{
     abi::{CasperABI, Declaration, Definition, EnumVariant},
     casper,
+    compat::types::{CLType, CLTyped},
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
 pub use ::bytes::Bytes;
 pub type Address = [u8; 32];
-pub use bnum::types::U256;
+pub use bnum::types::{U256, U512};
 
 pub struct NamedKey<T: BorshSerialize + BorshDeserialize> {
     name: &'static str,
@@ -105,7 +107,8 @@ pub enum HashAlgorithm {
 }
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, TypeUid)]
+#[type_uid(crate = "crate::common::type_uid")]
 #[borsh(crate = "crate::serializers::borsh")]
 pub enum CallError {
     CalleeReverted,
@@ -139,9 +142,13 @@ impl TryFrom<u32> for CallError {
     }
 }
 
-impl CasperABI for CallError {
-    fn populate_definitions(_definitions: &mut crate::abi::Definitions) {}
+impl CLTyped for CallError {
+    fn cl_type() -> CLType {
+        CLType::U32
+    }
+}
 
+impl CasperABI for CallError {
     fn declaration() -> Declaration {
         "CallError".into()
     }

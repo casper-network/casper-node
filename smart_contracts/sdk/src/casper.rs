@@ -2,7 +2,7 @@
 pub mod native;
 
 use crate::{
-    abi::{CasperABI, EnumVariant},
+    abi::{ABITypeInfo, CasperABI, EnumVariant},
     compat::types::{CLType, CLTyped},
     prelude::{
         ffi::c_void,
@@ -16,6 +16,7 @@ use crate::{
     Message, ToCallData,
 };
 
+use casper_contract_macros::TypeUid;
 use casper_contract_sdk_sys::casper_env_info;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
@@ -424,8 +425,19 @@ pub fn get_callee() -> Entity {
 
 /// Enum representing either an account or a contract.
 #[derive(
-    BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+    BorshSerialize,
+    BorshDeserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    TypeUid,
 )]
+#[type_uid(crate = "crate::common::type_uid")]
 pub enum Entity {
     Account([u8; 32]),
     Contract([u8; 32]),
@@ -481,10 +493,10 @@ impl Entity {
 }
 
 impl CasperABI for Entity {
-    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
-        definitions.populate_one::<[u8; 32]>();
+    fn visit(visitor: &mut dyn crate::abi::ABIVisitor) {
+        visitor.accept(ABITypeInfo::from_abi_type::<Self>());
+        <[u8; 32]>::visit(visitor);
     }
-
     fn declaration() -> crate::abi::Declaration {
         "Entity".into()
     }

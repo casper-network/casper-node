@@ -1,10 +1,13 @@
-use core::mem;
+use core::any::{Any, TypeId};
 
-use crate::prelude::{
-    collections,
-    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
-    str::FromStr,
+use crate::{
+    compat::types::{CLType, CLTyped},
+    prelude::{
+        collections::{self, BTreeMap, BTreeSet, HashMap, LinkedList},
+        str::FromStr,
+    },
 };
+use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
 use impl_trait_for_tuples::impl_for_tuples;
 use serde::{Deserialize, Serialize};
 
@@ -146,12 +149,13 @@ pub struct Definitions(BTreeMap<Declaration, Definition>);
 
 impl Definitions {
     pub fn populate_one<T: CasperABI>(&mut self) {
-        T::populate_definitions(self);
+        // T::populate_definitions(self);
 
-        let decl = T::declaration();
-        let def = T::definition();
+        // let decl = T::declaration();
+        // let def = T::definition();
 
-        self.populate_custom(decl, def);
+        // self.populate_custom(decl, def);
+        todo!()
     }
 
     pub fn populate_custom(&mut self, decl: Declaration, def: Definition) {
@@ -188,26 +192,102 @@ impl IntoIterator for Definitions {
     }
 }
 
+/// Small builder that keeps up to 8 fragments on-stack before allocating.
 pub type Declaration = String;
 
-pub trait CasperABI {
-    fn populate_definitions(definitions: &mut Definitions);
-    fn declaration() -> Declaration; // "String"
-    fn definition() -> Definition; // Sequence { Char }
+#[derive(Debug, Clone)]
+
+pub struct ABITypeInfo {
+    type_id: Uid,
+    cl_type: CLType,
+    declaration: Declaration,
+    definition: Definition,
 }
 
-impl<T> CasperABI for &T
-where
-    T: CasperABI,
-{
-    fn populate_definitions(definitions: &mut Definitions) {
-        T::populate_definitions(definitions);
+impl ABITypeInfo {
+    pub fn new(
+        type_id: Uid,
+        cl_type: CLType,
+        declaration: Declaration,
+        definition: Definition,
+    ) -> Self {
+        Self {
+            type_id,
+            cl_type,
+            declaration,
+            definition,
+        }
+    }
+
+    pub fn from_abi_type<T: CasperABI + TypeUid>() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            type_id: type_uid::of::<T>(),
+            cl_type: T::cl_type(),
+            declaration: T::declaration(),
+            definition: T::definition(),
+        }
+    }
+
+    pub fn type_uid(&self) -> Uid {
+        self.type_id
+    }
+
+    pub fn cl_type(&self) -> &CLType {
+        &self.cl_type
+    }
+
+    pub fn declaration(&self) -> &Declaration {
+        &self.declaration
+    }
+
+    pub fn definition(&self) -> &Definition {
+        &self.definition
+    }
+}
+
+// ...existing code...
+pub trait ABIVisitor {
+    fn accept(&mut self, type_info: ABITypeInfo);
+}
+
+pub trait CasperABI: Any + CLTyped + TypeUid {
+    /// Visits all the nested generic types recursively.
+    ///
+    /// This should be empty implementation if a type does not have any generic types.
+    ///
+    /// Check out [`visit_types_recursively`] for more info.
+    fn visit(visitor: &mut dyn ABIVisitor)
+    where
+        Self: Sized,
+    {
+        let type_info = ABITypeInfo::new(
+            type_uid::of::<Self>(),
+            Self::cl_type(),
+            Self::declaration(),
+            Self::definition(),
+        );
+        visitor.accept(type_info);
     }
 
     fn declaration() -> Declaration {
-        T::declaration()
+        std::any::type_name::<Self>().into()
     }
 
+    fn definition() -> Definition; // Sequence { Char }
+}
+
+/// Visits all the nested generic types recursively.
+pub fn visit_types_recursively<T: CasperABI>(visitor: &mut dyn ABIVisitor) {
+    T::visit(visitor);
+}
+
+impl<T> CasperABI for &'static T
+where
+    T: CasperABI,
+{
     fn definition() -> Definition {
         T::definition()
     }
@@ -217,14 +297,6 @@ impl<T> CasperABI for Box<T>
 where
     T: CasperABI,
 {
-    fn populate_definitions(definitions: &mut Definitions) {
-        T::populate_definitions(definitions);
-    }
-
-    fn declaration() -> Declaration {
-        T::declaration()
-    }
-
     fn definition() -> Definition {
         T::definition()
     }
@@ -244,12 +316,7 @@ macro_rules! impl_abi_for_types {
 
     (@impl $ty:ty => $def:expr ) => {
         impl CasperABI for $ty {
-            fn populate_definitions(_definitions: &mut Definitions) {
-            }
 
-            fn declaration() -> Declaration {
-                stringify!($def).into()
-            }
 
             fn definition() -> Definition {
                 use Primitive::*;
@@ -268,12 +335,6 @@ macro_rules! impl_abi_for_types {
 }
 
 impl CasperABI for () {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
-        "()".into()
-    }
-
     fn definition() -> Definition {
         Definition::unit()
     }
@@ -298,13 +359,11 @@ impl_abi_for_types!(
 
 #[impl_for_tuples(1, 12)]
 impl CasperABI for Tuple {
-    fn populate_definitions(_definitions: &mut Definitions) {
-        for_tuples!( #( _definitions.populate_one::<Tuple>(); )* )
-    }
+    for_tuples!( where #( Tuple: CLTyped )* );
 
-    fn declaration() -> Declaration {
-        let items = <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::declaration() ),* )]));
-        format!("({})", items.join(", "))
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        for_tuples!( #( Tuple::visit(v); )* )
     }
 
     fn definition() -> Definition {
@@ -314,15 +373,10 @@ impl CasperABI for Tuple {
 }
 
 impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<T>();
-        definitions.populate_one::<E>();
-    }
-
-    fn declaration() -> Declaration {
-        let t_decl = T::declaration();
-        let e_decl = E::declaration();
-        format!("Result<{t_decl}, {e_decl}>")
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
+        E::visit(v);
     }
 
     fn definition() -> Definition {
@@ -344,9 +398,11 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
 }
 
 impl<T: CasperABI> CasperABI for Option<T> {
-    fn declaration() -> Declaration {
-        format!("Option<{}>", T::declaration())
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
     }
+
     fn definition() -> Definition {
         Definition::Enum {
             items: vec![
@@ -363,21 +419,14 @@ impl<T: CasperABI> CasperABI for Option<T> {
             ],
         }
     }
-
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<()>();
-        definitions.populate_one::<T>();
-    }
 }
 
 impl<T: CasperABI> CasperABI for Vec<T> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<T>();
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
     }
 
-    fn declaration() -> Declaration {
-        format!("Vec<{}>", T::declaration())
-    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: T::declaration(),
@@ -386,13 +435,11 @@ impl<T: CasperABI> CasperABI for Vec<T> {
 }
 
 impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<T>();
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
     }
 
-    fn declaration() -> Declaration {
-        format!("[{}; {N}]", T::declaration())
-    }
     fn definition() -> Definition {
         Definition::FixedSequence {
             length: N.try_into().expect("N is too big"),
@@ -402,13 +449,10 @@ impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
 }
 
 impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<K>();
-        definitions.populate_one::<V>();
-    }
-
-    fn declaration() -> Declaration {
-        format!("BTreeMap<{}, {}>", K::declaration(), V::declaration())
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        K::visit(v);
+        V::visit(v);
     }
 
     fn definition() -> Definition {
@@ -420,13 +464,10 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
 }
 
 impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<K>();
-        definitions.populate_one::<V>();
-    }
-
-    fn declaration() -> Declaration {
-        format!("HashMap<{}, {}>", K::declaration(), V::declaration())
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        K::visit(v);
+        V::visit(v);
     }
 
     fn definition() -> Definition {
@@ -438,11 +479,6 @@ impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
 }
 
 impl CasperABI for String {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
-        "String".into()
-    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: char::declaration(),
@@ -451,11 +487,6 @@ impl CasperABI for String {
 }
 
 impl CasperABI for str {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
-        "String".into()
-    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: char::declaration(),
@@ -463,13 +494,7 @@ impl CasperABI for str {
     }
 }
 
-impl CasperABI for &str {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
-        "String".into()
-    }
-
+impl CasperABI for &'static str {
     fn definition() -> Definition {
         Definition::Sequence {
             decl: char::declaration(),
@@ -477,14 +502,12 @@ impl CasperABI for &str {
     }
 }
 
-impl<T: CasperABI> CasperABI for LinkedList<T> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<T>();
+impl<T: CasperABI + TypeUid> CasperABI for LinkedList<T> {
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
     }
 
-    fn declaration() -> Declaration {
-        format!("LinkedList<{}>", T::declaration())
-    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: T::declaration(),
@@ -493,13 +516,11 @@ impl<T: CasperABI> CasperABI for LinkedList<T> {
 }
 
 impl<T: CasperABI> CasperABI for BTreeSet<T> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<T>();
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        T::visit(v);
     }
 
-    fn declaration() -> Declaration {
-        format!("BTreeSet<{}>", T::declaration())
-    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: T::declaration(),
@@ -507,21 +528,37 @@ impl<T: CasperABI> CasperABI for BTreeSet<T> {
     }
 }
 
-impl<const N: usize> CasperABI for bnum::BUint<N> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        definitions.populate_one::<u64>();
+impl CasperABI for crate::types::U256 {
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        <[u64; 4]>::visit(v);
     }
 
     fn declaration() -> Declaration {
-        let width_bytes: usize = mem::size_of::<bnum::BUint<N>>();
-        let width_bits: usize = width_bytes * 8;
-        format!("U{width_bits}")
+        "casper_contract_sdk::types::U256".into()
     }
 
     fn definition() -> Definition {
-        let length: u32 = N.try_into().expect("N is too big");
         Definition::FixedSequence {
-            length,
+            length: 4,
+            decl: u64::declaration(),
+        }
+    }
+}
+
+impl CasperABI for crate::compat::types::U512 {
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        <[u64; 8]>::visit(v);
+    }
+
+    fn declaration() -> Declaration {
+        "casper_contract_sdk::compat::types::U512".into()
+    }
+
+    fn definition() -> Definition {
+        Definition::FixedSequence {
+            length: 8,
             decl: u64::declaration(),
         }
     }
@@ -530,7 +567,10 @@ impl<const N: usize> CasperABI for bnum::BUint<N> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        abi::{CasperABI, Definition},
+        abi::{
+            visit_types_recursively, ABIVisitor, CasperABI, Declaration, Definition, EnumVariant,
+            Primitive,
+        },
         types::U256,
     };
 
@@ -552,5 +592,67 @@ mod tests {
         let bytes_back: [u64; 4] = borsh::from_slice(&bytes).unwrap();
         let value_back = U256::from_digits(bytes_back);
         assert_eq!(value, value_back);
+    }
+
+    #[test]
+    fn visit_all_nested_types() {
+        #[derive(Default)]
+        struct Test {
+            vec: Vec<(Declaration, Definition)>,
+        }
+
+        impl ABIVisitor for Test {
+            fn accept(&mut self, declaration: Declaration, definition: Definition) {
+                self.vec.push((declaration, definition));
+            }
+        }
+
+        let mut test = Test::default();
+
+        visit_types_recursively::<(Option<U256>, String)>(&mut test);
+        assert_eq!(
+            test.vec,
+            vec![
+                (
+                    "(Option<U256>, String)".into(),
+                    Definition::Tuple {
+                        items: vec!["Option<U256>".into(), "String".into()]
+                    }
+                ),
+                (
+                    "Option<U256>".into(),
+                    Definition::Enum {
+                        items: vec![
+                            EnumVariant {
+                                name: "None".into(),
+                                discriminant: 0,
+                                decl: "()".into(),
+                            },
+                            EnumVariant {
+                                name: "Some".into(),
+                                discriminant: 1,
+                                decl: "U256".into(),
+                            },
+                        ],
+                    }
+                ),
+                (
+                    "U256".into(),
+                    Definition::FixedSequence {
+                        length: 4,
+                        decl: "U64".into(),
+                    }
+                ),
+                ("U64".into(), Definition::Primitive(Primitive::U64)),
+                (
+                    "String".into(),
+                    Definition::Sequence {
+                        decl: "Char".into(),
+                    }
+                ),
+            ]
+        )
+
+        // assert_eq!(test.vec.len(), 3);
     }
 }

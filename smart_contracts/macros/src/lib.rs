@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
-    ItemUnion, LitStr, Type,
+    parse_macro_input, DeriveInput, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct,
+    ItemTrait, ItemUnion, LitStr, Type,
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -187,11 +187,7 @@ fn process_casper_message_for_struct(
     {
         maybe_abi_collectors = quote! {
             const _: () = {
-                #[#crate_path::linkme::distributed_slice(#crate_path::abi_collector::ABI_COLLECTORS)]
-                #[linkme(crate = #crate_path::linkme)]
-                static COLLECTOR: fn(&mut #crate_path::abi::Definitions) = |defs| {
-                    defs.populate_one::<#struct_name>();
-                };
+
             };
         };
 
@@ -213,7 +209,8 @@ fn process_casper_message_for_struct(
     }
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::macros::TypeUid)]
+        #[type_uid(crate = )]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #item_struct
@@ -224,6 +221,12 @@ fn process_casper_message_for_struct(
             #[inline]
             fn payload(&self) -> Vec<u8> {
                 #crate_path::serializers::borsh::to_vec(self).unwrap()
+            }
+        }
+
+        impl #crate_path::compat::types::CLTyped for #struct_name {
+            fn cl_type() -> crate::compat::types::CLType {
+                crate::compat::types::CLType::Any
             }
         }
 
@@ -299,20 +302,28 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                 is_payable: false, // todo
                 params: &[
                     #(
-                        casper_contract_sdk::abi_collector::AbiParam {
-                            name: stringify!(#arg_names),
-                            decl: casper_contract_sdk::abi_collector::AbiType {
-                                type_name: stringify!(#arg_types),
-                                cl_type: || { <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
-                            }
-                        },
+                    casper_contract_sdk::abi_collector::AbiParam {
+                        name: stringify!(#arg_names),
+                        decl: casper_contract_sdk::abi_collector::AbiType {
+                            type_name: std::any::type_name::<#arg_types>,
+                            type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
+                            cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                            visit_abi_types: |visitor| {
+                                casper_contract_sdk::abi::visit_types_recursively::<#arg_types>(visitor);
+                            },
+                        }
+                    },
                     )*
                 ],
                 abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
                 result_decl: {
                     casper_contract_sdk::abi_collector::AbiType {
-                        type_name: stringify!(#ret),
-                        cl_type: || { <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                        type_name: std::any::type_name::<#ret>,
+                        type_id: casper_contract_sdk::common::type_uid::of::<#ret>(),
+                        cl_type: <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                        visit_abi_types: |visitor| {
+                            casper_contract_sdk::abi::visit_types_recursively::<#ret>(visitor);
+                        },
                     }
                 },
                 kind: casper_contract_sdk::abi_collector::AbiKind::Function,
@@ -328,8 +339,8 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
 }
 
 fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
-    #[cfg(feature = "__abi_generator")]
-    let mut populate_definitions_linkme = Vec::new();
+    // #[cfg(feature = "__abi_generator")]
+    // let mut populate_definitions_linkme = Vec::new();
     let impl_trait = match entry_points.trait_.as_ref() {
         Some((None, path, _for)) => Some(path),
         Some((Some(_not), _path, _for)) => {
@@ -343,10 +354,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
         other => todo!("Unsupported {other:?}"),
     };
     let defs = vec![quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
-    #[cfg(feature = "__abi_generator")]
-    let mut defs = defs;
-    #[cfg(feature = "__abi_generator")]
-    let mut defs_linkme = Vec::new();
     let mut names = Vec::new();
     let mut extern_entry_points = Vec::new();
     let _abi_generator_entry_points = [quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
@@ -355,9 +362,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
     let mut manifest_entry_point_input_data = Vec::new();
     let mut extra_code = Vec::new();
 
-    for entry_point in &mut entry_points.items {
-        let mut populate_definitions = Vec::new();
+    // let mut collected_abi_types = Vec::new();
 
+    for entry_point in &mut entry_points.items {
         let method_attribute;
         let mut flag_value = EntryPointFlags::empty();
 
@@ -379,6 +386,14 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     syn::ReturnType::Default => false,
                     syn::ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::Never(_)),
                 };
+
+                if never_returns {
+                    let err = syn::Error::new_spanned(
+                        &func.sig.output,
+                        "Diverging functions (`-> !`) are not supported as entry points",
+                    );
+                    return TokenStream::from(err.to_compile_error());
+                }
 
                 method_attribute = MethodAttribute::from_attributes(&func.attrs).unwrap();
 
@@ -436,11 +451,21 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                 let abi_receiver;
 
+                if matches!(func.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) && method_attribute.constructor {
+                    return TokenStream::from(
+                        syn::Error::new(
+                            Span::call_site(),
+                            "Constructors cannot have receiver parameters",
+                        )
+                        .to_compile_error(),
+                    );
+                }
+
                 let handle_write_state = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
                         entry_point_requires_state = true;
 
-                        if !never_returns && receiver.reference.is_some() {
+                        if receiver.reference.is_some() {
                             // &mut self does write updated state
 
                             abi_receiver = quote! { Some(casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef) };
@@ -466,6 +491,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         // &self does not write state
                         None
                     }
+
                     Some(syn::FnArg::Receiver(receiver)) if receiver.lifetime().is_some() => {
                         return TokenStream::from(
                             syn::Error::new(
@@ -476,16 +502,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         );
                     }
                     Some(_) | None => {
-                        match func.sig.inputs.first() {
-                            Some(_) => {
-                                abi_receiver = quote! { Some(casper_contract_sdk::abi_collector::AbiReceiver::ByVal) };
-                            }
-                            None => {
-                                abi_receiver = quote! { None };
-                            }
-                        }
+                        abi_receiver = quote! { None };
 
-                        if !never_returns && method_attribute.constructor {
+                        if method_attribute.constructor {
                             Some(quote! {
                                 casper_contract_sdk::casper::write_state(&_ret).unwrap();
                             })
@@ -651,7 +670,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     quote! {
                         let _ret: &Result<_, _> = &_ret;
                         if _ret.is_err() {
-                            flags |= casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::REVERT;
+                            flags |= casper_contract_sdk::common::flags::ReturnFlags::REVERT;
                         }
 
                     }
@@ -703,7 +722,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                         #(#prelude;)*
 
-                        let mut flags = casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::empty();
+                        let mut flags = casper_contract_sdk::common::flags::ReturnFlags::empty();
 
                         #handle_call;
 
@@ -729,18 +748,26 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                                     casper_contract_sdk::abi_collector::AbiParam {
                                         name: stringify!(#arg_names),
                                         decl: casper_contract_sdk::abi_collector::AbiType {
-                                            type_name: stringify!(#arg_types),
-                                            cl_type: || { <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                                            type_name: std::any::type_name::<#arg_types>,
+                                            type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
+                                            cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type,
+                                            visit_abi_types: |visitor| {
+                                                casper_contract_sdk::abi::visit_types_recursively::<#arg_types>(visitor);
+                                            },
                                         }
                                     },
                                 )*
                             ],
                             abi_convention: #resolve_abi_convention,
                             result_decl: casper_contract_sdk::abi_collector::AbiType {
-                                type_name: stringify!(#ret_ty),
-                                cl_type: || { <#ret_ty as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                                type_name: std::any::type_name::<#ret_ty>,
+                                type_id: casper_contract_sdk::common::type_uid::of::<#ret_ty>(),
+                                cl_type: <#ret_ty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
+                                visit_abi_types: |visitor| {
+                                    casper_contract_sdk::abi::visit_types_recursively::<#ret_ty>(visitor);
+                                },
                             },
-                            kind: casper_contract_sdk::abi_collector::AbiKind::SmartContract,
+                            kind: casper_contract_sdk::abi_collector::AbiKind::SmartContract { struct_name: stringify!(#struct_name) },
                             location: casper_contract_sdk::abi_collector::AbiLocation {
                                 file: file!(),
                                 line: line!(),
@@ -829,140 +856,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
             syn::ImplItem::Verbatim(_) => todo!(),
             _ => todo!(),
         };
-
-        let mut args = Vec::new();
-
-        for input in &func.sig.inputs {
-            let typed = match input {
-                syn::FnArg::Receiver(_receiver) => continue,
-                syn::FnArg::Typed(typed) => typed,
-            };
-            // typed
-            let name = match &typed.pat.as_ref() {
-                syn::Pat::Const(_) => todo!("Const"),
-                syn::Pat::Ident(ident) => ident,
-                syn::Pat::Lit(_) => todo!("Lit"),
-                syn::Pat::Macro(_) => todo!("Macro"),
-                syn::Pat::Or(_) => todo!("Or"),
-                syn::Pat::Paren(_) => todo!("Paren"),
-                syn::Pat::Path(_) => todo!("Path"),
-                syn::Pat::Range(_) => todo!("Range"),
-                syn::Pat::Reference(_) => todo!("Reference"),
-                syn::Pat::Rest(_) => todo!("Rest"),
-                syn::Pat::Slice(_) => todo!("Slice"),
-                syn::Pat::Struct(_) => todo!("Struct"),
-                syn::Pat::Tuple(_) => todo!("Tuple"),
-                syn::Pat::TupleStruct(_) => todo!("TupleStruct"),
-                syn::Pat::Type(_) => todo!("Type"),
-                syn::Pat::Verbatim(_) => todo!("Verbatim"),
-                syn::Pat::Wild(_) => todo!("Wild"),
-                _ => todo!(),
-            };
-            let ty = &typed.ty;
-
-            populate_definitions.push(quote! {
-                definitions.populate_one::<#ty>();
-            });
-
-            args.push(quote! {
-                casper_contract_sdk::schema::SchemaArgument {
-                    name: stringify!(#name).into(),
-                    decl: <#ty as casper_contract_sdk::abi::CasperABI>::declaration(),
-                }
-            });
-        }
-
-        #[cfg(feature = "__abi_generator")]
-        {
-            let bits = flag_value.bits();
-
-            let result = match &func.sig.output {
-                syn::ReturnType::Default => {
-                    populate_definitions.push(quote! {
-                        definitions.populate_one::<()>();
-                    });
-
-                    quote! { <() as casper_contract_sdk::abi::CasperABI>::declaration() }
-                }
-                syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-                    Type::Never(_) => {
-                        populate_definitions.push(quote! {
-                            definitions.populate_one::<()>();
-                        });
-
-                        quote! { <() as casper_contract_sdk::abi::CasperABI>::declaration() }
-                    }
-                    _ => {
-                        populate_definitions.push(quote! {
-                            definitions.populate_one::<#ty>();
-                        });
-
-                        quote! { <#ty as casper_contract_sdk::abi::CasperABI>::declaration() }
-                    }
-                },
-            };
-
-            let func_name = &func.sig.ident;
-
-            let linkme_schema_entry_point_ident =
-                format_ident!("__casper_schema_entry_point_{func_name}");
-
-            defs.push(quote! {
-                fn #linkme_schema_entry_point_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
-                    casper_contract_sdk::schema::SchemaEntryPoint {
-                        name: stringify!(#func_name).into(),
-                        arguments: vec![ #(#args,)* ],
-                        result: #result,
-                        flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
-                    }
-                }
-            });
-            defs_linkme.push(linkme_schema_entry_point_ident);
-
-            let linkme_abi_populate_defs_ident =
-                format_ident!("__casper_populate_definitions_{func_name}");
-
-            defs.push(quote! {
-                fn #linkme_abi_populate_defs_ident(definitions: &mut casper_contract_sdk::abi::Definitions) {
-                    #(#populate_definitions)*;
-                }
-            });
-
-            populate_definitions_linkme.push(linkme_abi_populate_defs_ident);
-        }
     }
     // let entry_points_len = entry_points.len();
     let st_name = struct_name.get_ident().unwrap();
-    let maybe_abi_collectors;
-    let maybe_entrypoint_defs;
-    #[cfg(feature = "__abi_generator")]
-    {
-        maybe_abi_collectors = quote! {
-            #(
-                const _: () = {
-                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_COLLECTORS)]
-                    #[linkme(crate = casper_contract_sdk::linkme)]
-                    static COLLECTOR: fn(&mut casper_contract_sdk::abi::Definitions) = <#struct_name>::#populate_definitions_linkme;
-                };
-            )*
-        };
-
-        maybe_entrypoint_defs = quote! {
-            #(
-
-                const _: () = {
-                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ENTRYPOINTS)]
-                    #[linkme(crate = casper_contract_sdk::linkme)]
-                    static ENTRY_POINTS: fn() -> casper_contract_sdk::schema::SchemaEntryPoint = <#struct_name>::#defs_linkme;
-                };
-            )*
-        }
-    }
-    #[cfg(not(feature = "__abi_generator"))]
-    {
-        maybe_abi_collectors = quote! {};
-        maybe_entrypoint_defs = quote! {};
-    }
     let handle_manifest = match impl_trait {
         Some(_path) => {
             // Do not generate a manifest if we're implementing a trait.
@@ -977,9 +873,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 #(#defs)*
             }
 
-            #maybe_abi_collectors
-
-            #maybe_entrypoint_defs
             #(#extern_entry_points)*
 
         }),
@@ -1096,10 +989,10 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                    ( $( @exportas $export_name:ident $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
                         $(
                             const _: () = {
-                                $( #[$cfg] )?
+                                #[export_name = stringify!($export_name)]
                                 $vis extern "C" fn $name() {
                                     #path_to_macro::$name::<#self_ty>();
                                 }
@@ -1107,7 +1000,7 @@ fn generate_impl_trait_for_contract(
                                #[cfg(not(target_arch = "wasm32"))]
                                 const _: () = {
                                     const NAME: &str = stringify!($name);
-                                    const EXPORT_NAME: &str = casper_contract_sdk::abi_collector::extract_export_name_from_meta(stringify!($(#[$cfg:meta])?));
+                                    const EXPORT_NAME: &str = stringify!($export_name);
 
                                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
                                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1122,8 +1015,12 @@ fn generate_impl_trait_for_contract(
                                                 casper_contract_sdk::abi_collector::AbiParam {
                                                     name: stringify!($arg),
                                                     decl: casper_contract_sdk::abi_collector::AbiType {
-                                                        type_name: stringify!($argty),
-                                                        cl_type: || { <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                                                        type_name: std::any::type_name::<$argty>,
+                                                        type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
+                                                        cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
+                                                        visit_abi_types: |visitor| {
+                                                            casper_contract_sdk::abi::visit_types_recursively::<$argty>(visitor);
+                                                        },
                                                     }
                                                 },
                                             )*
@@ -1132,11 +1029,15 @@ fn generate_impl_trait_for_contract(
                                         result_decl: {
                                             use #path_to_crate::*;
                                             casper_contract_sdk::abi_collector::AbiType {
-                                                type_name: stringify!($ret),
+                                                type_name: std::any::type_name::<$ret>,
+                                                type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
                                                 cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                                                visit_abi_types: |visitor| {
+                                                    casper_contract_sdk::abi::visit_types_recursively::<$ret>(visitor);
+                                                },
                                             }
                                         },
-                                        kind: casper_contract_sdk::abi_collector::AbiKind::TraitImpl { trait_name: stringify!(#trait_name)},
+                                        kind: casper_contract_sdk::abi_collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
                                         location: casper_contract_sdk::abi_collector::AbiLocation {
                                             file: file!(),
                                             line: line!(),
@@ -1194,11 +1095,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
     let vis = &item_trait.vis;
     let mut dispatch_functions = Vec::new();
-    // let mut dispatch_table = Vec::new();
     let mut extra_code = Vec::new();
 
-    // let mut schema_entry_points = Vec::new();
-    let mut populate_definitions = Vec::new();
     let mut macro_symbols = Vec::new();
     for entry_point in &mut item_trait.items {
         match entry_point {
@@ -1224,34 +1122,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     );
                 }
 
-                let export_name = format!("{trait_name}_{func_name_str}");
-
-                let export_ident = format_ident!("{trait_name}_{func_name_str}");
-
-                let result = match &func.sig.output {
-                    syn::ReturnType::Default => {
-                        populate_definitions.push(quote! {
-                            definitions.populate_one::<()>();
-                        });
-
-                        quote! { <() as #crate_path::abi::CasperABI>::declaration() }
-                    }
-                    syn::ReturnType::Type(_, ty) => {
-                        if let Type::Never(_) = ty.as_ref() {
-                            populate_definitions.push(quote! {
-                                definitions.populate_one::<()>();
-                            });
-
-                            quote! { <() as #crate_path::abi::CasperABI>::declaration() }
-                        } else {
-                            populate_definitions.push(quote! {
-                                definitions.populate_one::<#ty>();
-                            });
-
-                            quote! { <#ty as #crate_path::abi::CasperABI>::declaration() }
-                        }
-                    }
-                };
+                let export_name = format_ident!("{trait_name}_{func_name_str}");
 
                 let call_data_return_lifetime = generate_call_data_return(&func.sig.output);
 
@@ -1282,19 +1153,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         }
                     })
                     .collect();
-
-                let mut args = Vec::new();
-                for (name, ty) in &arg_names_and_types {
-                    populate_definitions.push(quote! {
-                        definitions.populate_one::<()>();
-                    });
-                    args.push(quote! {
-                        casper_contract_sdk::schema::SchemaArgument {
-                            name: stringify!(#name).into(),
-                            decl: <#ty as #crate_path::abi::CasperABI>::declaration(),
-                        }
-                    });
-                }
 
                 let flags = EntryPointFlags::empty();
 
@@ -1394,7 +1252,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                     #(#args_attrs,)*
                                 }
 
-                                let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
+                                let mut flags = #crate_path::common::flags::ReturnFlags::empty();
                                 let mut instance: T = #crate_path::casper::read_state().unwrap();
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = {
@@ -1445,7 +1303,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                     #(#args_attrs,)*
                                 }
 
-                                let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
+                                let mut flags = #crate_path::common::flags::ReturnFlags::empty();
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = {
                                     match #resolve_abi_convention {
@@ -1483,22 +1341,11 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
 
                 {
-                    extra_code.push(quote! {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
-                            casper_contract_sdk::schema::SchemaEntryPoint {
-                                name: stringify!(#export_name).into(),
-                                arguments: vec![ #(#args,)* ],
-                                result: #result,
-                                flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
-                            }
-                        }
-                    });
+                    extra_code.push(quote! {});
                 }
 
                 macro_symbols.push(quote! {
-                    #[export_name = #export_name]
-                    #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
+                    @exportas #export_name #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
                 });
 
                 dispatch_functions.push(quote! { #handle_dispatch });
@@ -1520,7 +1367,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     })
                 };
 
-                let entry_point_lit = LitStr::new(&export_name, Span::call_site());
                 extra_code.push(quote! {
                     fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl #crate_path::ToCallData<Return<'a> = #call_data_return_lifetime> {
                         #[derive(#crate_path::serializers::borsh::BorshSerialize)]
@@ -1532,7 +1378,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         impl #crate_path::ToCallData for CallData {
                             type Return<'a> = #call_data_return_lifetime;
 
-                            fn entry_point(&self) -> &str { #entry_point_lit }
+                            fn entry_point(&self) -> &str { stringify!(#export_name) }
                             fn input_data(&self) -> Option<Vec<u8>> {
                                 #input_data_content
                             }
@@ -1641,11 +1487,12 @@ fn generate_casper_state_for_struct(
         None => quote! { casper_contract_sdk },
     };
 
+    let crate_path_str = match &struct_meta.path {
+        Some(path) => path.to_token_stream().to_string(),
+        None => "casper_contract_sdk".to_string(),
+    };
+
     let borsh_path = {
-        let crate_path_str = match &struct_meta.path {
-            Some(path) => path.to_token_stream().to_string(),
-            None => "casper_contract_sdk".to_string(),
-        };
         syn::LitStr::new(
             &format!("{}::serializers::borsh", crate_path_str),
             Span::call_site(),
@@ -1656,7 +1503,8 @@ fn generate_casper_state_for_struct(
     let struct_name = &item_struct.ident;
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::macros::TypeUid)]
+        #[type_uid(crate = stringify!(#borsh_path))]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #item_struct
@@ -1694,7 +1542,7 @@ fn generate_casper_state_for_enum(
     let enum_name = &item_enum.ident;
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::macros::TypeUid)]
         #[borsh(use_discriminant = true, crate = #borsh_path)]
         #[repr(u32)]
         #maybe_derive_abi
@@ -1751,7 +1599,7 @@ fn process_casper_contract_state_for_struct(
             #[no_mangle]
             pub extern "C" fn __casper_schema() {
                 use #crate_path::casper::ret;
-                use #crate_path::casper_executor_wasm_common::flags::ReturnFlags;
+                use #crate_path::common::flags::ReturnFlags;
                 let bytes = SCHEMA.unwrap_or_default().as_bytes();
                 ret(ReturnFlags::empty(), Some(bytes));
             }
@@ -1774,7 +1622,7 @@ fn process_casper_contract_state_for_struct(
     };
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::macros::TypeUid)]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #contract_struct
@@ -1807,6 +1655,9 @@ fn process_casper_contract_state_for_struct(
                 struct_name: stringify!(#struct_name),
                 abi_convention: #abi_conv,
                 cl_type: || { <#struct_name as #crate_path::compat::types::CLTyped>::cl_type() },
+                visit_abi_types: |visitor| {
+                    casper_contract_sdk::abi::visit_types_recursively::<#struct_name>(visitor);
+                },
             });
         };
     }
@@ -1825,11 +1676,6 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
 
         maybe_stable_key_collector = quote! {
             const _: () = {
-                #[#crate_path::linkme::distributed_slice(#crate_path::abi_collector::ABI_COLLECTORS)]
-                #[linkme(crate = #crate_path::linkme)]
-                static COLLECTOR: fn(&mut #crate_path::abi::Definitions) = |defs| {
-                    #_const_ident.collect_abi(defs);
-                };
             };
         };
 
@@ -1994,7 +1840,7 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(CasperABI, attributes(casper))]
 pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
-        let mut populate_definitions = Vec::new();
+        let mut populate_visitor = Vec::new();
         let name = input.ident.clone();
         let mut items = Vec::new();
         for field in &input.fields {
@@ -2003,8 +1849,8 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                     for segment in &path.path.segments {
                         let field_name = &field.ident;
 
-                        populate_definitions.push(quote! {
-                            definitions.populate_one::<#segment>();
+                        populate_visitor.push(quote! {
+                            <#segment>::visit(visitor);
                         });
 
                         items.push(quote! {
@@ -2021,13 +1867,13 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
 
         Ok(quote! {
             impl casper_contract_sdk::abi::CasperABI for #name {
-                fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
-                    #(#populate_definitions)*;
+                fn visit(visitor: &mut dyn casper_contract_sdk::abi::ABIVisitor) {
+                    visitor.accept(casper_contract_sdk::abi::ABITypeInfo::from_abi_type::<#name>());
+                    #(#populate_visitor)*;
                 }
 
                 fn declaration() -> casper_contract_sdk::abi::Declaration {
-                    const DECL: &str = concat!(module_path!(), "::", stringify!(#name));
-                    DECL.into()
+                    std::any::type_name::<#name>().into()
                 }
 
                 fn definition() -> casper_contract_sdk::abi::Definition {
@@ -2047,10 +1893,6 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         let mut all_variants = Vec::new();
         let mut populate_definitions = Vec::new();
         let mut has_unit_definition = false;
-
-        // populate_definitions.push(quote! {
-        //     definitions.populate_one::<#name>();
-        // });
 
         all_definitions.push(quote! {
             casper_contract_sdk::abi::Definition::Enum {
@@ -2080,7 +1922,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                     // NOTE: Generate an empty struct here for a definition.
                     if !has_unit_definition {
                         populate_definitions.push(quote! {
-                            definitions.populate_one::<()>();
+                            // definitions.populate_one::<()>();
                         });
                         has_unit_definition = true;
                     }
@@ -2138,7 +1980,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                                 for segment in &path.path.segments {
                                     let type_name = &segment.ident;
                                     populate_definitions.push(quote! {
-                                        definitions.populate_one::<#type_name>();
+                                        <#type_name>::visit(visitor);
                                     });
 
                                     fields.push(quote! {
@@ -2179,13 +2021,12 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
 
         Ok(quote! {
             impl casper_contract_sdk::abi::CasperABI for #name {
-                fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
+                fn visit(visitor: &mut dyn casper_contract_sdk::abi::ABIVisitor) {
                     #(#populate_definitions)*;
                 }
 
                 fn declaration() -> casper_contract_sdk::abi::Declaration {
-                    const DECL: &str = concat!(module_path!(), "::", stringify!(#name));
-                    DECL.into()
+                    std::any::type_name::<#name>().into()
                 }
 
                 fn definition() -> casper_contract_sdk::abi::Definition {
@@ -2257,5 +2098,106 @@ pub fn derive_no_default(item: TokenStream) -> TokenStream {
             )
             .to_compile_error(),
         )
+    }
+}
+
+#[proc_macro_derive(TypeUid, attributes(type_uid))]
+pub fn derive_type_uid(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+
+    // Extract crate path from #[type_uid(crate = "crate_path")] attribute
+    let crate_path = input
+        .attrs
+        .iter()
+        .find_map(|attr| {
+            if attr.path().is_ident("type_uid") {
+                attr.parse_args::<syn::Meta>().ok().and_then(|meta| {
+                    if let syn::Meta::NameValue(nv) = meta {
+                        if nv.path.is_ident("crate") {
+                            if let syn::Expr::Lit(expr_lit) = nv.value {
+                                if let syn::Lit::Str(lit_str) = expr_lit.lit {
+                                    return Some(lit_str.value());
+                                }
+                            }
+                        }
+                    }
+                    None
+                })
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "casper_contract_sdk::common::type_uid".to_string());
+
+    let crate_path_token: proc_macro2::TokenStream = crate_path.parse().unwrap();
+
+    match &input.data {
+        syn::Data::Struct(ds) => {
+            let fields = &ds.fields;
+
+            let mut mixer = Vec::new();
+
+            for field in fields.iter() {
+                let ty = &field.ty;
+
+                mixer.push(quote! {
+                    <#ty>::UID
+                });
+            }
+
+            TokenStream::from(quote! {
+                impl #crate_path_token::TypeUid for #name {
+                    const UID: #crate_path_token::Uid = #crate_path_token::Uid::from_fields(
+                        stringify!(#name),
+                        &[
+                            #(#mixer,)*
+                        ]
+                    );
+                }
+            })
+        }
+        syn::Data::Enum(de) => {
+            let mut mixer = Vec::new();
+
+            for variant in de.variants.iter() {
+                let variant_name = &variant.ident;
+
+                let mut field_mixers = Vec::new();
+
+                for field in variant.fields.iter() {
+                    let ty = &field.ty;
+
+                    field_mixers.push(quote! {
+                        <#ty>::UID
+                    });
+                }
+                if let Some((_, discriminant)) = &variant.discriminant {
+                    field_mixers.push(quote! { #crate_path_token::Uid::new_raw(#discriminant) });
+                }
+
+                mixer.push(quote! {
+                    #crate_path_token::Uid::from_fields(
+                        stringify!(#variant_name),
+                        &[
+                            #(#field_mixers,)*
+                        ]
+                    )
+                });
+            }
+
+            TokenStream::from(quote! {
+                impl #crate_path_token::TypeUid for #name {
+                    const UID: #crate_path_token::Uid = #crate_path_token::Uid::from_fields(
+                        stringify!(#name),
+                        &[#(#mixer,)*]
+                    );
+                }
+            })
+        }
+        syn::Data::Union(_) => TokenStream::from(
+            syn::Error::new(Span::call_site(), "TypeUid cannot be derived for unions")
+                .to_compile_error(),
+        ),
     }
 }
