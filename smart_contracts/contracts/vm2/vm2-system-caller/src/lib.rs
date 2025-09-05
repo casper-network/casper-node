@@ -28,7 +28,10 @@ pub mod exports {
                 let input = borsh::to_vec(&(uref_addr, 100u64)).expect("Serialization to succeed");
                 Some(input)
             }
-            SystemContractOption::Burn => None,
+            SystemContractOption::Burn => {
+                let input = borsh::to_vec(&(100u64,)).expect("Serialization to succeed");
+                Some(input)
+            }
             SystemContractOption::ActivateBid => {
                 let input = borsh::to_vec(&(PublicKey::Ed25519([1; 32]),))
                     .expect("Serialization to succeed");

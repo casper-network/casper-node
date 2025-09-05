@@ -148,6 +148,9 @@ pub trait TrackingCopyEntityExt<R> {
         system_contract_name: &str,
         name: &str,
     ) -> Result<Option<Key>, Self::Error>;
+
+    /// Returns a main purse if relevant to the imputed key.
+    fn main_purse_by_key(&mut self, key: &Key) -> Result<URef, TrackingCopyError>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -948,5 +951,18 @@ where
         };
         let runtime_footprint = self.runtime_footprint_by_hash_addr(hash)?;
         Ok(runtime_footprint.take_named_keys().get(name).copied())
+    }
+
+    fn main_purse_by_key(&mut self, key: &Key) -> Result<URef, TrackingCopyError> {
+        match self.read(key)? {
+            Some(StoredValue::Account(account)) => Ok(account.main_purse()),
+            Some(StoredValue::AddressableEntity(entity)) => Ok(entity.main_purse()),
+            Some(StoredValue::CLValue(cl_value)) => match cl_value.into_t::<Key>() {
+                Ok(entity_key) => self.main_purse_by_key(&entity_key),
+                Err(cve) => Err(TrackingCopyError::CLValue(cve)),
+            },
+            Some(_) => Err(TrackingCopyError::UnexpectedKeyVariant(*key)),
+            None => Err(TrackingCopyError::KeyNotFound(*key)),
+        }
     }
 }

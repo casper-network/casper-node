@@ -19,7 +19,7 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_interface::{
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
-    u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
+    u32_from_host_result, Caller, GasUsage, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{
     global_state::GlobalStateReader,
@@ -1279,16 +1279,26 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
-    let transfer_cost = caller.context().config.host_function_costs().transfer;
-    charge_host_function_call(
-        &mut caller,
-        &transfer_cost,
-        [
+    let gas_usage = {
+        let transfer_host_function_weights = [
             u64::from(entity_addr_ptr),
             u64::from(entity_addr_len),
             u64::from(amount_ptr),
-        ],
-    )?;
+        ];
+        let transfer_host_function_table = caller.context().config.host_function_costs().transfer;
+        let Some(transfer_gas_cost) =
+            transfer_host_function_table.calculate_gas_cost(transfer_host_function_weights)
+        else {
+            return Err(VMError::OutOfGas);
+        };
+
+        let transfer_cost = transfer_gas_cost.value().as_u64();
+        caller.consume_gas(transfer_cost)?;
+        let Ok(remaining) = caller.get_remaining_points().try_into_remaining() else {
+            return Err(VMError::OutOfGas);
+        };
+        GasUsage::new(transfer_cost, remaining)
+    };
 
     if entity_addr_len != 32 {
         // Invalid entity address; failing to proceed with the transfer
@@ -1301,7 +1311,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         u64::from_le_bytes(amount_bytes)
     };
 
-    let (target_entity_addr, _runtime_footprint) = {
+    let (target_entity_addr, runtime_footprint) = {
         let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
         debug_assert_eq!(entity_addr.len(), 32);
 
@@ -1425,13 +1435,21 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
 
-    let args = TransferArgs::new(callee_purse, target_purse, U512::from(amount));
+    let args = TransferArgs::new(
+        runtime_native_config,
+        transaction_hash,
+        Arc::clone(&address_generator),
+        caller.context().initiator,
+        caller.context().caller,
+        gas_usage.remaining_points().into(),
+        callee_purse,
+        target_purse,
+        U512::from(amount),
+    );
 
     match system::transfer(
         &mut caller.context_mut().tracking_copy,
-        runtime_native_config,
-        transaction_hash,
-        address_generator,
+        runtime_footprint,
         args,
     ) {
         Ok(()) => Ok(HOST_ERROR_SUCCESS),

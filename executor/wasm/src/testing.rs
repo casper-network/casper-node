@@ -319,14 +319,17 @@ pub fn expect_successful_execution(
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
 ) -> ExecuteWithProviderResult {
-    let result =
-        run_wasm_session(executor, global_state, pre_state_hash, execute_request).expect("Succeed");
-
-    if let Some(host_error) = result.host_error {
-        panic!("Host error: {host_error:?}")
+    match run_wasm_session(executor, global_state, pre_state_hash, execute_request) {
+        Ok(result) => {
+            if let Some(host_error) = result.host_error {
+                panic!("Host error: {host_error:?}")
+            }
+            result
+        }
+        Err(err) => {
+            panic!("Provider error: {err:?}")
+        }
     }
-
-    result
 }
 
 pub fn run_wasm_session(

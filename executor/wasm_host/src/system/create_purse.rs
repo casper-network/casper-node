@@ -19,7 +19,6 @@ pub fn create_purse<R: GlobalStateReader>(
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
 ) -> VMResult<URef> {
-    // TODO make this use DISPATCH ERROR
     let mint_result = match dispatch_system_contract(
         tracking_copy,
         runtime_native_config,

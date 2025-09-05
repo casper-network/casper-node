@@ -8,68 +8,94 @@ use casper_storage::{
     global_state::GlobalStateReader, system::mint::Mint, AddressGenerator, RuntimeNativeConfig,
     TrackingCopy,
 };
-use casper_types::{account::AccountHash, ApiError, TransactionHash, URef, METHOD_TRANSFER, U512};
+use casper_types::{
+    account::AccountHash, ApiError, Key, RuntimeFootprint, TransactionHash, URef, METHOD_TRANSFER,
+    U512,
+};
 use parking_lot::RwLock;
 use tracing::{debug, error};
 
-use crate::system::{dispatch_system_contract, DispatchError};
+use crate::system::DispatchError;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct TransferArgs {
+    runtime_native_config: RuntimeNativeConfig,
+    id: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    initiator: AccountHash,
+    context_key: Key,
+    remaining_spending_limit: U512,
     maybe_to: Option<AccountHash>,
     source: URef,
     target: URef,
     amount: U512,
-    id: Option<u64>,
+    transfer_id: Option<u64>,
 }
 
 impl TransferArgs {
-    pub fn new(source: URef, target: URef, amount: U512) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        runtime_native_config: RuntimeNativeConfig,
+        id: TransactionHash,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+        initiator: AccountHash,
+        context_key: Key,
+        remaining_spending_limit: U512,
+        source: URef,
+        target: URef,
+        amount: U512,
+    ) -> Self {
         TransferArgs {
+            runtime_native_config,
+            id,
+            address_generator,
+            initiator,
+            context_key,
+            remaining_spending_limit,
             source,
             target,
             amount,
             maybe_to: None,
-            id: None,
+            transfer_id: None,
         }
     }
 }
 
 pub fn transfer<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    runtime_native_config: RuntimeNativeConfig,
-    id: TransactionHash,
-    address_generator: Arc<RwLock<AddressGenerator>>,
+    runtime_footprint: RuntimeFootprint,
     args: TransferArgs,
 ) -> Result<(), DispatchError> {
-    let transfer_result: Result<(), casper_types::system::mint::Error> =
-        match dispatch_system_contract(
-            tracking_copy,
-            runtime_native_config,
-            id,
-            address_generator,
-            |mut runtime| {
-                let TransferArgs {
-                    maybe_to,
-                    source,
-                    target,
-                    amount,
-                    id,
-                } = args;
+    debug!(?args, METHOD_TRANSFER);
+    let transfer_result = match super::dispatch_userland_to_system_contract(
+        tracking_copy,
+        runtime_footprint,
+        args.runtime_native_config,
+        args.id,
+        args.address_generator,
+        args.initiator,
+        args.context_key,
+        args.remaining_spending_limit,
+        |mut runtime| {
+            runtime.transfer(
+                args.maybe_to,
+                args.source,
+                args.target,
+                args.amount,
+                args.transfer_id,
+            )
+        },
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            error!(%error, "transfer failed on dispatch");
+            return Err(DispatchError::Internal(
+                InternalHostError::DispatchSystemContract,
+            ));
+        }
+    };
 
-                runtime.transfer(maybe_to, source, target, amount, id)
-            },
-        ) {
-            Ok(result) => result,
-            Err(error) => {
-                error!(%error, "transfer failed on dispatch");
-                return Err(DispatchError::Internal(
-                    InternalHostError::DispatchSystemContract,
-                ));
-            }
-        };
-
-    debug!(?args, ?transfer_result, METHOD_TRANSFER);
+    debug!(?transfer_result, METHOD_TRANSFER);
 
     match transfer_result {
         Ok(()) => Ok(()),
@@ -81,7 +107,7 @@ pub fn transfer<R: GlobalStateReader>(
         }
         Err(error) => {
             let api_error: ApiError = error.into();
-            error!(%api_error, ?args, "transfer failed with error");
+            error!(%api_error, "transfer failed with error");
             Err(DispatchError::Api(api_error))
         }
     }

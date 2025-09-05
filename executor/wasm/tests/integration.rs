@@ -28,9 +28,7 @@ use casper_executor_wasm_interface::executor::{
     MintMethods, SystemMenu,
 };
 
-use casper_executor_wasm::testing::{
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY,
-};
+use casper_executor_wasm::testing::DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY;
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -41,16 +39,14 @@ use casper_storage::{
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    AddressGenerator, KeyPrefix, TrackingCopy,
+    AddressGenerator, KeyPrefix,
 };
-
-use casper_storage::global_state::state::lmdb::LmdbGlobalStateView;
 
 use casper_types::{
     account::AccountHash,
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
-    BlockHash, BlockTime, Digest, EntityAddr, Key, StoredValue, Timestamp, URef,
+    BlockHash, BlockTime, Digest, EntityAddr, Key, StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -200,28 +196,6 @@ fn exec_system_call(system_menu: SystemMenu, initiator: Option<AccountHash>) {
     }
 }
 
-#[allow(unused)]
-fn get_purse(tracking_copy: &mut TrackingCopy<LmdbGlobalStateView>) -> Result<URef, String> {
-    match tracking_copy.read(&Key::Account(DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash())) {
-        Ok(Some(StoredValue::Account(account))) => Ok(account.main_purse()),
-        Ok(Some(StoredValue::AddressableEntity(entity))) => Ok(entity.main_purse()),
-        Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<Key>() {
-            Ok(entity_key) => {
-                if let Ok(Some(StoredValue::AddressableEntity(entity))) =
-                    tracking_copy.read(&entity_key)
-                {
-                    Ok(entity.main_purse())
-                } else {
-                    Err("cl_value found, no matching entity".to_string())
-                }
-            }
-            Err(err) => Err(err.to_string()),
-        },
-        Ok(_) => Err("unexpected stored value variant".to_string()),
-        Err(err) => Err(err.to_string()),
-    }
-}
-
 fn exec_and_commit(
     executor: &ExecutorV2,
     global_state: &LmdbGlobalState,
@@ -301,7 +275,6 @@ fn should_call_system_transfer() {
 }
 
 #[test]
-#[ignore]
 fn should_call_system_burn() {
     exec_system_call(SystemMenu::Mint(MintMethods::Burn), None);
 }

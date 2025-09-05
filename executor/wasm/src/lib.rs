@@ -36,6 +36,7 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
+    tracking_copy::TrackingCopyEntityExt,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
@@ -225,7 +226,8 @@ impl ExecutorV2 {
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
 
         let caller_key = Key::Account(initiator);
-        let _source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
+        // TODO: Michal: why is this result not evaluated?
+        let _result = get_purse_for_entity(&mut tracking_copy, caller_key);
 
         // 1. Store package hash
         let smart_contract_addr: [u8; 32] = chain_utils::compute_predictable_address(
@@ -494,7 +496,7 @@ impl ExecutorV2 {
             runtime_native_config,
         } = execute_request;
 
-        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key)?;
+        let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
         let (wasm_bytes, export_name) = {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
@@ -573,12 +575,26 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
+                            // TODO: consult w/ Michal re: charge timing
+                            let gas_usage = GasUsage::new(gas_limit, gas_limit);
+
+                            let runtime_footprint =
+                                match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
+                                    Ok(footprint) => footprint,
+                                    Err(_) => {
+                                        return Err(ExecuteError::EntityNotFound(caller_key));
+                                    }
+                                };
                             match system::transfer(
                                 &mut tracking_copy,
-                                runtime_native_config.clone(),
-                                transaction_hash,
-                                Arc::clone(&address_generator),
+                                runtime_footprint,
                                 TransferArgs::new(
+                                    runtime_native_config.clone(),
+                                    transaction_hash,
+                                    Arc::clone(&address_generator),
+                                    initiator,
+                                    caller_key,
+                                    gas_usage.remaining_points().into(),
                                     source_purse,
                                     addressable_entity.main_purse(),
                                     transferred_value.into(),
@@ -1063,7 +1079,7 @@ impl Executor for ExecutorV2 {
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> Result<URef, ExecuteError> {
+) -> Result<(EntityAddr, URef), ExecuteError> {
     let stored_value = tracking_copy
         .read(&entity_key)
         .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
@@ -1073,6 +1089,10 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let key = addressable_entity_key
                 .into_t::<Key>()
                 .expect("should be key");
+            let hash = match key.into_entity_hash() {
+                Some(hash) => hash,
+                None => return Err(ExecuteError::EntityNotFound(key)),
+            };
             let stored_value = tracking_copy
                 .read(&key)
                 .expect("should read account")
@@ -1081,16 +1101,19 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let addressable_entity = stored_value
                 .into_addressable_entity()
                 .expect("should be addressable entity");
-
-            Ok(addressable_entity.main_purse())
+            let addr = addressable_entity.entity_addr(hash);
+            Ok((addr, addressable_entity.main_purse()))
         }
-        StoredValue::Account(account) => Ok(account.main_purse()),
+        StoredValue::Account(account) => {
+            let addr = EntityAddr::Account(account.account_hash().value());
+            Ok((addr, account.main_purse()))
+        }
         StoredValue::SmartContract(smart_contract_package) => {
-            let contract_hash = smart_contract_package
+            let addr = smart_contract_package
                 .versions()
                 .latest()
                 .expect("should have last entry");
-            let entity_addr = EntityAddr::SmartContract(contract_hash.value());
+            let entity_addr = EntityAddr::SmartContract(addr.value());
             let latest_version_key = Key::AddressableEntity(entity_addr);
             let new_contract = tracking_copy
                 .read(&latest_version_key)
@@ -1099,7 +1122,8 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .expect("should have addressable entity")
                 .into_addressable_entity()
                 .expect("should be addressable entity");
-            Ok(addressable_entity.main_purse())
+
+            Ok((*addr, addressable_entity.main_purse()))
         }
         other => Err(ExecuteError::InternalHost(
             InternalHostError::UnexpectedStoredValueVariant {
