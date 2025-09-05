@@ -368,7 +368,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
         let method_attribute;
         let mut flag_value = EntryPointFlags::empty();
 
-        let func = match entry_point {
+        match entry_point {
             syn::ImplItem::Const(_) => todo!("Const"),
             syn::ImplItem::Fn(ref mut func) => {
                 let vis = &func.vis;
@@ -850,14 +850,12 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                     _ => todo!("Different self_ty currently unsupported"),
                 }
-
-                func.clone()
             }
             syn::ImplItem::Type(_) => todo!(),
             syn::ImplItem::Macro(_) => todo!(),
             syn::ImplItem::Verbatim(_) => todo!(),
             _ => todo!(),
-        };
+        }
     }
     // let entry_points_len = entry_points.len();
     let st_name = struct_name.get_ident().unwrap();
@@ -941,52 +939,75 @@ fn generate_impl_trait_for_contract(
     };
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
-    let ref_trait = format_ident!("{}Ext", trait_path.segments.last().unwrap().ident);
-    let ref_name = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
 
     let visitor = if impl_meta.compile_as_dependency {
-        // quote! {
-        //     const _: () = {
-        //         macro_rules! visitor {
-        //             ($( $vis:vis $name:ident as $export_name:ident => $dispatch:ident ,
-        // $schema:ident , )*) => {                 $(
-        //                     $vis extern "C" fn $name() {
-        //                         #path_to_macro::$dispatch::<#self_ty>();
-        //                     }
+        quote! {
+            const _: () = {
+                macro_rules! visitor {
+                    ( $( @exportas $export_name:ident @is_constructor $is_constructor:ident @is_payable $is_payable:ident $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                        $(
+                            const _: () = {
+                                $vis extern "C" fn $name() {
+                                    #path_to_macro::$name::<#self_ty>();
+                                }
 
-        //                     #[cfg(not(target_arch = "wasm32"))]
-        //                     const _: () = {
-        //
-        // #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
-        //                         #[linkme(crate = casper_contract_sdk::linkme)]
-        //                         pub static EXPORTS:
-        // casper_contract_sdk::casper::native::EntryPoint =
-        // casper_contract_sdk::casper::native::EntryPoint {
-        // kind: casper_contract_sdk::casper::native::EntryPointKind::TraitImpl { trait_name:
-        // stringify!(#trait_name), impl_name: stringify!(#self_ty), name: stringify!($export_name)
-        // },                             fptr: || -> () { $name(); },
-        //                             module_path: module_path!(),
-        //                             file: file!(),
-        //                             line: line!(),
-        //                         };
-        //                     };
+                               #[cfg(not(target_arch = "wasm32"))]
+                                const _: () = {
+                                    const NAME: &str = stringify!($name);
+                                    const EXPORT_NAME: &str = stringify!($export_name);
 
-        //                     #[cfg(not(target_arch = "wasm32"))]
-        //                     const _: () = {
-        //
-        // #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ENTRYPOINTS)]
-        //                         #[linkme(crate = casper_contract_sdk::linkme)]
-        //                         static ENTRY_POINTS: fn() ->
-        // casper_contract_sdk::schema::SchemaEntryPoint = <#ref_name as #ref_trait>::$schema;
-        //                     };
-        //                 )*
-        //             }
-        //         }
+                                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                                    #[linkme(crate = casper_contract_sdk::linkme)]
+                                    pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
+                                        name: NAME,
+                                        export_name: EXPORT_NAME,
+                                        receiver: None,// casper_contract_sdk::abi_collector::AbiReceiver::ByRef,
+                                        is_constructor: $is_constructor,
+                                        is_payable: $is_payable,
+                                        params: &[
+                                            $(
+                                                casper_contract_sdk::abi_collector::AbiParam {
+                                                    name: stringify!($arg),
+                                                    decl: casper_contract_sdk::abi_collector::AbiType {
+                                                        type_name: std::any::type_name::<$argty>,
+                                                        type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
+                                                        cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
+                                                        visit_abi_types: |visitor| {
+                                                            casper_contract_sdk::abi::visit_types_recursively::<$argty>(visitor);
+                                                        },
+                                                    }
+                                                },
+                                            )*
+                                        ],
+                                        abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
+                                        result_decl: {
+                                            use #path_to_crate::*;
+                                            casper_contract_sdk::abi_collector::AbiType {
+                                                type_name: std::any::type_name::<$ret>,
+                                                type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
+                                                cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
+                                                visit_abi_types: |visitor| {
+                                                    casper_contract_sdk::abi::visit_types_recursively::<$ret>(visitor);
+                                                },
+                                            }
+                                        },
+                                        kind: casper_contract_sdk::abi_collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
+                                        location: casper_contract_sdk::abi_collector::AbiLocation {
+                                            file: file!(),
+                                            line: line!(),
+                                            col: column!(),
+                                        },
+                                        fptr: || -> () { $name(); },
+                                    });
+                                };
+                            };
+                        )*
+                    }
+                }
 
-        //         #path_to_crate::#macro_name!(visitor);
-        //     };
-        // }
-        todo!()
+                #path_to_crate::#macro_name!(visitor);
+            };
+        }
     } else {
         quote! {
             const _: () = {

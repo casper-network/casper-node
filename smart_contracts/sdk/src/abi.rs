@@ -324,9 +324,11 @@ impl CasperABI for Tuple {
     }
 
     fn definition() -> Definition {
-        let items = <[_]>::into_vec(Box::new([
-            for_tuples!( #( type_uid::of::<Tuple>().into() ),* ),
-        ]));
+        // Precompute capacity for the tuple items using the for_tuples! repetition.
+        let mut capacity = 0usize;
+        for_tuples!( #( capacity += 1; )* );
+        let mut items = Vec::with_capacity(capacity);
+        for_tuples!( #( items.push(type_uid::of::<Tuple>().into()); )* );
         Definition::Tuple { items }
     }
 }
