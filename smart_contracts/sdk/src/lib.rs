@@ -114,10 +114,7 @@ macro_rules! log {
 #[macro_export]
 macro_rules! revert {
     () => {{
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            None,
-        );
+        $crate::casper::ret($crate::common::flags::ReturnFlags::REVERT, None);
         unreachable!()
     }};
     ($arg:expr) => {{
@@ -125,7 +122,7 @@ macro_rules! revert {
         let data =
             $crate::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
         $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            $crate::common::flags::ReturnFlags::REVERT,
             Some(data.as_slice()),
         );
         #[allow(unreachable_code)]

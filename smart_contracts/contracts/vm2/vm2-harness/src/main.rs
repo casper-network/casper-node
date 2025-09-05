@@ -9,7 +9,7 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_message, Entity},
-    casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
+    common::{error::HostResult, keyspace::Keyspace},
     log,
     types::{Address, CallError, NamedKey, PublicKey},
 };

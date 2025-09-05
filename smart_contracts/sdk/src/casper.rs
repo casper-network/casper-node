@@ -23,6 +23,7 @@ use casper_executor_wasm_common::{
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
+    type_uid,
 };
 
 /// Print a message.
@@ -497,7 +498,7 @@ impl CasperABI for Entity {
         visitor.accept(ABITypeInfo::from_abi_type::<Self>());
         <[u8; 32]>::visit(visitor);
     }
-    fn declaration() -> crate::abi::Declaration {
+    fn declaration() -> crate::abi::AbiDeclaration {
         "Entity".into()
     }
 
@@ -507,12 +508,12 @@ impl CasperABI for Entity {
                 EnumVariant {
                     name: "Account".into(),
                     discriminant: 0,
-                    decl: <[u8; 32] as CasperABI>::declaration(),
+                    decl: Some(type_uid::of::<[u8; 32]>().into()),
                 },
                 EnumVariant {
                     name: "Contract".into(),
                     discriminant: 1,
-                    decl: <[u8; 32] as CasperABI>::declaration(),
+                    decl: Some(type_uid::of::<[u8; 32]>().into()),
                 },
             ],
         }

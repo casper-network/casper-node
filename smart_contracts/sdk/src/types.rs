@@ -7,7 +7,7 @@ use casper_executor_wasm_common::{
 };
 
 use crate::{
-    abi::{CasperABI, Declaration, Definition, EnumVariant},
+    abi::{AbiDeclaration, CasperABI, Definition, EnumVariant},
     casper,
     compat::types::{CLType, CLTyped},
     prelude::fmt,
@@ -33,24 +33,6 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
 
     pub const fn name(&self) -> &'static str {
         self.name
-    }
-
-    /// Populate ABI definitions for the value type `T` of this named key.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn collect_abi(&self, definitions: &mut crate::abi::Definitions)
-    where
-        T: CasperABI,
-    {
-        definitions.populate_one::<T>();
-    }
-
-    /// Return the ABI declaration string for the value type `T` of this named key.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn declaration(&self) -> Declaration
-    where
-        T: CasperABI,
-    {
-        <T as CasperABI>::declaration()
     }
 
     pub fn write(&self, value: T) {
@@ -149,7 +131,7 @@ impl CLTyped for CallError {
 }
 
 impl CasperABI for CallError {
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         "CallError".into()
     }
 
@@ -159,22 +141,22 @@ impl CasperABI for CallError {
                 EnumVariant {
                     name: "CalleeReverted".into(),
                     discriminant: 0,
-                    decl: <()>::declaration(),
+                    decl: None,
                 },
                 EnumVariant {
                     name: "CalleeTrapped".into(),
                     discriminant: 1,
-                    decl: <()>::declaration(),
+                    decl: None,
                 },
                 EnumVariant {
                     name: "CalleeGasDepleted".into(),
                     discriminant: 2,
-                    decl: <()>::declaration(),
+                    decl: None,
                 },
                 EnumVariant {
                     name: "CodeNotFound".into(),
                     discriminant: 3,
-                    decl: <()>::declaration(),
+                    decl: None,
                 },
             ],
         }

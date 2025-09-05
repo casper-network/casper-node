@@ -1,7 +1,7 @@
 use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
 
 use crate::{
-    abi::{ABIVisitor, Declaration},
+    abi::{ABIVisitor, AbiDeclaration},
     compat::types::CLType,
     linkme::distributed_slice,
     serializers::AbiConvention,
@@ -132,7 +132,7 @@ pub static MESSAGES: [Message] = [..];
 #[derive(Debug, Clone)]
 pub struct NamedKey {
     pub name: &'static str,
-    pub decl: fn() -> Declaration,
+    pub decl: fn() -> AbiDeclaration,
 }
 
 #[distributed_slice]

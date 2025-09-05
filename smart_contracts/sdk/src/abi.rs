@@ -1,9 +1,10 @@
-use core::any::{Any, TypeId};
+use core::any::Any;
 
 use crate::{
+    common::type_uid::UidRepr,
     compat::types::{CLType, CLTyped},
     prelude::{
-        collections::{self, BTreeMap, BTreeSet, HashMap, LinkedList},
+        collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
         str::FromStr,
     },
 };
@@ -15,13 +16,17 @@ use serde::{Deserialize, Serialize};
 pub struct EnumVariant {
     pub name: String,
     pub discriminant: u64,
-    pub decl: Declaration,
+    /// Optional declaration for the variant.
+    ///
+    /// Plain enum variants (i.e. those without any type, only discriminants) don't require a type
+    /// declaration.
+    pub decl: Option<UidRepr>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct StructField {
     pub name: String,
-    pub decl: Declaration,
+    pub decl: UidRepr,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -82,8 +87,8 @@ pub enum Definition {
     ///
     /// Example Rust types: BTreeMap<K, V>.
     Mapping {
-        key: Declaration,
-        value: Declaration,
+        key: UidRepr,
+        value: UidRepr,
     },
     /// Arbitrary sequence of values.
     ///
@@ -91,19 +96,19 @@ pub enum Definition {
     Sequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
-        decl: Declaration,
+        decl: UidRepr,
     },
     FixedSequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
         length: u32, // None -> Vec<T> Some(N) [T; N]
-        decl: Declaration,
+        decl: UidRepr,
     },
     /// A tuple of multiple values of various types.
     ///
     /// Can be also used to represent a heterogeneous list.
     Tuple {
-        items: Vec<Declaration>,
+        items: Vec<UidRepr>,
     },
     Enum {
         items: Vec<EnumVariant>,
@@ -135,7 +140,7 @@ impl Definition {
         }
     }
 
-    pub fn as_tuple(&self) -> Option<&[Declaration]> {
+    pub fn as_tuple(&self) -> Option<&[UidRepr]> {
         if let Self::Tuple { items } = self {
             Some(items.as_slice())
         } else {
@@ -144,63 +149,15 @@ impl Definition {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Definitions(BTreeMap<Declaration, Definition>);
-
-impl Definitions {
-    pub fn populate_one<T: CasperABI>(&mut self) {
-        // T::populate_definitions(self);
-
-        // let decl = T::declaration();
-        // let def = T::definition();
-
-        // self.populate_custom(decl, def);
-        todo!()
-    }
-
-    pub fn populate_custom(&mut self, decl: Declaration, def: Definition) {
-        let previous = self.0.insert(decl.clone(), def.clone());
-        if previous.is_some() && previous != Some(def.clone()) {
-            panic!("Type {decl} has multiple definitions ({previous:?} != {def:?}).");
-        }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Declaration, &Definition)> {
-        self.0.iter()
-    }
-
-    pub fn get(&self, decl: &str) -> Option<&Definition> {
-        self.0.get(decl)
-    }
-
-    pub fn first(&self) -> Option<(&Declaration, &Definition)> {
-        self.0.iter().next()
-    }
-
-    /// Returns true if the given declaration has a definition in this set.
-    pub fn has_definition(&self, decl: &Declaration) -> bool {
-        self.0.contains_key(decl)
-    }
-}
-
-impl IntoIterator for Definitions {
-    type Item = (Declaration, Definition);
-    type IntoIter = collections::btree_map::IntoIter<Declaration, Definition>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 /// Small builder that keeps up to 8 fragments on-stack before allocating.
-pub type Declaration = String;
+pub type AbiDeclaration = String;
 
 #[derive(Debug, Clone)]
 
 pub struct ABITypeInfo {
     type_id: Uid,
     cl_type: CLType,
-    declaration: Declaration,
+    declaration: AbiDeclaration,
     definition: Definition,
 }
 
@@ -208,7 +165,7 @@ impl ABITypeInfo {
     pub fn new(
         type_id: Uid,
         cl_type: CLType,
-        declaration: Declaration,
+        declaration: AbiDeclaration,
         definition: Definition,
     ) -> Self {
         Self {
@@ -239,7 +196,7 @@ impl ABITypeInfo {
         &self.cl_type
     }
 
-    pub fn declaration(&self) -> &Declaration {
+    pub fn declaration(&self) -> &AbiDeclaration {
         &self.declaration
     }
 
@@ -272,7 +229,7 @@ pub trait CasperABI: Any + CLTyped + TypeUid {
         visitor.accept(type_info);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         std::any::type_name::<Self>().into()
     }
 
@@ -367,7 +324,9 @@ impl CasperABI for Tuple {
     }
 
     fn definition() -> Definition {
-        let items = <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::declaration() ),* )]));
+        let items = <[_]>::into_vec(Box::new([
+            for_tuples!( #( type_uid::of::<Tuple>().into() ),* ),
+        ]));
         Definition::Tuple { items }
     }
 }
@@ -385,12 +344,12 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
                 EnumVariant {
                     name: "Ok".into(),
                     discriminant: 0,
-                    decl: T::declaration(),
+                    decl: Some(type_uid::of::<T>().into()),
                 },
                 EnumVariant {
                     name: "Err".into(),
                     discriminant: 1,
-                    decl: E::declaration(),
+                    decl: Some(type_uid::of::<E>().into()),
                 },
             ],
         }
@@ -409,12 +368,12 @@ impl<T: CasperABI> CasperABI for Option<T> {
                 EnumVariant {
                     name: "None".into(),
                     discriminant: 0,
-                    decl: <()>::declaration(),
+                    decl: None,
                 },
                 EnumVariant {
                     name: "Some".into(),
                     discriminant: 1,
-                    decl: T::declaration(),
+                    decl: Some(type_uid::of::<T>().into()),
                 },
             ],
         }
@@ -429,7 +388,7 @@ impl<T: CasperABI> CasperABI for Vec<T> {
 
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: T::declaration(),
+            decl: type_uid::of::<T>().into(),
         }
     }
 }
@@ -443,7 +402,7 @@ impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
     fn definition() -> Definition {
         Definition::FixedSequence {
             length: N.try_into().expect("N is too big"),
-            decl: T::declaration(),
+            decl: type_uid::of::<T>().into(),
         }
     }
 }
@@ -457,8 +416,8 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
 
     fn definition() -> Definition {
         Definition::Mapping {
-            key: K::declaration(),
-            value: V::declaration(),
+            key: type_uid::of::<K>().into(),
+            value: type_uid::of::<V>().into(),
         }
     }
 }
@@ -472,8 +431,8 @@ impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
 
     fn definition() -> Definition {
         Definition::Mapping {
-            key: K::declaration(),
-            value: V::declaration(),
+            key: type_uid::of::<K>().into(),
+            value: type_uid::of::<V>().into(),
         }
     }
 }
@@ -481,7 +440,7 @@ impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
 impl CasperABI for String {
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: char::declaration(),
+            decl: type_uid::of::<char>().into(),
         }
     }
 }
@@ -489,7 +448,7 @@ impl CasperABI for String {
 impl CasperABI for str {
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: char::declaration(),
+            decl: type_uid::of::<char>().into(),
         }
     }
 }
@@ -497,7 +456,7 @@ impl CasperABI for str {
 impl CasperABI for &'static str {
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: char::declaration(),
+            decl: type_uid::of::<char>().into(),
         }
     }
 }
@@ -510,7 +469,7 @@ impl<T: CasperABI + TypeUid> CasperABI for LinkedList<T> {
 
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: T::declaration(),
+            decl: type_uid::of::<T>().into(),
         }
     }
 }
@@ -523,7 +482,7 @@ impl<T: CasperABI> CasperABI for BTreeSet<T> {
 
     fn definition() -> Definition {
         Definition::Sequence {
-            decl: T::declaration(),
+            decl: type_uid::of::<T>().into(),
         }
     }
 }
@@ -534,14 +493,14 @@ impl CasperABI for crate::types::U256 {
         <[u64; 4]>::visit(v);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         "casper_contract_sdk::types::U256".into()
     }
 
     fn definition() -> Definition {
         Definition::FixedSequence {
             length: 4,
-            decl: u64::declaration(),
+            decl: type_uid::of::<u64>().into(),
         }
     }
 }
@@ -552,14 +511,14 @@ impl CasperABI for crate::compat::types::U512 {
         <[u64; 8]>::visit(v);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         "casper_contract_sdk::compat::types::U512".into()
     }
 
     fn definition() -> Definition {
         Definition::FixedSequence {
             length: 8,
-            decl: u64::declaration(),
+            decl: type_uid::of::<u64>().into(),
         }
     }
 }
@@ -568,8 +527,8 @@ impl CasperABI for crate::compat::types::U512 {
 mod tests {
     use crate::{
         abi::{
-            visit_types_recursively, ABIVisitor, CasperABI, Declaration, Definition, EnumVariant,
-            Primitive,
+            visit_types_recursively, ABIVisitor, AbiDeclaration, CasperABI, Definition,
+            EnumVariant, Primitive,
         },
         types::U256,
     };
@@ -598,11 +557,11 @@ mod tests {
     fn visit_all_nested_types() {
         #[derive(Default)]
         struct Test {
-            vec: Vec<(Declaration, Definition)>,
+            vec: Vec<(AbiDeclaration, Definition)>,
         }
 
         impl ABIVisitor for Test {
-            fn accept(&mut self, declaration: Declaration, definition: Definition) {
+            fn accept(&mut self, declaration: AbiDeclaration, definition: Definition) {
                 self.vec.push((declaration, definition));
             }
         }

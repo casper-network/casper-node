@@ -26,6 +26,12 @@ impl From<UidRepr> for Uid {
     }
 }
 
+impl From<Uid> for UidRepr {
+    fn from(uid: Uid) -> Self {
+        uid.0
+    }
+}
+
 impl std::fmt::Display for Uid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:08x}", self.0)

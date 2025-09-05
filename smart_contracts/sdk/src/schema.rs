@@ -17,7 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::hash::{Hash, Hasher};
 
 use crate::{
-    abi::{ABITypeInfo, ABIVisitor, Declaration, Definition, Definitions},
+    abi::{ABITypeInfo, ABIVisitor, AbiDeclaration, Definition},
     abi_collector::{AbiItem, AbiReceiver, ABI_ITEMS},
     compat::types::CLType,
     serializers::AbiConvention,
@@ -100,7 +100,7 @@ pub enum SchemaAbiConvention {
 #[serde(tag = "type")]
 pub enum SchemaType {
     /// Contract schemas contain a state structure that we want to mark in the schema.
-    Contract { state: Declaration },
+    Contract { state: AbiDeclaration },
     /// Schemas of interface type does not contain state.
     Interface,
 }
@@ -108,16 +108,16 @@ pub enum SchemaType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaMessage {
     pub name: String,
-    pub decl: Declaration,
+    pub decl: AbiDeclaration,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaStableKey {
     pub name: String,
-    pub decl: Declaration,
+    pub decl: AbiDeclaration,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 pub struct SchemaTypeUid(UidRepr);
 
 impl From<Uid> for SchemaTypeUid {
@@ -127,7 +127,7 @@ impl From<Uid> for SchemaTypeUid {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaDeclarations(BTreeMap<String, SchemaTypeUid>);
+pub struct SchemaDeclarations(BTreeMap<SchemaTypeUid, String>);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaDefinition {
@@ -205,8 +205,12 @@ pub fn casper_collect_schema() -> Schema {
                     assert_eq!(
                         schema_data.defs.first().as_ref().unwrap().type_uid(),
                         param_type_id,
-                        "parameter type ID mismatch decl={:?}", /* means CasperABI implementation is incorrect */
-                        abi_type.type_name,
+                        "parameter type ID mismatch decl={:?} {:#?} {:#?}", /* means CasperABI
+                                                                             * implementation is
+                                                                             * incorrect */
+                        (abi_type.type_name)(),
+                        schema_data.defs,
+                        schema_decls,
                     );
 
                     for abi_type_info in schema_data.defs {
@@ -217,7 +221,7 @@ pub fn casper_collect_schema() -> Schema {
 
                         schema_decls
                             .0
-                            .insert(decl.clone(), SchemaTypeUid::from(type_uid));
+                            .insert(SchemaTypeUid::from(type_uid), decl.clone());
                         schema_defs.0.insert(
                             SchemaTypeUid::from(type_uid),
                             SchemaDefinition {

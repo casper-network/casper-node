@@ -1,5 +1,5 @@
 use crate::{
-    abi::{CasperABI, Declaration, Definition, StructField},
+    abi::{AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::{CLType, CLTyped},
     prelude::{cmp::Ordering, marker::PhantomData},
@@ -24,7 +24,7 @@ impl<T: TypeUid> TypeUid for Vector<T> {
 }
 
 impl<T: CasperABI> CasperABI for Vector<T> {
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Vector<{}>", T::declaration())
     }
 
@@ -33,11 +33,11 @@ impl<T: CasperABI> CasperABI for Vector<T> {
             items: vec![
                 StructField {
                     name: "prefix".into(),
-                    decl: String::declaration(),
+                    decl: String::UID.into(),
                 },
                 StructField {
                     name: "length".into(),
-                    decl: u64::declaration(),
+                    decl: u64::UID.into(),
                 },
             ],
         }

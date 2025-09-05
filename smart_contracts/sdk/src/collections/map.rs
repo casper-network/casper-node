@@ -1,13 +1,12 @@
 use crate::{
-    abi::{ABIVisitor, CasperABI, Declaration, Definition, StructField},
+    abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::CLTyped,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_contract_macros::TypeUid;
 use casper_executor_wasm_common::{
     keyspace::Keyspace,
-    type_uid::{TypeUid, Uid},
+    type_uid::{self, TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
@@ -91,15 +90,16 @@ impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
         V::visit(visitor);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Map<{}, {}>", K::declaration(), V::declaration())
     }
+
     #[inline]
     fn definition() -> Definition {
         Definition::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
-                decl: u64::declaration(),
+                decl: type_uid::of::<u64>().into(),
             }],
         }
     }

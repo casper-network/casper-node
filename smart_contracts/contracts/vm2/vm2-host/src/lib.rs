@@ -1,7 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use casper_contract_sdk::{
-    casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
+    common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     sys::casper_return,
     types::HashAlgorithm,
