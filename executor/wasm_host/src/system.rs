@@ -26,8 +26,8 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    bytesrepr, ApiError, CLValueError, EntityAddr, Key, Phase, PublicKey, RuntimeFootprint,
-    TransactionHash, URef, U512,
+    bytesrepr, AccessRights, ApiError, CLValueError, EntityAddr, Key, Phase, PublicKey,
+    RuntimeFootprint, StoredValue, TransactionHash, URef, URefAddr, U512,
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -573,11 +573,41 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             MintMethods::Transfer => {
-                let unpacked: (URef, URef, U512) = bytesrepr::deserialize_from_slice(&input)
-                    .map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
-                let args = TransferArgs::new(unpacked.0, unpacked.1, unpacked.2);
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (URefAddr, u64)>(&input);
+                if let Err(err) = &ret {
+                    debug!(?err, "bytesrepr error in native_exec Activate");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
+                let source = {
+                    match tracking_copy.read(&caller_key) {
+                        Ok(Some(StoredValue::Account(account))) => account.main_purse(),
+                        Ok(Some(StoredValue::AddressableEntity(entity))) => entity.main_purse(),
+                        Ok(Some(StoredValue::CLValue(cl_value))) => {
+                            match cl_value.into_t::<Key>() {
+                                Ok(entity_key) => {
+                                    if let Ok(Some(StoredValue::AddressableEntity(entity))) =
+                                        tracking_copy.read(&entity_key)
+                                    {
+                                        entity.main_purse()
+                                    } else {
+                                        return Err(ExecuteError::EntityNotFound(caller_key));
+                                    }
+                                }
+                                Err(_) => {
+                                    return Err(ExecuteError::EntityNotFound(caller_key));
+                                }
+                            }
+                        }
+                        Ok(_) => {
+                            return Err(ExecuteError::EntityNotFound(caller_key));
+                        }
+                        Err(err) => return Err(ExecuteError::Api(err.to_string())),
+                    }
+                };
+                let target = URef::new(unpacked.0, AccessRights::ADD);
+                let args = TransferArgs::new(source, target, unpacked.1.into());
                 system::transfer(
                     &mut tracking_copy,
                     runtime_native_config,

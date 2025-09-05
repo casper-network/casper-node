@@ -20,7 +20,14 @@ pub mod exports {
             },
         };
         let input = match option {
-            SystemContractOption::Transfer => None,
+            SystemContractOption::Transfer => {
+                let uref_addr: casper_contract_sdk::types::Address = [
+                    134, 139, 79, 97, 16, 65, 173, 186, 126, 93, 235, 111, 229, 224, 29, 144, 186,
+                    66, 74, 244, 236, 214, 63, 64, 207, 67, 100, 16, 45, 199, 96, 170,
+                ];
+                let input = borsh::to_vec(&(uref_addr, 100u64)).expect("Serialization to succeed");
+                Some(input)
+            }
             SystemContractOption::Burn => None,
             SystemContractOption::ActivateBid => {
                 let input = borsh::to_vec(&(PublicKey::Ed25519([1; 32]),))

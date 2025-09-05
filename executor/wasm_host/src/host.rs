@@ -613,7 +613,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     let flags = match maybe_flags {
         Some(flags) => flags,
         None => {
-            return VMResult::Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
+            return Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
                 flags,
             )))
         }
