@@ -63,6 +63,9 @@ pub(crate) enum BlocklistJustification {
     DishonestPeer,
     /// Peer sent too many finality signatures.
     SentTooManyFinalitySignatures { max_allowed: u32 },
+    /// This is used when the forced network instability logic is turned
+    /// on. For testing purposes only - not used in normal operation.
+    FlakyNetworkForcedMode,
 }
 
 impl Display for BlocklistJustification {
@@ -111,6 +114,9 @@ impl Display for BlocklistJustification {
                 f,
                 "sent too many finality signatures: maximum {max_allowed} signatures are allowed"
             ),
+            BlocklistJustification::FlakyNetworkForcedMode => {
+                write!(f, "forced a block in flaky network mode")
+            }
         }
     }
 }

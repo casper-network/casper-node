@@ -3,9 +3,6 @@
 //! The Ownable pattern is a common design pattern in smart contracts that allows for
 //! a single owner to control the contract. This module provides a simple implementation
 //! of this pattern, allowing for ownership to be transferred or renounced.
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_contract_macros::CasperABI;
-
 #[allow(unused_imports)]
 use crate as casper_contract_sdk;
 use crate::{casper::Entity, macros::casper};
@@ -25,7 +22,6 @@ impl Default for OwnableState {
 }
 
 /// Represents the possible errors that can occur during ownership operations.
-#[derive(CasperABI, BorshSerialize, BorshDeserialize)]
 #[casper(path = crate)]
 pub enum OwnableError {
     /// The caller is not authorized to perform the action.

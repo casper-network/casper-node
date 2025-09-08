@@ -22,8 +22,9 @@ use casper_storage::{
     AddressGeneratorBuilder,
 };
 use casper_types::{
-    execution::Effects, BlockHash, Digest, Gas, Key, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionRuntimeParams, TransactionTarget, U512,
+    bytesrepr::ToBytes, execution::Effects, BlockHash, Digest, Gas, Key, TransactionArgs,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntimeParams,
+    TransactionTarget, U512,
 };
 use thiserror::Error;
 use tracing::info;
@@ -107,8 +108,6 @@ impl WasmV2Error {
 
 #[derive(Clone, Eq, PartialEq, Error, Debug)]
 pub(crate) enum InvalidRequest {
-    #[error("Expected bytes arguments")]
-    ExpectedBytesArguments,
     #[error("Expected target")]
     ExpectedTarget,
     #[error("Invalid gas limit: {0}")]
@@ -143,9 +142,18 @@ impl WasmV2Request {
 
         let session_args = transaction.session_args();
 
-        let input_data = session_args
-            .as_bytesrepr()
-            .ok_or(InvalidRequest::ExpectedBytesArguments)?;
+        let input_data = match session_args.into_owned() {
+            TransactionArgs::Named(named_args) => {
+                // Named arguments are expected to be in the form of a map.
+                // This is the case for VmCasperV1 runtime.
+                named_args
+                    .to_bytes()
+                    .map(Bytes::from)
+                    .map_err(|_| InvalidRequest::ExpectedTarget)?
+            }
+
+            TransactionArgs::Bytesrepr(bytes) => bytes.take_inner().into(),
+        };
 
         let value = transaction
             .transferred_value()
@@ -225,7 +233,7 @@ impl WasmV2Request {
                         builder = builder
                             .with_entry_point(entry_point.clone())
                             // Args only matter if there is a constructor to be called.
-                            .with_input(input_data.clone().take_inner().into());
+                            .with_input(input_data.clone());
                     }
                     None => {
                         // No input data expected if there is no entry point. This should be
@@ -276,7 +284,7 @@ impl WasmV2Request {
                     .with_chain_name(network_name)
                     .with_transferred_value(value)
                     .with_block_time(transaction.timestamp().into())
-                    .with_input(input_data.clone().take_inner().into())
+                    .with_input(input_data)
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
