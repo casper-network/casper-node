@@ -504,29 +504,30 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                 Cow::Owned(cl_value.inner_bytes().to_owned())
             }
             Ok(Some(StoredValue::NamedKey(named_key_value))) => {
-            // Dereference named key to its URef and return the underlying Any bytes
-            let Ok(Key::URef(uref)) = named_key_value.get_key() else {
-                return Ok(HOST_ERROR_INVALID_DATA);
-            };
-
-            match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
-                Ok(Some(StoredValue::CLValue(cl_value))) => {
-                    let CLType::Any = cl_value.cl_type() else {
-                        return Ok(HOST_ERROR_INVALID_DATA);
-                    };
-                    Cow::Owned(cl_value.inner_bytes().to_owned())
-                }
-                Ok(Some(_)) => {
+                // Dereference named key to its URef and return the underlying Any bytes
+                let Ok(Key::URef(uref)) = named_key_value.get_key() else {
                     return Ok(HOST_ERROR_INVALID_DATA);
-                }
-                Ok(None) => {
-                    return Ok(HOST_ERROR_NOT_FOUND);
-                }
-                Err(_error) => {
-                    return Err(InternalHostError::TrackingCopy.into());
+                };
+
+                match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                    Ok(Some(StoredValue::CLValue(cl_value))) => {
+                        let CLType::Any = cl_value.cl_type() else {
+                            return Ok(HOST_ERROR_INVALID_DATA);
+                        };
+                        Cow::Owned(cl_value.inner_bytes().to_owned())
+                    }
+                    Ok(Some(_)) => {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    }
+                    Ok(None) => {
+                        return Ok(HOST_ERROR_NOT_FOUND);
+                    }
+                    Err(_error) => {
+                        return Err(InternalHostError::TrackingCopy.into());
+                    }
                 }
             }
-        }Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
+            Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
                 match entry_point.entry_point_payment() {
                     EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
                     EntryPointPayment::DirectInvocationOnly => {
