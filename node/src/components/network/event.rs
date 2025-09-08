@@ -12,7 +12,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use casper_types::PublicKey;
+use casper_types::{PublicKey, Timestamp};
 
 use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
@@ -94,6 +94,14 @@ pub(crate) enum Event<P> {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(PeerBehaviorAnnouncement),
+
+    /// Timed peer drop
+    TimedPeerDrop {
+        peer_id: Box<NodeId>,
+        public_addr: Box<SocketAddr>,
+        peer_addr: Box<SocketAddr>,
+        drop_on: Timestamp,
+    },
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -140,6 +148,9 @@ impl<P: Display> Display for Event<P> {
             }
             Event::SweepOutgoing => {
                 write!(f, "sweep outgoing connections")
+            }
+            Event::TimedPeerDrop { .. } => {
+                write!(f, "timed peer drop")
             }
         }
     }

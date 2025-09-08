@@ -222,11 +222,12 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         func(runtime)
     };
 
-    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy the
-    // effects.
-    let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
-        .ok()
-        .expect("No other references");
+    let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy).map_err(|_| {
+        // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy
+        // the effects.
+        error!("Expected the tracking copy to have no other references");
+        DispatchError::Internal(InternalHostError::TypeConversion)
+    })?;
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 

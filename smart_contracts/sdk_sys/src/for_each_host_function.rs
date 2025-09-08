@@ -74,6 +74,7 @@ macro_rules! for_each_host_function {
             pub fn casper_transfer(entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void,) -> u32;
             pub fn casper_emit(topic_ptr: *const u8, topic_size: usize, payload_ptr: *const u8, payload_size: usize,) -> u32;
             pub fn casper_generic_hash(in_ptr: *const u8, in_size: usize, out_ptr: *const u8, hash_algorithm: usize,) -> u32;
+            pub fn casper_recover_secp256k1(message_ptr: *const u8, message_size: usize, signature_ptr: *const u8, signature_size: usize, public_key_ptr: *const u8, recovery_id: u32,) -> u32;
         }
     };
 }

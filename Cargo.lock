@@ -474,6 +474,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad8646f98db542e39fc66e68a20b2144f6a732636df7c2354e74645faaa433ce"
 dependencies = [
  "borsh-derive",
+ "bytes",
  "cfg_aliases",
 ]
 
@@ -716,12 +717,15 @@ dependencies = [
  "casper-contract-macros",
  "casper-contract-sdk-sys",
  "casper-executor-wasm-common",
+ "casper-types",
  "cfg-if 1.0.3",
  "clap 4.5.47",
  "const-fnv1a-hash",
  "impl-trait-for-tuples",
  "linkme",
+ "num-traits",
  "once_cell",
+ "proptest",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -7305,6 +7309,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-counter-proxy"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-macros",
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
+ "serde_json",
+]
+
+[[package]]
 name = "vm2-escrow"
 version = "0.1.0"
 dependencies = [
@@ -7348,13 +7362,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "vm2-legacy-counter-proxy"
+name = "vm2-named-args"
 version = "0.1.0"
 dependencies = [
- "casper-contract-macros",
  "casper-contract-sdk",
- "casper-contract-sdk-codegen",
- "serde_json",
 ]
 
 [[package]]

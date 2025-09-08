@@ -286,7 +286,12 @@ impl ExecutorV2 {
             let config = ConfigBuilder::new()
                 .with_gas_limit(gas_limit)
                 .with_memory_limit(self.config.memory_limit)
-                .build();
+                .build()
+                .map_err(|config_builder_error| {
+                    InstallContractError::Execute(ExecuteError::InternalHost(
+                        InternalHostError::ConfigBuilderError(config_builder_error.to_string()),
+                    ))
+                })?;
 
             let entry_point_names = casper_executor_wasmer_backend::entry_point_names(
                 wasm_bytes, config,
@@ -375,7 +380,7 @@ impl ExecutorV2 {
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
                     .build()
-                    .expect("should build");
+                    .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
                 let forked_tc = tracking_copy.fork2();
 
@@ -507,23 +512,41 @@ impl ExecutorV2 {
             } = &execution_kind
             {
                 let smart_contract_key = Key::SmartContract(*smart_contract_addr);
-                let legacy_key = Key::Hash(*smart_contract_addr);
+                let vm1_key = Key::Hash(*smart_contract_addr);
 
                 let mut contract = tracking_copy
-                    .read_first(&[&legacy_key, &smart_contract_key])
-                    .expect("should read contract");
+                    .read_first(&[&vm1_key, &smart_contract_key])
+                    .map_err(|read_error| {
+                        error!(
+                            "error reading contract under path: {:?}. Details: {read_error}",
+                            [&vm1_key, &smart_contract_key]
+                        );
+                        ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                    })?;
 
                 if let Some(StoredValue::SmartContract(smart_contract_package)) = &contract {
-                    let contract_hash = smart_contract_package
-                        .versions()
-                        .latest()
-                        .expect("should have last entry");
+                    let enabled_versions = smart_contract_package.enabled_versions();
+                    let maybe_contract_hash = enabled_versions.latest();
+                    let contract_hash = if let Some(contract_hash) = maybe_contract_hash {
+                        contract_hash
+                    } else {
+                        //#TODO this probably should not be a node stopping error?
+                        error!(
+                            "Couldn't find an active version for smart contract under path {:?}",
+                            [&vm1_key, &smart_contract_key]
+                        );
+                        return Err(ExecuteError::NoActiveContract(smart_contract_key));
+                    };
                     let entity_addr = EntityAddr::SmartContract(contract_hash.value());
                     let latest_version_key = Key::AddressableEntity(entity_addr);
                     assert_eq!(&entity_addr.value(), smart_contract_addr);
-                    let new_contract = tracking_copy
-                        .read(&latest_version_key)
-                        .expect("should read latest version");
+                    let new_contract =
+                        tracking_copy
+                            .read(&latest_version_key)
+                            .map_err(|read_err| {
+                                error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
+                                ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                            })?;
                     contract = new_contract;
                 };
 
@@ -545,7 +568,7 @@ impl ExecutorV2 {
 
                                 let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
 
-                                return self.execute_legacy_wasm_byte_code(
+                                return self.execute_vm1_wasm_byte_code(
                                     initiator,
                                     &entity_addr,
                                     entry_point.clone(),
@@ -568,10 +591,18 @@ impl ExecutorV2 {
                         // variant.
                         let wasm_bytes = tracking_copy
                             .read(&wasm_key)
-                            .expect("should read wasm")
-                            .expect("should have wasm bytes")
+                            .map_err(|read_err| {
+                                error!(
+                                    "Error when fetching wasm_bytes {wasm_key}. Details {read_err}"
+                                );
+                                ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                            })?
+                            .ok_or(ExecuteError::EntityNotFound(wasm_key))?
                             .into_byte_code()
-                            .expect("should be byte code")
+                            .ok_or({
+                                error!("Couldn't wasm stored value into ByteCode");
+                                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                            })?
                             .take_bytes();
 
                         if transferred_value != 0 {
@@ -635,7 +666,7 @@ impl ExecutorV2 {
 
                         (Bytes::from(wasm_bytes), entry_point.as_str())
                     }
-                    Some(StoredValue::Contract(_legacy_contract)) => {
+                    Some(StoredValue::Contract(_vm1_contract)) => {
                         let block_info = BlockInfo::new(
                             state_hash,
                             block_time,
@@ -646,7 +677,7 @@ impl ExecutorV2 {
 
                         let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
 
-                        return self.execute_legacy_wasm_byte_code(
+                        return self.execute_vm1_wasm_byte_code(
                             initiator,
                             &entity_addr,
                             entry_point.clone(),
@@ -719,6 +750,8 @@ impl ExecutorV2 {
             message_limits: self.config.message_limits,
             sandboxed,
             runtime_native_config,
+            parent_block_hash: parent_block_hash.inner().value(),
+            block_height,
         };
 
         // Check that the input argument size does not exceed the VM memory limit
@@ -733,7 +766,12 @@ impl ExecutorV2 {
         let wasm_instance_config = ConfigBuilder::new()
             .with_gas_limit(gas_limit)
             .with_memory_limit(self.config.memory_limit)
-            .build();
+            .build()
+            .map_err(|config_builder_error| {
+                ExecuteError::InternalHost(InternalHostError::ConfigBuilderError(
+                    config_builder_error.to_string(),
+                ))
+            })?;
 
         let mut instance = vm
             .instantiate(wasm_bytes, context, wasm_instance_config)
@@ -742,9 +780,12 @@ impl ExecutorV2 {
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = instance.call_export(export_name);
 
-        let top_execution_kind = self
-            .pop_execution_stack()
-            .expect("should have execution kind"); // SAFETY: We just pushed
+        let top_execution_kind = self.pop_execution_stack().ok_or({
+            //This shouldn't happen since we just pushed
+            ExecuteError::InternalHost(InternalHostError::CorruptExecutionState(
+                "Unexpected empty execution stack".to_owned(),
+            ))
+        })?;
         debug_assert_eq!(&top_execution_kind, &execution_kind);
 
         let context = instance.teardown();
@@ -836,7 +877,7 @@ impl ExecutorV2 {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn execute_legacy_wasm_byte_code<R>(
+    fn execute_vm1_wasm_byte_code<R>(
         &self,
         initiator: AccountHash,
         entity_addr: &EntityAddr,
@@ -855,7 +896,8 @@ impl ExecutorV2 {
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
         let entry_point = entry_point.clone();
-        let args = bytesrepr::deserialize_from_slice(input).expect("should deserialize");
+        let args = bytesrepr::deserialize_from_slice(input)
+            .map_err(|err| ExecuteError::InternalHost(InternalHostError::Bytesrepr(err)))?;
         let phase = Phase::Session;
 
         let wasm_v1_result = {
@@ -889,21 +931,34 @@ impl ExecutorV2 {
             }
         }
 
-        let gas_consumed = wasm_v1_result
-            .consumed()
-            .value()
-            .try_into()
-            .expect("Should convert consumed gas to u64");
+        let gas_value = wasm_v1_result.consumed().value();
+        let gas_consumed = gas_value.try_into().map_err(|msg| {
+            error!(
+                "Couldn't convert gas ({gas_value}) to u64. Details: {}",
+                msg
+            );
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?;
 
         let mut output = wasm_v1_result
             .ret()
-            .map(|ret| bytesrepr::serialize(ret).unwrap())
+            .map(bytesrepr::serialize)
+            .map(|maybe| {
+                maybe.map_err(|e| ExecuteError::InternalHost(InternalHostError::Bytesrepr(e)))
+            })
+            .transpose()?
             .map(Bytes::from);
 
         let host_error = match wasm_v1_result.error() {
             Some(EngineError::Exec(ExecError::GasLimit)) => Some(CallError::CalleeGasDepleted),
             Some(EngineError::Exec(ExecError::Revert(revert_code))) => {
-                assert!(output.is_none(), "output should be None"); // ExecutionEngineV1 sets output to None when error occurred.
+                if output.is_some() {
+                    error!("output is not none after ExecutionEngineV1 execution");
+                    // ExecutionEngineV1 sets output to None when error occurred.
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::UnexpectedOutput,
+                    ));
+                }
                 let revert_code: u32 = (*revert_code).into();
                 output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.
                 Some(CallError::CalleeReverted)
@@ -920,7 +975,16 @@ impl ExecutorV2 {
         // consumed gas under v1 would not exceed the imposed limit therefore an
         // unwrap here is safe.
 
-        let remaining_points = gas_limit.checked_sub(gas_consumed).unwrap();
+        let remaining_points_res = gas_limit.checked_sub(gas_consumed);
+
+        let remaining_points = if let Some(remaining_points) = remaining_points_res {
+            remaining_points
+        } else {
+            error!("Unable to subtract gas_consumed ({gas_consumed}) from gas_limit ({gas_limit})");
+            return Err(ExecuteError::InternalHost(
+                InternalHostError::RemainingGasExceedsGasLimit,
+            ));
+        };
 
         let fork2 = tracking_copy.fork2();
         Ok(ExecuteResult {
@@ -1086,21 +1150,29 @@ fn get_purse_for_entity<R: GlobalStateReader>(
         .ok_or(ExecuteError::EntityNotFound(entity_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
-            let key = addressable_entity_key
-                .into_t::<Key>()
-                .expect("should be key");
+            let key = addressable_entity_key.into_t::<Key>().map_err(|cl_error| {
+                error!("Couldn't convert addressable_entity_key to Key. Details: {cl_error}");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?;
             let hash = match key.into_entity_hash() {
                 Some(hash) => hash,
                 None => return Err(ExecuteError::EntityNotFound(key)),
             };
             let stored_value = tracking_copy
                 .read(&key)
-                .expect("should read account")
-                .expect("should have account");
+                .map_err(|read_err| {
+                    error!("Error when fetching account. Details: {read_err}");
+                    ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                })?
+                .ok_or({
+                    error!("Expected account for {key} to exist");
+                    ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                })?;
 
-            let addressable_entity = stored_value
-                .into_addressable_entity()
-                .expect("should be addressable entity");
+            let addressable_entity = stored_value.into_addressable_entity().ok_or({
+                error!("Error when converting StoredValue to AddressableEntity");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?;
             let addr = addressable_entity.entity_addr(hash);
             Ok((addr, addressable_entity.main_purse()))
         }
@@ -1109,21 +1181,32 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             Ok((addr, account.main_purse()))
         }
         StoredValue::SmartContract(smart_contract_package) => {
-            let addr = smart_contract_package
-                .versions()
-                .latest()
-                .expect("should have last entry");
-            let entity_addr = EntityAddr::SmartContract(addr.value());
+            let enabled_versions = smart_contract_package.enabled_versions();
+            let maybe_contract_hash = enabled_versions.latest();
+            let contract_hash = if let Some(contract_hash) = maybe_contract_hash {
+                contract_hash
+            } else {
+                //#TODO this probably should not be a node stopping error?
+                error!("Couldn't find an active version for smart contract {entity_key}");
+                return Err(ExecuteError::NoActiveContract(entity_key));
+            };
+
+            let entity_addr = EntityAddr::SmartContract(contract_hash.value());
             let latest_version_key = Key::AddressableEntity(entity_addr);
             let new_contract = tracking_copy
                 .read(&latest_version_key)
-                .expect("should read latest version");
+                .map_err(|read_err| {
+                    error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
+                    ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                })?;
             let addressable_entity = new_contract
-                .expect("should have addressable entity")
+                .ok_or(ExecuteError::EntityNotFound(latest_version_key))?
                 .into_addressable_entity()
-                .expect("should be addressable entity");
+                .ok_or(ExecuteError::InternalHost(
+                    InternalHostError::TypeConversion,
+                ))?;
 
-            Ok((*addr, addressable_entity.main_purse()))
+            Ok((entity_addr, addressable_entity.main_purse()))
         }
         other => Err(ExecuteError::InternalHost(
             InternalHostError::UnexpectedStoredValueVariant {

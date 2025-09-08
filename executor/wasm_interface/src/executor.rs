@@ -121,12 +121,11 @@ impl ExecuteRequestBuilder {
     }
 
     /// Pass input data that can be serialized.
-    #[must_use]
-    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Self {
+    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Result<Self, ExecuteError> {
         let input = borsh::to_vec(&input)
             .map(Bytes::from)
-            .expect("should serialize input");
-        self.with_input(input)
+            .map_err(|_| ExecuteError::InternalHost(InternalHostError::TypeConversion))?;
+        Ok(self.with_input(input))
     }
 
     /// Pass value to be sent to the contract.
@@ -493,6 +492,8 @@ pub enum ExecuteError {
     ReturnFlagsNotSupported(u32),
     #[error("Entity not found: {0}")]
     EntityNotFound(Key),
+    #[error("No active contract found in smart contract package: {0}")]
+    NoActiveContract(Key),
     #[error("Api error: {0}")]
     Api(String),
     #[error("sandboxed system contract call")]

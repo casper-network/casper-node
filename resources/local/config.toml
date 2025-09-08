@@ -275,6 +275,21 @@ blocklist_retain_min_duration = '2 minutes'
 # <blocklist_retain_min_duration, blocklist_retain_max_duration>.
 blocklist_retain_max_duration = '10 minutes'
 
+# Network flakiness configuration
+#
+# When this section is specified, the node will randomly (but according to the specified values)
+# drop peers to simulate networking issues. This should be used ONLY in test networks  since it can 
+# only degrade the network. Please note that there are limited guardrails for this functionality 
+# in the node - it is possible to specify a drop and block schedule which will end up 
+# in a network that will not be able to produce blocks. Also - please note that there is no requirement
+# to apply this to all the nodes in the network. Before removing this section consider updating 
+# `generate-flaky.sh` script which depends on it's presence
+# [network.flakiness]
+# drop_peer_after_min = '3 minutes'
+# drop_peer_after_max = '10 minutes'
+# block_peer_after_drop_min = '10 seconds'
+# block_peer_after_drop_max = '20 seconds'
+
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.

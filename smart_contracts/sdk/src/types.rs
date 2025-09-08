@@ -1,13 +1,18 @@
-use casper_executor_wasm_common::error::{
-    CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
+use core::marker::PhantomData;
+
+use casper_executor_wasm_common::{
+    error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
+    keyspace::Keyspace,
 };
 
 use crate::{
     abi::{CasperABI, Declaration, Definition, EnumVariant},
+    casper,
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
+pub use ::bytes::Bytes;
 pub type Address = [u8; 32];
 pub use bnum::types::U256;
 
@@ -114,6 +119,52 @@ impl TryFrom<u32> for SystemContractOption {
             108 => Ok(SystemContractOption::ChangePublicKey),
             _ => Err(()),
         }
+    }
+}
+
+pub struct NamedKey<T: BorshSerialize + BorshDeserialize> {
+    name: &'static str,
+    _marker: PhantomData<T>,
+}
+
+impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            _marker: PhantomData,
+        }
+    }
+
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// Populate ABI definitions for the value type `T` of this named key.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn collect_abi(&self, definitions: &mut crate::abi::Definitions)
+    where
+        T: CasperABI,
+    {
+        definitions.populate_one::<T>();
+    }
+
+    /// Return the ABI declaration string for the value type `T` of this named key.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn declaration(&self) -> Declaration
+    where
+        T: CasperABI,
+    {
+        <T as CasperABI>::declaration()
+    }
+
+    pub fn write(&self, value: T) {
+        let bytes = borsh::to_vec(&value).unwrap();
+        casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();
+    }
+
+    pub fn read(&self) -> Option<T> {
+        let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
+        Some(borsh::from_slice(&bytes).unwrap())
     }
 }
 

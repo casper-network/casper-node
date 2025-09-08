@@ -3,6 +3,7 @@ pub mod native;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
+    compat::types::{CLType, CLTyped},
     prelude::{
         ffi::c_void,
         marker::PhantomData,
@@ -11,14 +12,14 @@ use crate::{
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{Address, CallError, HashAlgorithm},
+    types::{Address, CallError, HashAlgorithm, PublicKey},
     Message, ToCallData,
 };
 
 use casper_contract_sdk_sys::casper_env_info;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
-    error::{result_from_code, CommonResult, HOST_ERROR_SUCCESS},
+    error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -107,7 +108,7 @@ pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
 pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     key: Keyspace,
     f: F,
-) -> Result<Option<()>, CommonResult> {
+) -> Result<Option<()>, HostResult> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
@@ -147,13 +148,13 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 
     match result_from_code(ret) {
         Ok(()) => Ok(Some(())),
-        Err(CommonResult::NotFound) => Ok(None),
+        Err(HostResult::NotFound) => Ok(None),
         Err(err) => Err(err),
     }
 }
 
 /// Write to the global state.
-pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
+pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
@@ -173,7 +174,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
 }
 
 /// Remove from the global state.
-pub fn remove(key: Keyspace) -> Result<(), CommonResult> {
+pub fn remove(key: Keyspace) -> Result<(), HostResult> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
@@ -346,14 +347,14 @@ pub fn upgrade(
 }
 
 /// Read from the global state into a vector.
-pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, CommonResult> {
+pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, HostResult> {
     let mut vec = Vec::new();
     let out = read(key, |size| reserve_vec_space(&mut vec, size))?.map(|()| vec);
     Ok(out)
 }
 
 /// Read from the global state into a vector.
-pub fn has_state() -> Result<bool, CommonResult> {
+pub fn has_state() -> Result<bool, HostResult> {
     // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
     let mut vec = Vec::new();
     let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
@@ -364,7 +365,7 @@ pub fn has_state() -> Result<bool, CommonResult> {
 }
 
 /// Read state from the global state.
-pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, CommonResult> {
+pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, HostResult> {
     let mut vec = Vec::new();
     let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
     match read_info {
@@ -374,7 +375,7 @@ pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, CommonResult> {
 }
 
 /// Write state to the global state.
-pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), CommonResult> {
+pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), HostResult> {
     let new_state = borsh::to_vec(state).unwrap();
     write(Keyspace::State, &new_state)?;
     Ok(())
@@ -468,6 +469,12 @@ pub fn get_callee() -> Entity {
 pub enum Entity {
     Account([u8; 32]),
     Contract([u8; 32]),
+}
+
+impl CLTyped for Entity {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
 }
 
 impl Entity {
@@ -591,7 +598,7 @@ pub fn get_block_time() -> u64 {
 }
 
 #[inline]
-pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], CommonResult> {
+pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], HostResult> {
     let output = [0; 32];
     let ret = unsafe {
         casper_contract_sdk_sys::casper_generic_hash(
@@ -604,8 +611,32 @@ pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], C
     result_from_code(ret).map(|_| output)
 }
 
+#[inline]
+pub fn recover_secp256k1(
+    message: &[u8],
+    signature: &[u8],
+    recovery_id: u32,
+) -> Result<PublicKey, HostResult> {
+    let output = [0; 34]; // This fits 33 SECP256K1 PK bytes + 1 leading variant tag
+
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_recover_secp256k1(
+            message.as_ptr(),
+            message.len(),
+            signature.as_ptr(),
+            signature.len(),
+            output.as_ptr(),
+            recovery_id,
+        )
+    };
+
+    let secp_bytes = output[1..].try_into().unwrap();
+
+    result_from_code(ret).map(|_| PublicKey::Secp256k1(secp_bytes))
+}
+
 #[doc(hidden)]
-pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
+pub fn emit(topic: &str, payload: &[u8]) -> Result<(), HostResult> {
     let ret = unsafe {
         casper_contract_sdk_sys::casper_emit(
             topic.as_ptr(),
@@ -618,11 +649,11 @@ pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
 }
 
 /// Emit a message.
-pub fn emit<M>(message: M) -> Result<(), CommonResult>
+pub fn emit_message<M>(message: M) -> Result<(), HostResult>
 where
     M: Message,
 {
     let topic = M::TOPIC;
     let payload = message.payload();
-    emit_raw(topic, &payload)
+    emit(topic, &payload)
 }

@@ -65,8 +65,8 @@ pub fn build_schema_impl<W: Write>(
         features.push("casper-contract-sdk/__abi_generator".to_owned());
     }
 
-    if dependencies.contains(&"casper-macros".into()) {
-        features.push("casper-macros/__abi_generator".to_owned());
+    if dependencies.contains(&"casper-contract-macros".into()) {
+        features.push("casper-contract-macros/__abi_generator".to_owned());
     }
 
     let build_result = compilation

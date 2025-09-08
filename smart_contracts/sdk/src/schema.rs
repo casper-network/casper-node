@@ -41,7 +41,7 @@ pub struct SchemaArgument {
 pub struct SchemaEntryPoint {
     pub name: String,
     pub arguments: Vec<SchemaArgument>,
-    pub result: Declaration,
+    pub result: Option<Declaration>,
     #[serde(
         serialize_with = "serialize_bits",
         deserialize_with = "deserialize_bits"
@@ -65,6 +65,12 @@ pub struct SchemaMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct SchemaStableKey {
+    pub name: String,
+    pub decl: Declaration,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Schema {
     pub name: String,
     pub version: Option<String>,
@@ -73,6 +79,7 @@ pub struct Schema {
     pub definitions: Definitions,
     pub entry_points: Vec<SchemaEntryPoint>,
     pub messages: Vec<SchemaMessage>,
+    pub named_keys: Vec<SchemaStableKey>,
 }
 
 #[derive(Debug)]

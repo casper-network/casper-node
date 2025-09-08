@@ -74,6 +74,7 @@ impl MinimalHostWrapper {
             }
             "ret_faulty_flags" => ret.ret_faulty_flags(),
             "generic_hash" => ret.generic_hash(),
+            "recover_secp256k1" => ret.recover_secp256k1(),
             _ => panic!("Unknown host function"),
         }
         ret
@@ -210,5 +211,9 @@ impl MinimalHostWrapper {
                 77, 165, 66, 13, 132, 134, 234, 199, 38, 235, 176, 138, 236, 105
             ]),
         );
+    }
+
+    pub fn recover_secp256k1(&self) {
+        casper::recover_secp256k1(&[0], &[0], 1).ok();
     }
 }

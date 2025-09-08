@@ -38,6 +38,8 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub chain_name: Arc<str>,
     pub input: Bytes,
     pub block_time: BlockTime,
+    pub parent_block_hash: [u8; 32],
+    pub block_height: u64,
     /// Whether the execution is in sandboxed mode.
     ///
     /// In sandboxed mode, the contract cannot make state changes, call other contracts, emit
