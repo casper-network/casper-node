@@ -986,7 +986,9 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let cost = match &option {
         SystemMenu::Mint(mint_opt) => match mint_opt {
             MintMethods::Burn => caller.context().mint_costs.burn as u64,
-            MintMethods::Transfer => caller.context().mint_costs.transfer as u64,
+            MintMethods::Transfer | MintMethods::TransferPurse => {
+                caller.context().mint_costs.transfer as u64
+            }
         },
         SystemMenu::Auction(auction_opt) => match auction_opt {
             AuctionMethods::Activate => caller.context().auction_costs.activate_bid,

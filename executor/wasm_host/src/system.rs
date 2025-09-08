@@ -667,6 +667,66 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             MintMethods::Transfer => {
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (EntityAddr, u64)>(&input);
+                if let Err(err) = &ret {
+                    debug!(?err, "bytesrepr error in native_exec Transfer");
+                }
+                let unpacked = ret.map_err(|_err| {
+                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                })?;
+                let target_entity = unpacked.0;
+                if target_entity.is_system() {
+                    debug!("attempt to pass system address from userland");
+                    return Err(ExecuteError::InternalHost(
+                        InternalHostError::InvalidEntityAddr,
+                    ));
+                }
+
+                let target = match tracking_copy.runtime_footprint_by_entity_addr(target_entity) {
+                    Ok(target_runtime_footprint) => match target_runtime_footprint.main_purse() {
+                        Some(target_purse) => URef::new(target_purse.addr(), AccessRights::ADD),
+                        None => {
+                            return Err(ExecuteError::InternalHost(
+                                InternalHostError::UnexpectedEntityKind,
+                            ))
+                        }
+                    },
+                    Err(err) => {
+                        debug!(
+                            ?err,
+                            ?target_entity,
+                            "runtime_footprint_by_entity_addr failed"
+                        );
+                        return Err(ExecuteError::InternalHost(InternalHostError::TrackingCopy));
+                    }
+                };
+
+                let source = match tracking_copy.main_purse_by_key(&caller_key) {
+                    Ok(uref) => uref,
+                    Err(err) => return Err(ExecuteError::Api(err.to_string())),
+                };
+
+                let args = TransferArgs::new(
+                    runtime_native_config,
+                    transaction_hash,
+                    Arc::clone(&address_generator),
+                    initiator,
+                    caller_key,
+                    gas_usage.remaining_points().into(),
+                    source,
+                    target,
+                    // amount
+                    unpacked.1.into(),
+                );
+                match system::transfer(&mut tracking_copy, runtime_footprint, args) {
+                    Ok(ret) => match ret.to_bytes() {
+                        Ok(ret_bytes) => Ok(Some(Bytes::from(ret_bytes))),
+                        Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
+                    },
+                    Err(err) => Err(err),
+                }
+            }
+            MintMethods::TransferPurse => {
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (URefAddr, u64)>(&input);
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Transfer");

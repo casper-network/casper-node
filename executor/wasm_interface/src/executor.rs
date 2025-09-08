@@ -363,6 +363,7 @@ impl ExecuteWithProviderResult {
 pub enum MintMethods {
     Burn,
     Transfer,
+    TransferPurse,
 }
 
 /// Available options for interacting with the system auction.
@@ -390,30 +391,20 @@ impl TryFrom<u32> for SystemMenu {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value == 0 {
-            Ok(SystemMenu::Mint(MintMethods::Transfer))
-        } else if value == 1 {
-            Ok(SystemMenu::Mint(MintMethods::Burn))
-        } else if value == 100 {
-            Ok(SystemMenu::Auction(AuctionMethods::Activate))
-        } else if value == 101 {
-            Ok(SystemMenu::Auction(AuctionMethods::Bid))
-        } else if value == 102 {
-            Ok(SystemMenu::Auction(AuctionMethods::Withdraw))
-        } else if value == 103 {
-            Ok(SystemMenu::Auction(AuctionMethods::Delegate))
-        } else if value == 104 {
-            Ok(SystemMenu::Auction(AuctionMethods::Undelegate))
-        } else if value == 105 {
-            Ok(SystemMenu::Auction(AuctionMethods::Redelegate))
-        } else if value == 106 {
-            Ok(SystemMenu::Auction(AuctionMethods::AddReservation))
-        } else if value == 107 {
-            Ok(SystemMenu::Auction(AuctionMethods::CancelReservation))
-        } else if value == 108 {
-            Ok(SystemMenu::Auction(AuctionMethods::ChangePublicKey))
-        } else {
-            Err(())
+        match value {
+            0 => Ok(SystemMenu::Mint(MintMethods::Transfer)),
+            1 => Ok(SystemMenu::Mint(MintMethods::TransferPurse)),
+            2 => Ok(SystemMenu::Mint(MintMethods::Burn)),
+            100 => Ok(SystemMenu::Auction(AuctionMethods::Activate)),
+            101 => Ok(SystemMenu::Auction(AuctionMethods::Bid)),
+            102 => Ok(SystemMenu::Auction(AuctionMethods::Withdraw)),
+            103 => Ok(SystemMenu::Auction(AuctionMethods::Delegate)),
+            104 => Ok(SystemMenu::Auction(AuctionMethods::Undelegate)),
+            105 => Ok(SystemMenu::Auction(AuctionMethods::Redelegate)),
+            106 => Ok(SystemMenu::Auction(AuctionMethods::AddReservation)),
+            107 => Ok(SystemMenu::Auction(AuctionMethods::CancelReservation)),
+            108 => Ok(SystemMenu::Auction(AuctionMethods::ChangePublicKey)),
+            _ => Err(()),
         }
     }
 }
@@ -423,7 +414,8 @@ impl From<SystemMenu> for u32 {
         match value {
             SystemMenu::Mint(mint) => match mint {
                 MintMethods::Transfer => 0,
-                MintMethods::Burn => 1,
+                MintMethods::TransferPurse => 1,
+                MintMethods::Burn => 2,
             },
             SystemMenu::Auction(auction) => match auction {
                 AuctionMethods::Activate => 100,

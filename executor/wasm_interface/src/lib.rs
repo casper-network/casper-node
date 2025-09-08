@@ -123,6 +123,8 @@ pub enum InternalHostError {
     ConfigBuilderError(String),
     #[error("invalid public key")]
     InvalidPublicKey,
+    #[error("invalid entity address")]
+    InvalidEntityAddr,
 }
 
 /// The outcome of a call.

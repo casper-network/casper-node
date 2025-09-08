@@ -28,7 +28,7 @@ use casper_executor_wasm_interface::executor::{
     MintMethods, SystemMenu,
 };
 
-use casper_executor_wasm::testing::DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY;
+use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY};
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -44,6 +44,7 @@ use casper_storage::{
 
 use casper_types::{
     account::AccountHash,
+    bytesrepr::ToBytes,
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
     BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
@@ -272,6 +273,11 @@ fn should_revert_invalid_system_option() {
 #[test]
 fn should_call_system_transfer() {
     exec_system_call(SystemMenu::Mint(MintMethods::Transfer), None);
+}
+
+#[test]
+fn should_call_system_transfer_purse() {
+    exec_system_call(SystemMenu::Mint(MintMethods::TransferPurse), None);
 }
 
 #[test]
@@ -1312,7 +1318,7 @@ fn supports_named_args_convention() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: *contract_hash,
             entry_point: "deposit_tokens".to_string(),
         })

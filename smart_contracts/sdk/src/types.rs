@@ -47,6 +47,16 @@ impl From<AddressSecp256k1> for PublicKey {
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
+pub enum EntityAddr {
+    /// PublicKey bytes.
+    Account(Address) = 1,
+    /// Purse address bytes.
+    SmartContract(Address) = 2,
+}
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
 pub enum DelegatorKind {
     /// PublicKey bytes.
     PublicKey(PublicKey) = 0,
@@ -83,7 +93,8 @@ impl Reservation {
 #[repr(u32)]
 pub enum SystemContractOption {
     Transfer = 0,
-    Burn = 1,
+    TransferPurse = 1,
+    Burn = 2,
     ActivateBid = 100,
     Bid = 101,
     Withdraw = 102,
@@ -107,7 +118,8 @@ impl TryFrom<u32> for SystemContractOption {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(SystemContractOption::Transfer),
-            1 => Ok(SystemContractOption::Burn),
+            1 => Ok(SystemContractOption::TransferPurse),
+            2 => Ok(SystemContractOption::Burn),
             100 => Ok(SystemContractOption::ActivateBid),
             101 => Ok(SystemContractOption::Bid),
             102 => Ok(SystemContractOption::Withdraw),

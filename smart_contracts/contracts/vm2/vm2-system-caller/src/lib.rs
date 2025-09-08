@@ -5,7 +5,7 @@ pub mod exports {
         casper::{casper_system, ret},
         casper_executor_wasm_common::flags::ReturnFlags,
         prelude::*,
-        types::{DelegatorKind, PublicKey, Reservation, SystemContractOption},
+        types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption},
     };
 
     #[casper(export)]
@@ -21,6 +21,15 @@ pub mod exports {
         };
         let input = match option {
             SystemContractOption::Transfer => {
+                let entity_addr = EntityAddr::Account([
+                    158, 17, 242, 57, 55, 151, 207, 10, 36, 74, 126, 15, 148, 172, 106, 131, 189,
+                    124, 170, 34, 9, 239, 243, 182, 232, 2, 20, 162, 136, 218, 113, 238,
+                ]);
+                let input =
+                    borsh::to_vec(&(entity_addr, 100u64)).expect("Serialization to succeed");
+                Some(input)
+            }
+            SystemContractOption::TransferPurse => {
                 let uref_addr: casper_contract_sdk::types::Address = [
                     134, 139, 79, 97, 16, 65, 173, 186, 126, 93, 235, 111, 229, 224, 29, 144, 186,
                     66, 74, 244, 236, 214, 63, 64, 207, 67, 100, 16, 45, 199, 96, 170,
