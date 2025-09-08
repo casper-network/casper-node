@@ -1722,7 +1722,7 @@ pub trait StateProvider: Send + Sync + Sized {
         let id = Id::Transaction(transaction_hash);
         let phase = Phase::FinalizePayment;
         let address_generator = AddressGenerator::new(&id.seed(), phase);
-
+        let protocol_version = config.protocol_version();
         let mut runtime = match RuntimeNative::new_system_runtime(
             config,
             id,
@@ -1735,6 +1735,14 @@ pub trait StateProvider: Send + Sync + Sized {
                 return HandleFeeResult::Failure(tce);
             }
         };
+
+        if let Some(source) = handle_fee_mode.maybe_source() {
+            let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                Ok(source_purse) => source_purse,
+                Err(tce) => return HandleFeeResult::Failure(tce),
+            };
+            runtime.extend_access_rights(&[source_purse]);
+        }
 
         let result = match handle_fee_mode {
             HandleFeeMode::Credit {
