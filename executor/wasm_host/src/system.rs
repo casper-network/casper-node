@@ -50,7 +50,7 @@ pub use add_bid::{add_bid, AddBidArgs};
 pub use add_reservations::{add_reservations, AddReservationsArgs};
 pub use burn::{burn, BurnArgs};
 pub use cancel_reservations::{cancel_reservations, CancelReservationsArgs};
-use casper_storage::tracking_copy::TrackingCopyEntityExt;
+use casper_storage::tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
     system::{mint::TOTAL_SUPPLY_KEY, AUCTION, MINT},
@@ -258,15 +258,24 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     input: Bytes,
     system_menu_selection: SystemMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
-    let entity_addr = if let Key::Account(account_hash) = caller_key {
-        EntityAddr::Account(account_hash.value())
+    let (caller_key, entity_addr) = if let Key::Account(account_hash) = caller_key {
+        (caller_key, EntityAddr::Account(account_hash.value()))
     } else if let Key::Hash(contract_hash_addr) = caller_key {
-        EntityAddr::SmartContract(contract_hash_addr)
+        (caller_key, EntityAddr::SmartContract(contract_hash_addr))
+    } else if let Key::SmartContract(package_addr) = caller_key {
+        match tracking_copy.get_package(package_addr) {
+            Ok(package) => match package.enabled_versions().latest() {
+                Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
+                None => return Err(ExecuteError::NoActiveContract(caller_key)),
+            },
+            Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
+        }
     } else if let Key::AddressableEntity(entity_addr) = caller_key {
-        entity_addr
+        (caller_key, entity_addr)
     } else {
         return Err(ExecuteError::EntityNotFound(caller_key));
     };
+
     let runtime_footprint = match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
         Ok(footprint) => footprint,
         Err(err) => {
@@ -681,7 +690,6 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         InternalHostError::InvalidEntityAddr,
                     ));
                 }
-
                 let target = match tracking_copy.runtime_footprint_by_entity_addr(target_entity) {
                     Ok(target_runtime_footprint) => match target_runtime_footprint.main_purse() {
                         Some(target_purse) => URef::new(target_purse.addr(), AccessRights::ADD),
@@ -700,12 +708,10 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         return Err(ExecuteError::InternalHost(InternalHostError::TrackingCopy));
                     }
                 };
-
                 let source = match tracking_copy.main_purse_by_key(&caller_key) {
                     Ok(uref) => uref,
                     Err(err) => return Err(ExecuteError::Api(err.to_string())),
                 };
-
                 let args = TransferArgs::new(
                     runtime_native_config,
                     transaction_hash,
@@ -739,7 +745,6 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     Err(err) => return Err(ExecuteError::Api(err.to_string())),
                 };
                 let target = URef::new(unpacked.0, AccessRights::ADD);
-
                 let args = TransferArgs::new(
                     runtime_native_config,
                     transaction_hash,

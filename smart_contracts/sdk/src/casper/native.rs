@@ -915,15 +915,6 @@ mod symbols {
         todo!()
     }
     #[no_mangle]
-    pub extern "C" fn casper_transfer(
-        _entity_kind: u32,
-        _entity_addr_ptr: *const u8,
-        _entity_addr_len: usize,
-        _amount: u64,
-    ) -> u32 {
-        todo!()
-    }
-    #[no_mangle]
     pub extern "C" fn casper_emit(
         topic_ptr: *const u8,
         topic_size: usize,

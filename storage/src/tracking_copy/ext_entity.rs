@@ -9,7 +9,7 @@ use casper_types::{
         handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
-    ByteCodeHash, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
+    ByteCodeHash, CLType, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr, Key, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue,
     StoredValueTypeMismatch, URef, U512,
@@ -235,10 +235,26 @@ where
                                     named_key.get_name().map_err(TrackingCopyError::CLValue)?;
                                 named_keys.insert(name, key);
                             }
+                            Some(StoredValue::CLValue(cl_value)) => {
+                                if &CLType::Any == cl_value.cl_type() {
+                                    debug!(
+                                        ?entry_key,
+                                        ?cl_value,
+                                        "runtime_footprint_by_entity_addr TODO: Karan what is the expected behavior for this case, for a AE package?"
+                                    );
+                                }
+                                // return Err(TrackingCopyError::TypeMismatch(
+                                //     StoredValueTypeMismatch::new(
+                                //         "CLValue".to_string(),
+                                //         cl_value.cl_type().to_string(),
+                                //     ),
+                                // ));
+                                continue; // skip? not sure what the expected handling is
+                            }
                             Some(other) => {
                                 return Err(TrackingCopyError::TypeMismatch(
                                     StoredValueTypeMismatch::new(
-                                        "CLValue".to_string(),
+                                        "NamedKey".to_string(),
                                         other.type_name(),
                                     ),
                                 ));

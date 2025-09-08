@@ -19,12 +19,9 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_interface::{
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
-    u32_from_host_result, Caller, GasUsage, InternalHostError, VMError, VMResult,
+    u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
-use casper_storage::{
-    global_state::GlobalStateReader,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
-};
+use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
@@ -37,7 +34,7 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
     EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
     EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
-    PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
+    PackageHash, ProtocolVersion, Signature, StoredValue, URef,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -47,7 +44,7 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, DispatchError, TransferArgs},
+    system::{self},
 };
 use blake2::{
     digest::{Update, VariableOutput},
@@ -971,7 +968,6 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
     if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
-
     // get option so we can determine cost, or charge if invalid
     let option: SystemMenu = match TryFrom::try_from(system_contract_opt) {
         Ok(option) => option,
@@ -1332,208 +1328,6 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
 
     caller.memory_write(output_ptr, &total_balance.to_le_bytes())?;
     Ok(HOST_ERROR_NOT_FOUND)
-}
-
-pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
-    entity_addr_ptr: u32,
-    entity_addr_len: u32,
-    amount_ptr: u32,
-) -> VMResult<u32> {
-    // In restricted mode, transfers are not allowed
-    if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
-    }
-
-    let gas_usage = {
-        let transfer_host_function_weights = [
-            u64::from(entity_addr_ptr),
-            u64::from(entity_addr_len),
-            u64::from(amount_ptr),
-        ];
-        let transfer_host_function_table = caller.context().config.host_function_costs().transfer;
-        let Some(transfer_gas_cost) =
-            transfer_host_function_table.calculate_gas_cost(transfer_host_function_weights)
-        else {
-            return Err(VMError::OutOfGas);
-        };
-
-        let transfer_cost = transfer_gas_cost.value().as_u64();
-        caller.consume_gas(transfer_cost)?;
-        let Ok(remaining) = caller.get_remaining_points()?.try_into_remaining() else {
-            return Err(VMError::OutOfGas);
-        };
-        GasUsage::new(transfer_cost, remaining)
-    };
-
-    if entity_addr_len != 32 {
-        // Invalid entity address; failing to proceed with the transfer
-        return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-    }
-
-    let amount = {
-        let mut amount_bytes = [0u8; 8];
-        caller.memory_read_into(amount_ptr, &mut amount_bytes)?;
-        u64::from_le_bytes(amount_bytes)
-    };
-
-    let (target_entity_addr, runtime_footprint) = {
-        let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-        debug_assert_eq!(entity_addr.len(), 32);
-        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().map_err(|_| {
-            // SAFETY: We checked for length (32 bytes). This shouldn't happen
-            error!("Error when converting entity_addr from vec to account_hash");
-            ExecuteError::InternalHost(InternalHostError::TypeConversion)
-        })?);
-
-        let protocol_version = ProtocolVersion::V2_0_0;
-        let (entity_addr, runtime_footprint) = match caller
-            .context_mut()
-            .tracking_copy
-            .runtime_footprint_by_account_hash(protocol_version, account_hash)
-        {
-            Ok((entity_addr, runtime_footprint)) => (entity_addr, runtime_footprint),
-            Err(TrackingCopyError::KeyNotFound(key)) => {
-                warn!(?key, "Account not found");
-                return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-            }
-            Err(error) => {
-                error!(?error, "Error while reading from storage; aborting");
-                panic!("Error while reading from storage")
-            }
-        };
-        (entity_addr, runtime_footprint)
-    };
-
-    let callee_addressable_entity_key = match caller.context().callee {
-        callee_account_key @ Key::Account(_account_hash) => {
-            match caller.context_mut().tracking_copy.read(&callee_account_key) {
-                Ok(Some(StoredValue::CLValue(indirect))) => {
-                    // is it an account?
-                    indirect
-                        .into_t::<Key>()
-                        .map_err(|_| InternalHostError::TypeConversion)?
-                }
-                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?callee_account_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
-            }
-        }
-        smart_contract_key @ Key::SmartContract(_) => {
-            match caller.context_mut().tracking_copy.read(&smart_contract_key) {
-                Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
-                    match smart_contract_package.versions().latest() {
-                        Some(addressable_entity_hash) => Key::AddressableEntity(
-                            EntityAddr::SmartContract(addressable_entity_hash.value()),
-                        ),
-                        None => {
-                            warn!(
-                                ?smart_contract_key,
-                                "Unable to find latest addressable entity hash for contract"
-                            );
-                            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-                        }
-                    }
-                }
-                Ok(Some(other)) => panic!("should be smart contract but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?smart_contract_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
-            }
-        }
-        other => panic!("should be account or smart contract but got {other:?}"),
-    };
-
-    let callee_stored_value = caller
-        .context_mut()
-        .tracking_copy
-        .read(&callee_addressable_entity_key)
-        .map_err(|_| InternalHostError::TrackingCopy)?;
-
-    let callee_stored_value = match callee_stored_value {
-        Some(callee_stored_value) => callee_stored_value,
-        None => {
-            warn!(
-                ?callee_addressable_entity_key,
-                "Callee not found while transferring tokens"
-            );
-            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-        }
-    };
-
-    let callee_addressable_entity = callee_stored_value
-        .into_addressable_entity()
-        .ok_or(InternalHostError::TypeConversion)?;
-    let callee_purse = callee_addressable_entity.main_purse();
-
-    let target_purse = match caller
-        .context_mut()
-        .tracking_copy
-        .runtime_footprint_by_entity_addr(target_entity_addr)
-    {
-        Ok(runtime_footprint) => match runtime_footprint.main_purse() {
-            Some(target_purse) => target_purse,
-            None => todo!("create a main purse for a contract"),
-        },
-        Err(TrackingCopyError::KeyNotFound(key)) => {
-            warn!(?key, "Transfer recipient not found");
-            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-        }
-        Err(error) => {
-            error!(?error, "Error while reading from storage; aborting");
-            return Err(InternalHostError::TrackingCopy)?;
-        }
-    };
-    // We don't execute anything as it does not make sense to execute an account as there
-    // are no entry points.
-    let transaction_hash = caller.context().transaction_hash;
-    let address_generator = Arc::clone(&caller.context().address_generator);
-    let runtime_native_config = caller.context().runtime_native_config.clone();
-
-    let args = TransferArgs::new(
-        runtime_native_config,
-        transaction_hash,
-        Arc::clone(&address_generator),
-        caller.context().initiator,
-        caller.context().caller,
-        gas_usage.remaining_points().into(),
-        callee_purse,
-        target_purse,
-        U512::from(amount),
-    );
-
-    match system::transfer(
-        &mut caller.context_mut().tracking_copy,
-        runtime_footprint,
-        args,
-    ) {
-        Ok(()) => Ok(HOST_ERROR_SUCCESS),
-        Err(DispatchError::Call(call_error)) => {
-            error!(?call_error, "Failed to transfer");
-            Ok(call_error.into_u32())
-        }
-        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
-        Err(dispatch_error) => {
-            error!(
-                ?dispatch_error,
-                "Failed to dispatch system contract while transferring tokens"
-            );
-            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
-        }
-    }
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
