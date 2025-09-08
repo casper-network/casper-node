@@ -8,7 +8,7 @@ pub mod exports {
     pub fn call(weight: u8) {
         let account_hash_bytes = [10u8; 32];
         if weight == 0 {
-            let keyspace = Keyspace::RemoveAssociatedKeys(&account_hash_bytes);
+            let keyspace = Keyspace::AssociatedKeys(&account_hash_bytes);
             casper::remove(keyspace).unwrap()
         } else {
             let keyspace = Keyspace::AssociatedKeys(&account_hash_bytes);

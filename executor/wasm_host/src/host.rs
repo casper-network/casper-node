@@ -190,7 +190,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             Keyspace::PaymentInfo(key_name)
         }
         KeyspaceTag::AssociatedKeys => Keyspace::AssociatedKeys(&key_payload_bytes),
-        KeyspaceTag::RemoveAssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -306,7 +305,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             StoredValue::AddressableEntity(entity)
         }
-        Keyspace::RemoveAssociatedKeys(_) => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     metered_write(&mut caller, global_state_key, stored_value)?;
@@ -379,8 +377,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
             Keyspace::PaymentInfo(key_name)
         }
-        KeyspaceTag::RemoveAssociatedKeys => Keyspace::RemoveAssociatedKeys(&key_payload_bytes),
-        KeyspaceTag::AssociatedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
+        KeyspaceTag::AssociatedKeys => Keyspace::AssociatedKeys(&key_payload_bytes),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -395,7 +392,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     match global_state_read_result {
         // Produce a prune transform for the named key
         Ok(Some(StoredValue::AddressableEntity(mut entity))) => {
-            if let Keyspace::RemoveAssociatedKeys(account_hash_bytes) = keyspace {
+            if let Keyspace::AssociatedKeys(account_hash_bytes) = keyspace {
                 let account_hash = match AccountHash::from_bytes(account_hash_bytes) {
                     Ok((account_hash, remainder)) => {
                         if !remainder.is_empty() {
@@ -419,7 +416,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
         }
         Ok(Some(_)) => {
             // If it's a named key pointing to a URef, prune both the named key and the URef.
-            if let Keyspace::NamedKey(_) = keyspace {
+            if let Keyspace::NamedKey(_) | Keyspace::Context(_) = keyspace {
                 if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
                     caller.context_mut().tracking_copy.read(&global_state_key)
                 {
@@ -428,6 +425,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                     }
                 }
             }
+            caller.context_mut().tracking_copy.prune(global_state_key)
         }
         Ok(None) => {
             // Entry does not exist, and we can't proceed with the prune operation
@@ -532,7 +530,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             Keyspace::PaymentInfo(key_name)
         }
         KeyspaceTag::AssociatedKeys => Keyspace::AssociatedKeys(&key_payload_bytes),
-        KeyspaceTag::RemoveAssociatedKeys => Keyspace::RemoveAssociatedKeys(&key_payload_bytes),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -659,9 +656,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
             Some(Key::EntryPoint(entry_point_addr))
         }
-        Keyspace::AssociatedKeys(_) | Keyspace::RemoveAssociatedKeys(_) => {
-            Some(Key::AddressableEntity(entity_addr))
-        }
+        Keyspace::AssociatedKeys(_) => Some(Key::AddressableEntity(entity_addr)),
     }
 }
 

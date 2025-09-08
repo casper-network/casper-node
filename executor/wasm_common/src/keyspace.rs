@@ -15,9 +15,8 @@ pub enum KeyspaceTag {
     NamedKey = 2,
     /// Used for a payment info based storage which usually involves payment information.
     PaymentInfo = 3,
-    /// assoc
+    /// Used for updating the associated keys for a given entity.
     AssociatedKeys = 5,
-    RemoveAssociatedKeys = 6,
 }
 
 #[repr(u64)]
@@ -34,9 +33,8 @@ pub enum Keyspace<'a> {
     NamedKey(&'a str),
     /// Entry point payment info.
     PaymentInfo(&'a str),
-    /// Associated keys
+    /// Used for updating the associated keys for a given entity
     AssociatedKeys(&'a [u8]),
-    RemoveAssociatedKeys(&'a [u8]),
 }
 
 impl Keyspace<'_> {
@@ -48,7 +46,6 @@ impl Keyspace<'_> {
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
             Keyspace::PaymentInfo(_) => KeyspaceTag::PaymentInfo,
             Keyspace::AssociatedKeys(_) => KeyspaceTag::AssociatedKeys,
-            Keyspace::RemoveAssociatedKeys(_) => KeyspaceTag::RemoveAssociatedKeys,
         }
     }
 

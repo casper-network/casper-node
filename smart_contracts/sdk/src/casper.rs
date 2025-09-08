@@ -117,9 +117,6 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::AssociatedKeys(account_hash_bytes) => {
             (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
         }
-        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
-            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
-        }
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
@@ -169,9 +166,6 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
         Keyspace::AssociatedKeys(account_hash_bytes) => {
             (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
         }
-        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
-            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
-        }
     };
     let ret = unsafe {
         casper_contract_sdk_sys::casper_write(
@@ -194,9 +188,6 @@ pub fn remove(key: Keyspace) -> Result<(), HostResult> {
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
         Keyspace::AssociatedKeys(account_hash_bytes) => {
             (KeyspaceTag::AssociatedKeys as u64, account_hash_bytes)
-        }
-        Keyspace::RemoveAssociatedKeys(account_hash_bytes) => {
-            (KeyspaceTag::RemoveAssociatedKeys as u64, account_hash_bytes)
         }
     };
     let ret = unsafe {
