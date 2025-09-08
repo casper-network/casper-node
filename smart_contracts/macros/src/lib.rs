@@ -470,7 +470,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         if receiver.reference.is_some() {
                             // &mut self does write updated state
 
-                            abi_receiver = quote! { Some(casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef) };
+                            abi_receiver = quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef };
 
                             Some(quote! {
                                 casper_contract_sdk::casper::write_state(&instance).unwrap();
@@ -479,7 +479,8 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             // mut self does not write updated state as the
                             // method call
                             // will consume self and there's nothing to persist.
-                            abi_receiver = quote! { Some(casper_contract_sdk::abi_collector::AbiReceiver::ByVal) };
+                            abi_receiver =
+                                quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByVal };
 
                             None
                         }
@@ -488,7 +489,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         entry_point_requires_state = true;
 
                         abi_receiver =
-                            quote! { Some(casper_contract_sdk::abi_collector::AbiReceiver::ByRef) };
+                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByRef };
 
                         // &self does not write state
                         None
@@ -504,7 +505,8 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         );
                     }
                     Some(_) | None => {
-                        abi_receiver = quote! { None };
+                        abi_receiver =
+                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::NoReceiver };
 
                         if method_attribute.constructor {
                             Some(quote! {
@@ -944,7 +946,7 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ( $( @exportas $export_name:ident @is_constructor $is_constructor:ident @is_payable $is_payable:ident $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @receiver $receiver:expr, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
                         $(
                             const _: () = {
                                 $vis extern "C" fn $name() {
@@ -961,7 +963,7 @@ fn generate_impl_trait_for_contract(
                                     pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
                                         name: NAME,
                                         export_name: EXPORT_NAME,
-                                        receiver: None,// casper_contract_sdk::abi_collector::AbiReceiver::ByRef,
+                                        receiver: $receiver,
                                         is_constructor: $is_constructor,
                                         is_payable: $is_payable,
                                         params: &[
@@ -1012,7 +1014,7 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ( $( @exportas $export_name:ident @is_constructor $is_constructor:ident @is_payable $is_payable:ident $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @receiver $receiver:path, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
                         $(
                             const _: () = {
                                 #[export_name = stringify!($export_name)]
@@ -1030,7 +1032,8 @@ fn generate_impl_trait_for_contract(
                                     pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
                                         name: NAME,
                                         export_name: EXPORT_NAME,
-                                        receiver: None,// casper_contract_sdk::abi_collector::AbiReceiver::ByRef,
+
+                                        receiver: $receiver,
                                         is_constructor: $is_constructor,
                                         is_payable: $is_payable,
                                         params: &[
@@ -1364,8 +1367,34 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let is_constructor = method_attribute.constructor;
                 let is_payable = method_attribute.payable;
 
+                let abi_receiver = match func.sig.inputs.first() {
+                    Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
+                        if receiver.reference.is_some() {
+                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef }
+                        } else {
+                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByVal }
+                        }
+                    }
+                    Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_none() => {
+                        quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByRef }
+                    }
+
+                    Some(syn::FnArg::Receiver(receiver)) if receiver.lifetime().is_some() => {
+                        return TokenStream::from(
+                            syn::Error::new(
+                                Span::call_site(),
+                                "Lifetimes are currently not supported in entry points",
+                            )
+                            .to_compile_error(),
+                        );
+                    }
+                    Some(_) | None => {
+                        quote! { casper_contract_sdk::abi_collector::AbiReceiver::NoReceiver }
+                    }
+                };
+
                 macro_symbols.push(quote! {
-                    @exportas #export_name @is_constructor #is_constructor @is_payable #is_payable #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
+                    @exportas #export_name, @is_constructor #is_constructor, @is_payable #is_payable, @receiver #abi_receiver, #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
                 });
 
                 dispatch_functions.push(quote! { #handle_dispatch });

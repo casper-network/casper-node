@@ -50,11 +50,16 @@ pub enum AbiKind {
 
 #[derive(Debug)]
 pub enum AbiReceiver {
-    /// &self
+    /// Represents lack of smart contract state object.
+    ///
+    /// Having this instead wrapping AbiReceiver in None/Some simplifies the consumption of the
+    /// macro-generated trait representation.
+    NoReceiver,
+    /// &self.
     ByRef,
-    /// &mut self
+    /// &mut self.
     ByMutRef,
-    /// self
+    /// self.
     ByVal,
 }
 
@@ -66,7 +71,7 @@ pub struct AbiEntryPoint {
     ///
     /// This may be different than `name` in case of trait impl methods.
     pub export_name: &'static str,
-    pub receiver: Option<AbiReceiver>,
+    pub receiver: AbiReceiver,
     pub params: &'static [AbiParam],
 
     pub abi_convention: AbiConvention,

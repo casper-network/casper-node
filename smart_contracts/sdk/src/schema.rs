@@ -246,21 +246,21 @@ pub fn casper_collect_schema() -> Schema {
                 }
 
                 let receiver = match abi_entry_point.receiver {
-                    Some(AbiReceiver::ByMutRef) => {
+                    AbiReceiver::ByMutRef => {
                         assert!(
                             !abi_entry_point.is_constructor,
                             "Constructor can not have &mut self"
                         );
                         Some(SchemaReceiver::Mutable)
                     }
-                    Some(AbiReceiver::ByRef | AbiReceiver::ByVal) => {
+                    AbiReceiver::ByRef | AbiReceiver::ByVal => {
                         assert!(
                             !abi_entry_point.is_constructor,
                             "Constructor can not have &self {abi_entry_point:?}"
                         );
                         Some(SchemaReceiver::Immutable)
                     }
-                    None => {
+                    AbiReceiver::NoReceiver => {
                         // No receiver; treat as immutable. May or may not be constructor.
                         None
                     }
