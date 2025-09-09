@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod abi;
 pub mod compat;
 pub mod prelude;

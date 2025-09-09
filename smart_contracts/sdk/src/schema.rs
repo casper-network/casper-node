@@ -2,10 +2,14 @@ pub trait CasperSchema {
     fn schema() -> Schema;
 }
 
-use crate::prelude::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::LowerHex,
-    String, ToString, Vec,
+use crate::{
+    abi_collector::AbiEntryPoint,
+    prelude::{
+        collections::{BTreeMap, BTreeSet},
+        fmt::LowerHex,
+        String, ToOwned, ToString, Vec,
+    },
+    serializers::AbiConvention,
 };
 use core::{mem, ptr::NonNull};
 
@@ -43,7 +47,13 @@ where
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaArgument {
     pub name: String,
-    pub decl: SchemaTypeUid,
+
+    /// Type of the argument.
+    #[serde(
+        serialize_with = "serialize_schema_type_uid",
+        deserialize_with = "deserialize_schema_type_uid"
+    )]
+    pub decl: Uid,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -74,7 +84,11 @@ pub struct SchemaEntryPoint {
     /// as the `name`.
     pub export_name: String,
     pub arguments: Vec<SchemaArgument>,
-    pub result: SchemaTypeUid,
+    #[serde(
+        serialize_with = "serialize_schema_type_uid",
+        deserialize_with = "deserialize_schema_type_uid"
+    )]
+    pub result: Uid,
     /// Receiver of given entrypoint in terms of source code i.e. `&self` or `&mut self` which in
     /// case of Rust SDK means it mutates state.
     pub receiver: Option<SchemaReceiver>,
@@ -84,19 +98,37 @@ pub struct SchemaEntryPoint {
     pub is_constructor: bool,
     /// Whether this entry point can receive payments.
     pub is_payable: bool,
+    /// ABI convention for this entry point.
+    pub abi_convention: SchemaAbiConvention,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[serde(tag = "type")]
 pub enum SchemaAbiConvention {
     Named,
     Positional,
+}
+
+impl From<AbiConvention> for SchemaAbiConvention {
+    fn from(abi_convention: AbiConvention) -> Self {
+        match abi_convention {
+            AbiConvention::Named => SchemaAbiConvention::Named,
+            AbiConvention::Positional => SchemaAbiConvention::Positional,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(tag = "type")]
 pub enum SchemaType {
     /// Contract schemas contain a state structure that we want to mark in the schema.
-    Contract { state: SchemaTypeUid },
+    Contract {
+        #[serde(
+            serialize_with = "serialize_schema_type_uid",
+            deserialize_with = "deserialize_schema_type_uid"
+        )]
+        state: Uid,
+    },
     /// Schemas of interface type does not contain state.
     Interface,
 }
@@ -104,7 +136,11 @@ pub enum SchemaType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaMessage {
     pub name: String,
-    pub decl: SchemaTypeUid,
+    #[serde(
+        serialize_with = "serialize_schema_type_uid",
+        deserialize_with = "deserialize_schema_type_uid"
+    )]
+    pub decl: Uid,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -113,17 +149,56 @@ pub struct SchemaStableKey {
     pub decl: AbiDeclaration,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
-pub struct SchemaTypeUid(UidRepr);
+pub fn serialize_schema_type_uid<S>(uid: &Uid, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if serializer.is_human_readable() {
+        // total width = "0x" + two hex chars per byte
+        let width = 2 + mem::size_of::<Uid>() * 2;
+        let s = format!("{:#0width$x}", uid.into_raw(), width = width);
+        serializer.serialize_str(&s)
+    } else {
+        uid.into_raw().serialize(serializer)
+    }
+}
 
-impl From<Uid> for SchemaTypeUid {
+pub fn deserialize_schema_type_uid<'de, D>(deserializer: D) -> Result<Uid, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if deserializer.is_human_readable() {
+        let s = String::deserialize(deserializer)?;
+        let hex = s
+            .strip_prefix("0x")
+            .or_else(|| s.strip_prefix("0X"))
+            .unwrap_or(&s);
+        let val = UidRepr::from_str_radix(hex, 16)
+            .map_err(|e| serde::de::Error::custom(format!("invalid hex value for Uid: {e}")))?;
+        Ok(Uid::new_raw(val))
+    } else {
+        let raw = UidRepr::deserialize(deserializer)?;
+        Ok(Uid::new_raw(raw))
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Debug, Copy, Clone, Hash)]
+pub struct SchemaUid(
+    #[serde(
+        serialize_with = "serialize_schema_type_uid",
+        deserialize_with = "deserialize_schema_type_uid"
+    )]
+    Uid,
+);
+
+impl From<Uid> for SchemaUid {
     fn from(uid: Uid) -> Self {
-        SchemaTypeUid(uid.into_raw())
+        SchemaUid(uid)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaDeclarations(BTreeMap<SchemaTypeUid, String>);
+pub struct SchemaDeclarations(BTreeMap<SchemaUid, String>);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaDefinition {
@@ -132,7 +207,7 @@ pub struct SchemaDefinition {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaDefinitions(BTreeMap<SchemaTypeUid, SchemaDefinition>);
+pub struct SchemaDefinitions(BTreeMap<SchemaUid, SchemaDefinition>);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 pub struct SchemaCLTypes(BTreeMap<String, CLType>);
@@ -253,11 +328,9 @@ pub fn casper_collect_schema() -> Schema {
             let decl = abi_type_info.declaration().clone();
             let def = abi_type_info.definition().clone();
 
-            schema_decls
-                .0
-                .insert(SchemaTypeUid::from(type_uid), decl.clone());
+            schema_decls.0.insert(SchemaUid(type_uid), decl.clone());
             schema_defs.0.insert(
-                SchemaTypeUid::from(type_uid),
+                SchemaUid(type_uid),
                 SchemaDefinition {
                     definition: def,
                     cl_type,
@@ -275,33 +348,44 @@ pub fn casper_collect_schema() -> Schema {
 
                 schema_messages.push(SchemaMessage {
                     name: (abi_message.name)().to_string(),
-                    decl: SchemaTypeUid::from(abi_message.decl.type_id),
+                    decl: abi_message.decl.type_id,
                 });
             }
             AbiItem::SmartContract(_abi_smart_contract) => {}
-            AbiItem::EntryPoint(abi_entry_point) => {
+            AbiItem::EntryPoint(
+                abi_entry_point @ AbiEntryPoint {
+                    name,
+                    export_name,
+                    receiver,
+                    params,
+                    result_decl,
+                    abi_convention,
+                    is_constructor,
+                    is_payable,
+                    kind: _,
+                    location: _,
+                    fptr: _,
+                },
+            ) => {
                 let mut schema_params = Vec::new();
 
-                for abi_type in abi_entry_point.params {
+                for abi_type in params.iter() {
                     assert!(visited_types.contains(&abi_type.decl.type_id),);
 
                     schema_params.push(SchemaArgument {
                         name: abi_type.name.to_string(),
-                        decl: SchemaTypeUid::from(abi_type.decl.type_id),
+                        decl: abi_type.decl.type_id,
                     });
                 }
 
-                let receiver = match abi_entry_point.receiver {
+                let receiver = match receiver {
                     AbiReceiver::ByMutRef => {
-                        assert!(
-                            !abi_entry_point.is_constructor,
-                            "Constructor can not have &mut self"
-                        );
+                        assert!(!is_constructor, "Constructor can not have &mut self");
                         Some(SchemaReceiver::Mutable)
                     }
                     AbiReceiver::ByRef | AbiReceiver::ByVal => {
                         assert!(
-                            !abi_entry_point.is_constructor,
+                            !is_constructor,
                             "Constructor can not have &self {abi_entry_point:?}"
                         );
                         Some(SchemaReceiver::Immutable)
@@ -313,13 +397,14 @@ pub fn casper_collect_schema() -> Schema {
                 };
 
                 let schema_entrypoint = SchemaEntryPoint {
-                    name: abi_entry_point.name.to_string(),
+                    name: name.to_string(),
                     arguments: schema_params,
-                    result: SchemaTypeUid::from(abi_entry_point.result_decl.type_id),
-                    export_name: abi_entry_point.export_name.to_string(),
+                    result: result_decl.type_id,
+                    export_name: export_name.to_string(),
                     receiver,
-                    is_constructor: abi_entry_point.is_constructor,
-                    is_payable: abi_entry_point.is_payable,
+                    is_constructor: *is_constructor,
+                    is_payable: *is_payable,
+                    abi_convention: SchemaAbiConvention::from(*abi_convention),
                 };
                 schema_entry.push(schema_entrypoint);
             }
@@ -344,7 +429,7 @@ pub fn casper_collect_schema() -> Schema {
     Schema {
         metadata: schema_metadata,
         type_: SchemaType::Contract {
-            state: SchemaTypeUid::from(smart_contract.decl.type_id),
+            state: smart_contract.decl.type_id,
         },
         declarations: schema_decls,
         definitions: schema_defs,

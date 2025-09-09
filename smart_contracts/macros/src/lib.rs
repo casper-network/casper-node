@@ -944,7 +944,7 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @receiver $receiver:expr, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @abi_convention $abi_convention:expr, @receiver $receiver:expr, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
                         $(
                             const _: () = {
                                 $vis extern "C" fn $name() {
@@ -979,7 +979,7 @@ fn generate_impl_trait_for_contract(
                                                 },
                                             )*
                                         ],
-                                        abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional,
+                                        abi_convention: $abi_convention,
                                         result_decl: {
                                             use #path_to_crate::*;
                                             casper_contract_sdk::abi_collector::AbiType {
@@ -1012,7 +1012,7 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @receiver $receiver:path, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
+                    ( $( @exportas $export_name:ident, @is_constructor $is_constructor:ident, @is_payable $is_payable:ident, @abi_convention $abi_convention:expr, @receiver $receiver:path, $vis:vis fn $name:ident( $($arg:ident: $argty:ty $(,)*)* ) -> $ret:ty ; ) * ) => {
                         $(
                             const _: () = {
                                 #[export_name = stringify!($export_name)]
@@ -1049,7 +1049,7 @@ fn generate_impl_trait_for_contract(
                                                 },
                                             )*
                                         ],
-                                        abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
+                                        abi_convention: $abi_convention,
                                         result_decl: {
                                             casper_contract_sdk::abi_collector::AbiType {
                                                 type_name: core::any::type_name::<$ret>,
@@ -1182,8 +1182,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let _flags = flags.bits();
 
                 let trait_ref = format_ident!("{}Ref", trait_name);
-                let resolve_abi_convention = match method_attribute.abi_convention {
-                    Some(convention) => {
+                let resolve_abi_convention = match method_attribute.abi_convention.as_ref() {
+                    Some(ref convention) => {
                         // If method specifies a convention, then use it
                         quote! { #convention }
                     }
@@ -1192,6 +1192,18 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         <#trait_ref as casper_contract_sdk::serializers::AbiConfig>::DEFAULT_ABI_CONVENTION
                     },
                 };
+
+                let abi_convention = match method_attribute.abi_convention.as_ref() {
+                    Some(ref abi_convention) => quote! { #abi_convention },
+                    None => trait_meta
+                        .abi_convention
+                        .as_ref()
+                        .map(|abi_convention| quote! { #abi_convention })
+                        .unwrap_or(
+                            quote! { casper_contract_sdk::serializers::AbiConvention::Positional },
+                        ),
+                };
+
                 let never_returns = match &func.sig.output {
                     syn::ReturnType::Default => false,
                     syn::ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::Never(_)),
@@ -1391,7 +1403,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 };
 
                 macro_symbols.push(quote! {
-                    @exportas #export_name, @is_constructor #is_constructor, @is_payable #is_payable, @receiver #abi_receiver, #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
+                    @exportas #export_name, @is_constructor #is_constructor, @is_payable #is_payable, @abi_convention #abi_convention, @receiver #abi_receiver, #vis fn #dispatch_func_name ( #(#arg_names: #arg_types,)* ) -> #ret_ty;
                 });
 
                 dispatch_functions.push(quote! { #handle_dispatch });
@@ -1451,8 +1463,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
 
-    let abi_conv = match trait_meta.abi_convention {
-        Some(convention) => {
+    let abi_conv = match trait_meta.abi_convention.as_ref() {
+        Some(ref convention) => {
             quote! {
                 impl #crate_path::serializers::AbiConfig for #ref_struct {
                     const DEFAULT_ABI_CONVENTION: #crate_path::serializers::AbiConvention = #convention;

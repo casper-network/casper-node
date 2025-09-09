@@ -1,4 +1,6 @@
-use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
+use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
+#[cfg(not(target_arch = "wasm32"))]
+use casper_executor_wasm_common::type_uid;
 
 use crate::{
     compat::types::CLTyped,
@@ -6,6 +8,7 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::abi::CasperABI;
 
 use super::Vector;
@@ -20,6 +23,7 @@ impl<T: TypeUid + Ord> TypeUid for SortedVector<T> {
     const UID: Uid = Uid::from_fields("SortedVector", &[T::UID]);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
     fn visit(visitor: &mut dyn crate::abi::ABIVisitor) {
         T::visit(visitor);

@@ -1,3 +1,5 @@
+use crate::prelude::{String, Vec};
+#[cfg(feature = "std")]
 use std::env;
 
 /// Build-time configuration for emitting linker arguments.
@@ -16,6 +18,7 @@ impl BuildConfig {
     /// Create a config using environment (TARGET) and sensible defaults:
     /// - If TARGET is wasm32-unknown-unknown, both flags default to true.
     /// - Otherwise, both flags default to false.
+    #[cfg(feature = "std")]
     pub fn from_env() -> Self {
         let target = env::var("TARGET").unwrap_or_default();
         let is_wasm = target == "wasm32-unknown-unknown";
@@ -23,6 +26,16 @@ impl BuildConfig {
             target,
             import_memory: is_wasm,
             export_table: is_wasm,
+        }
+    }
+
+    #[cfg(not(feature = "std"))]
+    pub fn from_env() -> Self {
+        // In no_std we cannot read env; default to non-wasm and no flags.
+        Self {
+            target: String::new(),
+            import_memory: false,
+            export_table: false,
         }
     }
 
@@ -61,8 +74,11 @@ impl BuildConfig {
 
     /// Emit configured Cargo link args when appropriate.
     pub fn emit(&self) {
-        for arg in self.link_args() {
-            println!("cargo:rustc-link-arg={arg}");
+        #[cfg(feature = "std")]
+        {
+            for arg in self.link_args() {
+                println!("cargo:rustc-link-arg={arg}");
+            }
         }
     }
 

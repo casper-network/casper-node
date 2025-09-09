@@ -3,13 +3,13 @@ use core::any::Any;
 #[cfg(feature = "std")]
 use crate::prelude::collections::HashMap;
 use crate::{
-    common::type_uid::UidRepr,
     compat::types::{CLType, CLTyped},
     prelude::{
         collections::{BTreeMap, BTreeSet, LinkedList},
         str::FromStr,
         Box, String, Vec,
     },
+    schema::SchemaUid,
 };
 use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
 use impl_trait_for_tuples::impl_for_tuples;
@@ -23,13 +23,13 @@ pub struct EnumVariant {
     ///
     /// Plain enum variants (i.e. those without any type, only discriminants) don't require a type
     /// declaration.
-    pub decl: Option<UidRepr>,
+    pub decl: Option<SchemaUid>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct StructField {
     pub name: String,
-    pub decl: UidRepr,
+    pub decl: SchemaUid,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -90,8 +90,8 @@ pub enum Definition {
     ///
     /// Example Rust types: BTreeMap<K, V>.
     Mapping {
-        key: UidRepr,
-        value: UidRepr,
+        key: SchemaUid,
+        value: SchemaUid,
     },
     /// Arbitrary sequence of values.
     ///
@@ -99,19 +99,19 @@ pub enum Definition {
     Sequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
-        decl: UidRepr,
+        decl: SchemaUid,
     },
     FixedSequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
         length: u32, // None -> Vec<T> Some(N) [T; N]
-        decl: UidRepr,
+        decl: SchemaUid,
     },
     /// A tuple of multiple values of various types.
     ///
     /// Can be also used to represent a heterogeneous list.
     Tuple {
-        items: Vec<UidRepr>,
+        items: Vec<SchemaUid>,
     },
     Enum {
         items: Vec<EnumVariant>,
@@ -143,7 +143,7 @@ impl Definition {
         }
     }
 
-    pub fn as_tuple(&self) -> Option<&[UidRepr]> {
+    pub fn as_tuple(&self) -> Option<&[SchemaUid]> {
         if let Self::Tuple { items } = self {
             Some(items.as_slice())
         } else {

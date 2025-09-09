@@ -1,5 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{AbiDeclaration, CasperABI, Definition, StructField};
+
 use crate::{
-    abi::{AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::{CLType, CLTyped},
     prelude::{borrow::ToOwned, cmp::Ordering, marker::PhantomData, Box, String, Vec},
@@ -23,6 +25,7 @@ impl<T: TypeUid> TypeUid for Vector<T> {
     const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID, T::UID]);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<T: CasperABI> CasperABI for Vector<T> {
     fn declaration() -> AbiDeclaration {
         format!("Vector<{}>", T::declaration())

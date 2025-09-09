@@ -1,14 +1,15 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField};
+
 use crate::{
-    abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::CLTyped,
     prelude::{Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::{
-    keyspace::Keyspace,
-    type_uid::{self, TypeUid, Uid},
-};
+use casper_executor_wasm_common::{keyspace::Keyspace, type_uid::{TypeUid, Uid}};
+#[cfg(not(target_arch = "wasm32"))]
+use casper_executor_wasm_common::type_uid;
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use crate::prelude::{borrow::ToOwned, marker::PhantomData};
@@ -85,6 +86,7 @@ impl<K: CLTyped, V: CLTyped> CLTyped for Map<K, V> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
     fn visit(visitor: &mut dyn ABIVisitor) {
         K::visit(visitor);

@@ -6,8 +6,10 @@ use casper_executor_wasm_common::{
     keyspace::Keyspace,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{AbiDeclaration, CasperABI, Definition, EnumVariant};
+
 use crate::{
-    abi::{AbiDeclaration, CasperABI, Definition, EnumVariant},
     casper,
     compat::types::{CLType, CLTyped},
     prelude::fmt,
@@ -130,6 +132,7 @@ impl CLTyped for CallError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl CasperABI for CallError {
     fn declaration() -> AbiDeclaration {
         "CallError".into()

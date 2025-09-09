@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use crate::prelude::collections::BTreeMap;
 
 use casper_executor_wasm_common::type_uid::Uid;
 

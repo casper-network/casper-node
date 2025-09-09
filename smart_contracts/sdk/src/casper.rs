@@ -1,8 +1,10 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{ABITypeInfo, CasperABI, EnumVariant};
+
 use crate::{
-    abi::{ABITypeInfo, CasperABI, EnumVariant},
     compat::types::{CLType, CLTyped},
     prelude::{
         ffi::c_void,
@@ -24,8 +26,9 @@ use casper_executor_wasm_common::{
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
-    type_uid,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use casper_executor_wasm_common::type_uid;
 
 /// Print a message.
 #[inline]
@@ -494,6 +497,7 @@ impl Entity {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl CasperABI for Entity {
     fn visit(visitor: &mut dyn crate::abi::ABIVisitor) {
         visitor.accept(ABITypeInfo::from_abi_type::<Self>());
