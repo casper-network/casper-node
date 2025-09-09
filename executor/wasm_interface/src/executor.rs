@@ -380,11 +380,20 @@ pub enum AuctionMethods {
     ChangePublicKey,
 }
 
+/// Available options for interacting with host-side cryptographic functions. For
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CryptoMethods {
+    AltBn128Add,
+    AltBn128Multiply,
+    AltBn128Pairing,
+}
+
 /// Available options for interacting with the system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemMenu {
     Mint(MintMethods),
     Auction(AuctionMethods),
+    Crypto(CryptoMethods),
 }
 
 impl TryFrom<u32> for SystemMenu {
@@ -404,6 +413,9 @@ impl TryFrom<u32> for SystemMenu {
             106 => Ok(SystemMenu::Auction(AuctionMethods::AddReservation)),
             107 => Ok(SystemMenu::Auction(AuctionMethods::CancelReservation)),
             108 => Ok(SystemMenu::Auction(AuctionMethods::ChangePublicKey)),
+            200 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Add)),
+            201 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Multiply)),
+            202 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Pairing)),
             _ => Err(()),
         }
     }
@@ -427,6 +439,11 @@ impl From<SystemMenu> for u32 {
                 AuctionMethods::AddReservation => 106,
                 AuctionMethods::CancelReservation => 107,
                 AuctionMethods::ChangePublicKey => 108,
+            },
+            SystemMenu::Crypto(crypto) => match crypto {
+                CryptoMethods::AltBn128Add => 200,
+                CryptoMethods::AltBn128Multiply => 201,
+                CryptoMethods::AltBn128Pairing => 202,
             },
         }
     }
