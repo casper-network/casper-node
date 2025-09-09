@@ -15,7 +15,7 @@ mod tests {
 
     use casper_contract_sdk::casper::native::{self, dispatch, EntryPointKind};
 
-    use crate::contracts::harness::{Harness, HarnessRef, INITIAL_GREETING};
+    use crate::contracts::harness::{Harness, INITIAL_GREETING};
 
     #[test]
     fn test() {

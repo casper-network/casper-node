@@ -706,6 +706,11 @@ impl From<&SecretKey> for PublicKey {
 }
 
 #[cfg(any(feature = "testing", test))]
+pub fn ed25519_imputed(bytes: &[u8; ED25519_PUBLIC_KEY_LENGTH]) -> PublicKey {
+    PublicKey::ed25519_from_bytes(bytes).unwrap()
+}
+
+#[cfg(any(feature = "testing", test))]
 impl Distribution<PublicKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
         let secret_key = if rng.gen() {

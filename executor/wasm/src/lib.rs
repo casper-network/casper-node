@@ -17,12 +17,12 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_host::{
     context::Context,
-    system::{self, DispatchError, MintTransferArgs},
+    system::{self, native_exec, DispatchError, TransferArgs},
 };
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
+        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, SystemMenu,
     },
     sandboxed_execution::{
         SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
@@ -36,20 +36,22 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
+    tracking_copy::TrackingCopyEntityExt,
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
+    bytesrepr, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    CLType, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
     EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
-    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
+    MessageLimits, MintCosts, Package, PackageHash, PackageStatus, Parameters, Phase,
+    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
+    WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 #[cfg(any(feature = "testing", test))]
 pub mod chainspec_config;
@@ -74,6 +76,9 @@ pub struct ExecutorConfig {
     executor_kind: ExecutorKind,
     wasm_config: WasmV2Config,
     storage_costs: StorageCosts,
+    mint_costs: MintCosts,
+    auction_costs: AuctionCosts,
+    baseline_motes_amount: u64,
     message_limits: MessageLimits,
 }
 
@@ -89,6 +94,9 @@ pub struct ExecutorConfigBuilder {
     executor_kind: Option<ExecutorKind>,
     wasm_config: Option<WasmV2Config>,
     storage_costs: Option<StorageCosts>,
+    mint_costs: Option<MintCosts>,
+    auction_costs: Option<AuctionCosts>,
+    baseline_motes_amount: Option<u64>,
     message_limits: Option<MessageLimits>,
 }
 
@@ -111,9 +119,26 @@ impl ExecutorConfigBuilder {
         self
     }
 
-    /// Set the wasm config.
+    /// Set storage costs.
     pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
         self.storage_costs = Some(storage_costs);
+        self
+    }
+
+    /// Set mint costs.
+    pub fn with_mint_costs(mut self, mint_costs: MintCosts) -> Self {
+        self.mint_costs = Some(mint_costs);
+        self
+    }
+
+    /// Set auction costs.
+    pub fn with_auction_costs(mut self, auction_costs: AuctionCosts) -> Self {
+        self.auction_costs = Some(auction_costs);
+        self
+    }
+
+    pub fn with_baseline_motes_amount(mut self, baseline_motes_amount: u64) -> Self {
+        self.baseline_motes_amount = Some(baseline_motes_amount);
         self
     }
 
@@ -129,6 +154,11 @@ impl ExecutorConfigBuilder {
         let executor_kind = self.executor_kind.ok_or("Executor kind is not set")?;
         let wasm_config = self.wasm_config.ok_or("Wasm config is not set")?;
         let storage_costs = self.storage_costs.ok_or("Storage costs are not set")?;
+        let mint_costs = self.mint_costs.ok_or("Storage costs are not set")?;
+        let auction_costs = self.auction_costs.ok_or("Storage costs are not set")?;
+        let baseline_motes_amount = self
+            .baseline_motes_amount
+            .ok_or("Baseline motes amount not set")?;
         let message_limits = self.message_limits.ok_or("Message limits are not set")?;
 
         Ok(ExecutorConfig {
@@ -136,6 +166,9 @@ impl ExecutorConfigBuilder {
             executor_kind,
             wasm_config,
             storage_costs,
+            mint_costs,
+            auction_costs,
+            baseline_motes_amount,
             message_limits,
         })
     }
@@ -193,7 +226,8 @@ impl ExecutorV2 {
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
 
         let caller_key = Key::Account(initiator);
-        let _source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
+        // TODO: Michal: why is this result not evaluated?
+        let _result = get_purse_for_entity(&mut tracking_copy, caller_key);
 
         // 1. Store package hash
         let smart_contract_addr: [u8; 32] = chain_utils::compute_predictable_address(
@@ -330,7 +364,7 @@ impl ExecutorV2 {
                 let execute_request = ExecuteRequestBuilder::default()
                     .with_initiator(initiator)
                     .with_caller_key(caller_key)
-                    .with_target(ExecutionKind::Stored {
+                    .with_execution_kind(ExecutionKind::Stored {
                         address: smart_contract_addr,
                         entry_point: entry_point_name,
                     })
@@ -397,11 +431,58 @@ impl ExecutorV2 {
         }
     }
 
+    fn execute_system_contract<R: GlobalStateReader + 'static>(
+        &self,
+        menu_selection: SystemMenu,
+        tracking_copy: TrackingCopy<R>,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecuteResult, ExecuteError> {
+        let ExecuteRequest {
+            initiator,
+            caller_key,
+            gas_limit,
+            input,
+            transaction_hash,
+            address_generator,
+            sandboxed,
+            runtime_native_config,
+            ..
+        } = execute_request;
+
+        if sandboxed {
+            info!("attempt to call system contract while sandboxed");
+            return Err(ExecuteError::SandboxedSystemContractCall);
+        }
+
+        let gas_usage = GasUsage::new(gas_limit, gas_limit);
+
+        native_exec::<TransferArgs, (), R>(
+            tracking_copy,
+            runtime_native_config,
+            transaction_hash,
+            address_generator,
+            gas_usage,
+            initiator,
+            caller_key,
+            input,
+            menu_selection,
+        )
+    }
+
     fn execute_with_tracking_copy<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
+        if let Some(system_menu_selection) = execute_request.execution_kind.system_menu_selection()
+        {
+            return self.execute_system_contract(
+                system_menu_selection,
+                tracking_copy,
+                execute_request,
+            );
+        }
+
         let ExecuteRequest {
             initiator,
             caller_key,
@@ -420,17 +501,16 @@ impl ExecutorV2 {
             runtime_native_config,
         } = execute_request;
 
-        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key)?;
+        let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
-        let (wasm_bytes, export_name) = match &execution_kind {
-            ExecutionKind::SessionBytes(wasm_bytes) => {
-                // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
+        let (wasm_bytes, export_name) = {
+            if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
-            }
-            ExecutionKind::Stored {
+            } else if let ExecutionKind::Stored {
                 address: smart_contract_addr,
                 entry_point,
-            } => {
+            } = &execution_kind
+            {
                 let smart_contract_key = Key::SmartContract(*smart_contract_addr);
                 let vm1_key = Key::Hash(*smart_contract_addr);
 
@@ -526,12 +606,26 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
+                            // TODO: consult w/ Michal re: charge timing
+                            let gas_usage = GasUsage::new(gas_limit, gas_limit);
+
+                            let runtime_footprint =
+                                match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
+                                    Ok(footprint) => footprint,
+                                    Err(_) => {
+                                        return Err(ExecuteError::EntityNotFound(caller_key));
+                                    }
+                                };
                             match system::transfer(
                                 &mut tracking_copy,
-                                runtime_native_config.clone(),
-                                transaction_hash,
-                                Arc::clone(&address_generator),
-                                MintTransferArgs::new_simple(
+                                runtime_footprint,
+                                TransferArgs::new(
+                                    runtime_native_config.clone(),
+                                    transaction_hash,
+                                    Arc::clone(&address_generator),
+                                    initiator,
+                                    caller_key,
+                                    gas_usage.remaining_points().into(),
                                     source_purse,
                                     addressable_entity.main_purse(),
                                     transferred_value.into(),
@@ -609,6 +703,11 @@ impl ExecutorV2 {
                         return Err(ExecuteError::CodeNotFound(*smart_contract_addr));
                     }
                 }
+            } else {
+                error!("System executions do not have wasm. This should be unreachable.");
+                return Err(ExecuteError::InternalHost(
+                    InternalHostError::DispatchSystemContract,
+                ));
             }
         };
 
@@ -623,12 +722,21 @@ impl ExecutorV2 {
                 ..
             } => Key::SmartContract(*smart_contract_addr),
             ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
+            ExecutionKind::System(_) => {
+                error!("System executions are not called in this way. This should be unreachable.");
+                return Err(ExecuteError::InternalHost(
+                    InternalHostError::DispatchSystemContract,
+                ));
+            }
         };
 
         let context = Context {
             initiator,
             config: self.config.wasm_config,
             storage_costs: self.config.storage_costs,
+            mint_costs: self.config.mint_costs,
+            auction_costs: self.config.auction_costs,
+            baseline_motes_amount: self.config.baseline_motes_amount,
             caller: caller_key,
             callee: callee_key,
             transferred_value,
@@ -665,7 +773,9 @@ impl ExecutorV2 {
                 ))
             })?;
 
-        let mut instance = vm.instantiate(wasm_bytes, context, wasm_instance_config)?;
+        let mut instance = vm
+            .instantiate(wasm_bytes, context, wasm_instance_config)
+            .map_err(ExecuteError::WasmPreparation)?;
 
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = instance.call_export(export_name);
@@ -987,7 +1097,7 @@ impl Executor for ExecutorV2 {
             .with_initiator(request.initiator)
             .with_caller_key(Key::Account(request.initiator))
             .with_gas_limit(request.gas_limit) // Use the provided gas limit for protection
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: request.contract_address,
                 entry_point: request.entry_point,
             })
@@ -1020,6 +1130,7 @@ impl Executor for ExecutorV2 {
                     CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,
+                    CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
@@ -1032,7 +1143,7 @@ impl Executor for ExecutorV2 {
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> Result<URef, ExecuteError> {
+) -> Result<(EntityAddr, URef), ExecuteError> {
     let stored_value = tracking_copy
         .read(&entity_key)
         .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
@@ -1043,6 +1154,10 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 error!("Couldn't convert addressable_entity_key to Key. Details: {cl_error}");
                 ExecuteError::InternalHost(InternalHostError::TypeConversion)
             })?;
+            let hash = match key.into_entity_hash() {
+                Some(hash) => hash,
+                None => return Err(ExecuteError::EntityNotFound(key)),
+            };
             let stored_value = tracking_copy
                 .read(&key)
                 .map_err(|read_err| {
@@ -1058,10 +1173,13 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 error!("Error when converting StoredValue to AddressableEntity");
                 ExecuteError::InternalHost(InternalHostError::TypeConversion)
             })?;
-
-            Ok(addressable_entity.main_purse())
+            let addr = addressable_entity.entity_addr(hash);
+            Ok((addr, addressable_entity.main_purse()))
         }
-        StoredValue::Account(account) => Ok(account.main_purse()),
+        StoredValue::Account(account) => {
+            let addr = EntityAddr::Account(account.account_hash().value());
+            Ok((addr, account.main_purse()))
+        }
         StoredValue::SmartContract(smart_contract_package) => {
             let enabled_versions = smart_contract_package.enabled_versions();
             let maybe_contract_hash = enabled_versions.latest();
@@ -1087,7 +1205,8 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 .ok_or(ExecuteError::InternalHost(
                     InternalHostError::TypeConversion,
                 ))?;
-            Ok(addressable_entity.main_purse())
+
+            Ok((entity_addr, addressable_entity.main_purse()))
         }
         other => Err(ExecuteError::InternalHost(
             InternalHostError::UnexpectedStoredValueVariant {

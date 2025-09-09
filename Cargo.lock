@@ -7369,6 +7369,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-system-caller"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+]
+
+[[package]]
 name = "vm2-trait"
 version = "0.1.0"
 dependencies = [

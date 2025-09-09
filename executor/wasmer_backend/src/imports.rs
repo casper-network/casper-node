@@ -1,4 +1,4 @@
-use casper_executor_wasm_interface::{executor::Executor, VMError, VMResult};
+use casper_executor_wasm_interface::{executor::Executor, VMResult};
 use casper_storage::global_state::GlobalStateReader;
 use tracing::warn;
 use wasmer::{FunctionEnv, FunctionEnvMut, Imports, Store};
@@ -83,10 +83,6 @@ pub(crate) fn generate_casper_imports<S: GlobalStateReader + 'static, E: Executo
                                     "Host function {} failed with error: {error:?}",
                                     stringify!($name),
                                 );
-
-                                if let VMError::Internal(internal) = error {
-                                    panic!("InternalHostError {internal:?}; aborting");
-                                }
 
                                 Err(error)
                             }

@@ -88,7 +88,7 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`.
 const GLOBAL_STATE_DIR: &str = "global_state";
 
-/// A wrapper structure that groups an entity alongside its named keys.
+/// A wrapper structure that groups an entity alongside it's named keys.
 #[derive(Debug)]
 pub struct EntityWithNamedKeys {
     entity: AddressableEntity,
@@ -825,6 +825,7 @@ where
         let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
         let minimum_bid_amount = config.core_config.minimum_bid_amount;
         let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
+        let maximum_delegation_amount = self.chainspec.core_config.maximum_delegation_amount;
         let balance_hold_interval = config.core_config.gas_hold_interval.millis();
         let include_credits = config.core_config.fee_handling == FeeHandling::NoFee;
         let credit_cap = Ratio::new_raw(
@@ -843,6 +844,7 @@ where
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
@@ -1016,6 +1018,7 @@ where
             self.chainspec.core_config.max_delegators_per_validator,
             self.chainspec.core_config.minimum_bid_amount,
             self.chainspec.core_config.minimum_delegation_amount,
+            self.chainspec.core_config.maximum_delegation_amount,
             self.chainspec.core_config.gas_hold_interval.millis(),
             include_credits,
             credit_cap,
@@ -1510,7 +1513,7 @@ where
         }
     }
 
-    /// Returns an Entity alongside its named keys queried by its account hash.
+    /// Returns an Entity alongside it's named keys queried by its account hash.
     pub fn get_entity_with_named_keys_by_account_hash(
         &self,
         account_hash: AccountHash,
@@ -1523,7 +1526,7 @@ where
         None
     }
 
-    /// Returns an Entity alongside its named keys queried by its entity hash.
+    /// Returns an Entity alongside it's named keys queried by its entity hash.
     pub fn get_entity_with_named_keys_by_entity_hash(
         &self,
         entity_hash: AddressableEntityHash,

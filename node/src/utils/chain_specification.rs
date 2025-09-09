@@ -49,13 +49,13 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             );
             return false;
         }
-        match chainspec.highway_config.is_valid() {
-            Ok(_) => return true,
+        return match chainspec.highway_config.is_valid() {
+            Ok(_) => true,
             Err(msg) => {
                 error!(msg);
-                return false;
+                false
             }
-        }
+        };
     }
 
     // We don't support lookback by more than one era in the rewards scheme.
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_when_wasm_lanes_have_reseved_ids() {
+    fn should_fail_when_wasm_lanes_have_reserved_ids() {
         fail_validation_with_lane_id(MINT_LANE_ID);
         fail_validation_with_lane_id(AUCTION_LANE_ID);
         fail_validation_with_lane_id(INSTALL_UPGRADE_LANE_ID);

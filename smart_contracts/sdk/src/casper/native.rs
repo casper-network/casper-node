@@ -836,6 +836,17 @@ mod symbols {
     }
 
     #[no_mangle]
+    pub extern "C" fn casper_system(
+        _system_contract_opt: u32,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        _alloc_ctx: *const core::ffi::c_void,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
     pub extern "C" fn casper_call(
         address_ptr: *const u8,
         address_size: usize,
@@ -901,15 +912,6 @@ mod symbols {
         _entity_addr_ptr: *const u8,
         _entity_addr_len: usize,
     ) -> u64 {
-        todo!()
-    }
-    #[no_mangle]
-    pub extern "C" fn casper_transfer(
-        _entity_kind: u32,
-        _entity_addr_ptr: *const u8,
-        _entity_addr_len: usize,
-        _amount: u64,
-    ) -> u32 {
         todo!()
     }
     #[no_mangle]

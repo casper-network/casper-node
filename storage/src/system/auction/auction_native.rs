@@ -398,10 +398,7 @@ where
         self.extend_access_rights(&[source, target.into_add()]);
 
         match self.transfer(to, source, target, amount, id) {
-            Ok(ret) => {
-                // self.set_gas_counter(gas_counter);
-                Ok(Ok(ret))
-            }
+            Ok(ret) => Ok(Ok(ret)),
             Err(err) => {
                 error!("{}", err);
                 Err(Error::Transfer)

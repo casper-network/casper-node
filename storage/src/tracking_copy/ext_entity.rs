@@ -9,7 +9,7 @@ use casper_types::{
         handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
-    ByteCodeHash, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
+    ByteCodeHash, CLType, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr, Key, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue,
     StoredValueTypeMismatch, URef, U512,
@@ -148,6 +148,9 @@ pub trait TrackingCopyEntityExt<R> {
         system_contract_name: &str,
         name: &str,
     ) -> Result<Option<Key>, Self::Error>;
+
+    /// Returns a main purse if relevant to the imputed key.
+    fn main_purse_by_key(&mut self, key: &Key) -> Result<URef, TrackingCopyError>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -232,10 +235,26 @@ where
                                     named_key.get_name().map_err(TrackingCopyError::CLValue)?;
                                 named_keys.insert(name, key);
                             }
+                            Some(StoredValue::CLValue(cl_value)) => {
+                                if &CLType::Any == cl_value.cl_type() {
+                                    debug!(
+                                        ?entry_key,
+                                        ?cl_value,
+                                        "runtime_footprint_by_entity_addr TODO: Karan what is the expected behavior for this case, for a AE package?"
+                                    );
+                                }
+                                // return Err(TrackingCopyError::TypeMismatch(
+                                //     StoredValueTypeMismatch::new(
+                                //         "CLValue".to_string(),
+                                //         cl_value.cl_type().to_string(),
+                                //     ),
+                                // ));
+                                continue; // skip? not sure what the expected handling is
+                            }
                             Some(other) => {
                                 return Err(TrackingCopyError::TypeMismatch(
                                     StoredValueTypeMismatch::new(
-                                        "CLValue".to_string(),
+                                        "NamedKey".to_string(),
                                         other.type_name(),
                                     ),
                                 ));
@@ -431,7 +450,7 @@ where
             authorization_keys,
             administrative_accounts,
         )?;
-        let access_rights = footprint.extract_access_rights(entity_addr.value());
+        let access_rights = footprint.extract_access_rights();
         Ok((entity_addr, footprint, access_rights))
     }
 
@@ -456,7 +475,7 @@ where
                 }
             };
             let auction = self.runtime_footprint_by_hash_addr(auction_hash)?;
-            let auction_access_rights = auction.extract_access_rights(auction_hash);
+            let auction_access_rights = auction.extract_access_rights();
             (auction.take_named_keys(), auction_access_rights)
         };
         let (mint_named_keys, mint_access_rights) = {
@@ -470,7 +489,7 @@ where
                 }
             };
             let mint = self.runtime_footprint_by_hash_addr(mint_hash)?;
-            let mint_access_rights = mint.extract_access_rights(mint_hash);
+            let mint_access_rights = mint.extract_access_rights();
             (mint.take_named_keys(), mint_access_rights)
         };
 
@@ -485,7 +504,7 @@ where
                 }
             };
             let payment = self.runtime_footprint_by_hash_addr(payment_hash)?;
-            let payment_access_rights = payment.extract_access_rights(payment_hash);
+            let payment_access_rights = payment.extract_access_rights();
             (payment.take_named_keys(), payment_access_rights)
         };
 
@@ -948,5 +967,18 @@ where
         };
         let runtime_footprint = self.runtime_footprint_by_hash_addr(hash)?;
         Ok(runtime_footprint.take_named_keys().get(name).copied())
+    }
+
+    fn main_purse_by_key(&mut self, key: &Key) -> Result<URef, TrackingCopyError> {
+        match self.read(key)? {
+            Some(StoredValue::Account(account)) => Ok(account.main_purse()),
+            Some(StoredValue::AddressableEntity(entity)) => Ok(entity.main_purse()),
+            Some(StoredValue::CLValue(cl_value)) => match cl_value.into_t::<Key>() {
+                Ok(entity_key) => self.main_purse_by_key(&entity_key),
+                Err(cve) => Err(TrackingCopyError::CLValue(cve)),
+            },
+            Some(_) => Err(TrackingCopyError::UnexpectedKeyVariant(*key)),
+            None => Err(TrackingCopyError::KeyNotFound(*key)),
+        }
     }
 }

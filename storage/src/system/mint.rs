@@ -11,6 +11,11 @@ pub mod system_provider;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
+use crate::system::mint::{
+    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
+};
+
 use casper_types::{
     account::AccountHash,
     system::{
@@ -18,11 +23,6 @@ use casper_types::{
         Caller,
     },
     Key, PublicKey, URef, U512,
-};
-
-use crate::system::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    system_provider::SystemProvider,
 };
 
 /// Mint trait.
@@ -223,6 +223,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // Unlike other uses of URefs (such as a counter), in this context the value represents
             // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
+        }
+        if !self.is_valid_uref(&source) {
+            return Err(Error::ForgedReference);
         }
         let source_available_balance: U512 = match self.available_balance(source)? {
             Some(source_balance) => source_balance,

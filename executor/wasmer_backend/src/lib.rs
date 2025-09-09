@@ -138,7 +138,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
         Ok(f(store, &instance))
     }
 
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     fn get_remaining_points(&mut self) -> VMResult<MeteringPoints> {
         self.with_store_and_instance(|mut store, instance| {
             let metering_points = metering::get_remaining_points(&mut store, instance);
@@ -148,7 +148,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
             }
         })
     }
-    /// Set the amount of gas used.
+    /// Set the amount of gas remaining.
     fn set_remaining_points(&mut self, new_value: u64) -> VMResult<()> {
         self.with_store_and_instance(|mut store, instance| {
             metering::set_remaining_points(&mut store, instance, new_value);
@@ -172,10 +172,19 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         &mut self.env.data_mut().context
     }
 
+    fn bytecode(&self) -> Bytes {
+        self.env.data().bytecode.clone()
+    }
+
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()> {
         self.with_memory(|mem| mem.read(offset.into(), output))?
             .map_err(from_wasmer_memory_access_error)
     }
+
+    // fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
+    //     self.with_memory(|mem| mem.write(offset.into(), data))
+    //         .map_err(from_wasmer_memory_access_error)
+    // }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
         let _interface_version = self.env.data().interface_version;
@@ -224,22 +233,17 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
         Ok(ptr)
     }
 
-    fn bytecode(&self) -> Bytes {
-        self.env.data().bytecode.clone()
-    }
-
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     #[inline]
-    fn gas_consumed(&mut self) -> VMResult<MeteringPoints> {
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints> {
         self.get_remaining_points()
     }
 
-    /// Set the amount of gas used.
+    /// Check for exhaustion, then deduct amount from remaining if able.
     ///
     /// This method will cause the VM engine to stop in case remaining gas points are depleted.
     fn consume_gas(&mut self, amount: u64) -> VMResult<()> {
-        let gas_consumed = self.gas_consumed()?;
-        match gas_consumed {
+        match self.get_remaining_points()? {
             MeteringPoints::Remaining(remaining_points) => {
                 let remaining_points = remaining_points
                     .checked_sub(amount)
@@ -293,9 +297,9 @@ pub(crate) struct WasmerInstance<S: GlobalStateReader, E: Executor + 'static> {
 }
 
 fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
-    match error.downcast::<VMError>() {
-        Ok(vm_error) => vm_error,
-        Err(wasmer_runtime_error) => {
+    error
+        .downcast::<VMError>()
+        .unwrap_or_else(|wasmer_runtime_error| {
             // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
             // our code.
             let wasmer_trap_code = if let Some(trap_code) = wasmer_runtime_error.to_trap() {
@@ -304,8 +308,7 @@ fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
                 return VMError::Internal(InternalHostError::TypeConversion);
             };
             VMError::Trap(from_wasmer_trap_code(wasmer_trap_code))
-        }
-    }
+        })
 }
 
 impl<S, E> WasmerInstance<S, E>
@@ -500,6 +503,9 @@ where
             callee: data.context.callee,
             config: data.context.config,
             storage_costs: data.context.storage_costs,
+            mint_costs: data.context.mint_costs,
+            auction_costs: data.context.auction_costs,
+            baseline_motes_amount: data.context.baseline_motes_amount,
             transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
             executor: data.context.executor.clone(),
