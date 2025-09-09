@@ -1,11 +1,13 @@
 use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState},
+    self,
+    contrib::{
+        access_control::{AccessControl, AccessControlExt, AccessControlState},
+        cep18::{
+            Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
+        },
+    },
     prelude::*,
     types::U256,
-};
-
-use casper_contract_sdk::contrib::cep18::{
-    Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
 };
 
 #[casper(contract_state)]

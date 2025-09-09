@@ -9,6 +9,7 @@ use crate::{
         marker::PhantomData,
         mem::MaybeUninit,
         ptr::{self, NonNull},
+        Vec,
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},

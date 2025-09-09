@@ -1,4 +1,4 @@
-use crate::prelude::marker::PhantomData;
+use crate::prelude::{marker::PhantomData, String};
 
 use crate::{casper, serializers::borsh::BorshSerialize};
 use casper_executor_wasm_common::keyspace::Keyspace;

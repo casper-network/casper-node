@@ -1,11 +1,14 @@
 use core::any::Any;
 
+#[cfg(feature = "std")]
+use crate::prelude::collections::HashMap;
 use crate::{
     common::type_uid::UidRepr,
     compat::types::{CLType, CLTyped},
     prelude::{
-        collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+        collections::{BTreeMap, BTreeSet, LinkedList},
         str::FromStr,
+        Box, String, Vec,
     },
 };
 use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
@@ -230,7 +233,7 @@ pub trait CasperABI: Any + CLTyped + TypeUid {
     }
 
     fn declaration() -> AbiDeclaration {
-        std::any::type_name::<Self>().into()
+        core::any::type_name::<Self>().into()
     }
 
     fn definition() -> Definition; // Sequence { Char }
@@ -424,6 +427,7 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
     fn visit(v: &mut dyn ABIVisitor) {
         v.accept(ABITypeInfo::from_abi_type::<Self>());
@@ -528,12 +532,11 @@ impl CasperABI for crate::compat::types::U512 {
 #[cfg(test)]
 mod tests {
     use crate::{
-        abi::{
-            visit_types_recursively, ABIVisitor, AbiDeclaration, CasperABI, Definition,
-            EnumVariant, Primitive,
-        },
+        abi::{visit_types_recursively, ABITypeInfo, ABIVisitor, CasperABI, Definition},
+        prelude::{collections, Vec},
         types::U256,
     };
+    use casper_executor_wasm_common::type_uid::{self};
 
     #[test]
     fn u256_schema() {
@@ -542,7 +545,7 @@ mod tests {
             U256::definition(),
             Definition::FixedSequence {
                 length: 4,
-                decl: u64::declaration()
+                decl: type_uid::of::<u64>().into(),
             }
         );
 
@@ -558,61 +561,49 @@ mod tests {
     #[test]
     fn visit_all_nested_types() {
         #[derive(Default)]
-        struct Test {
-            vec: Vec<(AbiDeclaration, Definition)>,
-        }
+        struct Test(Vec<ABITypeInfo>);
 
+        // default derived
         impl ABIVisitor for Test {
-            fn accept(&mut self, declaration: AbiDeclaration, definition: Definition) {
-                self.vec.push((declaration, definition));
+            fn accept(&mut self, type_info: ABITypeInfo) {
+                self.0.push(type_info);
             }
         }
 
         let mut test = Test::default();
 
-        visit_types_recursively::<(Option<U256>, String)>(&mut test);
+        visit_types_recursively::<(Option<U256>, &str)>(&mut test);
+        // Basic structural checks using UIDs
+        let uids: collections::BTreeSet<_> = test.0.iter().map(|ti| ti.type_uid()).collect();
+        assert!(uids.contains(&type_uid::of::<(Option<U256>, &str)>()));
+        assert!(uids.contains(&type_uid::of::<Option<U256>>()));
+        assert!(uids.contains(&type_uid::of::<U256>()));
+        assert!(uids.contains(&type_uid::of::<u64>()));
+        assert!(uids.contains(&type_uid::of::<&str>()));
+        assert!(uids.contains(&type_uid::of::<char>()));
+
+        // Spot-check definitions for U256 and String
+        let def_of = |uid| {
+            test.0
+                .iter()
+                .find(|ti| ti.type_uid() == uid)
+                .unwrap()
+                .definition()
+                .clone()
+        };
         assert_eq!(
-            test.vec,
-            vec![
-                (
-                    "(Option<U256>, String)".into(),
-                    Definition::Tuple {
-                        items: vec!["Option<U256>".into(), "String".into()]
-                    }
-                ),
-                (
-                    "Option<U256>".into(),
-                    Definition::Enum {
-                        items: vec![
-                            EnumVariant {
-                                name: "None".into(),
-                                discriminant: 0,
-                                decl: "()".into(),
-                            },
-                            EnumVariant {
-                                name: "Some".into(),
-                                discriminant: 1,
-                                decl: "U256".into(),
-                            },
-                        ],
-                    }
-                ),
-                (
-                    "U256".into(),
-                    Definition::FixedSequence {
-                        length: 4,
-                        decl: "U64".into(),
-                    }
-                ),
-                ("U64".into(), Definition::Primitive(Primitive::U64)),
-                (
-                    "String".into(),
-                    Definition::Sequence {
-                        decl: "Char".into(),
-                    }
-                ),
-            ]
-        )
+            def_of(type_uid::of::<U256>()),
+            Definition::FixedSequence {
+                length: 4,
+                decl: type_uid::of::<u64>().into()
+            }
+        );
+        assert_eq!(
+            def_of(type_uid::of::<&str>()),
+            Definition::Sequence {
+                decl: type_uid::of::<char>().into()
+            }
+        );
 
         // assert_eq!(test.vec.len(), 3);
     }

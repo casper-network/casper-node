@@ -179,32 +179,31 @@ fn process_casper_message_for_struct(
     };
 
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
-
-    let maybe_abi_collectors;
     let maybe_entrypoint_defs;
 
     #[cfg(feature = "__abi_generator")]
     {
-        maybe_abi_collectors = quote! {
-            const _: () = {
-
-            };
-        };
-
         maybe_entrypoint_defs = quote! {
+            #[cfg(not(target_arch = "wasm32"))]
             const _: () = {
-                #[#crate_path::linkme::distributed_slice(#crate_path::abi_collector::MESSAGES)]
-                #[linkme(crate = #crate_path::linkme)]
-                static MESSAGE: #crate_path::abi_collector::Message = #crate_path::abi_collector::Message {
-                    name: <#struct_name as #crate_path::Message>::TOPIC,
-                    decl: concat!(module_path!(), "::", stringify!(#struct_name)),
-                 };
+                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                #[linkme(crate = casper_contract_sdk::linkme)]
+                pub static ABI_ITEM: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::Message(casper_contract_sdk::abi_collector::AbiMessage {
+                    name: core::any::type_name::<#struct_name>, // TODO: Currently it is equal to the struct name but should be customizable
+                    decl: casper_contract_sdk::abi_collector::AbiType {
+                        type_name: core::any::type_name::<#struct_name>,
+                        type_id: casper_contract_sdk::common::type_uid::of::<#struct_name>(),
+                        cl_type: <#struct_name as casper_contract_sdk::compat::types::CLTyped>::cl_type,
+                        visit_abi_types: |visitor| {
+                            casper_contract_sdk::abi::visit_types_recursively::<#struct_name>(visitor);
+                        },
+                    }
+                });
             };
         }
     }
     #[cfg(not(feature = "__abi_generator"))]
     {
-        maybe_abi_collectors = quote! {};
         maybe_entrypoint_defs = quote! {};
     }
 
@@ -219,7 +218,7 @@ fn process_casper_message_for_struct(
             const TOPIC: &'static str = stringify!(#struct_name);
 
             #[inline]
-            fn payload(&self) -> Vec<u8> {
+            fn payload(&self) -> casper_contract_sdk::prelude::vec::Vec<u8> {
                 #crate_path::serializers::borsh::to_vec(self).unwrap()
             }
         }
@@ -230,7 +229,6 @@ fn process_casper_message_for_struct(
             }
         }
 
-        #maybe_abi_collectors
         #maybe_entrypoint_defs
 
     }
@@ -305,7 +303,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                     casper_contract_sdk::abi_collector::AbiParam {
                         name: stringify!(#arg_names),
                         decl: casper_contract_sdk::abi_collector::AbiType {
-                            type_name: std::any::type_name::<#arg_types>,
+                            type_name: core::any::type_name::<#arg_types>,
                             type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
                             cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
                             visit_abi_types: |visitor| {
@@ -318,7 +316,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                 abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
                 result_decl: {
                     casper_contract_sdk::abi_collector::AbiType {
-                        type_name: std::any::type_name::<#ret>,
+                        type_name: core::any::type_name::<#ret>,
                         type_id: casper_contract_sdk::common::type_uid::of::<#ret>(),
                         cl_type: <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
                         visit_abi_types: |visitor| {
@@ -752,7 +750,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                                     casper_contract_sdk::abi_collector::AbiParam {
                                         name: stringify!(#arg_names),
                                         decl: casper_contract_sdk::abi_collector::AbiType {
-                                            type_name: std::any::type_name::<#arg_types>,
+                                            type_name: core::any::type_name::<#arg_types>,
                                             type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
                                             cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                                             visit_abi_types: |visitor| {
@@ -764,7 +762,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             ],
                             abi_convention: #resolve_abi_convention,
                             result_decl: casper_contract_sdk::abi_collector::AbiType {
-                                type_name: std::any::type_name::<#ret_ty>,
+                                type_name: core::any::type_name::<#ret_ty>,
                                 type_id: casper_contract_sdk::common::type_uid::of::<#ret_ty>(),
                                 cl_type: <#ret_ty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                                 visit_abi_types: |visitor| {
@@ -971,7 +969,7 @@ fn generate_impl_trait_for_contract(
                                                 casper_contract_sdk::abi_collector::AbiParam {
                                                     name: stringify!($arg),
                                                     decl: casper_contract_sdk::abi_collector::AbiType {
-                                                        type_name: std::any::type_name::<$argty>,
+                                                        type_name: core::any::type_name::<$argty>,
                                                         type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
                                                         cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                                                         visit_abi_types: |visitor| {
@@ -981,11 +979,11 @@ fn generate_impl_trait_for_contract(
                                                 },
                                             )*
                                         ],
-                                        abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
+                                        abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional,
                                         result_decl: {
                                             use #path_to_crate::*;
                                             casper_contract_sdk::abi_collector::AbiType {
-                                                type_name: std::any::type_name::<$ret>,
+                                                type_name: core::any::type_name::<$ret>,
                                                 type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
                                                 cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
                                                 visit_abi_types: |visitor| {
@@ -1041,7 +1039,7 @@ fn generate_impl_trait_for_contract(
                                                 casper_contract_sdk::abi_collector::AbiParam {
                                                     name: stringify!($arg),
                                                     decl: casper_contract_sdk::abi_collector::AbiType {
-                                                        type_name: std::any::type_name::<$argty>,
+                                                        type_name: core::any::type_name::<$argty>,
                                                         type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
                                                         cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                                                         visit_abi_types: |visitor| {
@@ -1053,9 +1051,8 @@ fn generate_impl_trait_for_contract(
                                         ],
                                         abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
                                         result_decl: {
-                                            use #path_to_crate::*;
                                             casper_contract_sdk::abi_collector::AbiType {
-                                                type_name: std::any::type_name::<$ret>,
+                                                type_name: core::any::type_name::<$ret>,
                                                 type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
                                                 cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
                                                 visit_abi_types: |visitor| {
@@ -1428,7 +1425,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             type Return<'a> = #call_data_return_lifetime;
 
                             fn entry_point(&self) -> &str { stringify!(#export_name) }
-                            fn input_data(&self) -> Option<Vec<u8>> {
+                            fn input_data(&self) -> Option<#crate_path::prelude::vec::Vec<u8>> {
                                 #input_data_content
                             }
                         }
@@ -1683,11 +1680,41 @@ fn process_casper_contract_state_for_struct(
             pub static ABI_ITEM: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::SmartContract(casper_contract_sdk::abi_collector::AbiSmartContract {
                 struct_name: stringify!(#struct_name),
                 abi_convention: #abi_conv,
-                cl_type: || { <#struct_name as #crate_path::compat::types::CLTyped>::cl_type() },
-                visit_abi_types: |visitor| {
-                    casper_contract_sdk::abi::visit_types_recursively::<#struct_name>(visitor);
+                decl: #crate_path::abi_collector::AbiType {
+                    type_name: core::any::type_name::<#struct_name>,
+                    type_id: #crate_path::common::type_uid::of::<#struct_name>(),
+                    cl_type: <#struct_name as #crate_path::compat::types::CLTyped>::cl_type,
+                    visit_abi_types: |visitor| {
+                        #crate_path::abi::visit_types_recursively::<#struct_name>(visitor);
+                    },
                 },
-            });
+                metadata: || {
+                    #crate_path::prelude::collections::BTreeMap::from_iter([
+                        ("CARGO", option_env!("CARGO")),
+                        ("CARGO_MANIFEST_DIR", option_env!("CARGO_MANIFEST_DIR")),
+                        ("CARGO_MANIFEST_PATH", option_env!("CARGO_MANIFEST_PATH")),
+                        ("CARGO_PKG_VERSION", option_env!("CARGO_PKG_VERSION")),
+                        ("CARGO_PKG_VERSION_MAJOR", option_env!("CARGO_PKG_VERSION_MAJOR")),
+                        ("CARGO_PKG_VERSION_MINOR", option_env!("CARGO_PKG_VERSION_MINOR")),
+                        ("CARGO_PKG_VERSION_PATCH", option_env!("CARGO_PKG_VERSION_PATCH")),
+                        ("CARGO_PKG_VERSION_PRE", option_env!("CARGO_PKG_VERSION_PRE")),
+                        ("CARGO_PKG_AUTHORS", option_env!("CARGO_PKG_AUTHORS")),
+                        ("CARGO_PKG_NAME", option_env!("CARGO_PKG_NAME")),
+                        ("CARGO_PKG_DESCRIPTION", option_env!("CARGO_PKG_DESCRIPTION")),
+                        ("CARGO_PKG_HOMEPAGE", option_env!("CARGO_PKG_HOMEPAGE")),
+                        ("CARGO_PKG_REPOSITORY", option_env!("CARGO_PKG_REPOSITORY")),
+                        ("CARGO_PKG_LICENSE", option_env!("CARGO_PKG_LICENSE")),
+                        ("CARGO_PKG_LICENSE_FILE", option_env!("CARGO_PKG_LICENSE_FILE")),
+                        ("CARGO_PKG_RUST_VERSION", option_env!("CARGO_PKG_RUST_VERSION")),
+                        ("CARGO_PKG_README", option_env!("CARGO_PKG_README")),
+                        ("CARGO_CRATE_NAME", option_env!("CARGO_CRATE_NAME")),
+                        ("CARGO_BIN_NAME", option_env!("CARGO_BIN_NAME")),
+                        ("OUT_DIR", option_env!("OUT_DIR")),
+                        ("CARGO_PRIMARY_PACKAGE", option_env!("CARGO_PRIMARY_PACKAGE")),
+                        ("CARGO_TARGET_TMPDIR", option_env!("CARGO_TARGET_TMPDIR"))])
+                    }
+                }
+            );
         };
     }
     .into()
@@ -1902,7 +1929,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                 }
 
                 fn declaration() -> casper_contract_sdk::abi::AbiDeclaration {
-                    std::any::type_name::<#name>().into()
+                    core::any::type_name::<#name>().into()
                 }
 
                 fn definition() -> casper_contract_sdk::abi::Definition {
@@ -2021,7 +2048,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                 }
 
                 fn declaration() -> casper_contract_sdk::abi::AbiDeclaration {
-                    std::any::type_name::<#name>().into()
+                    core::any::type_name::<#name>().into()
                 }
 
                 fn definition() -> casper_contract_sdk::abi::Definition {

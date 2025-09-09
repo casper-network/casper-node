@@ -2,6 +2,7 @@ use crate::{
     abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::CLTyped,
+    prelude::{Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 use casper_executor_wasm_common::{
@@ -10,7 +11,7 @@ use casper_executor_wasm_common::{
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
-use crate::prelude::marker::PhantomData;
+use crate::prelude::{borrow::ToOwned, marker::PhantomData};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 #[borsh(crate = "crate::serializers::borsh")]

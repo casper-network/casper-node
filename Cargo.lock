@@ -722,6 +722,7 @@ dependencies = [
  "cfg-if 1.0.1",
  "clap 4.5.45",
  "const-fnv1a-hash",
+ "hashbrown 0.14.5",
  "impl-trait-for-tuples",
  "linkme",
  "num-traits",

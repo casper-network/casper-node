@@ -1,4 +1,6 @@
-use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
+use std::collections::BTreeMap;
+
+use casper_executor_wasm_common::type_uid::Uid;
 
 use crate::{
     abi::{ABIVisitor, AbiDeclaration},
@@ -90,8 +92,8 @@ pub struct AbiEntryPoint {
 pub struct AbiSmartContract {
     pub struct_name: &'static str,
     pub abi_convention: AbiConvention,
-    pub cl_type: fn() -> CLType,
-    pub visit_abi_types: fn(&mut dyn ABIVisitor) -> (),
+    pub decl: AbiType,
+    pub metadata: fn() -> BTreeMap<&'static str, Option<&'static str>>,
 }
 
 #[derive(Debug)]
@@ -102,6 +104,15 @@ pub enum AbiItem {
     SmartContract(AbiSmartContract),
     /// impl Foo { fn method(params) -> result_decl }
     EntryPoint(AbiEntryPoint),
+    /// #[casper(message)] struct Msg {}
+    Message(AbiMessage),
+}
+
+#[derive(Debug)]
+pub struct AbiMessage {
+    /// This by default is the 'struct name' but may be changed into any other name as desired.
+    pub name: fn() -> &'static str,
+    pub decl: AbiType,
 }
 
 impl AbiItem {
@@ -112,9 +123,16 @@ impl AbiItem {
         }
     }
 
-    pub fn as_abi_entry_point(&self) -> Option<&AbiEntryPoint> {
+    pub fn as_entry_point(&self) -> Option<&AbiEntryPoint> {
         match self {
             AbiItem::EntryPoint(entry_point) => Some(entry_point),
+            _ => None,
+        }
+    }
+
+    pub fn as_message(&self) -> Option<&AbiMessage> {
+        match self {
+            AbiItem::Message(message) => Some(message),
             _ => None,
         }
     }
@@ -123,16 +141,6 @@ impl AbiItem {
 #[distributed_slice]
 #[linkme(crate = crate::linkme)]
 pub static ABI_ITEMS: [AbiItem] = [..];
-
-#[derive(Debug, Clone)]
-pub struct Message {
-    pub name: &'static str,
-    pub decl: &'static str,
-}
-
-#[distributed_slice]
-#[linkme(crate = crate::linkme)]
-pub static MESSAGES: [Message] = [..];
 
 #[derive(Debug, Clone)]
 pub struct NamedKey {

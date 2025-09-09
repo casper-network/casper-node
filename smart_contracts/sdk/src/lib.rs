@@ -13,6 +13,7 @@ pub use linkme;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod abi_collector;
+pub mod build;
 pub mod casper;
 pub mod collections;
 pub mod contrib;
@@ -20,7 +21,7 @@ pub mod contrib;
 pub mod schema;
 pub mod types;
 
-use crate::prelude::{marker::PhantomData, ptr::NonNull};
+use crate::prelude::{marker::PhantomData, ptr::NonNull, Vec};
 
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper::{CallResult, Entity};

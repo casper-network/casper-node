@@ -19,7 +19,9 @@ cfg_if! {
         pub mod collections {
             pub use ::alloc::collections::btree_map::{self, BTreeMap};
             pub use ::alloc::collections::{linked_list::{self, LinkedList}};
-            pub use ::alloc::collections::{hash_map::{self, HashMap}};
+            // HashMap is not available in alloc::collections on stable; use hashbrown instead.
+            pub use ::hashbrown::{HashMap};
+            pub mod hash_map { pub use ::hashbrown::*; }
             pub use ::alloc::collections::{btree_set::{self, BTreeSet}};
         }
     }

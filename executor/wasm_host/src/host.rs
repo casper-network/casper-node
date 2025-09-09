@@ -35,9 +35,8 @@ use casper_types::{
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
-    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
-    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
-    PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
+    EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key,
+    Package, PackageHash, ProtocolVersion, Signature, StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;

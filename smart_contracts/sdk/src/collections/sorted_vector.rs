@@ -2,6 +2,7 @@ use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
 
 use crate::{
     compat::types::CLTyped,
+    prelude::{Box, String},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 

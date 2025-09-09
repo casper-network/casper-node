@@ -2,25 +2,21 @@ pub trait CasperSchema {
     fn schema() -> Schema;
 }
 
-use core::{any::TypeId, iter, mem, ptr::NonNull};
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+use crate::prelude::{
+    collections::{BTreeMap, BTreeSet},
     fmt::LowerHex,
+    String, ToString, Vec,
 };
+use core::{mem, ptr::NonNull};
 
 use bitflags::Flags;
-use casper_executor_wasm_common::{
-    flags::EntryPointFlags,
-    type_uid::{Uid, UidRepr},
-};
+use casper_executor_wasm_common::type_uid::{Uid, UidRepr};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::hash::{Hash, Hasher};
 
 use crate::{
     abi::{ABITypeInfo, ABIVisitor, AbiDeclaration, Definition},
     abi_collector::{AbiItem, AbiReceiver, ABI_ITEMS},
     compat::types::CLType,
-    serializers::AbiConvention,
 };
 
 pub fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
@@ -100,7 +96,7 @@ pub enum SchemaAbiConvention {
 #[serde(tag = "type")]
 pub enum SchemaType {
     /// Contract schemas contain a state structure that we want to mark in the schema.
-    Contract { state: AbiDeclaration },
+    Contract { state: SchemaTypeUid },
     /// Schemas of interface type does not contain state.
     Interface,
 }
@@ -108,7 +104,7 @@ pub enum SchemaType {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaMessage {
     pub name: String,
-    pub decl: AbiDeclaration,
+    pub decl: SchemaTypeUid,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -141,10 +137,23 @@ pub struct SchemaDefinitions(BTreeMap<SchemaTypeUid, SchemaDefinition>);
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 pub struct SchemaCLTypes(BTreeMap<String, CLType>);
 
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub struct SchemaMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authors: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust_version: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Schema {
-    pub name: String,
-    pub version: Option<String>,
+    pub metadata: SchemaMetadata,
     #[serde(rename = "type")]
     pub type_: SchemaType,
     pub declarations: SchemaDeclarations,
@@ -168,72 +177,109 @@ impl ABIVisitor for SchemaData {
 pub fn casper_collect_schema() -> Schema {
     let mut visited_types = BTreeSet::new();
 
-    let mut cltypes = BTreeMap::new(); // typeid -> cltype
-                                       // let mut defs = BTreeMap::new(); // typeid -> def
+    let mut cltypes = BTreeMap::new();
 
     let mut schema_decls = SchemaDeclarations::default();
     let mut schema_defs = SchemaDefinitions::default();
     let mut schema_entry = Vec::new();
+    let mut schema_messages = Vec::new();
+
+    let mut abi_types = Vec::new();
+    for abi_item in ABI_ITEMS.iter() {
+        match abi_item {
+            AbiItem::Message(abi_message) => {
+                abi_types.push(&abi_message.decl);
+            }
+            AbiItem::SmartContract(abi_smart_contract) => {
+                abi_types.push(&abi_smart_contract.decl);
+            }
+            AbiItem::EntryPoint(abi_entry_point) => {
+                for param in abi_entry_point.params {
+                    abi_types.push(&param.decl);
+                }
+                abi_types.push(&abi_entry_point.result_decl);
+            }
+        }
+    }
+
+    let smart_contracts = ABI_ITEMS
+        .iter()
+        .filter_map(AbiItem::as_smart_contract)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        smart_contracts.len(),
+        1,
+        "Expected exactly one smart contract in the ABI_ITEMS, found {}",
+        smart_contracts.len()
+    );
+
+    let smart_contract = smart_contracts
+        .into_iter()
+        .next()
+        .expect("Failed to get smart contract");
+
+    // Collect types from params + result
+    for abi_type in abi_types {
+        let param_type_id = abi_type.type_id;
+        if visited_types.contains(&param_type_id) {
+            // Type already seen
+            continue;
+        }
+
+        let cl_type = (abi_type.cl_type)();
+
+        cltypes.insert(param_type_id, cl_type.clone());
+
+        let mut schema_data = SchemaData {
+            defs: Default::default(),
+        };
+
+        (abi_type.visit_abi_types)(&mut schema_data);
+
+        assert_eq!(
+            schema_data.defs.first().as_ref().unwrap().type_uid(),
+            param_type_id,
+            "parameter type ID mismatch decl={:?} {:#?} {:#?}", /* means CasperABI
+                                                                 * implementation is
+                                                                 * incorrect */
+            (abi_type.type_name)(),
+            schema_data.defs,
+            schema_decls,
+        );
+
+        for abi_type_info in schema_data.defs {
+            let type_uid = abi_type_info.type_uid();
+            let cl_type = abi_type_info.cl_type().clone();
+            let decl = abi_type_info.declaration().clone();
+            let def = abi_type_info.definition().clone();
+
+            schema_decls
+                .0
+                .insert(SchemaTypeUid::from(type_uid), decl.clone());
+            schema_defs.0.insert(
+                SchemaTypeUid::from(type_uid),
+                SchemaDefinition {
+                    definition: def,
+                    cl_type,
+                },
+            );
+        }
+
+        visited_types.insert(param_type_id);
+    }
 
     for abi_item in ABI_ITEMS.iter() {
         match abi_item {
-            AbiItem::SmartContract(abi_smart_contract) => {}
+            AbiItem::Message(abi_message) => {
+                // Process message
+
+                schema_messages.push(SchemaMessage {
+                    name: (abi_message.name)().to_string(),
+                    decl: SchemaTypeUid::from(abi_message.decl.type_id),
+                });
+            }
+            AbiItem::SmartContract(_abi_smart_contract) => {}
             AbiItem::EntryPoint(abi_entry_point) => {
-                // Collect types from params + result
-                for abi_type in abi_entry_point
-                    .params
-                    .iter()
-                    .map(|param| &param.decl)
-                    .chain(iter::once(&abi_entry_point.result_decl))
-                {
-                    let param_type_id = abi_type.type_id;
-                    if visited_types.contains(&param_type_id) {
-                        // Type already seen
-                        continue;
-                    }
-
-                    let cl_type = (abi_type.cl_type)();
-
-                    cltypes.insert(param_type_id, cl_type.clone());
-
-                    let mut schema_data = SchemaData {
-                        defs: Default::default(),
-                    };
-
-                    (abi_type.visit_abi_types)(&mut schema_data);
-
-                    assert_eq!(
-                        schema_data.defs.first().as_ref().unwrap().type_uid(),
-                        param_type_id,
-                        "parameter type ID mismatch decl={:?} {:#?} {:#?}", /* means CasperABI
-                                                                             * implementation is
-                                                                             * incorrect */
-                        (abi_type.type_name)(),
-                        schema_data.defs,
-                        schema_decls,
-                    );
-
-                    for abi_type_info in schema_data.defs {
-                        let type_uid = abi_type_info.type_uid().clone();
-                        let cl_type = abi_type_info.cl_type().clone();
-                        let decl = abi_type_info.declaration().clone();
-                        let def = abi_type_info.definition().clone();
-
-                        schema_decls
-                            .0
-                            .insert(SchemaTypeUid::from(type_uid), decl.clone());
-                        schema_defs.0.insert(
-                            SchemaTypeUid::from(type_uid),
-                            SchemaDefinition {
-                                definition: def,
-                                cl_type,
-                            },
-                        );
-                    }
-
-                    visited_types.insert(param_type_id);
-                }
-
                 let mut schema_params = Vec::new();
 
                 for abi_type in abi_entry_point.params {
@@ -280,105 +326,32 @@ pub fn casper_collect_schema() -> Schema {
         }
     }
 
-    // let q = VecDeque::new();
+    let metadata = (smart_contract.metadata)();
 
-    // for (type_id, schema_data) in defs {
-    //     let cltype = cltypes.get(&type_id).expect("cltype for type_id").clone();
-
-    //     dbg!(&schema_data.defs);
-
-    //     let (type_id, decl, def) = schema_data.defs.first().expect("at least one def").clone();
-    // // first item in the list is the definition of T.
-
-    //     let schema_type_id = SchemaTypeId::try_from(type_id).unwrap();
-
-    //     schema_decls.0.insert(decl, schema_type_id);
-    //     schema_defs.0.insert(schema_type_id, SchemaDefinition { definition: def, cl_type: cltype
-    // });
-
-    //     // schema_defs.insert(type_id, (cltype, schema_data));
-    // }
-
-    // let SchemaData { defs, declarations, definitions, entry_points, messages, named_keys } =
-    // schema_data;
-
-    // let mut schema_defs = SchemaDefinitions::default();
-    // for (decl, def) in defs {
-
-    // }
+    let schema_metadata = SchemaMetadata {
+        name: metadata["CARGO_PKG_NAME"].map(ToOwned::to_owned),
+        version: metadata["CARGO_PKG_VERSION"].map(ToOwned::to_owned),
+        authors: metadata["CARGO_PKG_AUTHORS"].map(|s| {
+            s.split(':')
+                .filter(|part| !part.is_empty())
+                .map(|part| part.to_string())
+                .collect::<Vec<String>>()
+        }),
+        description: metadata["CARGO_PKG_DESCRIPTION"].map(ToOwned::to_owned),
+        rust_version: metadata["CARGO_PKG_RUST_VERSION"].map(ToOwned::to_owned),
+    };
 
     Schema {
-        name: "contract".to_string(),
-        version: None,
+        metadata: schema_metadata,
         type_: SchemaType::Contract {
-            state: "Contract".to_string(),
+            state: SchemaTypeUid::from(smart_contract.decl.type_id),
         },
         declarations: schema_decls,
         definitions: schema_defs,
         entry_points: schema_entry,
-        messages: Default::default(),
+        messages: schema_messages,
         named_keys: Default::default(),
     }
-    // // Collect definitions
-    // let definitions = {
-    //     let mut definitions = Definitions::default();
-
-    //     for abi_collector in ABI_COLLECTORS {
-    //         abi_collector(&mut definitions);
-    //     }
-
-    //     definitions
-    // };
-
-    // // Collect messages
-    // let messages = {
-    //     let mut messages = Vec::new();
-
-    //     for message in MESSAGES {
-    //         messages.push(SchemaMessage {
-    //             name: message.name.to_owned(),
-    //             decl: message.decl.to_owned(),
-    //         });
-    //     }
-
-    //     messages
-    // };
-
-    // // Collect named keys
-    // let named_keys = {
-    //     let mut named_keys = Vec::new();
-
-    //     for named_key in NAMED_KEYS {
-    //         named_keys.push(crate::schema::SchemaStableKey {
-    //             name: named_key.name.to_owned(),
-    //             decl: (named_key.decl)(),
-    //         });
-    //     }
-
-    //     named_keys
-    // };
-
-    // // Collect entrypoints
-    // let entry_points = {
-    //     let mut entry_points = Vec::new();
-    //     for entrypoint in ENTRYPOINTS {
-    //         entry_points.push(entrypoint());
-    //     }
-    //     entry_points
-    // };
-
-    // // Construct a schema object from the extracted information
-    // Schema {
-    //     name: "contract".to_string(),
-    //     version: None,
-    //     type_: SchemaType::Contract {
-    //         state: "Contract".to_string(),
-    //     },
-    //     definitions,
-    //     entry_points,
-    //     messages,
-    //     named_keys,
-    // }
 }
 
 /// This function is called by the host to collect the schema from the contract.

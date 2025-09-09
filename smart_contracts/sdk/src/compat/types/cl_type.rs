@@ -1,5 +1,8 @@
+use crate::prelude::{
+    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+    Box, String, Vec,
+};
 use core::any::TypeId;
-use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 
 #[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserialize, Serialize};
@@ -297,7 +300,7 @@ struct Frame {
 }
 
 impl BorshDeserialize for CLType {
-    fn deserialize_reader<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> io::Result<Self> {
         let mut stack: Vec<Frame> = Vec::new();
 
         // 'current' holds the last parsed CLType.
@@ -514,6 +517,10 @@ impl BorshDeserialize for CLType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        compat::types::CLTyped,
+        prelude::{String, Vec},
+    };
     use core::iter;
 
     #[test]

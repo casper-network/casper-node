@@ -2,7 +2,7 @@ use crate::{
     abi::{AbiDeclaration, CasperABI, Definition, StructField},
     casper::{self, read_into_vec},
     compat::types::{CLType, CLTyped},
-    prelude::{cmp::Ordering, marker::PhantomData},
+    prelude::{borrow::ToOwned, cmp::Ordering, marker::PhantomData, Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 

@@ -11,3 +11,6 @@ crate-type = ["cdylib", "rlib"]
 casper-contract-sdk = { path = "../../../sdk" }
 vm2-cep18 = { path = "../vm2-cep18" }
 borsh = { version = "1.5", features = ["derive"] }
+
+[build-dependencies]
+casper-contract-sdk = { path = "../../../sdk" }

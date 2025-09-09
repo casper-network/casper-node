@@ -1,6 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use super::{IterableMap, IterableMapHash};
+use crate::prelude::String;
 
 /// An iterable set backed by a map.
 pub struct IterableSet<V> {
@@ -48,10 +49,13 @@ impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
-    use crate::casper::native::dispatch;
+    use crate::{
+        casper::native::dispatch,
+        prelude::{String, ToString, Vec},
+    };
     use borsh::{BorshDeserialize, BorshSerialize};
 
     #[test]

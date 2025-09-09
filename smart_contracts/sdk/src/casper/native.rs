@@ -2,25 +2,20 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, VecDeque},
     convert::Infallible,
-    fmt,
     panic::{self, UnwindSafe},
     ptr::{self, NonNull},
     slice,
     sync::{Arc, RwLock},
 };
 
-use crate::{abi_collector::ABI_ITEMS, linkme::distributed_slice};
+use crate::abi_collector::ABI_ITEMS;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
-    error::{
-        CALLEE_REVERTED, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
-        HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
-    },
+    error::{HOST_ERROR_INTERNAL, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use rand::Rng;
+// no_std friendly: avoid unused rand import on host
 
 use super::Entity;
 use crate::types::Address;
@@ -33,7 +28,7 @@ use crate::types::Address;
 pub fn invoke_export_by_name(export_name: &str) {
     let all_entry_points: Vec<_> = ABI_ITEMS
         .iter()
-        .filter_map(|abi_item| abi_item.as_abi_entry_point())
+        .filter_map(|abi_item| abi_item.as_entry_point())
         .collect();
 
     let exports_by_name: Vec<_> = all_entry_points
@@ -93,6 +88,7 @@ impl From<&casper_contract_sdk_sys::Param> for NativeParam {
 #[derive(Clone, Debug)]
 pub struct Environment {
     pub db: Arc<RwLock<Container>>,
+    #[allow(dead_code)]
     contracts: Arc<RwLock<BTreeSet<Address>>>,
     // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
@@ -324,16 +320,16 @@ impl Environment {
     #[allow(clippy::too_many_arguments)]
     fn casper_create(
         &self,
-        code_ptr: *const u8,
-        code_size: usize,
-        transferred_value: u64,
-        constructor_ptr: *const u8,
-        constructor_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        seed_ptr: *const u8,
-        seed_size: usize,
-        result_ptr: *mut casper_contract_sdk_sys::CreateResult,
+        _code_ptr: *const u8,
+        _code_size: usize,
+        _transferred_value: u64,
+        _constructor_ptr: *const u8,
+        _constructor_size: usize,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _seed_ptr: *const u8,
+        _seed_size: usize,
+        _result_ptr: *mut casper_contract_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
         // // let manifest =
         // //     NonNull::new(manifest_ptr as *mut
@@ -423,16 +419,16 @@ impl Environment {
     #[allow(clippy::too_many_arguments)]
     fn casper_call(
         &self,
-        address_ptr: *const u8,
-        address_size: usize,
-        transferred_value: u64,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
-                                                                         * data */
-        alloc_ctx: *const core::ffi::c_void,
+        _address_ptr: *const u8,
+        _address_size: usize,
+        _transferred_value: u64,
+        _entry_point_ptr: *const u8,
+        _entry_point_size: usize,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
+                                                                          * data */
+        _alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
         todo!()
         // let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
