@@ -243,7 +243,6 @@ impl ValidatorBid {
                 return Ok(updated_staked_amount);
             }
         };
-
         if let Some(locked_amount) = vesting_schedule.locked_amount(era_end_timestamp_millis) {
             if updated_staked_amount < locked_amount {
                 return Err(Error::ValidatorFundsLocked);

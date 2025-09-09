@@ -1,12 +1,14 @@
 use once_cell::sync::Lazy;
 
+use crate::lmdb_fixture;
+
 use casper_engine_test_support::{
     genesis_config_builder::GenesisConfigBuilder, utils, ChainspecConfig, DeployItemBuilder,
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
 };
 use casper_execution_engine::{
     engine_state::{self},
@@ -16,14 +18,12 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
     system::{
-        auction::{self, BidAddr, DelegationRate},
+        auction::{self, BidAddr, DelegationRate, VESTING_SCHEDULE_LENGTH_MILLIS},
         standard_payment,
     },
     ApiError, GenesisAccount, GenesisValidator, Key, Motes, StoredValue,
     DEFAULT_MINIMUM_BID_AMOUNT, U512,
 };
-
-use crate::lmdb_fixture;
 
 static DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE: Lazy<U512> =
     Lazy::new(|| U512::from(1_000_000_000_000u64));
@@ -63,9 +63,7 @@ fn should_run_regression_with_already_initialized_fixed_schedule() {
 
     let stored_value = builder.query(None, bid_key, &[]).unwrap();
     if let StoredValue::Bid(bid) = stored_value {
-        assert!(
-            bid.is_locked_with_vesting_schedule(7776000000, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS)
-        );
+        assert!(bid.is_locked_with_vesting_schedule(7776000000, VESTING_SCHEDULE_LENGTH_MILLIS));
         let vesting_schedule = bid
             .vesting_schedule()
             .expect("should have a schedule initialized already");
@@ -162,8 +160,6 @@ fn should_initialize_default_vesting_schedule() {
 #[ignore]
 #[test]
 fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule() {
-    let vesting_schedule_period_millis = 0;
-
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
         GenesisConfigBuilder::new().with_accounts(accounts).build()
@@ -176,11 +172,12 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = ChainspecConfig::default()
-        .with_vesting_schedule_period_millis(vesting_schedule_period_millis);
+    let chainspec_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(VESTING_SCHEDULE_LENGTH_MILLIS);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
     builder.run_genesis(genesis_request);
+    builder.advance_eras_by(7);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -260,7 +257,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         "should run step to initialize a schedule"
     );
 
-    era_end_timestamp_millis += DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    era_end_timestamp_millis += auction::LOCKED_FUNDS_PERIOD_MILLIS + 100_000_000;
 
     assert!(
         builder

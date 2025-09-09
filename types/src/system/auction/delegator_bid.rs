@@ -143,7 +143,7 @@ impl DelegatorBid {
 
         if let Some(locked_amount) = vesting_schedule.locked_amount(era_end_timestamp_millis) {
             if updated_staked_amount < locked_amount {
-                return Err(Error::ValidatorFundsLocked);
+                return Err(Error::DelegatorFundsLocked);
             }
         }
         self.staked_amount = updated_staked_amount;
