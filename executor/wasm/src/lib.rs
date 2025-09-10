@@ -503,6 +503,8 @@ impl ExecutorV2 {
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
+        println!("got addr and purse");
+
         let (wasm_bytes, export_name) = {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
@@ -902,8 +904,10 @@ impl ExecutorV2 {
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
         let entry_point = entry_point.clone();
+        println!("A");
         let args = bytesrepr::deserialize_from_slice(input)
             .map_err(|err| ExecuteError::InternalHost(InternalHostError::Bytesrepr(err)))?;
+        println!("B");
         let phase = Phase::Session;
 
         let wasm_v1_result = {

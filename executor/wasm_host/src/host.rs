@@ -1049,6 +1049,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         )?;
     }
 
+    println!("wrote contract");
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
             // Limit the new VM to remaining gas.
@@ -1079,6 +1080,8 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_runtime_native_config(caller.context().runtime_native_config.clone())
                 .build()
                 .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+
+            println!("build req");
 
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
