@@ -1,4 +1,4 @@
-use std::{borrow::Cow, num::NonZeroU32, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_common::{
@@ -31,10 +31,11 @@ use casper_types::{
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
-    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
-    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
-    PackageHash, ProtocolVersion, Signature, StoredValue, URef,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasm,
+    ContractWasmHash, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, HashAddr, HashAlgorithm,
+    HostFunctionV2, Key, NamedKeys, Package, PackageHash, ProtocolVersion, Signature, StoredValue,
+    URef,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -53,6 +54,7 @@ use blake2::{
 use casper_executor_wasm_interface::executor::{
     AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
 };
+use casper_types::contracts::{ContractHash, ContractPackage, ContractPackageHash, EntryPoints};
 use keccak_asm::Digest as KeccakDigest;
 use sha2::Sha256;
 
@@ -216,42 +218,89 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         }
         Keyspace::NamedKey(name) => {
             // NamedKey points to a URef which holds CLValue::Any bytes
-            let maybe_existing_uref = caller
+            let maybe_stored_value = caller
                 .context_mut()
                 .tracking_copy
                 .read(&global_state_key)
                 .map_err(|_| InternalHostError::TrackingCopy)?;
 
-            let uref_to_use: URef =
-                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
-                    if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
-                        existing_uref
-                    } else {
+            let stored_value = match maybe_stored_value {
+                Some(StoredValue::NamedKey(existing_named_key)) => {
+                    let uref_to_use =
+                        if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
+                            existing_uref
+                        } else {
+                            let mut address_generator = caller.context().address_generator.write();
+                            address_generator.new_uref(AccessRights::NONE)
+                        };
+
+                    // Point the named key to the URef
+                    let named_key = Key::URef(uref_to_use);
+                    let key_name = name.to_string();
+                    let Ok(named_key_value) =
+                        NamedKeyValue::from_concrete_values(named_key, key_name)
+                    else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
+
+                    StoredValue::NamedKey(named_key_value)
+                }
+                Some(StoredValue::Contract(mut contract)) => {
+                    let uref = match contract.named_keys().get(name) {
+                        Some(Key::URef(uref)) => *uref,
+                        Some(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+                        None => {
+                            let mut address_generator = caller.context().address_generator.write();
+                            address_generator.new_uref(AccessRights::NONE)
+                        }
+                    };
+
+                    // Write payload bytes under the URef as CLValue::Any
+                    let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
+                    metered_write(
+                        &mut caller,
+                        Key::URef(uref),
+                        StoredValue::CLValue(cl_value_any),
+                    )?;
+
+                    let named_keys = {
+                        let mut ret = BTreeMap::new();
+                        ret.insert(name.to_string(), Key::URef(uref));
+                        NamedKeys::from(ret)
+                    };
+                    contract.named_keys_append(named_keys);
+
+                    StoredValue::Contract(contract)
+                }
+                Some(_) => return Ok(HOST_ERROR_NOT_FOUND),
+                None => {
+                    let uref = {
                         let mut address_generator = caller.context().address_generator.write();
-                        address_generator.new_uref(AccessRights::NONE)
-                    }
-                } else {
-                    let mut address_generator = caller.context().address_generator.write();
-                    address_generator.new_uref(AccessRights::NONE)
-                };
+                        let uref = address_generator.new_uref(AccessRights::NONE);
+                        uref
+                    };
+                    // Write payload bytes under the URef as CLValue::Any
+                    let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
+                    metered_write(
+                        &mut caller,
+                        Key::URef(uref),
+                        StoredValue::CLValue(cl_value_any),
+                    )?;
 
-            // Write payload bytes under the URef as CLValue::Any
-            let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
-            metered_write(
-                &mut caller,
-                Key::URef(uref_to_use),
-                StoredValue::CLValue(cl_value_any),
-            )?;
+                    // Point the named key to the URef
+                    let named_key = Key::URef(uref);
+                    let key_name = name.to_string();
+                    let Ok(named_key_value) =
+                        NamedKeyValue::from_concrete_values(named_key, key_name)
+                    else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
 
-            // Point the named key to the URef
-            let named_key = Key::URef(uref_to_use);
-            let key_name = name.to_string();
-            let Ok(named_key_value) = NamedKeyValue::from_concrete_values(named_key, key_name)
-            else {
-                return Ok(HOST_ERROR_INVALID_DATA);
+                    StoredValue::NamedKey(named_key_value)
+                }
             };
 
-            StoredValue::NamedKey(named_key_value)
+            stored_value
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -429,6 +478,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> VMResult<u32> {
+    println!("read");
     let read_cost = caller.context().config.host_function_costs().read;
     charge_host_function_call(
         &mut caller,
@@ -487,37 +537,51 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
+            println!("fooo");
             // Unknown keyspace received, return error
             return Ok(HOST_ERROR_NOT_FOUND);
         }
     };
 
-    let global_state_raw_bytes = if let Key::AddressableEntity(entity_addr) = global_state_key {
-        let named_keys = caller
-            .context_mut()
-            .tracking_copy
-            .get_named_keys(entity_addr)
-            .map(|named_keys| named_keys.to_bytes());
-        match named_keys {
-            Ok(Ok(named_keys)) => Cow::Owned(named_keys),
-            Ok(_) | Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
+    let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
+    let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
+        Ok(Some(StoredValue::CLValue(cl_value))) => {
+            let CLType::Any = cl_value.cl_type() else {
+                return Err(InternalHostError::TypeConversion)?;
+            };
+            Cow::Owned(cl_value.inner_bytes().to_owned())
         }
-    } else {
-        let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
-        let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-            Ok(Some(StoredValue::CLValue(cl_value))) => {
-                let CLType::Any = cl_value.cl_type() else {
-                    return Err(InternalHostError::TypeConversion)?;
-                };
-                Cow::Owned(cl_value.inner_bytes().to_owned())
+        Ok(Some(StoredValue::NamedKey(named_key_value))) => {
+            // Dereference named key to its URef and return the underlying Any bytes
+            let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    let CLType::Any = cl_value.cl_type() else {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    };
+                    Cow::Owned(cl_value.inner_bytes().to_owned())
+                }
+                Ok(Some(_)) => {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                }
+                Ok(None) => {
+                    return Ok(HOST_ERROR_NOT_FOUND);
+                }
+                Err(_error) => {
+                    return Err(InternalHostError::TrackingCopy.into());
+                }
             }
-            Ok(Some(StoredValue::NamedKey(named_key_value))) => {
-                // Dereference named key to its URef and return the underlying Any bytes
-                let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+        }
+        Ok(Some(StoredValue::Contract(contract))) => match keyspace {
+            Keyspace::NamedKey(name) => {
+                let Some(Key::URef(uref)) = contract.named_keys().get(name) else {
                     return Ok(HOST_ERROR_INVALID_DATA);
                 };
 
-                match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                match caller.context_mut().tracking_copy.read(&Key::URef(*uref)) {
                     Ok(Some(StoredValue::CLValue(cl_value))) => {
                         let CLType::Any = cl_value.cl_type() else {
                             return Ok(HOST_ERROR_INVALID_DATA);
@@ -535,40 +599,69 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                     }
                 }
             }
-            Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
-                match entry_point.entry_point_payment() {
-                    EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
-                    EntryPointPayment::DirectInvocationOnly => {
-                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
-                    }
-                    EntryPointPayment::SelfOnward => {
-                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD])
-                    }
+            Keyspace::AllNamedKeys => match contract.take_named_keys().to_bytes() {
+                Ok(bytes) => Cow::Owned(bytes),
+                Err(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+            },
+            Keyspace::PaymentInfo(entry_point_name) => {
+                match contract.entry_point(entry_point_name) {
+                    Some(_) => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
+                    None => return Ok(HOST_ERROR_INVALID_INPUT),
                 }
             }
-            Ok(Some(stored_value)) => {
-                // TODO: Backwards compatibility with old EE, although it's not clear if we should
-                // do it at the storage level. Since new VM has storage isolated
-                // from the Wasm (i.e. we have Keyspace on the wasm which gets
-                // converted to a global state `Key`). I think if we were to pursue
-                // this we'd add a new `Keyspace` enum variant for each old
-                // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time,
-                // then deprecate this.
-                todo!("Unsupported {stored_value:?}")
+            _ => {
+                error!(?keyspace, "unsupported keyspace");
+                return Ok(HOST_ERROR_INVALID_INPUT);
             }
-            Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
-            Err(error) => {
-                // To protect the network against potential non-determinism (i.e. one validator runs
-                // out of space or just faces I/O issues that other validators may
-                // not have) we're simply aborting the process, hoping that once the
-                // node goes back online issues are resolved on the validator side.
-                // TODO: We should signal this to the contract runtime somehow, and
-                // let validator nodes skip execution.
-                error!(?error, "Error while reading from storage; aborting");
-                panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
+        },
+        Ok(Some(StoredValue::AddressableEntity(_))) => {
+            if let Keyspace::AllNamedKeys = keyspace {
+                let entity_addr = context_to_entity_addr(&caller.context());
+
+                let named_keys = caller
+                    .context_mut()
+                    .tracking_copy
+                    .get_named_keys(entity_addr)
+                    .map(|named_keys| named_keys.to_bytes());
+
+                match named_keys {
+                    Ok(Ok(bytes)) => Cow::Owned(bytes),
+                    Ok(_) | Err(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+                }
+            } else {
+                return Ok(HOST_ERROR_INVALID_INPUT);
             }
-        };
-        global_state_raw_bytes
+        }
+        Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
+            match entry_point.entry_point_payment() {
+                EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
+                EntryPointPayment::DirectInvocationOnly => {
+                    Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
+                }
+                EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
+            }
+        }
+        Ok(Some(stored_value)) => {
+            // TODO: Backwards compatibility with old EE, although it's not clear if we should
+            // do it at the storage level. Since new VM has storage isolated
+            // from the Wasm (i.e. we have Keyspace on the wasm which gets
+            // converted to a global state `Key`). I think if we were to pursue
+            // this we'd add a new `Keyspace` enum variant for each old
+            // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time,
+            // then deprecate this.
+            todo!("Unsupported {stored_value:?}")
+        }
+        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
+        Err(error) => {
+            // To protect the network against potential non-determinism (i.e. one validator runs
+            // out of space or just faces I/O issues that other validators may
+            // not have) we're simply aborting the process, hoping that once the
+            // node goes back online issues are resolved on the validator side.
+            // TODO: We should signal this to the contract runtime somehow, and
+            // let validator nodes skip execution.
+            error!(?error, "Error while reading from storage; aborting");
+            panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
+        }
     };
 
     let out_ptr: u32 = if cb_alloc != 0 {
@@ -596,6 +689,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
     keyspace: Keyspace<'_>,
 ) -> Option<Key> {
     let entity_addr = context_to_entity_addr(context);
+    let ae_enabled = context.tracking_copy.enable_addressable_entity();
 
     match keyspace {
         Keyspace::State => Some(Key::State(entity_addr)),
@@ -618,7 +712,19 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
             Some(Key::EntryPoint(entry_point_addr))
         }
-        Keyspace::AllNamedKeys => Some(Key::AddressableEntity(entity_addr)),
+        Keyspace::AllNamedKeys => {
+            if ae_enabled {
+                Some(Key::AddressableEntity(entity_addr))
+            } else {
+                match entity_addr {
+                    EntityAddr::Account(hash_addr) => {
+                        Some(Key::Account(AccountHash::new(hash_addr)))
+                    }
+                    EntityAddr::SmartContract(hash_addr) => Some(Key::Hash(hash_addr)),
+                    _ => None,
+                }
+            }
+        }
     }
 }
 
@@ -627,9 +733,8 @@ fn context_to_entity_addr<S: GlobalStateReader, E: Executor>(
 ) -> EntityAddr {
     match context.callee {
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
-        Key::SmartContract(smart_contract_addr) => {
-            EntityAddr::new_smart_contract(smart_contract_addr)
-        }
+        Key::Hash(hash_addr) => EntityAddr::SmartContract(hash_addr),
+        Key::AddressableEntity(smart_contract_addr) => smart_contract_addr,
         _ => {
             // This should never happen, as the caller is always an account or a smart contract.
             panic!("Unexpected callee variant: {:?}", context.callee)
@@ -729,6 +834,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     result_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
+    println!("In create");
     if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
@@ -809,13 +915,12 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, code.clone().into());
     let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
 
-    // 1. Store package hash
-    let mut smart_contract_package = Package::default();
-
-    let protocol_version = ProtocolVersion::V2_0_0;
-    let protocol_version_major = protocol_version.value().major;
-
     let callee_addr = context_to_entity_addr(caller.context()).value();
+
+    let package_addr: HashAddr = {
+        let mut address_generator = caller.context().address_generator.write();
+        address_generator.new_uref(AccessRights::NONE).addr()
+    };
 
     let smart_contract_addr: HashAddr = chain_utils::compute_predictable_address(
         caller.context().chain_name.as_bytes(),
@@ -824,15 +929,41 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         seed,
     );
 
-    smart_contract_package.insert_entity_version(
-        protocol_version_major,
-        EntityAddr::SmartContract(smart_contract_addr),
-    );
+    let protocol_version = ProtocolVersion::V2_0_0;
+    let protocol_version_major = protocol_version.value().major;
+
+    let ae_enabled = caller.context().tracking_copy.enable_addressable_entity();
+
+    let (smart_contract_package_key, smart_contract_package_as_stored_value) = if ae_enabled {
+        // 1. Store package hash
+        let mut smart_contract_package = Package::default();
+
+        smart_contract_package.insert_entity_version(
+            protocol_version_major,
+            EntityAddr::SmartContract(smart_contract_addr),
+        );
+
+        (
+            Key::SmartContract(package_addr),
+            StoredValue::SmartContract(smart_contract_package),
+        )
+    } else {
+        let mut smart_contract_package = ContractPackage::default();
+        smart_contract_package.insert_contract_version(
+            protocol_version_major,
+            ContractHash::new(smart_contract_addr),
+        );
+
+        (
+            Key::Hash(package_addr),
+            StoredValue::ContractPackage(smart_contract_package),
+        )
+    };
 
     if caller
         .context_mut()
         .tracking_copy
-        .read(&Key::SmartContract(smart_contract_addr))
+        .read(&smart_contract_package_key)
         .map_err(|_| VMError::Internal(InternalHostError::TrackingCopy))?
         .is_some()
     {
@@ -841,54 +972,82 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     metered_write(
         &mut caller,
-        Key::SmartContract(smart_contract_addr),
-        StoredValue::SmartContract(smart_contract_package),
+        smart_contract_package_key,
+        smart_contract_package_as_stored_value,
     )?;
 
     // 2. Store wasm
-    metered_write(
-        &mut caller,
-        Key::ByteCode(bytecode_addr),
-        StoredValue::ByteCode(bytecode),
-    )?;
-
-    // 3. Store addressable entity
-
-    let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
-    let addressable_entity_key = Key::AddressableEntity(entity_addr);
-
-    // TODO: abort(str) as an alternative to trap
-    let address_generator = Arc::clone(&caller.context().address_generator);
-    let transaction_hash = caller.context().transaction_hash;
-    let runtime_native_config = caller.context().runtime_native_config.clone();
-    let main_purse: URef = match system::create_purse(
-        &mut caller.context_mut().tracking_copy,
-        runtime_native_config,
-        transaction_hash,
-        address_generator,
-    ) {
-        Ok(uref) => uref,
-        Err(mint_error) => {
-            error!(?mint_error, "Failed to create a purse");
-            return Ok(CALLEE_TRAPPED);
-        }
+    if ae_enabled {
+        metered_write(
+            &mut caller,
+            Key::ByteCode(bytecode_addr),
+            StoredValue::ByteCode(bytecode),
+        )?
+    } else {
+        metered_write(
+            &mut caller,
+            Key::Hash(bytecode_hash),
+            StoredValue::ContractWasm(ContractWasm::new(bytecode.take_bytes())),
+        )?
     };
 
-    let addressable_entity = AddressableEntity::new(
-        PackageHash::new(smart_contract_addr),
-        ByteCodeHash::new(bytecode_hash),
-        ProtocolVersion::V2_0_0,
-        main_purse,
-        AssociatedKeys::default(),
-        ActionThresholds::default(),
-        EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
-    );
+    if ae_enabled {
+        // 3. Store addressable entity
+        let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
+        let addressable_entity_key = Key::AddressableEntity(entity_addr);
 
-    metered_write(
-        &mut caller,
-        addressable_entity_key,
-        StoredValue::AddressableEntity(addressable_entity),
-    )?;
+        // TODO: abort(str) as an alternative to trap
+        let address_generator = Arc::clone(&caller.context().address_generator);
+        let transaction_hash = caller.context().transaction_hash;
+        let runtime_native_config = caller.context().runtime_native_config.clone();
+        let main_purse: URef = match system::create_purse(
+            &mut caller.context_mut().tracking_copy,
+            runtime_native_config,
+            transaction_hash,
+            address_generator,
+        ) {
+            Ok(uref) => uref,
+            Err(mint_error) => {
+                error!(?mint_error, "Failed to create a purse");
+                return Ok(CALLEE_TRAPPED);
+            }
+        };
+
+        let addressable_entity = AddressableEntity::new(
+            PackageHash::new(smart_contract_addr),
+            ByteCodeHash::new(bytecode_hash),
+            ProtocolVersion::V2_0_0,
+            main_purse,
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
+        );
+
+        metered_write(
+            &mut caller,
+            addressable_entity_key,
+            StoredValue::AddressableEntity(addressable_entity),
+        )?;
+    } else {
+        println!("writing contract");
+        let contract_package_hash = ContractPackageHash::new(smart_contract_addr);
+        let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
+
+        let contract = Contract::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            // TODO: Populate this correctly
+            NamedKeys::default(),
+            EntryPoints::default(),
+            ProtocolVersion::V2_0_0,
+        );
+
+        metered_write(
+            &mut caller,
+            Key::Hash(smart_contract_addr),
+            StoredValue::Contract(contract),
+        )?;
+    }
 
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
@@ -1590,6 +1749,7 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         Key::SmartContract(smart_contract_addr) => {
             (EntityKindTag::Contract as u32, *smart_contract_addr)
         }
+        Key::Hash(hash_addr) => (EntityKindTag::Contract as u32, *hash_addr),
         other => panic!("Unexpected caller: {other:?}"),
     };
 
@@ -1598,6 +1758,7 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         Key::SmartContract(smart_contract_addr) => {
             (EntityKindTag::Contract as u32, *smart_contract_addr)
         }
+        Key::Hash(hash_addr) => (EntityKindTag::Contract as u32, *hash_addr),
         other => panic!("Unexpected callee: {other:?}"),
     };
 

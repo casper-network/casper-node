@@ -720,7 +720,13 @@ impl ExecutorV2 {
             ExecutionKind::Stored {
                 address: smart_contract_addr,
                 ..
-            } => Key::SmartContract(*smart_contract_addr),
+            } => {
+                if initial_tracking_copy.enable_addressable_entity() {
+                    Key::AddressableEntity(EntityAddr::SmartContract(*smart_contract_addr))
+                } else {
+                    Key::Hash(*smart_contract_addr)
+                }
+            }
             ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
             ExecutionKind::System(_) => {
                 error!("System executions are not called in this way. This should be unreachable.");
