@@ -490,6 +490,10 @@ pub enum ExecuteError {
     Api(String),
     #[error("sandboxed system contract call")]
     SandboxedSystemContractCall,
+    #[error("unable to find main purse for v2 contract {0}")]
+    MainPurseNotFound(Key),
+    #[error("unable to convert key into uref {0}")]
+    InvalidKeyForPurse(Key),
 }
 
 #[derive(Debug, Error)]

@@ -58,6 +58,8 @@ use casper_types::contracts::{ContractHash, ContractPackage, ContractPackageHash
 use keccak_asm::Digest as KeccakDigest;
 use sha2::Sha256;
 
+const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__v2_main_purse";
+
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {
     Account = 0,
@@ -977,41 +979,41 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     )?;
 
     // 2. Store wasm
-    if ae_enabled {
-        metered_write(
-            &mut caller,
-            Key::ByteCode(bytecode_addr),
-            StoredValue::ByteCode(bytecode),
-        )?
-    } else {
+    if !ae_enabled {
         metered_write(
             &mut caller,
             Key::Hash(bytecode_hash),
-            StoredValue::ContractWasm(ContractWasm::new(bytecode.take_bytes())),
+            StoredValue::ContractWasm(ContractWasm::new(bytecode.clone().take_bytes())),
         )?
+    };
+
+    metered_write(
+        &mut caller,
+        Key::ByteCode(bytecode_addr),
+        StoredValue::ByteCode(bytecode),
+    )?;
+
+    // TODO: abort(str) as an alternative to trap
+    let address_generator = Arc::clone(&caller.context().address_generator);
+    let transaction_hash = caller.context().transaction_hash;
+    let runtime_native_config = caller.context().runtime_native_config.clone();
+    let main_purse: URef = match system::create_purse(
+        &mut caller.context_mut().tracking_copy,
+        runtime_native_config,
+        transaction_hash,
+        address_generator,
+    ) {
+        Ok(uref) => uref,
+        Err(mint_error) => {
+            error!(?mint_error, "Failed to create a purse");
+            return Ok(CALLEE_TRAPPED);
+        }
     };
 
     if ae_enabled {
         // 3. Store addressable entity
         let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
         let addressable_entity_key = Key::AddressableEntity(entity_addr);
-
-        // TODO: abort(str) as an alternative to trap
-        let address_generator = Arc::clone(&caller.context().address_generator);
-        let transaction_hash = caller.context().transaction_hash;
-        let runtime_native_config = caller.context().runtime_native_config.clone();
-        let main_purse: URef = match system::create_purse(
-            &mut caller.context_mut().tracking_copy,
-            runtime_native_config,
-            transaction_hash,
-            address_generator,
-        ) {
-            Ok(uref) => uref,
-            Err(mint_error) => {
-                error!(?mint_error, "Failed to create a purse");
-                return Ok(CALLEE_TRAPPED);
-            }
-        };
 
         let addressable_entity = AddressableEntity::new(
             PackageHash::new(smart_contract_addr),
@@ -1033,11 +1035,20 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         let contract_package_hash = ContractPackageHash::new(smart_contract_addr);
         let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
 
+        let named_keys = {
+            let mut ret = NamedKeys::default();
+            ret.insert(
+                NAME_FOR_V2_CONTRACT_MAIN_PURSE.to_string(),
+                Key::URef(main_purse),
+            );
+            ret
+        };
+
         let contract = Contract::new(
             contract_package_hash,
             contract_wasm_hash,
             // TODO: Populate this correctly
-            NamedKeys::default(),
+            named_keys,
             EntryPoints::default(),
             ProtocolVersion::V2_0_0,
         );

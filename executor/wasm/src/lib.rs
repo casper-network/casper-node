@@ -62,6 +62,8 @@ const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
 
+const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__v2_main_purse";
+
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutorKind {
     /// Ahead of time compiled Wasm.
@@ -526,6 +528,8 @@ impl ExecutorV2 {
                         ExecuteError::InternalHost(InternalHostError::TrackingCopy)
                     })?;
 
+                println!("{:?}", contract);
+
                 if let Some(StoredValue::SmartContract(smart_contract_package)) = &contract {
                     let enabled_versions = smart_contract_package.enabled_versions();
                     let maybe_contract_hash = enabled_versions.latest();
@@ -569,6 +573,8 @@ impl ExecutorV2 {
                                 );
 
                                 let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
+
+                                println!("{:?}", input);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -668,27 +674,110 @@ impl ExecutorV2 {
 
                         (Bytes::from(wasm_bytes), entry_point.as_str())
                     }
-                    Some(StoredValue::Contract(_vm1_contract)) => {
-                        let block_info = BlockInfo::new(
-                            state_hash,
-                            block_time,
-                            parent_block_hash,
-                            block_height,
-                            self.execution_engine_v1.config().protocol_version(),
-                        );
+                    Some(StoredValue::Contract(contract)) => {
+                        let byte_code_addr =
+                            ByteCodeAddr::V2CasperWasm(contract.contract_wasm_hash().value());
 
-                        let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
+                        let wasm_key = Key::ByteCode(byte_code_addr);
 
-                        return self.execute_vm1_wasm_byte_code(
-                            initiator,
-                            &entity_addr,
-                            entry_point.clone(),
-                            &input,
-                            &mut tracking_copy,
-                            block_info,
-                            transaction_hash,
-                            gas_limit,
-                        );
+                        match tracking_copy.read(&wasm_key).map_err(|read_err| {
+                            error!("Error when fetching wasm_bytes {wasm_key}. Details {read_err}");
+                            ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                        })? {
+                            Some(StoredValue::ByteCode(bytecode)) => {
+                                println!("detected VM2 bytecode record routing to Vm2");
+                                if transferred_value != 0 {
+                                    // TODO: consult w/ Michal re: charge timing
+                                    let gas_usage = GasUsage::new(gas_limit, gas_limit);
+
+                                    let runtime_footprint = match tracking_copy
+                                        .runtime_footprint_by_entity_addr(entity_addr)
+                                    {
+                                        Ok(footprint) => footprint,
+                                        Err(_) => {
+                                            return Err(ExecuteError::EntityNotFound(caller_key));
+                                        }
+                                    };
+
+                                    let main_purse = contract
+                                        .named_keys()
+                                        .get("__v2_main_purse")
+                                        .ok_or_else(|| ExecuteError::MainPurseNotFound(vm1_key))?
+                                        .into_uref()
+                                        .ok_or_else(|| ExecuteError::InvalidKeyForPurse(vm1_key))?;
+
+                                    match system::transfer(
+                                        &mut tracking_copy,
+                                        runtime_footprint,
+                                        TransferArgs::new(
+                                            runtime_native_config.clone(),
+                                            transaction_hash,
+                                            Arc::clone(&address_generator),
+                                            initiator,
+                                            caller_key,
+                                            gas_usage.remaining_points().into(),
+                                            source_purse,
+                                            main_purse,
+                                            transferred_value.into(),
+                                        ),
+                                    ) {
+                                        Ok(()) => {}
+                                        Err(DispatchError::Internal(internal_error)) => {
+                                            error!(
+                                        ?internal_error,
+                                        "Internal error while transferring value to the contract's purse",
+                                    );
+                                            return Err(ExecuteError::InternalHost(internal_error));
+                                        }
+                                        Err(DispatchError::Call(error)) => {
+                                            return Ok(ExecuteResult {
+                                                host_error: Some(error),
+                                                output: None,
+                                                gas_usage: GasUsage::new(
+                                                    gas_limit,
+                                                    gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                                ),
+                                                effects: tracking_copy.effects(),
+                                                cache: tracking_copy.cache(),
+                                                messages: tracking_copy.messages(),
+                                            });
+                                        }
+                                        Err(error) => {
+                                            error!(
+                                        ?error,
+                                        "Dispatch error while transferring value to the contract's purse",
+                                    );
+                                            return Err(ExecuteError::InternalHost(
+                                                InternalHostError::DispatchSystemContract,
+                                            ));
+                                        }
+                                    }
+                                }
+                                (Bytes::from(bytecode.take_bytes()), entry_point.as_str())
+                            }
+                            Some(_) | None => {
+                                let block_info = BlockInfo::new(
+                                    state_hash,
+                                    block_time,
+                                    parent_block_hash,
+                                    block_height,
+                                    self.execution_engine_v1.config().protocol_version(),
+                                );
+
+                                let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
+
+                                return self.execute_vm1_wasm_byte_code(
+                                    initiator,
+                                    &entity_addr,
+                                    entry_point.clone(),
+                                    &input,
+                                    &mut tracking_copy,
+                                    block_info,
+                                    transaction_hash,
+                                    gas_limit,
+                                );
+                            }
+                        }
                     }
                     Some(stored_value) => {
                         todo!(
