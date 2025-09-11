@@ -505,8 +505,6 @@ impl ExecutorV2 {
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
 
-        println!("got addr and purse");
-
         let (wasm_bytes, export_name) = {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
@@ -527,8 +525,6 @@ impl ExecutorV2 {
                         );
                         ExecuteError::InternalHost(InternalHostError::TrackingCopy)
                     })?;
-
-                println!("{:?}", contract);
 
                 if let Some(StoredValue::SmartContract(smart_contract_package)) = &contract {
                     let enabled_versions = smart_contract_package.enabled_versions();
@@ -573,8 +569,6 @@ impl ExecutorV2 {
                                 );
 
                                 let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
-
-                                println!("{:?}", input);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -685,7 +679,6 @@ impl ExecutorV2 {
                             ExecuteError::InternalHost(InternalHostError::TrackingCopy)
                         })? {
                             Some(StoredValue::ByteCode(bytecode)) => {
-                                println!("detected VM2 bytecode record routing to Vm2");
                                 if transferred_value != 0 {
                                     // TODO: consult w/ Michal re: charge timing
                                     let gas_usage = GasUsage::new(gas_limit, gas_limit);
@@ -993,10 +986,9 @@ impl ExecutorV2 {
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
         let entry_point = entry_point.clone();
-        println!("A");
         let args = bytesrepr::deserialize_from_slice(input)
             .map_err(|err| ExecuteError::InternalHost(InternalHostError::Bytesrepr(err)))?;
-        println!("B");
+
         let phase = Phase::Session;
 
         let wasm_v1_result = {

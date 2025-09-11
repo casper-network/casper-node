@@ -480,7 +480,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> VMResult<u32> {
-    println!("read");
     let read_cost = caller.context().config.host_function_costs().read;
     charge_host_function_call(
         &mut caller,
@@ -539,7 +538,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
-            println!("fooo");
             // Unknown keyspace received, return error
             return Ok(HOST_ERROR_NOT_FOUND);
         }
@@ -836,7 +834,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     result_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
-    println!("In create");
+
     if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
@@ -1031,7 +1029,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             StoredValue::AddressableEntity(addressable_entity),
         )?;
     } else {
-        println!("writing contract");
         let contract_package_hash = ContractPackageHash::new(smart_contract_addr);
         let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
 
@@ -1060,7 +1057,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         )?;
     }
 
-    println!("wrote contract");
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
             // Limit the new VM to remaining gas.
@@ -1091,8 +1087,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_runtime_native_config(caller.context().runtime_native_config.clone())
                 .build()
                 .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
-
-            println!("build req");
 
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
