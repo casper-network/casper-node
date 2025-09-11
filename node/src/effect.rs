@@ -725,6 +725,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets up to `total_count` fully-connected network peers in random order,
+    /// including up to `known_addr_count` known addresses.
+    pub async fn get_fully_connected_peers_with_known_addresses(
+        self,
+        known_addr_count: usize,
+        total_count: usize,
+    ) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                known_addr_count,
+                total_count,
+                responder,
+            },
+            QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
     /// Gets up to `count` fully-connected network validators in random order.
     pub async fn get_fully_connected_validators(self, count: usize, era_id: EraId) -> Vec<NodeId>
     where
