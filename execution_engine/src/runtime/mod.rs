@@ -1769,7 +1769,7 @@ where
 
                         let maybe_system_entity_type = self.maybe_system_type(contract_hash);
 
-                        RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_vm1_contract_footprint(
                             ContractHash::new(contract_hash),
                             contract,
                             maybe_system_entity_type,
@@ -1869,7 +1869,7 @@ where
                             self.migrate_contract_and_contract_package(hash_addr)?;
                         };
                         let maybe_system_entity_type = self.maybe_system_type(hash_addr);
-                        RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_vm1_contract_footprint(
                             ContractHash::new(hash_addr),
                             contract,
                             maybe_system_entity_type,

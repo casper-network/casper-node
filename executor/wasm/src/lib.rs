@@ -683,6 +683,8 @@ impl ExecutorV2 {
                                     // TODO: consult w/ Michal re: charge timing
                                     let gas_usage = GasUsage::new(gas_limit, gas_limit);
 
+                                    println!("{:?}", entity_addr);
+
                                     let runtime_footprint = match tracking_copy
                                         .runtime_footprint_by_entity_addr(entity_addr)
                                     {
@@ -698,6 +700,8 @@ impl ExecutorV2 {
                                         .ok_or_else(|| ExecuteError::MainPurseNotFound(vm1_key))?
                                         .into_uref()
                                         .ok_or_else(|| ExecuteError::InvalidKeyForPurse(vm1_key))?;
+
+                                    println!("{:?}", main_purse);
 
                                     match system::transfer(
                                         &mut tracking_copy,
@@ -740,6 +744,8 @@ impl ExecutorV2 {
                                         ?error,
                                         "Dispatch error while transferring value to the contract's purse",
                                     );
+
+                                            println!("{:?}", error);
                                             return Err(ExecuteError::InternalHost(
                                                 InternalHostError::DispatchSystemContract,
                                             ));
@@ -1298,6 +1304,20 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 ))?;
 
             Ok((entity_addr, addressable_entity.main_purse()))
+        }
+        StoredValue::Contract(contract) => {
+            let uref = contract
+                .named_keys()
+                .get(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
+                .ok_or_else(|| ExecuteError::MainPurseNotFound(entity_key))?
+                .into_uref()
+                .ok_or_else(|| ExecuteError::InvalidKeyForPurse(entity_key))?;
+
+            let hash_addr = entity_key
+                .into_hash_addr()
+                .ok_or_else(|| ExecuteError::EntityNotFound(entity_key))?;
+
+            Ok((EntityAddr::SmartContract(hash_addr), uref))
         }
         other => Err(ExecuteError::InternalHost(
             InternalHostError::UnexpectedStoredValueVariant {

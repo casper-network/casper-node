@@ -1444,7 +1444,11 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 error!("Error when converting hash_bytes from vec to static array");
                 ExecuteError::InternalHost(InternalHostError::TypeConversion)
             })?;
-            let smart_contract_key = Key::SmartContract(hash_bytes);
+            let smart_contract_key = if caller.context().tracking_copy.enable_addressable_entity() {
+                Key::SmartContract(hash_bytes)
+            } else {
+                Key::Hash(hash_bytes)
+            };
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
@@ -1459,6 +1463,15 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                                 ?smart_contract_key,
                                 "Unable to find latest addressable entity hash for contract"
                             );
+                            return Ok(HOST_ERROR_SUCCESS);
+                        }
+                    }
+                }
+                Ok(Some(StoredValue::Contract(contract))) => {
+                    match contract.named_keys().get(NAME_FOR_V2_CONTRACT_MAIN_PURSE) {
+                        Some(Key::URef(uref)) => Either::Left(*uref),
+                        None | Some(_) => {
+                            // Not found, balance is 0
                             return Ok(HOST_ERROR_SUCCESS);
                         }
                     }

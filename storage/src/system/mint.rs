@@ -243,7 +243,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::DestNotFound);
         }
         let addr = match self.get_main_purse() {
-            None => return Err(Error::InvalidURef),
+            None => {
+                println!("foo");
+                return Err(Error::InvalidURef);
+            }
             Some(uref) => uref.addr(),
         };
         if self.get_caller() != PublicKey::System.to_account_hash() && addr == source.addr() {
