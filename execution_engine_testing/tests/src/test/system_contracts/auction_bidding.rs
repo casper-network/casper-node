@@ -1,7 +1,7 @@
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    utils, ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
@@ -16,7 +16,7 @@ use casper_types::{
     system::{
         auction::{
             self, BidsExt, DelegationRate, UnbondKind, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
-            METHOD_SLASH,
+            METHOD_SLASH, VESTING_SCHEDULE_LENGTH_MILLIS,
         },
         mint,
     },
@@ -265,25 +265,25 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = LmdbWasmTestBuilder::default();
+    let chainspec_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(VESTING_SCHEDULE_LENGTH_MILLIS);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
 
     builder.run_genesis(run_genesis_request);
-
+    builder.advance_eras_by(3);
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
-            ARG_AMOUNT => U512::from(42),
+            ARG_AMOUNT => U512::from(42_000),
             ARG_PUBLIC_KEY => account_1_public_key,
         },
     )
     .build();
 
     builder.exec(exec_request_2).commit();
+    let error_message = builder.get_error_message().expect("should have a error");
 
-    let error_message = builder.get_error_message().expect("should have a result");
-
-    // handle_payment::Error::NotBonded => 0
     assert!(
         error_message.contains(&format!(
             "{:?}",

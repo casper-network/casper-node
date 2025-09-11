@@ -13,6 +13,7 @@ pub type Address = [u8; ADDRESS_LENGTH];
 const SEED_LENGTH: usize = 32;
 
 /// An `AddressGenerator` generates `URef` addresses.
+#[derive(Debug)]
 pub struct AddressGenerator(ChaChaRng);
 
 impl AddressGenerator {

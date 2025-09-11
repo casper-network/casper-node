@@ -21,8 +21,8 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::RuntimeNativeConfig;
 use casper_types::{
-    BlockHash, Chainspec, Digest, Key, MessageLimits, StorageCosts, Timestamp, WasmV2Config,
-    DEFAULT_WASM_MAX_MEMORY,
+    AuctionCosts, BlockHash, Chainspec, Digest, Key, MessageLimits, MintCosts, StorageCosts,
+    Timestamp, WasmV2Config, DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_WASM_MAX_MEMORY,
 };
 use casper_wasm::builder;
 
@@ -65,6 +65,9 @@ fn argument_size_exceeds_memory_limit() {
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(WasmV2Config::default())
             .with_storage_costs(storage_costs)
+            .with_mint_costs(MintCosts::default())
+            .with_auction_costs(AuctionCosts::default())
+            .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");
@@ -82,7 +85,7 @@ fn argument_size_exceeds_memory_limit() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(read_wasm("vm2_cep18.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2_cep18.wasm")))
         .with_input(large_input)
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -123,7 +126,7 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -161,7 +164,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -205,7 +208,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -249,7 +252,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -293,7 +296,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -342,7 +345,7 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -382,7 +385,7 @@ fn should_run_ee_966_should_request_exactly_maximum() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -421,7 +424,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_target(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)

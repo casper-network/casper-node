@@ -41,7 +41,13 @@ macro_rules! for_each_host_function {
                 seed_size: usize,
                 result_ptr: *mut $crate::CreateResult,
             ) -> u32;
-
+            pub fn casper_system(
+                system_contract_opt: u32,
+                input_ptr: *const u8,
+                input_size: usize,
+                alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data
+                alloc_ctx: *const core::ffi::c_void,
+            ) -> u32;
             // We don't offer any special protection against smart contracts on the host side
             pub fn casper_call(
                 address_ptr: *const u8,
@@ -65,8 +71,9 @@ macro_rules! for_each_host_function {
             #[doc = r"Get balance of an entity by its address."]
             pub fn casper_env_balance(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, output_ptr: *mut core::ffi::c_void,) -> u32;
             pub fn casper_env_info(info_ptr: *const u8, info_size: u32,) -> u32;
-            pub fn casper_transfer(entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void,) -> u32;
             pub fn casper_emit(topic_ptr: *const u8, topic_size: usize, payload_ptr: *const u8, payload_size: usize,) -> u32;
+            pub fn casper_generic_hash(in_ptr: *const u8, in_size: usize, out_ptr: *const u8, hash_algorithm: usize,) -> u32;
+            pub fn casper_recover_secp256k1(message_ptr: *const u8, message_size: usize, signature_ptr: *const u8, signature_size: usize, public_key_ptr: *const u8, recovery_id: u32,) -> u32;
         }
     };
 }

@@ -377,22 +377,6 @@ impl MetaTransaction {
         }
     }
 
-    pub(crate) fn seed(&self) -> Option<[u8; 32]> {
-        match self {
-            MetaTransaction::Deploy(_) => None,
-            MetaTransaction::V1(v1) => v1.seed(),
-        }
-    }
-
-    pub(crate) fn is_install_or_upgrade(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(_) => false,
-            MetaTransaction::V1(meta_transaction_v1) => {
-                meta_transaction_v1.lane_id() == INSTALL_UPGRADE_LANE_ID
-            }
-        }
-    }
-
     pub(crate) fn transferred_value(&self) -> Option<u64> {
         match self {
             MetaTransaction::Deploy(_) => None,

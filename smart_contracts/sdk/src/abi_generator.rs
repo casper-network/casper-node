@@ -25,6 +25,20 @@ pub struct Message {
     pub decl: &'static str,
 }
 
+#[distributed_slice]
+#[linkme(crate = crate::linkme)]
+pub static MESSAGES: [Message] = [..];
+
+#[distributed_slice]
+#[linkme(crate = crate::linkme)]
+pub static NAMED_KEYS: [NamedKey] = [..];
+
+#[derive(Debug, Clone)]
+pub struct NamedKey {
+    pub name: &'static str,
+    pub decl: fn() -> Declaration,
+}
+
 pub struct Manifest {
     pub name: &'static str,
     pub entry_points: &'static [EntryPoint],
@@ -38,10 +52,6 @@ pub static ENTRYPOINTS: [fn() -> crate::schema::SchemaEntryPoint] = [..];
 #[distributed_slice]
 #[linkme(crate = crate::linkme)]
 pub static ABI_COLLECTORS: [fn(&mut crate::abi::Definitions)] = [..];
-
-#[distributed_slice]
-#[linkme(crate = crate::linkme)]
-pub static MESSAGES: [Message] = [..];
 
 pub fn casper_collect_schema() -> Schema {
     // Collect definitions
@@ -69,6 +79,20 @@ pub fn casper_collect_schema() -> Schema {
         messages
     };
 
+    // Collect named keys
+    let named_keys = {
+        let mut named_keys = Vec::new();
+
+        for named_key in NAMED_KEYS {
+            named_keys.push(crate::schema::SchemaStableKey {
+                name: named_key.name.to_owned(),
+                decl: (named_key.decl)(),
+            });
+        }
+
+        named_keys
+    };
+
     // Collect entrypoints
     let entry_points = {
         let mut entry_points = Vec::new();
@@ -88,6 +112,7 @@ pub fn casper_collect_schema() -> Schema {
         definitions,
         entry_points,
         messages,
+        named_keys,
     }
 }
 

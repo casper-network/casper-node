@@ -73,6 +73,7 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        vesting_schedule_period_millis: u64,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
         minimum_bid_amount: u64,
@@ -117,6 +118,7 @@ pub trait Auction:
             process_updated_delegator_stake_boundaries(
                 self,
                 &mut validator_bid,
+                vesting_schedule_period_millis,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
             )?;
@@ -366,6 +368,16 @@ pub trait Auction:
         }
 
         for reservation in reservations {
+            if reservation.validator_public_key().is_system() {
+                warn!("attempt to reserve using system identity as validator");
+                return Err(Error::InvalidPublicKey);
+            }
+            if let Some(del_pub_key) = reservation.delegator_kind().maybe_public_key() {
+                if del_pub_key.is_system() {
+                    warn!("attempt to reserve using system identity as delegator");
+                    return Err(Error::InvalidPublicKey);
+                }
+            }
             if !self
                 .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
             {

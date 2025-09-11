@@ -212,9 +212,26 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get up to `total_count` fully-connected peers in random order, including up to
+    /// `known_addr_count` known addresses.
+    FullyConnectedPeersIncludingKnownAddresses {
+        total_count: usize,
+        known_addr_count: usize,
+        /// Responder to be called with the peers.
+        responder: Responder<Vec<NodeId>>,
+    },
     /// Get detailed insights into the nodes networking.
     Insight {
         responder: Responder<NetworkInsights>,
+    },
+    /// Get up to `count` fully-connected validators in random order.
+    FullyConnectedValidators {
+        /// "up-to" number of validators to select randomly
+        count: usize,
+        /// era_id in which the filtered peer needs to be a validator
+        era_id: EraId,
+        /// Responder to be called with the peers.
+        responder: Responder<Vec<NodeId>>,
     },
 }
 
@@ -229,6 +246,28 @@ impl Display for NetworkInfoRequest {
                 responder: _,
             } => {
                 write!(formatter, "get up to {} fully connected peers", count)
+            }
+            NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                total_count,
+                known_addr_count,
+                responder: _,
+            } => {
+                write!(
+                    formatter,
+                    "get up to {} fully connected peers with up to {} known addrs",
+                    total_count, known_addr_count
+                )
+            }
+            NetworkInfoRequest::FullyConnectedValidators {
+                count,
+                era_id,
+                responder: _,
+            } => {
+                write!(
+                    formatter,
+                    "get up to {} fully connected validators in era {}",
+                    count, era_id
+                )
             }
             NetworkInfoRequest::Insight { responder: _ } => {
                 formatter.write_str("get networking insights")

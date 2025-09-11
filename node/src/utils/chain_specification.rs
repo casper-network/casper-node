@@ -49,13 +49,13 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             );
             return false;
         }
-        match chainspec.highway_config.is_valid() {
-            Ok(_) => return true,
+        return match chainspec.highway_config.is_valid() {
+            Ok(_) => true,
             Err(msg) => {
                 error!(msg);
-                return false;
+                false
             }
-        }
+        };
     }
 
     // We don't support lookback by more than one era in the rewards scheme.
@@ -321,6 +321,8 @@ mod tests {
             print: HostFunctionV2::new(112, [0, 1]),
             emit: HostFunctionV2::new(113, [0, 1, 2, 3]),
             env_info: HostFunctionV2::new(114, [0, 1]),
+            generic_hash: HostFunctionV2::new(115, [0, 1, 2, 3]),
+            recover_secp256k1: HostFunctionV2::new(116, [0, 1, 2, 3, 4, 5]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         let wasm_v1_config = WasmV1Config::new(
@@ -820,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_when_wasm_lanes_have_reseved_ids() {
+    fn should_fail_when_wasm_lanes_have_reserved_ids() {
         fail_validation_with_lane_id(MINT_LANE_ID);
         fail_validation_with_lane_id(AUCTION_LANE_ID);
         fail_validation_with_lane_id(INSTALL_UPGRADE_LANE_ID);

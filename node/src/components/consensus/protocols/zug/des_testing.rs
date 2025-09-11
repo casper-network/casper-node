@@ -127,7 +127,7 @@ impl From<ProtocolOutcome<TestContext>> for ZugMessage {
             ProtocolOutcome::CreatedMessageToRandomPeer(msg) => {
                 ZugMessage::MessageToRandomPeer(msg)
             }
-            ProtocolOutcome::CreatedRequestToRandomPeer(request) => {
+            ProtocolOutcome::CreatedRequestToRandomValidator(request) => {
                 ZugMessage::RequestToRandomPeer(request)
             }
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {

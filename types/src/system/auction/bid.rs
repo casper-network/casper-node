@@ -24,7 +24,7 @@ use crate::{
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 
-pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
+pub use vesting::{VestingSchedule, LOCKED_FUNDS_PERIOD_MILLIS, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]

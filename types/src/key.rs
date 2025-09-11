@@ -2748,6 +2748,12 @@ mod tests {
     }
 
     #[test]
+    fn fookey() {
+        let key = Key::URef(URef::new([0xAB; 32], AccessRights::READ_ADD_WRITE));
+        dbg!(key.to_bytes().unwrap());
+    }
+
+    #[test]
     fn roundtrip() {
         bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
         bytesrepr::test_serialization_roundtrip(&HASH_KEY);

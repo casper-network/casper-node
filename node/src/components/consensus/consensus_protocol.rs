@@ -126,7 +126,7 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(SerializedMessage),
     CreatedTargetedMessage(SerializedMessage, NodeId),
     CreatedMessageToRandomPeer(SerializedMessage),
-    CreatedRequestToRandomPeer(SerializedMessage),
+    CreatedRequestToRandomValidator(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request transactions for a new block, providing the necessary context.

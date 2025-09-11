@@ -15,6 +15,8 @@ pub enum KeyspaceTag {
     NamedKey = 2,
     /// Used for a payment info based storage which usually involves payment information.
     PaymentInfo = 3,
+    /// Used for getting all named keys
+    AllNamedKeys = 4,
 }
 
 #[repr(u64)]
@@ -31,6 +33,10 @@ pub enum Keyspace<'a> {
     NamedKey(&'a str),
     /// Entry point payment info.
     PaymentInfo(&'a str),
+    /// All the named keys for the given contract
+    ///
+    /// No additional info as the contracts address will be used as the base.
+    AllNamedKeys,
 }
 
 impl Keyspace<'_> {
@@ -41,6 +47,7 @@ impl Keyspace<'_> {
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
             Keyspace::PaymentInfo(_) => KeyspaceTag::PaymentInfo,
+            Keyspace::AllNamedKeys => KeyspaceTag::AllNamedKeys,
         }
     }
 

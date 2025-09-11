@@ -71,6 +71,15 @@ impl HandleFeeMode {
             era_id,
         }
     }
+
+    /// Returns source if available.
+    pub fn maybe_source(&self) -> Option<BalanceIdentifier> {
+        match self {
+            HandleFeeMode::Pay { source, .. } => Some(*source.clone()),
+            HandleFeeMode::Burn { source, .. } => Some(source.clone()),
+            HandleFeeMode::Credit { .. } => None,
+        }
+    }
 }
 
 /// Handle fee request.

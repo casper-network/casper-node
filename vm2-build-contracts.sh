@@ -4,6 +4,7 @@ set -e
 VM2_BINS=(
   "vm2-harness"
   "vm2-cep18-caller"
+  "vm2-system-caller"
 )
 
 VM2_LIBS=(
@@ -12,9 +13,10 @@ VM2_LIBS=(
   "vm2-flipper"
   "vm2-upgradable"
   "vm2-upgradable-v2"
-  "vm2-legacy-counter-proxy"
+  "vm2-counter-proxy"
   "vm2-host"
   "vm2-escrow"
+  "vm2-named-args"
 )
 
 

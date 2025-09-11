@@ -163,7 +163,6 @@ const NOT_USED: Cost = 0;
 
 /// An arbitrary default fixed cost for host functions that were not researched yet.
 const DEFAULT_FIXED_COST: Cost = 200;
-
 const DEFAULT_CALL_COST: u64 = 10_000;
 const DEFAULT_ENV_BALANCE_COST: u64 = 100;
 
@@ -197,6 +196,12 @@ const DEFAULT_EMIT_PAYLOAD_SIZE_HEIGHT: Cost = 100;
 
 const DEFAULT_ENV_INFO_COST: Cost = 10_000;
 
+const DEFAULT_GENERIC_HASH_COST: Cost = 0;
+const DEFAULT_GENERIC_HASH_SIZE_WEIGHT: Cost = 0;
+
+const DEFAULT_RECOVER_SECP256K1_COST: Cost = 0;
+const DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT: Cost = 0;
+
 /// Definition of a host function cost table.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -228,6 +233,10 @@ pub struct HostFunctionCostsV2 {
     pub emit: HostFunctionV2<[Cost; 4]>,
     /// Cost of calling the `env_info` host function.
     pub env_info: HostFunctionV2<[Cost; 2]>,
+    /// Cost of calling the `generic_hash` host function.
+    pub generic_hash: HostFunctionV2<[Cost; 4]>,
+    /// Cost of calling the `` host function.
+    pub recover_secp256k1: HostFunctionV2<[Cost; 6]>,
 }
 
 impl HostFunctionCostsV2 {
@@ -246,6 +255,8 @@ impl HostFunctionCostsV2 {
             print: HostFunctionV2::zero(),
             emit: HostFunctionV2::zero(),
             env_info: HostFunctionV2::zero(),
+            generic_hash: HostFunctionV2::zero(),
+            recover_secp256k1: HostFunctionV2::zero(),
         }
     }
 }
@@ -319,6 +330,26 @@ impl Default for HostFunctionCostsV2 {
                 ],
             ),
             env_info: HostFunctionV2::new(DEFAULT_ENV_INFO_COST, [NOT_USED, NOT_USED]),
+            generic_hash: HostFunctionV2::new(
+                DEFAULT_GENERIC_HASH_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_GENERIC_HASH_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            recover_secp256k1: HostFunctionV2::new(
+                DEFAULT_RECOVER_SECP256K1_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
         }
     }
 }
@@ -339,6 +370,8 @@ impl ToBytes for HostFunctionCostsV2 {
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.emit.to_bytes()?);
         ret.append(&mut self.env_info.to_bytes()?);
+        ret.append(&mut self.generic_hash.to_bytes()?);
+        ret.append(&mut self.recover_secp256k1.to_bytes()?);
         Ok(ret)
     }
 
@@ -356,6 +389,8 @@ impl ToBytes for HostFunctionCostsV2 {
             + self.print.serialized_length()
             + self.emit.serialized_length()
             + self.env_info.serialized_length()
+            + self.generic_hash.serialized_length()
+            + self.recover_secp256k1.serialized_length()
     }
 }
 
@@ -374,6 +409,8 @@ impl FromBytes for HostFunctionCostsV2 {
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (emit, rem) = FromBytes::from_bytes(rem)?;
         let (env_info, rem) = FromBytes::from_bytes(rem)?;
+        let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
+        let (recover_secp256k1, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCostsV2 {
                 read,
@@ -389,6 +426,8 @@ impl FromBytes for HostFunctionCostsV2 {
                 print,
                 emit,
                 env_info,
+                generic_hash,
+                recover_secp256k1,
             },
             rem,
         ))
@@ -412,6 +451,8 @@ impl Distribution<HostFunctionCostsV2> for Standard {
             print: rng.gen(),
             emit: rng.gen(),
             env_info: rng.gen(),
+            generic_hash: rng.gen(),
+            recover_secp256k1: rng.gen(),
         }
     }
 }
@@ -445,6 +486,8 @@ pub mod gens {
             print in host_function_cost_v2_arb(),
             emit in host_function_cost_v2_arb(),
             env_info in host_function_cost_v2_arb(),
+            generic_hash in host_function_cost_v2_arb(),
+            recover_secp256k1 in host_function_cost_v2_arb(),
         ) -> HostFunctionCostsV2 {
             HostFunctionCostsV2 {
                 read,
@@ -459,7 +502,9 @@ pub mod gens {
                 call,
                 print,
                 emit,
-                env_info
+                env_info,
+                generic_hash,
+                recover_secp256k1,
             }
         }
     }

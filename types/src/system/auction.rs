@@ -25,7 +25,7 @@ use itertools::Itertools;
 
 use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
-pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
+pub use bid::{Bid, LOCKED_FUNDS_PERIOD_MILLIS, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use bid_addr::{BidAddr, BidAddrTag};
 pub use bid_kind::{BidKind, BidKindTag};
 pub use bridge::Bridge;

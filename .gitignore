@@ -132,6 +132,7 @@ dist
 resources/production/*.wasm
 resources/node-storage/*
 resources/local/chainspec.toml
+resources/flaky/chainspec.toml
 
 execution_engine_testing/test_support/resources/chainspec.toml
 

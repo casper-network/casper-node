@@ -21,21 +21,20 @@ use casper_executor_wasm_interface::{
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
     u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
-use casper_storage::{
-    global_state::GlobalStateReader,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
-};
+use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
-    bytesrepr::ToBytes,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr, NamedKeyValue,
+    },
+    bytesrepr::{FromBytes, ToBytes},
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
-    AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
-    EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, URef, U512,
+    AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
+    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
+    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
+    PackageHash, ProtocolVersion, Signature, StoredValue, URef,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -45,8 +44,17 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, DispatchError, MintTransferArgs},
+    system::{self},
 };
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
+use casper_executor_wasm_interface::executor::{
+    AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
+};
+use keccak_asm::Digest as KeccakDigest;
+use sha2::Sha256;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {
@@ -65,6 +73,15 @@ where
     fn try_into_wrapped(self) -> VMResult<To> {
         To::try_from(self).map_err(|_| VMError::Internal(InternalHostError::TypeConversion))
     }
+}
+
+/// Consumes imputed amount of gas.
+fn charge_gas<S: GlobalStateReader, E: Executor>(
+    caller: &mut impl Caller<Context = Context<S, E>>,
+    imputed: u64,
+) -> VMResult<()> {
+    caller.consume_gas(imputed)?;
+    Ok(())
 }
 
 /// Consumes a set amount of gas for the specified storage value.
@@ -172,13 +189,14 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -192,9 +210,48 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     let value = caller.memory_read(value_ptr, value_size.try_into_wrapped()?)?;
 
     let stored_value = match keyspace {
-        Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
+        Keyspace::State | Keyspace::Context(_) => {
             let cl_value_any = CLValue::from_components(CLType::Any, value);
             StoredValue::CLValue(cl_value_any)
+        }
+        Keyspace::NamedKey(name) => {
+            // NamedKey points to a URef which holds CLValue::Any bytes
+            let maybe_existing_uref = caller
+                .context_mut()
+                .tracking_copy
+                .read(&global_state_key)
+                .map_err(|_| InternalHostError::TrackingCopy)?;
+
+            let uref_to_use: URef =
+                if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
+                    if let Ok(Key::URef(existing_uref)) = existing_named_key.get_key() {
+                        existing_uref
+                    } else {
+                        let mut address_generator = caller.context().address_generator.write();
+                        address_generator.new_uref(AccessRights::NONE)
+                    }
+                } else {
+                    let mut address_generator = caller.context().address_generator.write();
+                    address_generator.new_uref(AccessRights::NONE)
+                };
+
+            // Write payload bytes under the URef as CLValue::Any
+            let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
+            metered_write(
+                &mut caller,
+                Key::URef(uref_to_use),
+                StoredValue::CLValue(cl_value_any),
+            )?;
+
+            // Point the named key to the URef
+            let named_key = Key::URef(uref_to_use);
+            let key_name = name.to_string();
+            let Ok(named_key_value) = NamedKeyValue::from_concrete_values(named_key, key_name)
+            else {
+                return Ok(HOST_ERROR_INVALID_DATA);
+            };
+
+            StoredValue::NamedKey(named_key_value)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -220,6 +277,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
             StoredValue::EntryPoint(entry_point_value)
         }
+        Keyspace::AllNamedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     metered_write(&mut caller, global_state_key, stored_value)?;
@@ -285,13 +343,14 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
                 }
             };
 
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state write
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
 
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -304,8 +363,20 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
     match global_state_read_result {
-        Ok(Some(_stored_value)) => {
-            // Produce a prune transform only if value under a given key exists in the global state
+        Ok(Some(StoredValue::AddressableEntity(_))) => return Ok(HOST_ERROR_INVALID_INPUT),
+        Ok(Some(_)) => {
+            // If it's a named key pointing to a URef, prune both the named key and the URef.
+            if let Keyspace::NamedKey(_) = keyspace {
+                if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
+                    caller.context_mut().tracking_copy.read(&global_state_key)
+                {
+                    if let Ok(Key::URef(uref)) = named_key_value.get_key() {
+                        caller.context_mut().tracking_copy.prune(Key::URef(uref));
+                    }
+                }
+            }
+
+            // Produce a prune transform for the named key
             caller.context_mut().tracking_copy.prune(global_state_key);
         }
         Ok(None) => {
@@ -404,12 +475,13 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
-            if !caller.has_export(key_name) {
+            if !caller.has_export(key_name)? {
                 // Missing wasm export, unable to perform global state read
                 return Ok(HOST_ERROR_NOT_FOUND);
             }
             Keyspace::PaymentInfo(key_name)
         }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -419,43 +491,84 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             return Ok(HOST_ERROR_NOT_FOUND);
         }
     };
-    let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
-    let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-        Ok(Some(StoredValue::CLValue(cl_value))) => {
-            let CLType::Any = cl_value.cl_type() else {
-                return Err(InternalHostError::TypeConversion)?;
-            };
-            Cow::Owned(cl_value.inner_bytes().to_owned())
+    let global_state_raw_bytes = if let Key::AddressableEntity(entity_addr) = global_state_key {
+        let named_keys = caller
+            .context_mut()
+            .tracking_copy
+            .get_named_keys(entity_addr)
+            .map(|named_keys| named_keys.to_bytes());
+        match named_keys {
+            Ok(Ok(named_keys)) => Cow::Owned(named_keys),
+            Ok(_) | Err(_) => return Ok(HOST_ERROR_INVALID_DATA),
         }
-        Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
-            match entry_point.entry_point_payment() {
-                EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
-                EntryPointPayment::DirectInvocationOnly => {
-                    Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
-                }
-                EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
+    } else {
+        let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
+        let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                let CLType::Any = cl_value.cl_type() else {
+                    return Err(InternalHostError::TypeConversion)?;
+                };
+                Cow::Owned(cl_value.inner_bytes().to_owned())
             }
-        }
-        Ok(Some(stored_value)) => {
-            // TODO: Backwards compatibility with old EE, although it's not clear if we should do it
-            // at the storage level. Since new VM has storage isolated from the Wasm
-            // (i.e. we have Keyspace on the wasm which gets converted to a global state `Key`).
-            // I think if we were to pursue this we'd add a new `Keyspace` enum variant for each old
-            // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time, then
-            // deprecate this.
-            todo!("Unsupported {stored_value:?}")
-        }
-        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
-        Err(error) => {
-            // To protect the network against potential non-determinism (i.e. one validator runs out
-            // of space or just faces I/O issues that other validators may not have) we're simply
-            // aborting the process, hoping that once the node goes back online issues are resolved
-            // on the validator side. TODO: We should signal this to the contract
-            // runtime somehow, and let validator nodes skip execution.
-            error!(?error, "Error while reading from storage; aborting");
-            panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
-        }
+            Ok(Some(StoredValue::NamedKey(named_key_value))) => {
+                // Dereference named key to its URef and return the underlying Any bytes
+                let Ok(Key::URef(uref)) = named_key_value.get_key() else {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                };
+
+                match caller.context_mut().tracking_copy.read(&Key::URef(uref)) {
+                    Ok(Some(StoredValue::CLValue(cl_value))) => {
+                        let CLType::Any = cl_value.cl_type() else {
+                            return Ok(HOST_ERROR_INVALID_DATA);
+                        };
+                        Cow::Owned(cl_value.inner_bytes().to_owned())
+                    }
+                    Ok(Some(_)) => {
+                        return Ok(HOST_ERROR_INVALID_DATA);
+                    }
+                    Ok(None) => {
+                        return Ok(HOST_ERROR_NOT_FOUND);
+                    }
+                    Err(_error) => {
+                        return Err(InternalHostError::TrackingCopy.into());
+                    }
+                }
+            }
+            Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
+                match entry_point.entry_point_payment() {
+                    EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
+                    EntryPointPayment::DirectInvocationOnly => {
+                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
+                    }
+                    EntryPointPayment::SelfOnward => {
+                        Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD])
+                    }
+                }
+            }
+            Ok(Some(stored_value)) => {
+                // TODO: Backwards compatibility with old EE, although it's not clear if we should
+                // do it at the storage level. Since new VM has storage isolated
+                // from the Wasm (i.e. we have Keyspace on the wasm which gets
+                // converted to a global state `Key`). I think if we were to pursue
+                // this we'd add a new `Keyspace` enum variant for each old
+                // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time,
+                // then deprecate this.
+                todo!("Unsupported {stored_value:?}")
+            }
+            Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
+            Err(error) => {
+                // To protect the network against potential non-determinism (i.e. one validator runs
+                // out of space or just faces I/O issues that other validators may
+                // not have) we're simply aborting the process, hoping that once the
+                // node goes back online issues are resolved on the validator side.
+                // TODO: We should signal this to the contract runtime somehow, and
+                // let validator nodes skip execution.
+                error!(?error, "Error while reading from storage; aborting");
+                panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
+            }
+        };
+        global_state_raw_bytes
     };
 
     let out_ptr: u32 = if cb_alloc != 0 {
@@ -505,6 +618,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
             Some(Key::EntryPoint(entry_point_addr))
         }
+        Keyspace::AllNamedKeys => Some(Key::AddressableEntity(entity_addr)),
     }
 }
 
@@ -543,10 +657,10 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
         &copy_input_cost,
         [
             u64::from(out_ptr),
-            input
-                .len()
-                .try_into()
-                .expect("usize is at least the same size as u64"),
+            input.len().try_into().map_err(|err| {
+                error!("Failed to convert u64 to usize. Details: {err}");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?,
         ],
     )?;
 
@@ -576,7 +690,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     let flags = match maybe_flags {
         Some(flags) => flags,
         None => {
-            return VMResult::Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
+            return Err(VMError::Execute(ExecuteError::ReturnFlagsNotSupported(
                 flags,
             )))
         }
@@ -650,7 +764,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             return Ok(CALLEE_NOT_CALLABLE);
         }
         let seed_bytes = caller.memory_read(seed_ptr, seed_len as usize)?;
-        let seed_bytes: [u8; 32] = seed_bytes.try_into().unwrap(); // SAFETY: We checked for length.
+        let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
+            // SAFETY: We checked for length. This shouldn't happen
+            error!("Error when converting seed_bytes from vec to static array");
+            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+        })?;
         Some(seed_bytes)
     } else {
         None
@@ -774,9 +892,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
-            // Take the gas spent so far and use it as a limit for the new VM.
+            // Limit the new VM to remaining gas.
             let gas_limit = caller
-                .gas_consumed()
+                .get_remaining_points()?
                 .try_into_remaining()
                 .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -784,7 +902,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_initiator(caller.context().initiator)
                 .with_caller_key(caller.context().callee)
                 .with_gas_limit(gas_limit)
-                .with_target(ExecutionKind::Stored {
+                .with_execution_kind(ExecutionKind::Stored {
                     address: smart_contract_addr,
                     entry_point: entry_point_name.clone(),
                 })
@@ -861,6 +979,80 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    system_contract_opt: u32,
+    input_ptr: u32,
+    input_len: u32,
+    cb_alloc: u32,
+    cb_ctx: u32,
+) -> VMResult<u32> {
+    // In restricted mode, contract calls are not allowed
+    if caller.context().sandboxed {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
+    }
+    // get option so we can determine cost, or charge if invalid
+    let option: SystemMenu = match TryFrom::try_from(system_contract_opt) {
+        Ok(option) => option,
+        Err(_) => {
+            // the following can produce a VMError::OutOfGas error
+            let penalty_cost = caller.context().baseline_motes_amount;
+            charge_gas(&mut caller, penalty_cost)?;
+            return Err(InternalHostError::InvalidSystemOption(system_contract_opt).into());
+        }
+    };
+
+    let cost = match &option {
+        SystemMenu::Mint(mint_opt) => match mint_opt {
+            MintMethods::Burn => caller.context().mint_costs.burn as u64,
+            MintMethods::Transfer | MintMethods::TransferPurse => {
+                caller.context().mint_costs.transfer as u64
+            }
+        },
+        SystemMenu::Auction(auction_opt) => match auction_opt {
+            AuctionMethods::Activate => caller.context().auction_costs.activate_bid,
+            AuctionMethods::Bid => caller.context().auction_costs.add_bid,
+            AuctionMethods::Withdraw => caller.context().auction_costs.withdraw_bid,
+            AuctionMethods::Delegate => caller.context().auction_costs.delegate,
+            AuctionMethods::Undelegate => caller.context().auction_costs.undelegate,
+            AuctionMethods::Redelegate => caller.context().auction_costs.redelegate,
+            AuctionMethods::AddReservation => caller.context().auction_costs.add_reservations,
+            AuctionMethods::CancelReservation => caller.context().auction_costs.cancel_reservations,
+            AuctionMethods::ChangePublicKey => caller.context().auction_costs.change_bid_public_key,
+        },
+    };
+    // the following can produce a VMError::OutOfGas error
+    charge_gas(&mut caller, cost)?;
+
+    let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
+
+    // Limit the call to remaining gas.
+    let gas_limit = caller
+        .get_remaining_points()?
+        .try_into_remaining()
+        .map_err(|_| InternalHostError::TypeConversion)?;
+
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(caller.context().initiator)
+        .with_caller_key(caller.context().callee)
+        .with_gas_limit(gas_limit)
+        .with_execution_kind(ExecutionKind::System(option))
+        .with_input(input_data)
+        .with_transaction_hash(caller.context().transaction_hash)
+        .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+        .with_chain_name(caller.context().chain_name.clone())
+        .with_block_time(caller.context().block_time)
+        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
+        .with_block_height(1) // TODO: Carry on block height
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_runtime_native_config(caller.context().runtime_native_config.clone())
+        .build()
+        .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+
+    exec(caller, execute_request, cb_alloc, cb_ctx)
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     mut caller: impl Caller<Context = Context<S, E>>,
     address_ptr: u32,
@@ -896,7 +1088,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     )?;
 
     // 1. Look up address in the storage
-    // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
+    // 1a. if it's VM1 contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
     // you can't pass value (tokens) to called contracts. 1b. if it's new contract, wire up
     // another VM as according to the bytecode format. 2. Depends on the VM used (old or new) at
@@ -921,11 +1113,9 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         }
     };
 
-    let tracking_copy = caller.context().tracking_copy.fork2();
-
-    // Take the gas spent so far and use it as a limit for the new VM.
+    // Limit the new VM to remaining gas.
     let gas_limit = caller
-        .gas_consumed()
+        .get_remaining_points()?
         .try_into_remaining()
         .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -933,7 +1123,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_initiator(caller.context().initiator)
         .with_caller_key(caller.context().callee)
         .with_gas_limit(gas_limit)
-        .with_target(ExecutionKind::Stored {
+        .with_execution_kind(ExecutionKind::Stored {
             address: smart_contract_addr,
             entry_point: entry_point.clone(),
         })
@@ -951,6 +1141,26 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
         .build()
         .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+
+    let ret = exec(caller, execute_request, cb_alloc, cb_ctx);
+    if let Err(execute_error) = &ret {
+        error!(
+            ?execute_error,
+            ?smart_contract_addr,
+            ?entry_point,
+            "Failed to execute entry point"
+        );
+    }
+    ret
+}
+
+fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    execute_request: ExecuteRequest,
+    cb_alloc: u32,
+    cb_ctx: u32,
+) -> VMResult<u32> {
+    let tracking_copy = caller.context().tracking_copy.fork2();
 
     let (gas_usage, host_result) = match caller
         .context()
@@ -977,7 +1187,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     caller.memory_write(out_ptr, &output)?;
                 }
             }
-
             let host_result = match host_error {
                 Some(host_error) => Err(host_error),
                 None => {
@@ -992,12 +1201,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             (gas_usage, host_result)
         }
         Err(execute_error) => {
-            error!(
-                ?execute_error,
-                ?smart_contract_addr,
-                ?entry_point,
-                "Failed to execute entry point"
-            );
             return Err(VMError::Execute(execute_error));
         }
     };
@@ -1008,6 +1211,11 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .ok_or(InternalHostError::RemainingGasExceedsGasLimit)?;
 
     caller.consume_gas(gas_spent)?;
+
+    // this will result in the VM being killed
+    if let Err(CallError::Api(api_error)) = host_result {
+        return Err(VMError::Execute(ExecuteError::Api(api_error)));
+    }
 
     Ok(u32_from_host_result(host_result))
 }
@@ -1064,8 +1272,11 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 return Ok(HOST_ERROR_SUCCESS);
             }
             let hash_bytes = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            let hash_bytes: [u8; 32] = hash_bytes.try_into().unwrap(); // SAFETY: We checked for length.
-
+            let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
+                // SAFETY: We checked for length. This shouldn't happen
+                error!("Error when converting hash_bytes from vec to static array");
+                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            })?;
             let smart_contract_key = Key::SmartContract(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
@@ -1140,190 +1351,6 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
 
     caller.memory_write(output_ptr, &total_balance.to_le_bytes())?;
     Ok(HOST_ERROR_NOT_FOUND)
-}
-
-pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
-    entity_addr_ptr: u32,
-    entity_addr_len: u32,
-    amount_ptr: u32,
-) -> VMResult<u32> {
-    // In restricted mode, transfers are not allowed
-    if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
-    }
-
-    let transfer_cost = caller.context().config.host_function_costs().transfer;
-    charge_host_function_call(
-        &mut caller,
-        &transfer_cost,
-        [
-            u64::from(entity_addr_ptr),
-            u64::from(entity_addr_len),
-            u64::from(amount_ptr),
-        ],
-    )?;
-
-    if entity_addr_len != 32 {
-        // Invalid entity address; failing to proceed with the transfer
-        return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-    }
-
-    let amount = {
-        let mut amount_bytes = [0u8; 8];
-        caller.memory_read_into(amount_ptr, &mut amount_bytes)?;
-        u64::from_le_bytes(amount_bytes)
-    };
-
-    let (target_entity_addr, _runtime_footprint) = {
-        let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-        debug_assert_eq!(entity_addr.len(), 32);
-
-        // SAFETY: entity_addr is 32 bytes long
-        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
-
-        let protocol_version = ProtocolVersion::V2_0_0;
-        let (entity_addr, runtime_footprint) = match caller
-            .context_mut()
-            .tracking_copy
-            .runtime_footprint_by_account_hash(protocol_version, account_hash)
-        {
-            Ok((entity_addr, runtime_footprint)) => (entity_addr, runtime_footprint),
-            Err(TrackingCopyError::KeyNotFound(key)) => {
-                warn!(?key, "Account not found");
-                return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-            }
-            Err(error) => {
-                error!(?error, "Error while reading from storage; aborting");
-                panic!("Error while reading from storage")
-            }
-        };
-        (entity_addr, runtime_footprint)
-    };
-
-    let callee_addressable_entity_key = match caller.context().callee {
-        callee_account_key @ Key::Account(_account_hash) => {
-            match caller.context_mut().tracking_copy.read(&callee_account_key) {
-                Ok(Some(StoredValue::CLValue(indirect))) => {
-                    // is it an account?
-                    indirect
-                        .into_t::<Key>()
-                        .map_err(|_| InternalHostError::TypeConversion)?
-                }
-                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?callee_account_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
-            }
-        }
-        smart_contract_key @ Key::SmartContract(_) => {
-            match caller.context_mut().tracking_copy.read(&smart_contract_key) {
-                Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
-                    match smart_contract_package.versions().latest() {
-                        Some(addressable_entity_hash) => Key::AddressableEntity(
-                            EntityAddr::SmartContract(addressable_entity_hash.value()),
-                        ),
-                        None => {
-                            warn!(
-                                ?smart_contract_key,
-                                "Unable to find latest addressable entity hash for contract"
-                            );
-                            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-                        }
-                    }
-                }
-                Ok(Some(other)) => panic!("should be smart contract but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?smart_contract_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
-            }
-        }
-        other => panic!("should be account or smart contract but got {other:?}"),
-    };
-
-    let callee_stored_value = caller
-        .context_mut()
-        .tracking_copy
-        .read(&callee_addressable_entity_key)
-        .map_err(|_| InternalHostError::TrackingCopy)?;
-
-    let callee_stored_value = match callee_stored_value {
-        Some(callee_stored_value) => callee_stored_value,
-        None => {
-            warn!(
-                ?callee_addressable_entity_key,
-                "Callee not found while transferring tokens"
-            );
-            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-        }
-    };
-
-    let callee_addressable_entity = callee_stored_value
-        .into_addressable_entity()
-        .ok_or(InternalHostError::TypeConversion)?;
-    let callee_purse = callee_addressable_entity.main_purse();
-
-    let target_purse = match caller
-        .context_mut()
-        .tracking_copy
-        .runtime_footprint_by_entity_addr(target_entity_addr)
-    {
-        Ok(runtime_footprint) => match runtime_footprint.main_purse() {
-            Some(target_purse) => target_purse,
-            None => todo!("create a main purse for a contract"),
-        },
-        Err(TrackingCopyError::KeyNotFound(key)) => {
-            warn!(?key, "Transfer recipient not found");
-            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
-        }
-        Err(error) => {
-            error!(?error, "Error while reading from storage; aborting");
-            return Err(InternalHostError::TrackingCopy)?;
-        }
-    };
-    // We don't execute anything as it does not make sense to execute an account as there
-    // are no entry points.
-    let transaction_hash = caller.context().transaction_hash;
-    let address_generator = Arc::clone(&caller.context().address_generator);
-    let runtime_native_config = caller.context().runtime_native_config.clone();
-
-    let args = MintTransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
-
-    match system::transfer(
-        &mut caller.context_mut().tracking_copy,
-        runtime_native_config,
-        transaction_hash,
-        address_generator,
-        args,
-    ) {
-        Ok(()) => Ok(HOST_ERROR_SUCCESS),
-        Err(DispatchError::Internal(internal_error)) => Err(VMError::Internal(internal_error)),
-        Err(DispatchError::Call(call_error)) => {
-            // This is a bug in the EE, as it should have been caught during the preparation phase
-            // when the contract was stored in the global state.
-            error!(?call_error, "Failed to transfer");
-            Ok(call_error.into_u32())
-        }
-        Err(dispatch_error) => {
-            error!(
-                ?dispatch_error,
-                "Failed to dispatch system contract while transferring tokens"
-            );
-            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
-        }
-    }
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
@@ -1462,9 +1489,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     // this code should handle reading old state, and saving new state
 
     if let Some(entry_point_name) = entry_point {
-        // Take the gas spent so far and use it as a limit for the new VM.
+        // Limit the new VM to remaining gas.
         let gas_limit = caller
-            .gas_consumed()
+            .get_remaining_points()?
             .try_into_remaining()
             .map_err(|_| InternalHostError::TypeConversion)?;
 
@@ -1472,7 +1499,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_initiator(caller.context().initiator)
             .with_caller_key(caller.context().callee)
             .with_gas_limit(gas_limit)
-            .with_target(ExecutionKind::Stored {
+            .with_execution_kind(ExecutionKind::Stored {
                 address: smart_contract_addr,
                 entry_point: entry_point_name.clone(),
             })
@@ -1577,7 +1604,13 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
     let transferred_value = caller.context().transferred_value;
 
     let block_time = caller.context().block_time.value();
-
+    let protocol_version = caller
+        .context()
+        .runtime_native_config
+        .protocol_version()
+        .value();
+    let parent_block_hash = caller.context().parent_block_hash;
+    let block_height = caller.context().block_height;
     // `EnvInfo` in little-endian representation.
     let env_info_le = EnvInfo {
         caller_addr,
@@ -1586,6 +1619,11 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         callee_kind: callee_kind.to_le(),
         transferred_value: transferred_value.to_le(),
         block_time: block_time.to_le(),
+        protocol_version_major: protocol_version.major.to_le(),
+        protocol_version_minor: protocol_version.minor.to_le(),
+        protocol_version_patch: protocol_version.patch.to_le(),
+        parent_block_hash,
+        block_height,
     };
 
     let env_info_bytes = safe_transmute::transmute_one_to_bytes(&env_info_le);
@@ -1799,6 +1837,150 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         block_message_count_value,
         message,
     );
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Computes digest hash, using provided algorithm type.
+///
+/// # Arguments
+///
+/// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+/// * `in_size` - size of output pointer
+/// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+/// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    in_ptr: u32,
+    in_size: u32,
+    hash_algorithm: u32,
+    out_ptr: u32,
+) -> VMResult<u32> {
+    const DIGEST_LENGTH: usize = 32;
+
+    let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
+
+    // Charge for parameter weights.
+    let generic_hash_cost = caller.context().config.host_function_costs().generic_hash;
+
+    charge_host_function_call(
+        &mut caller,
+        &generic_hash_cost,
+        [
+            u64::from(in_ptr),
+            u64::from(in_size),
+            u64::from(out_ptr),
+            u64::from(hash_algorithm),
+        ],
+    )?;
+
+    let hash_algorithm =
+        HashAlgorithm::from_u32(hash_algorithm).ok_or(InternalHostError::TypeConversion)?;
+
+    let hashed_bytes = match hash_algorithm {
+        HashAlgorithm::Blake2b => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
+                ExecuteError::InternalHost(InternalHostError::CorruptExecutionState(
+                    "Error when creating instance of Blake2bVar hashing".to_owned(),
+                ))
+            })?;
+            hasher.update(in_bytes.as_ref());
+            hasher.finalize_variable(&mut result).ok();
+            result
+        }
+        HashAlgorithm::Blake3 => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(in_bytes.as_ref());
+            let hash = hasher.finalize();
+            let hash_bytes: &[u8; DIGEST_LENGTH] = hash.as_bytes();
+            result.copy_from_slice(hash_bytes);
+            result
+        }
+        HashAlgorithm::Sha256 => Sha256::digest(in_bytes).into(),
+        HashAlgorithm::Keccak256 => {
+            use keccak_asm::Keccak256;
+            let mut result = [0u8; DIGEST_LENGTH];
+            let mut hasher = Keccak256::new();
+            KeccakDigest::update(&mut hasher, &in_bytes);
+            let hash = KeccakDigest::finalize(hasher);
+            result.copy_from_slice(&hash);
+            result
+        }
+    };
+
+    caller.memory_write(out_ptr, &hashed_bytes)?;
+
+    Ok(HOST_ERROR_SUCCESS)
+}
+
+/// Recovers a Secp256k1 public key from a signed message
+/// and a signature used in the process of signing.
+///
+/// # Arguments
+///
+/// * `message_ptr` - pointer to the signed data
+/// * `message_size` - length of the signed data in bytes
+/// * `signature_ptr` - pointer to byte-encoded signature
+/// * `signature_size` - length of the byte-encoded signature
+/// * `public_key_ptr` - pointer to a buffer of size PublicKey::SECP256K1_LENGTH which will be
+///   populated with the recovered key's bytes representation
+/// * `recovery_id` - an integer value 0, 1, 2, or 3 used to select the correct public key from the
+///   signature:
+///   - Low bit (0/1): was the y-coordinate of the affine point resulting from the fixed-base
+///     multiplication 𝑘×𝑮 odd?
+///   - Hi bit (3/4): did the affine x-coordinate of 𝑘×𝑮 overflow the order of the scalar field,
+///     requiring a reduction when computing r?
+pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    message_ptr: u32,
+    message_size: u32,
+    signature_ptr: u32,
+    signature_size: u32,
+    public_key_ptr: u32,
+    recovery_id: u32,
+) -> VMResult<u32> {
+    let recover_secp256k1_cost = caller
+        .context()
+        .config
+        .host_function_costs()
+        .recover_secp256k1;
+
+    charge_host_function_call(
+        &mut caller,
+        &recover_secp256k1_cost,
+        [
+            u64::from(message_ptr),
+            u64::from(message_size),
+            u64::from(signature_ptr),
+            u64::from(signature_size),
+            u64::from(public_key_ptr),
+            u64::from(recovery_id),
+        ],
+    )?;
+
+    if recovery_id >= 4 {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
+    let message = caller.memory_read(message_ptr, message_size as usize)?;
+    let signature_bytes = caller.memory_read(signature_ptr, signature_size as usize)?;
+    let Ok((signature, _)) = Signature::from_bytes(&signature_bytes) else {
+        return Ok(HOST_ERROR_INVALID_DATA);
+    };
+
+    let Ok(public_key) =
+        casper_types::crypto::recover_secp256k1(message, &signature, recovery_id as u8)
+    else {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    };
+
+    let Ok(key_bytes) = public_key.to_bytes() else {
+        return Ok(HOST_ERROR_PAYLOAD_TOO_LONG);
+    };
+
+    caller.memory_write(public_key_ptr, &key_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }

@@ -121,18 +121,39 @@ impl fmt::Debug for EntryPoint {
 /// This function is used to invoke an export by its name regardless of its location in the smart
 /// contract.
 pub fn invoke_export_by_name(name: &str) {
-    let exports_by_name: Vec<_> = ENTRY_POINTS
+    let all_entry_points = ENTRY_POINTS.iter().collect::<Vec<_>>();
+
+    let exports_by_name: Vec<_> = all_entry_points
         .iter()
         .filter(|export| export.kind.name() == name)
         .collect();
 
-    assert_eq!(
-        exports_by_name.len(),
-        1,
-        "Expected exactly one export {name} found, but got {exports_by_name:?}"
-    );
+    if exports_by_name.len() != 1 {
+        panic!(
+            "Expected exactly one export {} found, but got {:?} ({:?})",
+            name, exports_by_name, all_entry_points
+        );
+    }
 
-    (exports_by_name[0].fptr)();
+    let result = dispatch_export_call(exports_by_name[0].fptr);
+
+    match result {
+        Ok(()) => {}
+        Err(trap) => {
+            match trap {
+                NativeTrap::Panic(panic_payload) => {
+                    // Re-raise the panic so it can be caught by test's #[should_panic]
+                    std::panic::resume_unwind(panic_payload);
+                }
+                other_trap => {
+                    // For non-panic traps, set them in LAST_TRAP
+                    LAST_TRAP.with(|last_trap| {
+                        last_trap.borrow_mut().replace(other_trap);
+                    });
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -598,6 +619,11 @@ Example paths:
             caller_kind: self.caller.tag(),
             callee_addr: *self.callee.address(),
             callee_kind: self.callee.tag(),
+            protocol_version_major: 2,
+            protocol_version_minor: 1,
+            protocol_version_patch: 0,
+            parent_block_hash: [0xAB; 32],
+            block_height: 1,
         };
         Ok(HOST_ERROR_SUCCESS)
     }
@@ -810,6 +836,17 @@ mod symbols {
     }
 
     #[no_mangle]
+    pub extern "C" fn casper_system(
+        _system_contract_opt: u32,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        _alloc_ctx: *const core::ffi::c_void,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
     pub extern "C" fn casper_call(
         address_ptr: *const u8,
         address_size: usize,
@@ -878,15 +915,6 @@ mod symbols {
         todo!()
     }
     #[no_mangle]
-    pub extern "C" fn casper_transfer(
-        _entity_kind: u32,
-        _entity_addr_ptr: *const u8,
-        _entity_addr_len: usize,
-        _amount: u64,
-    ) -> u32 {
-        todo!()
-    }
-    #[no_mangle]
     pub extern "C" fn casper_emit(
         topic_ptr: *const u8,
         topic_size: usize,
@@ -904,6 +932,28 @@ mod symbols {
     pub extern "C" fn casper_env_info(info_ptr: *const u8, info_size: u32) -> u32 {
         let ret = with_current_environment(|env| env.casper_env_info(info_ptr, info_size));
         crate::casper::native::handle_ret(ret)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_generic_hash(
+        _in_ptr: *const u8,
+        _in_size: u32,
+        _out_ptr: *const u8,
+        _algorithm: u32,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
+    pub fn casper_recover_secp256k1(
+        _message_ptr: *const u8,
+        _message_size: usize,
+        _signature_ptr: *const u8,
+        _signature_size: usize,
+        _public_key_ptr: *const u8,
+        _recovery_id: u32,
+    ) -> u32 {
+        todo!()
     }
 }
 

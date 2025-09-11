@@ -1358,6 +1358,7 @@ where
 pub fn process_updated_delegator_stake_boundaries<P: Auction>(
     provider: &mut P,
     validator_bid: &mut ValidatorBid,
+    vesting_schedule_period_millis: u64,
     minimum_delegation_amount: u64,
     maximum_delegation_amount: u64,
 ) -> Result<(), Error> {
@@ -1369,7 +1370,9 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
     }
 
     let era_end_timestamp_millis = get_era_end_timestamp_millis(provider)?;
-    if validator_bid.is_locked(era_end_timestamp_millis) {
+    if validator_bid
+        .is_locked_with_vesting_schedule(era_end_timestamp_millis, vesting_schedule_period_millis)
+    {
         // cannot increase the min or decrease the max while vesting is locked
         // as this could result in vested delegators being forcibly unbonded, thus
         // prematurely allowing liquidity on a network still in its vesting period.

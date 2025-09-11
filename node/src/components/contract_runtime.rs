@@ -75,7 +75,9 @@ use crate::{
 };
 use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
+pub(crate) use error::{
+    BlockExecutionError, ConfigError, ContractRuntimeError, EngineStateError, StateResultError,
+};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;
@@ -173,11 +175,17 @@ impl ContractRuntime {
         let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
 
         let executor_v2 = {
+            let baseline_motes_amount = chainspec.core_config.baseline_motes_amount;
+            let mint_costs = *chainspec.system_costs_config.mint_costs();
+            let auction_costs = *chainspec.system_costs_config.auction_costs();
             let executor_config = ExecutorConfigBuilder::default()
                 .with_memory_limit(chainspec.wasm_config.v2().max_memory())
                 .with_executor_kind(ExecutorKind::Compiled)
                 .with_wasm_config(*chainspec.wasm_config.v2())
                 .with_storage_costs(chainspec.storage_costs)
+                .with_mint_costs(mint_costs)
+                .with_auction_costs(auction_costs)
+                .with_baseline_motes_amount(baseline_motes_amount)
                 .with_message_limits(chainspec.wasm_config.messages_limits())
                 .build()
                 .expect("Should build");

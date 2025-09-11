@@ -7,7 +7,7 @@ use thiserror::Error;
 #[derive(Debug, Default, PartialEq)]
 #[non_exhaustive]
 #[repr(u32)]
-pub enum CommonResult {
+pub enum HostResult {
     #[default]
     Success = 0,
     /// An entity was not found, often a missing key in the global state.
@@ -46,7 +46,7 @@ pub const HOST_ERROR_MESSAGE_TOPIC_FULL: u32 = 7;
 pub const HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED: u32 = 8;
 pub const HOST_ERROR_INTERNAL: u32 = 9;
 
-impl From<u32> for CommonResult {
+impl From<u32> for HostResult {
     fn from(value: u32) -> Self {
         match value {
             HOST_ERROR_SUCCESS => Self::Success,
@@ -64,10 +64,10 @@ impl From<u32> for CommonResult {
     }
 }
 
-pub fn result_from_code(code: u32) -> Result<(), CommonResult> {
+pub fn result_from_code(code: u32) -> Result<(), HostResult> {
     match code {
         HOST_ERROR_SUCCESS => Ok(()),
-        other => Err(CommonResult::from(other)),
+        other => Err(HostResult::from(other)),
     }
 }
 
@@ -108,7 +108,7 @@ pub const CALLEE_REVERTED: u32 = 1;
 pub const CALLEE_TRAPPED: u32 = 2;
 pub const CALLEE_GAS_DEPLETED: u32 = 3;
 pub const CALLEE_NOT_CALLABLE: u32 = 4;
-pub const CALLEE_HOST_ERROR: u32 = 5;
+pub const CALLEE_API_ERROR: u32 = 5;
 
 /// Represents the result of a host function call.
 ///
@@ -127,6 +127,9 @@ pub enum CallError {
     /// Called contract is not callable.
     #[error("not callable")]
     NotCallable,
+    /// System is callee and signaled vm instance kill.
+    #[error("kill the vm instance of the caller")]
+    Api(String),
 }
 
 impl CallError {
@@ -138,6 +141,7 @@ impl CallError {
             Self::CalleeTrapped(_) => CALLEE_TRAPPED,
             Self::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
             Self::NotCallable => CALLEE_NOT_CALLABLE,
+            Self::Api(_) => CALLEE_API_ERROR,
         }
     }
 }
@@ -148,25 +152,25 @@ mod tests {
 
     #[test]
     fn test_from_u32_not_found() {
-        let error = CommonResult::from(HOST_ERROR_NOT_FOUND);
-        assert_eq!(error, CommonResult::NotFound);
+        let error = HostResult::from(HOST_ERROR_NOT_FOUND);
+        assert_eq!(error, HostResult::NotFound);
     }
 
     #[test]
     fn test_from_u32_invalid_data() {
-        let error = CommonResult::from(HOST_ERROR_INVALID_DATA);
-        assert_eq!(error, CommonResult::InvalidData);
+        let error = HostResult::from(HOST_ERROR_INVALID_DATA);
+        assert_eq!(error, HostResult::InvalidData);
     }
 
     #[test]
     fn test_from_u32_invalid_input() {
-        let error = CommonResult::from(HOST_ERROR_INVALID_INPUT);
-        assert_eq!(error, CommonResult::InvalidInput);
+        let error = HostResult::from(HOST_ERROR_INVALID_INPUT);
+        assert_eq!(error, HostResult::InvalidInput);
     }
 
     #[test]
     fn test_from_u32_other() {
-        let error = CommonResult::from(10);
-        assert_eq!(error, CommonResult::Other(10));
+        let error = HostResult::from(10);
+        assert_eq!(error, HostResult::Other(10));
     }
 }

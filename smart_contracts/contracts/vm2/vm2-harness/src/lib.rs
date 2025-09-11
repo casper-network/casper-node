@@ -3,12 +3,19 @@
 pub mod contracts;
 pub mod traits;
 
+use casper_contract_macros::casper;
+use casper_contract_sdk::types::NamedKey;
+
+#[casper]
+#[allow(dead_code)]
+pub const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
+
 #[cfg(test)]
 mod tests {
 
     use casper_contract_sdk::casper::native::{self, dispatch, EntryPointKind};
 
-    use crate::contracts::harness::{Harness, HarnessRef, INITIAL_GREETING};
+    use crate::contracts::harness::{Harness, INITIAL_GREETING};
 
     #[test]
     fn test() {

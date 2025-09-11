@@ -17,6 +17,8 @@ const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 const DAYS_IN_WEEK: usize = 7;
 const WEEK_MILLIS: usize = DAYS_IN_WEEK * DAY_MILLIS;
 
+/// Locked funds period in milliseconds.
+pub const LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS as u64;
 /// Length of total vesting schedule in days.
 const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
 /// Length of total vesting schedule expressed in days.
@@ -137,6 +139,9 @@ impl VestingSchedule {
         timestamp_millis: u64,
         vesting_schedule_period_millis: u64,
     ) -> bool {
+        if vesting_schedule_period_millis == 0 {
+            return false;
+        }
         let vested_period = match self.locked_amounts() {
             Some(locked_amounts) => {
                 let vesting_weeks = locked_amounts
