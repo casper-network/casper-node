@@ -51,6 +51,9 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
+use casper_executor_wasm_common::chain_utils::{
+    compute_next_contract_hash_version, compute_wasm_bytecode_hash,
+};
 use casper_executor_wasm_interface::executor::{
     AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
 };
@@ -834,7 +837,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     result_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
-
+    println!("in create");
     if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
@@ -1022,6 +1025,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             ActionThresholds::default(),
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
         );
+        println!("bar");
 
         metered_write(
             &mut caller,
@@ -1029,7 +1033,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             StoredValue::AddressableEntity(addressable_entity),
         )?;
     } else {
-        let contract_package_hash = ContractPackageHash::new(smart_contract_addr);
+        let contract_package_hash = ContractPackageHash::new(package_addr);
         let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
 
         let named_keys = {
@@ -1049,6 +1053,8 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             EntryPoints::default(),
             ProtocolVersion::V2_0_0,
         );
+
+        println!("{:?}", Key::Hash(smart_contract_addr));
 
         metered_write(
             &mut caller,
@@ -1597,6 +1603,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             error!("Account upgrade is not possible");
             return Ok(CALLEE_NOT_CALLABLE);
         }
+        Key::Hash(contract_addr) => (contract_addr, Key::Hash(contract_addr)),
         addressable_entity_key @ Key::SmartContract(smart_contract_addr) => {
             let smart_contract_key = addressable_entity_key;
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
@@ -1632,12 +1639,167 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
 
-    let callee_addressable_entity = match caller
+    println!("A {:?}", callee_addressable_entity_key);
+
+    match caller
         .context_mut()
         .tracking_copy
         .read(&callee_addressable_entity_key)
     {
-        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => addressable_entity,
+        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
+            let package_hash = addressable_entity.package_hash();
+
+            let package_key = Key::SmartContract(package_hash.value());
+            let mut package = match caller.context_mut().tracking_copy.read(&package_key) {
+                Ok(Some(StoredValue::SmartContract(package))) => package,
+                Ok(Some(other)) => panic!("should be package but got {other:?}"),
+                Ok(None) => return Ok(CALLEE_NOT_CALLABLE),
+                Err(error) => {
+                    error!(
+                        ?error,
+                        ?package_hash,
+                        "Error while reading from storage; aborting"
+                    );
+                    panic!("Error while reading from storage")
+                }
+            };
+
+            if package.is_locked() {
+                return Ok(CALLEE_NOT_CALLABLE);
+            }
+
+            match package.current_entity_hash() {
+                Some(previous_hash) => {
+                    let protocol_version = caller
+                        .context()
+                        .runtime_native_config
+                        .protocol_version()
+                        .value();
+                    let next_version = package.next_entity_version_for(protocol_version.major);
+                    let new_version_hash_addr =
+                        compute_next_contract_hash_version(previous_hash.value(), next_version);
+                    package.insert_entity_version(
+                        protocol_version.major,
+                        EntityAddr::SmartContract(new_version_hash_addr),
+                    );
+                    if let Err(_) = package.disable_entity_version(previous_hash) {
+                        return Ok(CALLEE_NOT_CALLABLE);
+                    };
+
+                    metered_write(
+                        &mut caller,
+                        package_key,
+                        StoredValue::SmartContract(package),
+                    )?;
+
+                    let bytes = code.clone();
+                    let new_byte_code_hash = compute_wasm_bytecode_hash(bytes);
+                    let bytecode_key =
+                        Key::ByteCode(ByteCodeAddr::V2CasperWasm(new_byte_code_hash));
+                    metered_write(
+                        &mut caller,
+                        bytecode_key,
+                        StoredValue::ByteCode(ByteCode::new(
+                            ByteCodeKind::V2CasperWasm,
+                            code.clone().into(),
+                        )),
+                    )?;
+
+                    let entity = AddressableEntity::new(
+                        package_hash,
+                        ByteCodeHash::new(new_byte_code_hash),
+                        ProtocolVersion::new(protocol_version),
+                        addressable_entity.main_purse(),
+                        addressable_entity.associated_keys().clone(),
+                        addressable_entity.action_thresholds().clone(),
+                        EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
+                    );
+                    let entity_key =
+                        Key::AddressableEntity(EntityAddr::SmartContract(new_version_hash_addr));
+
+                    metered_write(
+                        &mut caller,
+                        entity_key,
+                        StoredValue::AddressableEntity(entity),
+                    )?;
+                }
+                None => return Ok(CALLEE_NOT_CALLABLE),
+            }
+        }
+        Ok(Some(StoredValue::Contract(contract))) => {
+            println!("foo");
+            let package_hash = contract.contract_package_hash();
+
+            let package_key = Key::Hash(package_hash.value());
+            let mut package = match caller.context_mut().tracking_copy.read(&package_key) {
+                Ok(Some(StoredValue::ContractPackage(package))) => package,
+                Ok(Some(other)) => panic!("should be package but got {other:?}"),
+                Ok(None) => return Ok(HOST_ERROR_INVALID_DATA),
+                Err(error) => {
+                    error!(
+                        ?error,
+                        ?package_hash,
+                        "Error while reading from storage; aborting"
+                    );
+                    panic!("Error while reading from storage")
+                }
+            };
+
+            if package.is_locked() {
+                return Ok(CALLEE_NOT_CALLABLE);
+            }
+
+            match package.current_contract_hash() {
+                Some(previous_hash) => {
+                    let protocol_version = caller
+                        .context()
+                        .runtime_native_config
+                        .protocol_version()
+                        .value();
+                    let next_version = package.next_contract_version_for(protocol_version.major);
+                    let new_version_hash_addr =
+                        compute_next_contract_hash_version(previous_hash.value(), next_version);
+                    package.insert_contract_version(
+                        protocol_version.major,
+                        ContractHash::new(new_version_hash_addr),
+                    );
+                    if let Err(_) = package.disable_contract_version(previous_hash) {
+                        return Ok(CALLEE_NOT_CALLABLE);
+                    };
+
+                    metered_write(
+                        &mut caller,
+                        package_key,
+                        StoredValue::ContractPackage(package),
+                    )?;
+
+                    let bytes = code.clone();
+                    let new_byte_code_hash = compute_wasm_bytecode_hash(bytes);
+                    let bytecode_key =
+                        Key::ByteCode(ByteCodeAddr::V2CasperWasm(new_byte_code_hash));
+                    metered_write(
+                        &mut caller,
+                        bytecode_key,
+                        StoredValue::ByteCode(ByteCode::new(
+                            ByteCodeKind::V2CasperWasm,
+                            code.clone().into(),
+                        )),
+                    )?;
+
+                    let entity = Contract::new(
+                        package_hash,
+                        ContractWasmHash::new(new_byte_code_hash),
+                        contract.named_keys().clone(),
+                        contract.entry_points().clone(),
+                        ProtocolVersion::new(protocol_version),
+                    );
+                    let smart_contract = Key::Hash(new_version_hash_addr);
+
+                    metered_write(&mut caller, smart_contract, StoredValue::Contract(entity))?;
+                }
+                None => return Ok(CALLEE_NOT_CALLABLE),
+            }
+        }
         Ok(Some(other_entity)) => {
             panic!("Unexpected entity type: {other_entity:?}")
         }
@@ -1653,17 +1815,6 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
 
     // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka
     //    hash(old_code))
-    let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-        callee_addressable_entity.byte_code_addr(),
-    ));
-    metered_write(
-        &mut caller,
-        bytecode_key,
-        StoredValue::ByteCode(ByteCode::new(
-            ByteCodeKind::V2CasperWasm,
-            code.clone().into(),
-        )),
-    )?;
 
     // 3. Execute upgrade routine (if specified)
     // this code should handle reading old state, and saving new state
