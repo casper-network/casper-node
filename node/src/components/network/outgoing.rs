@@ -399,6 +399,16 @@ where
     fn metrics(&self) -> &OutgoingMetrics {
         &self.metrics
     }
+
+    /// Looks up a node id by socket addr.
+    pub(super) fn reverse_lookup(&self, addr_to_lookup: &SocketAddr) -> Option<NodeId> {
+        for (node_id, addr) in self.routes.iter() {
+            if addr_to_lookup == addr {
+                return Some(*node_id);
+            }
+        }
+        None
+    }
 }
 
 /// Creates a logging span for a specific connection.

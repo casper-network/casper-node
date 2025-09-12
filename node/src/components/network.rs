@@ -141,7 +141,7 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Maximum time for a ping until it connections are severed.
+/// Maximum time for a ping until its connections are severed.
 ///
 /// If you are running a network under very extreme conditions, it may make sense to alter these
 /// values, but usually these values should require no changing.
@@ -318,6 +318,9 @@ where
     state: ComponentState,
 
     peer_drop_handles: BTreeMap<NodeId, PeerDropData>,
+
+    /// Known address nodes.
+    known_address_nodes: Vec<NodeId>,
 }
 
 struct ChannelManagement {
@@ -419,6 +422,7 @@ where
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
             peer_drop_handles: BTreeMap::new(),
+            known_address_nodes: Vec::new(),
         };
 
         Ok(component)
@@ -472,7 +476,7 @@ where
         let protocol_version = self.context.chain_info().protocol_version;
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
-        // which we need to shutdown cleanly later on.
+        // which we need to shut down cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
@@ -496,6 +500,15 @@ where
         };
 
         self.channel_management = Some(channel_management);
+
+        // keep track of known address node ids
+        let mut known_node_ids = vec![];
+        for known_addr in &known_addresses {
+            if let Some(node_id) = self.outgoing_manager.reverse_lookup(known_addr) {
+                known_node_ids.push(node_id);
+            }
+        }
+        self.known_address_nodes = known_node_ids;
 
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
@@ -1061,7 +1074,7 @@ where
                         }),
                 ),
                 DialRequest::Disconnect { handle: _, span } => {
-                    // Dropping the `handle` is enough to signal the connection to shutdown.
+                    // Dropping the `handle` is enough to signal the connection to shut down.
                     span.in_scope(|| {
                         debug!("dropping connection, as requested");
                     });
@@ -1165,6 +1178,63 @@ where
         }
 
         ret
+    }
+
+    pub(crate) fn fully_connected_peers_random_include_known_addrs(
+        &self,
+        rng: &mut NodeRng,
+        total_count: usize,
+        known_addr_count: usize,
+    ) -> Vec<NodeId> {
+        let fully_connected: Vec<NodeId> = self
+            .connection_symmetries
+            .iter()
+            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .map(|(node_id, _)| *node_id)
+            .collect();
+
+        if known_addr_count == 0 || self.known_address_nodes.is_empty() {
+            // short circuit if no known addrs are asked for
+            // or if there are no captured known addresses
+            return fully_connected
+                .into_iter()
+                .choose_multiple(rng, total_count);
+        }
+
+        let peers: Vec<NodeId> = {
+            let mut ret: Vec<NodeId> = vec![];
+            let x = fully_connected.iter().copied().collect::<HashSet<NodeId>>();
+            let y = self.known_address_nodes.iter().copied().collect();
+
+            let known: Vec<NodeId> = x
+                .intersection(&y)
+                .to_owned()
+                .choose_multiple(rng, known_addr_count)
+                .iter()
+                .map(|n| **n)
+                .collect();
+
+            ret.extend(known);
+
+            let selection_count = ret.len();
+            let remaining = total_count.saturating_sub(selection_count);
+
+            if remaining > 0 {
+                // pick up additional nodes up to total count - known addr count (if able)
+                // filtering out already selected items for this backfill
+                let z = ret.iter().copied().collect();
+                let diff: Vec<NodeId> = x
+                    .difference(&z)
+                    .to_owned()
+                    .choose_multiple(rng, remaining)
+                    .iter()
+                    .map(|n| **n)
+                    .collect();
+                ret.extend(diff);
+            }
+            ret
+        };
+        peers
     }
 
     pub(crate) fn fully_connected_peers_random(
@@ -1554,6 +1624,17 @@ where
                     NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
                         .respond(self.fully_connected_peers_random(rng, count))
                         .ignore(),
+                    NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                        total_count,
+                        known_addr_count,
+                        responder,
+                    } => responder
+                        .respond(self.fully_connected_peers_random_include_known_addrs(
+                            rng,
+                            total_count,
+                            known_addr_count,
+                        ))
+                        .ignore(),
                     NetworkInfoRequest::FullyConnectedValidators {
                         count,
                         era_id,
@@ -1643,6 +1724,7 @@ where
                             let min: Duration = flakiness_config.block_peer_after_drop_min.into();
                             let max: Duration = flakiness_config.block_peer_after_drop_max.into();
                             let block_for: Duration = rng.gen_range(min..=max);
+
                             debug!(
                                 %public_addr,
                                 %peer_addr,
@@ -1703,9 +1785,10 @@ pub(crate) type FullTransport<P> = tokio_serde::Framed<
 
 pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
 
-/// Constructs a new full transport on a stream.
+/// Constructs a new full transport instance on a stream.
 ///
-/// A full transport contains the framing as well as the encoding scheme used to send messages.
+/// A full transport instance contains the framing as well as the encoding scheme used to
+/// send messages.
 fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,
