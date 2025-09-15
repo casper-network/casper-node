@@ -1,3 +1,4 @@
+pub(crate) mod altbn128;
 use std::{borrow::Cow, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
@@ -18,7 +19,9 @@ use casper_executor_wasm_common::{
     keyspace::{Keyspace, KeyspaceTag},
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{
+        CryptoMethods, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
+    },
     u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
@@ -44,7 +47,7 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self},
+    system,
 };
 use blake2::{
     digest::{Update, VariableOutput},
@@ -1020,6 +1023,33 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
             AuctionMethods::CancelReservation => caller.context().auction_costs.cancel_reservations,
             AuctionMethods::ChangePublicKey => caller.context().auction_costs.change_bid_public_key,
         },
+        SystemMenu::Crypto(crypto_methods) => {
+            let fn_cost = match crypto_methods {
+                CryptoMethods::AltBn128Add => {
+                    caller.context().config.host_function_costs().alt_bn128_add
+                }
+                CryptoMethods::AltBn128Multiply => {
+                    caller.context().config.host_function_costs().alt_bn128_mul
+                }
+                CryptoMethods::AltBn128Pairing => {
+                    caller
+                        .context()
+                        .config
+                        .host_function_costs()
+                        .alt_bn128_pairing
+                }
+            };
+            let Some(cost) =
+                fn_cost.calculate_gas_cost([u64::from(input_ptr), u64::from(input_len)])
+            else {
+                // Overflowing gas calculation means gas limit was exceeded
+                return Err(VMError::OutOfGas);
+            };
+            u64::try_from(cost.value()).map_err(|err| {
+                error!("Couldn't execute host function due to cost calculation overflow. Details: {err}");
+                VMError::Internal(InternalHostError::TypeConversion)
+            })?
+        }
     };
     // the following can produce a VMError::OutOfGas error
     charge_gas(&mut caller, cost)?;
