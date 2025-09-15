@@ -697,11 +697,9 @@ impl ExecutorV2 {
                                     let main_purse = contract
                                         .named_keys()
                                         .get("__v2_main_purse")
-                                        .ok_or_else(|| ExecuteError::MainPurseNotFound(vm1_key))?
+                                        .ok_or(ExecuteError::MainPurseNotFound(vm1_key))?
                                         .into_uref()
-                                        .ok_or_else(|| ExecuteError::InvalidKeyForPurse(vm1_key))?;
-
-                                    println!("{:?}", main_purse);
+                                        .ok_or(ExecuteError::InvalidKeyForPurse(vm1_key))?;
 
                                     match system::transfer(
                                         &mut tracking_copy,
@@ -1309,13 +1307,13 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let uref = contract
                 .named_keys()
                 .get(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
-                .ok_or_else(|| ExecuteError::MainPurseNotFound(entity_key))?
+                .ok_or(ExecuteError::MainPurseNotFound(entity_key))?
                 .into_uref()
-                .ok_or_else(|| ExecuteError::InvalidKeyForPurse(entity_key))?;
+                .ok_or(ExecuteError::InvalidKeyForPurse(entity_key))?;
 
             let hash_addr = entity_key
                 .into_hash_addr()
-                .ok_or_else(|| ExecuteError::EntityNotFound(entity_key))?;
+                .ok_or(ExecuteError::EntityNotFound(entity_key))?;
 
             Ok((EntityAddr::SmartContract(hash_addr), uref))
         }

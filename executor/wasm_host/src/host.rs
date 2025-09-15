@@ -281,8 +281,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                 None => {
                     let uref = {
                         let mut address_generator = caller.context().address_generator.write();
-                        let uref = address_generator.new_uref(AccessRights::NONE);
-                        uref
+                        address_generator.new_uref(AccessRights::NONE)
                     };
                     // Write payload bytes under the URef as CLValue::Any
                     let cl_value_any = CLValue::from_components(CLType::Any, value.clone());
@@ -619,7 +618,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         },
         Ok(Some(StoredValue::AddressableEntity(_))) => {
             if let Keyspace::AllNamedKeys = keyspace {
-                let entity_addr = context_to_entity_addr(&caller.context());
+                let entity_addr = context_to_entity_addr(caller.context());
 
                 let named_keys = caller
                     .context_mut()
@@ -1682,7 +1681,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                         protocol_version.major,
                         EntityAddr::SmartContract(new_version_hash_addr),
                     );
-                    if let Err(_) = package.disable_entity_version(previous_hash) {
+                    if package.disable_entity_version(previous_hash).is_err() {
                         return Ok(CALLEE_NOT_CALLABLE);
                     };
 
@@ -1763,7 +1762,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                         protocol_version.major,
                         ContractHash::new(new_version_hash_addr),
                     );
-                    if let Err(_) = package.disable_contract_version(previous_hash) {
+                    if package.disable_contract_version(previous_hash).is_err() {
                         return Ok(CALLEE_NOT_CALLABLE);
                     };
 
