@@ -989,6 +989,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         delegator_2_stake =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
 
+        let vesting_schedule_period_millis = 0;
         let auction_method = {
             let amount = U512::from(10_000_000);
             if idx % 2 == 0 {
@@ -996,6 +997,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     public_key: VALIDATOR_1.clone(),
                     amount,
                     delegation_rate: 0,
+                    vesting_schedule_period_millis,
                     minimum_delegation_amount: undelegate_amount.as_u64(),
                     maximum_delegation_amount: undelegate_amount.as_u64(),
                     minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,

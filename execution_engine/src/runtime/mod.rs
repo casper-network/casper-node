@@ -1152,6 +1152,11 @@ where
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
 
+                let vesting_schedule_period_millis = self
+                    .context
+                    .engine_config()
+                    .vesting_schedule_period_millis();
+
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
 
@@ -1162,6 +1167,7 @@ where
                         public_key,
                         delegation_rate,
                         amount,
+                        vesting_schedule_period_millis,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
                         minimum_bid_amount,
@@ -2037,7 +2043,7 @@ where
                     .context
                     .runtime_footprint()
                     .borrow()
-                    .extract_access_rights(context_entity_hash);
+                    .extract_access_rights();
                 access_rights.extend(&extended_access_rights);
 
                 let named_keys = self
@@ -2050,7 +2056,7 @@ where
                 (named_keys, access_rights)
             }
             EntryPointType::Called | EntryPointType::Factory => {
-                let mut access_rights = footprint.extract_access_rights(entity_hash.value());
+                let mut access_rights = footprint.extract_access_rights();
                 access_rights.extend(&extended_access_rights);
                 let named_keys = footprint.named_keys().clone();
                 (named_keys, access_rights)

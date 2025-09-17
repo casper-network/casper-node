@@ -49,6 +49,7 @@ const ERA_THREE: EraId = EraId::new(3);
 const TEN_SECS: Duration = Duration::from_secs(10);
 const THIRTY_SECS: Duration = Duration::from_secs(30);
 const ONE_MIN: Duration = Duration::from_secs(60);
+const TWO_MIN: Duration = Duration::from_secs(120);
 
 type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
 

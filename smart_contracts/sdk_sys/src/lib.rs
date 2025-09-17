@@ -37,7 +37,7 @@ pub struct EnvInfo {
 }
 
 macro_rules! visit_host_function {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
         $(
             $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)?;
         )*
@@ -49,7 +49,7 @@ extern "C" {
 }
 
 macro_rules! visit_host_function_name {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
         &[
             $(
                 stringify!($name),
@@ -70,7 +70,7 @@ mod tests {
         use crate::for_each_host_function;
 
         macro_rules! visit_host_function {
-            ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+            ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
                 $(
                     #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
                     $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {

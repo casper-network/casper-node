@@ -29,8 +29,8 @@ impl From<CallError> for TokenOwnerError {
 pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support
                          // this in the macro
 
-#[casper]
 #[derive(Debug, Default, PartialEq)]
+#[casper]
 pub enum FallbackHandler {
     /// Accept tokens and do nothing.
     #[default]

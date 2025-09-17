@@ -328,7 +328,7 @@ impl RuntimeFootprint {
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(&self, hash_addr: HashAddr) -> ContextAccessRights {
+    pub fn extract_access_rights(&self) -> ContextAccessRights {
         match self.main_purse {
             Some(purse) => {
                 let urefs_iter = self
@@ -336,14 +336,14 @@ impl RuntimeFootprint {
                     .keys()
                     .filter_map(|key| key.as_uref().copied())
                     .chain(iter::once(purse));
-                ContextAccessRights::new(hash_addr, urefs_iter)
+                ContextAccessRights::new(self.hash_addr(), urefs_iter)
             }
             None => {
                 let urefs_iter = self
                     .named_keys
                     .keys()
                     .filter_map(|key| key.as_uref().copied());
-                ContextAccessRights::new(hash_addr, urefs_iter)
+                ContextAccessRights::new(self.hash_addr(), urefs_iter)
             }
         }
     }

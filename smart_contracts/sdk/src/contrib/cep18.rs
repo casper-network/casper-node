@@ -59,8 +59,6 @@
 //! }
 //! ```
 use bnum::types::U256;
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_contract_macros::CasperABI;
 
 use super::access_control::{AccessControl, AccessControlError, Role};
 #[allow(unused_imports)]
@@ -70,8 +68,8 @@ use crate::{collections::Map, macros::blake2b256, prelude::*};
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the `Error::User` variant or equivalently via the `ApiError::User`
 /// variant.
-#[derive(Debug, PartialEq, Eq, CasperABI, BorshSerialize, BorshDeserialize)]
-#[casper]
+#[derive(Debug, PartialEq, Eq)]
+#[casper(path = crate)]
 pub enum Cep18Error {
     /// CEP-18 contract called from within an invalid context.
     InvalidContext,
@@ -233,7 +231,7 @@ pub trait CEP18 {
         }
         let lookup_key = (owner, spender);
         self.state_mut().allowances.insert(&lookup_key, &amount);
-        casper::emit(Approve {
+        casper::emit_message(Approve {
             owner,
             spender,
             amount,
@@ -280,7 +278,7 @@ pub trait CEP18 {
         // NOTE: This is operation is fallible, although it's not expected to fail under any
         // circumstances (number of topics per contract, payload size, topic size, number of
         // messages etc. are all under control).
-        casper::emit(Transfer {
+        casper::emit_message(Transfer {
             from: Some(sender),
             to: recipient,
             amount,
@@ -322,7 +320,7 @@ pub trait CEP18 {
             .allowances
             .insert(&(owner, spender), &new_spender_allowance);
 
-        casper::emit(Transfer {
+        casper::emit_message(Transfer {
             from: Some(owner),
             to: recipient,
             amount,
@@ -351,7 +349,7 @@ pub trait Mintable: CEP18 + AccessControl {
             .checked_add(amount)
             .ok_or(Cep18Error::Overflow)?;
 
-        casper::emit(Transfer {
+        casper::emit_message(Transfer {
             from: None,
             to: owner,
             amount,

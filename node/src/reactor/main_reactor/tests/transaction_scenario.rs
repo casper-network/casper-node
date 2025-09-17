@@ -29,9 +29,10 @@ async fn should_accept_transfer_without_id() {
     let builder = TestScenarioBuilder::new();
     let mut test_scenario = builder.build(&mut rng).await;
 
-    let transfer_amount = 2_500_000_001_u64; //This should be
-                                             //1 mote more than the native_transfer_minimum_motes in local
-                                             // chainspec that we use for tests
+    //This should be 1 mote more than the native_transfer_minimum_motes in local
+    // chainspec that we use for tests
+    let transfer_amount = 2_500_000_001_u64;
+
     let chain_name = test_scenario.chain_name();
     test_scenario.setup().await.unwrap();
 

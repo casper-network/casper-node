@@ -55,7 +55,7 @@ pub trait Pausable {
     fn pause(&mut self) -> Result<(), PausableError> {
         self.enforce_unpaused()?;
         self.state_mut().paused = true;
-        casper::emit(Paused {
+        casper::emit_message(Paused {
             entity: casper::get_caller(),
         })
         .expect("Emit");
@@ -66,7 +66,7 @@ pub trait Pausable {
     fn unpause(&mut self) -> Result<(), PausableError> {
         self.enforce_paused()?;
         self.state_mut().paused = false;
-        casper::emit(Unpaused {
+        casper::emit_message(Unpaused {
             entity: casper::get_caller(),
         })
         .expect("Emit");

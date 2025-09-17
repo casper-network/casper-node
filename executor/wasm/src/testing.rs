@@ -19,10 +19,11 @@ use casper_storage::{
     AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, Chainspec, ChainspecRegistry, Digest, FeeHandling,
-    GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes,
-    Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, DEFAULT_WASM_MAX_MEMORY, U512,
+    account::AccountHash, AuctionCosts, BlockHash, Chainspec, ChainspecRegistry, Digest,
+    FeeHandling, GenesisAccount, GenesisConfig, GenesisValidator, HostFunctionCostsV2,
+    HostFunctionV2, Key, MessageLimits, MintCosts, Motes, Phase, ProtocolVersion, PublicKey,
+    SecretKey, StorageCosts, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash,
+    WasmConfig, WasmV2Config, DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 use num_rational::Ratio;
 
@@ -35,6 +36,7 @@ use crate::{
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_storage::system::runtime_native::{Config, TransferConfig};
+use casper_types::system::auction::DelegationRate;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use tempfile::TempDir;
@@ -45,6 +47,11 @@ pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
 pub static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
+
+pub static DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| casper_types::ed25519_imputed(&[1; 32]));
+pub static DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| casper_types::ed25519_imputed(&[255; 32]));
 
 pub const TOKEN: u64 = 10u64.pow(9);
 
@@ -166,6 +173,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
     let max_delegators_per_validator = chainspec_config.core_config.max_delegators_per_validator;
     let minimum_bid_amount = chainspec_config.core_config.minimum_bid_amount;
     let minimum_delegation_amount = chainspec_config.core_config.minimum_delegation_amount;
+    let maximum_delegation_amount = chainspec_config.core_config.maximum_delegation_amount;
     let balance_hold_interval = chainspec_config.core_config.gas_hold_interval.millis();
     let include_credits = chainspec_config.core_config.fee_handling == FeeHandling::NoFee;
     let credit_cap = Ratio::new_raw(
@@ -185,6 +193,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         max_delegators_per_validator,
         minimum_bid_amount,
         minimum_delegation_amount,
+        maximum_delegation_amount,
         balance_hold_interval,
         include_credits,
         credit_cap,
@@ -213,6 +222,8 @@ pub fn base_install_request_builder(
 
 pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
     let storage_costs = chainspec_config.storage_costs;
+    let mint_costs = chainspec_config.system_costs_config.mint_costs().clone();
+    let auction_costs = chainspec_config.system_costs_config.auction_costs().clone();
     let v1_config = EngineConfig::from(chainspec_config.clone());
     let execution_engine_v1 = ExecutionEngineV1::new(v1_config);
     let wasm_v2_config = *chainspec_config.wasm_config.v2();
@@ -223,6 +234,9 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
         .with_executor_kind(ExecutorKind::Compiled)
         .with_wasm_config(wasm_v2_config)
         .with_storage_costs(storage_costs)
+        .with_mint_costs(mint_costs)
+        .with_auction_costs(auction_costs)
+        .with_baseline_motes_amount(chainspec_config.core_config.baseline_motes_amount)
         .with_message_limits(message_limits)
         .build()
         .expect("Should build");
@@ -230,11 +244,29 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
 }
 
 pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
-    let default_accounts = vec![GenesisAccount::Account {
+    let acct_1 = GenesisAccount::Account {
         public_key: DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
         balance: Motes::new(U512::from(100 * TOKEN)),
         validator: None,
-    }];
+    };
+
+    let acct_2 = GenesisAccount::Account {
+        public_key: DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.clone(),
+        balance: Motes::new(U512::from(200_000_000 * TOKEN)),
+        validator: Some(GenesisValidator::new(
+            Motes::new(U512::from(100_000_000 * TOKEN)),
+            DelegationRate::MIN,
+        )),
+    };
+
+    let acct_3 = GenesisAccount::Delegator {
+        validator_public_key: DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.clone(),
+        delegator_public_key: DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.clone(),
+        balance: Motes::new(U512::from(100 * TOKEN)),
+        delegated_amount: Motes::new(U512::from(100 * TOKEN)),
+    };
+
+    let default_accounts = vec![acct_1, acct_2, acct_3];
 
     let (global_state, _state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
@@ -287,14 +319,17 @@ pub fn expect_successful_execution(
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
 ) -> ExecuteWithProviderResult {
-    let result =
-        run_wasm_session(executor, global_state, pre_state_hash, execute_request).expect("Succeed");
-
-    if let Some(host_error) = result.host_error {
-        panic!("Host error: {host_error:?}")
+    match run_wasm_session(executor, global_state, pre_state_hash, execute_request) {
+        Ok(result) => {
+            if let Some(host_error) = result.host_error {
+                panic!("Host error: {host_error:?}")
+            }
+            result
+        }
+        Err(err) => {
+            panic!("Provider error: {err:?}")
+        }
     }
-
-    result
 }
 
 pub fn run_wasm_session(
@@ -333,6 +368,9 @@ pub fn call_dummy_host_fn_by_name(
                 env_info: HostFunctionV2::fixed(1),
                 generic_hash: HostFunctionV2::fixed(1),
                 recover_secp256k1: HostFunctionV2::fixed(1),
+                alt_bn128_add: HostFunctionV2::fixed(1),
+                alt_bn128_mul: HostFunctionV2::fixed(1),
+                alt_bn128_pairing: HostFunctionV2::fixed(1),
             },
         );
         let executor_config = ExecutorConfigBuilder::default()
@@ -340,6 +378,9 @@ pub fn call_dummy_host_fn_by_name(
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(wasm_config)
             .with_storage_costs(StorageCosts::default())
+            .with_mint_costs(MintCosts::default())
+            .with_auction_costs(AuctionCosts::default())
+            .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");

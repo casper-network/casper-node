@@ -3,6 +3,7 @@ pub mod sandboxed_execution;
 
 use bytes::Bytes;
 use executor::ExecuteError;
+use serde::Serialize;
 use thiserror::Error;
 
 use casper_executor_wasm_common::{
@@ -10,7 +11,6 @@ use casper_executor_wasm_common::{
     flags::ReturnFlags,
 };
 use casper_types::bytesrepr::Error as BytesreprError;
-use serde::Serialize;
 
 #[cfg(test)]
 pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
@@ -103,8 +103,12 @@ pub enum InternalHostError {
     MessageChecksumMissing,
     #[error("attempted writing in restricted mode")]
     AttemptWriteInRestricted,
+    #[error("missing system contract")]
+    MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
+    #[error("attempt to call a non-existent system option {0}")]
+    InvalidSystemOption(u32),
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
     #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
@@ -117,6 +121,10 @@ pub enum InternalHostError {
     CorruptExecutionState(String),
     #[error("Error when creating config: {0}")]
     ConfigBuilderError(String),
+    #[error("invalid public key")]
+    InvalidPublicKey,
+    #[error("invalid entity address")]
+    InvalidEntityAddr,
     #[error("serialization failure")]
     Serialization,
 }
@@ -261,20 +269,16 @@ pub trait Caller {
     /// Check if an export is present in the module.
     fn has_export(&self, name: &str) -> VMResult<bool>;
 
-    fn memory_read(&self, offset: usize, size: usize) -> VMResult<Vec<u8>> {
-        let mut vec = vec![0; size];
-        self.memory_read_into(offset, &mut vec)?;
-        Ok(vec)
-    }
-    fn memory_read_into(&self, offset: usize, output: &mut [u8]) -> VMResult<()>;
-    fn memory_write(&self, offset: usize, data: &[u8]) -> VMResult<()>;
+    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>>;
+    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()>;
+    fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()>;
     /// Allocates memory inside the Wasm VM by calling an export.
     ///
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32>;
-    /// Returns the amount of gas used.
-    fn gas_consumed(&mut self) -> VMResult<MeteringPoints>;
-    /// Set the amount of gas used.
+    /// Returns the amount of gas remaining.
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints>;
+    /// Check for gas exhaustion, then reduce remaining by amount if able.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
 }
 

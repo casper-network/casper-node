@@ -20,6 +20,7 @@ use crate::{
 };
 
 /// Request to execute a Wasm contract.
+#[derive(Debug)]
 pub struct ExecuteRequest {
     /// Initiator's address.
     pub initiator: AccountHash,
@@ -107,7 +108,7 @@ impl ExecuteRequestBuilder {
 
     /// Set the target for execution.
     #[must_use]
-    pub fn with_target(mut self, target: ExecutionKind) -> Self {
+    pub fn with_execution_kind(mut self, target: ExecutionKind) -> Self {
         self.target = Some(target);
         self
     }
@@ -222,7 +223,7 @@ impl ExecuteRequestBuilder {
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
-        let transferred_value = self.value.ok_or("Value is not set")?;
+        let transferred_value = self.value.unwrap_or_default();
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash is not set")?;
         let address_generator = self
             .address_generator
@@ -357,6 +358,97 @@ impl ExecuteWithProviderResult {
     }
 }
 
+/// Available options for interacting with the system mint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MintMethods {
+    Burn,
+    Transfer,
+    TransferPurse,
+}
+
+/// Available options for interacting with the system auction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuctionMethods {
+    Activate,
+    Bid,
+    Withdraw,
+    Delegate,
+    Undelegate,
+    Redelegate,
+    AddReservation,
+    CancelReservation,
+    ChangePublicKey,
+}
+
+/// Available options for interacting with host-side cryptographic functions. For
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CryptoMethods {
+    AltBn128Add,
+    AltBn128Multiply,
+    AltBn128Pairing,
+}
+
+/// Available options for interacting with the system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SystemMenu {
+    Mint(MintMethods),
+    Auction(AuctionMethods),
+    Crypto(CryptoMethods),
+}
+
+impl TryFrom<u32> for SystemMenu {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(SystemMenu::Mint(MintMethods::Transfer)),
+            1 => Ok(SystemMenu::Mint(MintMethods::TransferPurse)),
+            2 => Ok(SystemMenu::Mint(MintMethods::Burn)),
+            100 => Ok(SystemMenu::Auction(AuctionMethods::Activate)),
+            101 => Ok(SystemMenu::Auction(AuctionMethods::Bid)),
+            102 => Ok(SystemMenu::Auction(AuctionMethods::Withdraw)),
+            103 => Ok(SystemMenu::Auction(AuctionMethods::Delegate)),
+            104 => Ok(SystemMenu::Auction(AuctionMethods::Undelegate)),
+            105 => Ok(SystemMenu::Auction(AuctionMethods::Redelegate)),
+            106 => Ok(SystemMenu::Auction(AuctionMethods::AddReservation)),
+            107 => Ok(SystemMenu::Auction(AuctionMethods::CancelReservation)),
+            108 => Ok(SystemMenu::Auction(AuctionMethods::ChangePublicKey)),
+            200 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Add)),
+            201 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Multiply)),
+            202 => Ok(SystemMenu::Crypto(CryptoMethods::AltBn128Pairing)),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<SystemMenu> for u32 {
+    fn from(value: SystemMenu) -> u32 {
+        match value {
+            SystemMenu::Mint(mint) => match mint {
+                MintMethods::Transfer => 0,
+                MintMethods::TransferPurse => 1,
+                MintMethods::Burn => 2,
+            },
+            SystemMenu::Auction(auction) => match auction {
+                AuctionMethods::Activate => 100,
+                AuctionMethods::Bid => 101,
+                AuctionMethods::Withdraw => 102,
+                AuctionMethods::Delegate => 103,
+                AuctionMethods::Undelegate => 104,
+                AuctionMethods::Redelegate => 105,
+                AuctionMethods::AddReservation => 106,
+                AuctionMethods::CancelReservation => 107,
+                AuctionMethods::ChangePublicKey => 108,
+            },
+            SystemMenu::Crypto(crypto) => match crypto {
+                CryptoMethods::AltBn128Add => 200,
+                CryptoMethods::AltBn128Multiply => 201,
+                CryptoMethods::AltBn128Pairing => 202,
+            },
+        }
+    }
+}
+
 /// Target for Wasm execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
@@ -369,6 +461,18 @@ pub enum ExecutionKind {
         /// Entry point to call.
         entry_point: String,
     },
+    /// Interact with the system.
+    System(SystemMenu),
+}
+
+impl ExecutionKind {
+    /// Returns system menu selection if relevant.
+    pub fn system_menu_selection(&self) -> Option<SystemMenu> {
+        match self {
+            ExecutionKind::SessionBytes(_) | ExecutionKind::Stored { .. } => None,
+            ExecutionKind::System(menu) => Some(menu.clone()),
+        }
+    }
 }
 
 /// Error that can occur during execution, before the Wasm virtual machine is involved.
@@ -399,6 +503,10 @@ pub enum ExecuteError {
     EntityNotFound(Key),
     #[error("No active contract found in smart contract package: {0}")]
     NoActiveContract(Key),
+    #[error("Api error: {0}")]
+    Api(String),
+    #[error("sandboxed system contract call")]
+    SandboxedSystemContractCall,
 }
 
 #[derive(Debug, Error)]

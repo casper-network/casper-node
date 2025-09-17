@@ -32,7 +32,7 @@ use crate::{
                 fixture::TestFixture,
                 initial_stakes::InitialStakes,
                 node_has_lowest_available_block_at_or_below_height, Nodes, ERA_ONE, ERA_THREE,
-                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS,
+                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS, TWO_MIN,
             },
             MainEvent, MainReactor, ReactorState,
         },
@@ -61,7 +61,7 @@ async fn historical_sync_with_era_height_1() {
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
 
     // Wait for all nodes to reach era 3.
-    fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
+    fixture.run_until_consensus_in_era(ERA_THREE, TWO_MIN).await;
 
     // Create a joiner node.
     let secret_key = SecretKey::random(&mut fixture.rng);
