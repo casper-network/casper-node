@@ -1,5 +1,5 @@
 [package]
-name = "vm2-counter-proxy"
+name = "vm2-vm1-wrapper"
 version = "0.1.0"
 edition = "2021"
 
