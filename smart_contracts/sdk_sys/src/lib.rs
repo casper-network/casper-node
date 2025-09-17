@@ -9,8 +9,6 @@ pub struct ReadInfo {
     pub data_ptr: *const u8,
     /// Size in bytes
     pub data_size: usize,
-    /// UID of the stored type
-    pub data_type_uid: u64,
 }
 
 #[repr(C, packed)]
@@ -36,17 +34,6 @@ pub struct EnvInfo {
     pub caller_kind: u32,
     pub callee_addr: [u8; 32],
     pub callee_kind: u32,
-}
-
-#[repr(C, packed)]
-#[derive(Debug)]
-pub struct CallResult {
-    /// Gas limit used for the call.
-    pub call_outcome: u32,
-    /// Pointer to the data as returned from user's callback code.
-    pub data_ptr: u32,
-    /// Size in bytes.
-    pub data_size: u32,
 }
 
 macro_rules! visit_host_function {

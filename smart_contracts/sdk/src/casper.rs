@@ -117,7 +117,6 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let mut info = casper_contract_sdk_sys::ReadInfo {
         data_ptr: ptr::null(),
         data_size: 0,
-        data_type_uid: 0,
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(

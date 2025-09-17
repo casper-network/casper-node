@@ -274,7 +274,6 @@ impl Environment {
                 if let Some(ptr) = ptr {
                     unsafe {
                         (*info).data_size = tagged_value.len();
-                        (*info).data_type_uid = 0; // TODO: derive this
                     }
 
                     unsafe {
