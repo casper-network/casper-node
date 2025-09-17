@@ -30,7 +30,6 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{BlockExecutionResultsOrChunkId, ValueOrChunk},
     utils,
 };
 
@@ -500,10 +499,11 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
         // Explicitly verify the two effects are indeed asking networking and accumulator for peers.
         assert_matches!(
             events[0],
-            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-                count,
+            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                total_count,
+                known_addr_count,
                 ..
-            }) if count == MAX_SIMULTANEOUS_PEERS as usize
+            }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
         );
         assert_matches!(
             events[1],
@@ -783,10 +783,11 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
     // for the block that is being synchronized.
     assert_matches!(
         events[0],
-        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-            count,
+        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+            total_count,
+            known_addr_count,
             ..
-        }) if count == MAX_SIMULTANEOUS_PEERS as usize
+        }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
     );
 
     assert_matches!(
@@ -817,14 +818,17 @@ async fn fwd_sync_gets_peers_only_from_accumulator() {
         &mut rng,
         Event::Request(BlockSynchronizerRequest::NeedNext),
     );
-    assert_eq!(effects.len(), 1);
+    // the count should be 2 bcs the block synchronizer will also ask for 1 known addr in addition
+    // to the normal ask
+    assert_eq!(effects.len(), 2);
     let events = mock_reactor.process_effects(effects).await;
 
     // The first thing the synchronizer should do is get peers.
     // For the forward flow, the synchronizer will ask the accumulator to provide peers
     // from which it has received information for the block that is being synchronized.
+
     assert_matches!(
-        events[0],
+        events[1],
         MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
             block_hash,
             ..
@@ -3353,12 +3357,16 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::Request(BlockSynchronizerRequest::NeedNext),
         );
-        assert_eq!(effects.len(), 1);
+
+        // with the tweaks made on this fork, the count should be 2
+        // bcs the block synchronizer will also ask for 1 known addr in addition
+        // to the normal ask
+        assert_eq!(effects.len(), 2);
 
         // First, the synchronizer should get peers.
         let events = mock_reactor.process_effects(effects).await;
         assert_matches!(
-            events[0],
+            events[1],
             MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
                 block_hash,
                 ..
@@ -4087,7 +4095,6 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
 #[tokio::test]
 async fn historical_sync_latch_should_not_decrement_for_old_execution_results() {
     let rng = &mut TestRng::new();
-    let mock_reactor = MockReactor::new();
     let first_txn = Transaction::random(rng);
     let second_txn = Transaction::random(rng);
     let third_txn = Transaction::random(rng);
@@ -4131,6 +4138,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         .register_block(block.clone(), None)
         .is_ok());
 
+    let mock_reactor = MockReactor::new();
     let _effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
@@ -4159,11 +4167,12 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         BlockExecutionResultsOrChunk::new_mock_value_with_multiple_random_results(
             rng,
             *block.hash(),
-            100000, // Lots of results to achieve chunking.
+            10_000, // Lots of results to achieve chunking.
         );
+
     let checksum = assert_matches!(
         execution_results.value(),
-        ValueOrChunk::ChunkWithProof(chunk) => chunk.proof().root_hash()
+        crate::types::ValueOrChunk::ChunkWithProof(chunk) => chunk.proof().root_hash()
     );
 
     let effects = block_synchronizer.handle_event(
@@ -4249,7 +4258,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
             result: Err(FetcherError::Absent {
-                id: Box::new(BlockExecutionResultsOrChunkId::new(*block.hash())),
+                id: Box::new(crate::types::BlockExecutionResultsOrChunkId::new(
+                    *block.hash(),
+                )),
                 peer: peers[0],
             }),
         },

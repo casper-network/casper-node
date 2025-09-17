@@ -263,3 +263,32 @@ impl CasperABI for CallError {
         }
     }
 }
+
+#[repr(u32)]
+pub enum CryptoFunctionOption {
+    AltBn128Add = 200,
+    AltBn128Multiply = 201,
+    AltBn128Pairing = 202,
+}
+
+impl From<CryptoFunctionOption> for u32 {
+    fn from(value: CryptoFunctionOption) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for CryptoFunctionOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value == 200 {
+            Ok(CryptoFunctionOption::AltBn128Add)
+        } else if value == 201 {
+            Ok(CryptoFunctionOption::AltBn128Multiply)
+        } else if value == 202 {
+            Ok(CryptoFunctionOption::AltBn128Pairing)
+        } else {
+            Err(())
+        }
+    }
+}

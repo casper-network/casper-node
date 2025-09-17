@@ -13,7 +13,7 @@ VM2_LIBS=(
   "vm2-flipper"
   "vm2-upgradable"
   "vm2-upgradable-v2"
-  "vm2-counter-proxy"
+  "vm2-vm1-wrapper"
   "vm2-host"
   "vm2-escrow"
   "vm2-named-args"

@@ -74,7 +74,7 @@ fn harness() {
 
     let address_generator = make_address_generator();
 
-    let flipper_address;
+    let cep18_address;
 
     state_root_hash = {
         let input_data = borsh::to_vec(&("Foo Token".to_string(),))
@@ -97,7 +97,7 @@ fn harness() {
             install_request,
         );
 
-        flipper_address = *create_result.smart_contract_addr();
+        cep18_address = *create_result.smart_contract_addr();
 
         global_state
             .commit_effects(state_root_hash, create_result.effects().clone())
@@ -111,7 +111,7 @@ fn harness() {
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
-        .with_serialized_input((flipper_address,))
+        .with_serialized_input((cep18_address,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(address_generator)
         .with_block_time(Timestamp::now().into())
@@ -599,6 +599,202 @@ fn cep18() {
 }
 
 #[test]
+fn counter() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("default".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        create_request,
+    );
+
+    let contract_hash = EntityAddr::SmartContract(*create_result.smart_contract_addr());
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    match global_state.query(query_request) {
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            panic!("query failed");
+        }
+        QueryResult::Success { value, .. } => {
+            if let StoredValue::CLValue(cl_value) = *value {
+                let counter: (u32,) =
+                    borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
+                assert_eq!(counter.0, 0u32, "should be 0");
+            } else {
+                println!("{:?}", value);
+                panic!("wrong stored value variant");
+            }
+        }
+    }
+
+    let block_time_2 = (block_time_1.value() + 1).into();
+    assert_ne!(block_time_1, block_time_2);
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "increment".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(block_time_2)
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([1; 32])))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result_2 = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(result_2.host_error.is_none(), "increment should work");
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, result_2.effects().clone())
+        .expect("Should commit");
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "get".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(block_time_2)
+        .with_state_hash(state_root_hash)
+        .with_block_height(3)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([2; 32])))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result_get = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    match result_get.output() {
+        Some(bytes) => {
+            let count: u32 = borsh::from_slice(bytes).expect("should deserialize");
+            assert_eq!(count, 1u32, "get should return the current count of 1");
+        }
+        None => panic!("get should have output"),
+    }
+
+    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    match global_state.query(query_request) {
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            panic!("query failed");
+        }
+        QueryResult::Success { value, .. } => {
+            if let StoredValue::CLValue(cl_value) = *value {
+                let counter: (u32,) =
+                    borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
+                assert_eq!(counter.0, 1u32, "should be 1");
+            } else {
+                println!("{:?}", value);
+                panic!("wrong stored value variant");
+            }
+        }
+    }
+
+    let block_time_3 = (block_time_2.value() + 1).into();
+    assert_ne!(block_time_2, block_time_3);
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "decrement".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(block_time_3)
+        .with_state_hash(state_root_hash)
+        .with_block_height(3)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([2; 32])))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result_3 = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    assert!(result_3.host_error.is_none(), "decrement should work");
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, result_3.effects().clone())
+        .expect("Should commit");
+
+    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    match global_state.query(query_request) {
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            panic!("query failed");
+        }
+        QueryResult::Success { value, .. } => {
+            if let StoredValue::CLValue(cl_value) = *value {
+                let counter: (u32,) =
+                    borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
+                assert_eq!(counter.0, 0u32, "should be 0");
+            } else {
+                println!("{:?}", value);
+                panic!("wrong stored value variant");
+            }
+        }
+    }
+}
+
+#[test]
 fn traits() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
@@ -875,37 +1071,12 @@ fn backwards_compatibility() {
     let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
-    // Calling v1 vm directly by hash is not currently supported (i.e. disabling vm1 runtime, and
-    // allowing vm1 direct calls may circumvent chainspec setting) let execute_request =
-    // base_execute_builder()     .with_target(ExecutionKind::Stored {
-    //         address: *counter_hash,
-    //         entry_point: "counter_get".to_string(),
-    //     })
-    //     .with_input(runtime_args.into())
-    //     .with_gas_limit(DEFAULT_GAS_LIMIT)
-    //     .with_transferred_value(0)
-    //     .with_shared_address_generator(Arc::clone(&address_generator))
-    //     .with_state_hash(state_root_hash)
-    //     .with_block_height(1)
-    //     .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
-    //     .build()
-    //     .expect("should build");
-    // let res = run_wasm_session(
-    //     &mut executor,
-    //     &mut global_state,
-    //     state_root_hash,
-    //     execute_request,
-    // );
-    // state_root_hash = global_state
-    //     .commit_effects(state_root_hash, res.effects().clone())
-    //     .expect("Should commit");
-
     //
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_counter_proxy.wasm"))
+        .with_wasm_bytes(read_wasm("vm2_vm1_wrapper.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
