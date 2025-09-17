@@ -31,6 +31,8 @@ pub enum HostResult {
     MaxMessagesPerBlockExceeded = 8,
     /// Internal error (for example, failed to acquire a lock)
     Internal = 9,
+    /// Error related to CLValues
+    CLValue = 10,
     /// An error code not covered by the other variants.
     Other(u32),
 }
@@ -45,6 +47,7 @@ pub const HOST_ERROR_PAYLOAD_TOO_LONG: u32 = 6;
 pub const HOST_ERROR_MESSAGE_TOPIC_FULL: u32 = 7;
 pub const HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED: u32 = 8;
 pub const HOST_ERROR_INTERNAL: u32 = 9;
+pub const HOST_ERROR_CL_VALUE: u32 = 10;
 
 impl From<u32> for HostResult {
     fn from(value: u32) -> Self {
@@ -59,6 +62,7 @@ impl From<u32> for HostResult {
             HOST_ERROR_MESSAGE_TOPIC_FULL => Self::MessageTopicFull,
             HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED => Self::MaxMessagesPerBlockExceeded,
             HOST_ERROR_INTERNAL => Self::Internal,
+            HOST_ERROR_CL_VALUE => Self::CLValue,
             other => Self::Other(other),
         }
     }

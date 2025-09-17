@@ -683,13 +683,12 @@ impl ExecutorV2 {
                                     // TODO: consult w/ Michal re: charge timing
                                     let gas_usage = GasUsage::new(gas_limit, gas_limit);
 
-                                    println!("{:?}", entity_addr);
-
                                     let runtime_footprint = match tracking_copy
                                         .runtime_footprint_by_entity_addr(entity_addr)
                                     {
                                         Ok(footprint) => footprint,
                                         Err(_) => {
+                                            println!("1");
                                             return Err(ExecuteError::EntityNotFound(caller_key));
                                         }
                                     };

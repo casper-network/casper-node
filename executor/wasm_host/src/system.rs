@@ -276,6 +276,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     } else if let Key::AddressableEntity(entity_addr) = caller_key {
         (caller_key, entity_addr)
     } else {
+        println!("4");
         return Err(ExecuteError::EntityNotFound(caller_key));
     };
 

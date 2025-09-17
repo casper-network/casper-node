@@ -2144,6 +2144,26 @@ where
                     ByteCode::new(ByteCodeKind::V1CasperWasm, wasm.take_bytes())
                 }
                 Some(StoredValue::ByteCode(byte_code)) => byte_code,
+                Some(StoredValue::CLValue(key_as_cl_value)) => {
+                    let byte_code_key =
+                        key_as_cl_value.to_t::<Key>().map_err(ExecError::CLValue)?;
+                    if let Key::ByteCode(_) = byte_code_key {
+                        match self.context.read_gs(&byte_code_key)? {
+                            Some(StoredValue::ByteCode(byte_code)) => match byte_code.kind() {
+                                ByteCodeKind::Empty | ByteCodeKind::V1CasperWasm => byte_code,
+                                ByteCodeKind::V2CasperWasm => {
+                                    return Err(ExecError::IncompatibleRuntime(
+                                        ContractRuntimeTag::VmCasperV2,
+                                    ))
+                                }
+                            },
+                            Some(_) => return Err(ExecError::UnexpectedStoredValueVariant),
+                            None => return Err(ExecError::KeyNotFound(byte_code_key)),
+                        }
+                    } else {
+                        return Err(ExecError::UnexpectedKeyVariant(byte_code_key));
+                    }
+                }
                 Some(_) => {
                     return Err(ExecError::InvalidByteCode(ByteCodeHash::new(
                         byte_code_addr,

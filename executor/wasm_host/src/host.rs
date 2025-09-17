@@ -34,11 +34,10 @@ use casper_types::{
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasm,
-    ContractWasmHash, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess,
-    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, HashAddr, HashAlgorithm,
-    HostFunctionV2, Key, NamedKeys, Package, PackageHash, ProtocolVersion, Signature, StoredValue,
-    URef,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash,
+    Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr,
+    EntryPointPayment, EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2,
+    Key, NamedKeys, Package, PackageHash, ProtocolVersion, Signature, StoredValue, URef,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -54,8 +53,9 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
-use casper_executor_wasm_common::chain_utils::{
-    compute_next_contract_hash_version, compute_wasm_bytecode_hash,
+use casper_executor_wasm_common::{
+    chain_utils::{compute_next_contract_hash_version, compute_wasm_bytecode_hash},
+    error::HOST_ERROR_CL_VALUE,
 };
 use casper_executor_wasm_interface::executor::{
     AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
@@ -839,7 +839,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     result_ptr: u32,
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
-    println!("in create");
     if caller.context().sandboxed {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
@@ -983,10 +982,16 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     // 2. Store wasm
     if !ae_enabled {
+        let byte_code_key = Key::byte_code_key(ByteCodeAddr::V2CasperWasm(bytecode_hash));
+        let byte_code_key_as_cl_value = match CLValue::from_t(byte_code_key) {
+            Ok(cl_value) => cl_value,
+            Err(_) => return Ok(HOST_ERROR_CL_VALUE),
+        };
+
         metered_write(
             &mut caller,
             Key::Hash(bytecode_hash),
-            StoredValue::ContractWasm(ContractWasm::new(bytecode.clone().take_bytes())),
+            StoredValue::CLValue(byte_code_key_as_cl_value),
         )?
     };
 
