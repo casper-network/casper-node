@@ -1264,7 +1264,7 @@ fn casper_return_writes_to_execution_journal() {
     }
 
     // Verify the key is the contract address
-    let expected_key = Key::SmartContract(contract_address);
+    let expected_key = Key::Package(contract_address);
     assert_eq!(
         ret_transform.key(),
         &expected_key,

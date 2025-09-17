@@ -468,13 +468,13 @@ where
         );
 
         self.tracking_copy.write(
-            Key::SmartContract(entity.package_hash().value()),
+            Key::Package(entity.package_hash().value()),
             StoredValue::SmartContract(package),
         );
 
         if must_carry_forward {
             // carry forward
-            let package_key = Key::SmartContract(entity.package_hash().value());
+            let package_key = Key::Package(entity.package_hash().value());
             let uref = URef::default();
             let indirection = CLValue::from_t((package_key, uref))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
@@ -512,7 +512,7 @@ where
         debug!(%system_contract_type, "retrieve system package");
         if let Some(StoredValue::SmartContract(system_entity)) = self
             .tracking_copy
-            .read(&Key::SmartContract(package_hash.value()))
+            .read(&Key::Package(package_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     system_contract_type.to_string(),

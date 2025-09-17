@@ -263,7 +263,7 @@ impl ExecutorV2 {
         );
 
         tracking_copy.write(
-            Key::SmartContract(smart_contract_addr),
+            Key::Package(smart_contract_addr),
             StoredValue::SmartContract(smart_contract),
         );
 
@@ -511,7 +511,7 @@ impl ExecutorV2 {
                 entry_point,
             } = &execution_kind
             {
-                let smart_contract_key = Key::SmartContract(*smart_contract_addr);
+                let smart_contract_key = Key::Package(*smart_contract_addr);
                 let vm1_key = Key::Hash(*smart_contract_addr);
 
                 let mut contract = tracking_copy
@@ -720,7 +720,7 @@ impl ExecutorV2 {
             ExecutionKind::Stored {
                 address: smart_contract_addr,
                 ..
-            } => Key::SmartContract(*smart_contract_addr),
+            } => Key::Package(*smart_contract_addr),
             ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
             ExecutionKind::System(_) => {
                 error!("System executions are not called in this way. This should be unreachable.");

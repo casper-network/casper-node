@@ -1036,9 +1036,7 @@ impl reactor::Reactor for Reactor {
                     request: query_request,
                     responder,
                 } => {
-                    let query_result = if let Key::Hash(_) | Key::SmartContract(_) =
-                        query_request.key()
-                    {
+                    let query_result = if let Key::Hash(_) | Key::Package(_) = query_request.key() {
                         match &self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContractPackage(
                                 ContractPackageScenario::MissingPackageAtHash,

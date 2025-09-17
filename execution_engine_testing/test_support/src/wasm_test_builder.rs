@@ -1631,7 +1631,7 @@ where
     /// Queries for a contract package by `PackageHash`.
     pub fn get_package(&self, package_hash: PackageHash) -> Option<Package> {
         let key = if self.chainspec.core_config.enable_addressable_entity {
-            Key::SmartContract(package_hash.value())
+            Key::Package(package_hash.value())
         } else {
             Key::Hash(package_hash.value())
         };

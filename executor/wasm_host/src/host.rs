@@ -639,9 +639,7 @@ fn context_to_entity_addr<S: GlobalStateReader, E: Executor>(
 ) -> EntityAddr {
     match context.callee {
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
-        Key::SmartContract(smart_contract_addr) => {
-            EntityAddr::new_smart_contract(smart_contract_addr)
-        }
+        Key::Package(smart_contract_addr) => EntityAddr::new_smart_contract(smart_contract_addr),
         _ => {
             // This should never happen, as the caller is always an account or a smart contract.
             panic!("Unexpected callee variant: {:?}", context.callee)
@@ -848,7 +846,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     if caller
         .context_mut()
         .tracking_copy
-        .read(&Key::SmartContract(smart_contract_addr))
+        .read(&Key::Package(smart_contract_addr))
         .map_err(|_| VMError::Internal(InternalHostError::TrackingCopy))?
         .is_some()
     {
@@ -857,7 +855,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     metered_write(
         &mut caller,
-        Key::SmartContract(smart_contract_addr),
+        Key::Package(smart_contract_addr),
         StoredValue::SmartContract(smart_contract_package),
     )?;
 
@@ -1324,7 +1322,7 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 error!("Error when converting hash_bytes from vec to static array");
                 ExecuteError::InternalHost(InternalHostError::TypeConversion)
             })?;
-            let smart_contract_key = Key::SmartContract(hash_bytes);
+            let smart_contract_key = Key::Package(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
@@ -1468,7 +1466,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             error!("Account upgrade is not possible");
             return Ok(CALLEE_NOT_CALLABLE);
         }
-        addressable_entity_key @ Key::SmartContract(smart_contract_addr) => {
+        addressable_entity_key @ Key::Package(smart_contract_addr) => {
             let smart_contract_key = addressable_entity_key;
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
@@ -1638,17 +1636,13 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
 
     let (caller_kind, caller_addr) = match &caller.context().caller {
         Key::Account(account_hash) => (EntityKindTag::Account as u32, account_hash.value()),
-        Key::SmartContract(smart_contract_addr) => {
-            (EntityKindTag::Contract as u32, *smart_contract_addr)
-        }
+        Key::Package(smart_contract_addr) => (EntityKindTag::Contract as u32, *smart_contract_addr),
         other => panic!("Unexpected caller: {other:?}"),
     };
 
     let (callee_kind, callee_addr) = match &caller.context().callee {
         Key::Account(initiator_addr) => (EntityKindTag::Account as u32, initiator_addr.value()),
-        Key::SmartContract(smart_contract_addr) => {
-            (EntityKindTag::Contract as u32, *smart_contract_addr)
-        }
+        Key::Package(smart_contract_addr) => (EntityKindTag::Contract as u32, *smart_contract_addr),
         other => panic!("Unexpected callee: {other:?}"),
     };
 

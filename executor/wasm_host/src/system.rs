@@ -265,7 +265,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
         (caller_key, EntityAddr::Account(account_hash.value()))
     } else if let Key::Hash(contract_hash_addr) = caller_key {
         (caller_key, EntityAddr::SmartContract(contract_hash_addr))
-    } else if let Key::SmartContract(package_addr) = caller_key {
+    } else if let Key::Package(package_addr) = caller_key {
         match tracking_copy.get_package(package_addr) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),

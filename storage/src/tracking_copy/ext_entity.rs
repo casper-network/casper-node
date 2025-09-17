@@ -884,7 +884,7 @@ where
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
         }
 
-        let package_key = Key::SmartContract(
+        let package_key = Key::Package(
             legacy_package_key
                 .into_hash_addr()
                 .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,

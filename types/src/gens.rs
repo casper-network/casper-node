@@ -188,7 +188,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         bid_addr_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Unbond),
-        u8_slice_32().prop_map(Key::SmartContract),
+        u8_slice_32().prop_map(Key::Package),
         byte_code_addr_arb().prop_map(Key::ByteCode),
         entity_addr_arb().prop_map(Key::AddressableEntity),
         block_global_addr_arb().prop_map(Key::BlockGlobal),
