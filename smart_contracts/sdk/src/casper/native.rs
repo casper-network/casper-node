@@ -273,6 +273,7 @@ impl Environment {
 
                 if let Some(ptr) = ptr {
                     unsafe {
+                        (*info).data_ptr = ptr.as_ptr();
                         (*info).data_size = tagged_value.len();
                     }
 
