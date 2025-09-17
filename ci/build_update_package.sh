@@ -17,12 +17,18 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 LATEST_DIR="$ROOT_DIR/target/latest"
-GENESIS_FILES_DIR="$ROOT_DIR/resources/production"
+GENESIS_FILES_DIR="$ROOT_DIR/resources"
+PRODUCTION_GENESIS_FILES_DIR="$GENESIS_FILES_DIR/production"
+MAIN_GENESIS_FILES_DIR="$GENESIS_FILES_DIR/mainnet"
+TEST_GENESIS_FILES_DIR="$GENESIS_FILES_DIR/testnet"
+INT_GENESIS_FILES_DIR="$GENESIS_FILES_DIR/integration-test"
+DEV_GENESIS_FILES_DIR="$GENESIS_FILES_DIR/dev-net"
 NODE_BUILD_TARGET="$ROOT_DIR/target/release/casper-node"
 NODE_BUILD_DIR="$ROOT_DIR/node"
 UPGRADE_DIR="$ROOT_DIR/target/upgrade_build/"
 BIN_DIR="$UPGRADE_DIR/bin"
 CONFIG_DIR="$UPGRADE_DIR/config"
+
 GIT_HASH=$(git rev-parse HEAD)
 BRANCH_NAME=$(git branch --show-current)
 PROTOCOL_VERSION=$(cat "$GENESIS_FILES_DIR/chainspec.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['protocol']['version'].replace('.','_'))")
@@ -47,7 +53,7 @@ echo "Generating bin README.md"
 mkdir -p "$BIN_DIR"
 readme="$BIN_DIR/README.md"
 {
-  echo "Build for Ubuntu 20.04."
+  echo "Build for Ubuntu 22.04."
   echo ""
   echo "To run on other platforms, build from https://github.com/casper-network/casper-node"
   echo " cd node"
@@ -67,12 +73,52 @@ rm -rf "$BIN_DIR"
 
 echo "Packaging config.tar.gz"
 mkdir -p "$CONFIG_DIR"
-cp "$GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
-cp "$GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
-cp "$GENESIS_FILES_DIR/accounts.toml" "$CONFIG_DIR"
+cp "$PRODUCTION_GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
+cp "$PRODUCTION_GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
+cp "$PRODUCTION_GENESIS_FILES_DIR/accounts.toml" "$CONFIG_DIR"
 # To get no path in tar, need to cd in.
 cd "$CONFIG_DIR" || exit
 tar -czvf "../config.tar.gz" .
+cd ..
+rm -rf "$CONFIG_DIR"
+
+echo "Packaging config-main.tar.gz"
+mkdir -p "$CONFIG_DIR"
+cp "$MAIN_GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
+cp "$MAIN_GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
+# To get no path in tar, need to cd in.
+cd "$CONFIG_DIR" || exit
+tar -czvf "../config-main.tar.gz" .
+cd ..
+rm -rf "$CONFIG_DIR"
+
+echo "Packaging config-test.tar.gz"
+mkdir -p "$CONFIG_DIR"
+cp "$TEST_GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
+cp "$TEST_GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
+# To get no path in tar, need to cd in.
+cd "$CONFIG_DIR" || exit
+tar -czvf "../config-test.tar.gz" .
+cd ..
+rm -rf "$CONFIG_DIR"
+
+echo "Packaging config-int.tar.gz"
+mkdir -p "$CONFIG_DIR"
+cp "$INT_GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
+cp "$INT_GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
+# To get no path in tar, need to cd in.
+cd "$CONFIG_DIR" || exit
+tar -czvf "../config-int.tar.gz" .
+cd ..
+rm -rf "$CONFIG_DIR"
+
+echo "Packaging config-dev.tar.gz"
+mkdir -p "$DEV_CONFIG_DIR"
+cp "$DEV_GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
+cp "$DEV_GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
+# To get no path in tar, need to cd in.
+cd "$CONFIG_DIR" || exit
+tar -czvf "../config-dev.tar.gz" .
 cd ..
 rm -rf "$CONFIG_DIR"
 
