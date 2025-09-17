@@ -23,4 +23,3 @@ serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 hex = "0.4"
-safe-transmute = "0.11"
