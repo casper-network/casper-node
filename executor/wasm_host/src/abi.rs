@@ -3,6 +3,7 @@ use borsh::BorshSerialize;
 #[derive(Copy, Clone, Debug, PartialEq, BorshSerialize)]
 #[repr(C)]
 pub(crate) struct ReadInfo {
+    /// Allocated pointer.
     pub(crate) data_ptr: u32,
     /// Size in bytes.
     pub(crate) data_size: u32,
