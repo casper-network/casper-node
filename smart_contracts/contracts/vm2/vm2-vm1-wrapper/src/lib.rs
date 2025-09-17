@@ -4,10 +4,10 @@
 use casper_contract_macros::{casper, PanicOnDefault};
 use casper_contract_sdk::{casper, log, types::Address};
 
-/// This contract implements a simple Vm1CounterProxy.
+/// This contract implements a simple Vm1Wrapper.
 #[derive(PanicOnDefault)]
 #[casper(contract_state)]
-pub struct Vm1CounterProxy {
+pub struct Vm1Wrapper {
     /// Address of the VM1 counter contract.
     contract_address: Address,
 }
@@ -16,7 +16,7 @@ const EMPTY_RUNTIME_ARGS: [u8; 4] = 0u32.to_le_bytes();
 const CL_VALUE_UNIT_BYTES: [u8; 5] = [0, 0, 0, 0, 9];
 
 #[casper]
-impl Vm1CounterProxy {
+impl Vm1Wrapper {
     #[casper(constructor)]
     pub fn new(contract_address: Address) -> Self {
         Self { contract_address }
