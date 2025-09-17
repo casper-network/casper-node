@@ -159,16 +159,9 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
     type Context = Context<S, E>;
 
-    fn memory_write(&self, offset: usize, data: &[u8]) -> VMResult<()> {
-        self.with_memory(|mem| {
-            mem.write(
-                offset
-                    .try_into()
-                    .map_err(|_| wasmer::MemoryAccessError::Overflow)?,
-                data,
-            )
-        })?
-        .map_err(from_wasmer_memory_access_error)
+    fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.write(offset.into(), data))?
+            .map_err(from_wasmer_memory_access_error)
     }
 
     fn context(&self) -> &Context<S, E> {
@@ -188,23 +181,9 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             .map_err(from_wasmer_memory_access_error)
     }
 
-    fn bytecode(&self) -> Bytes {
-        self.env.data().bytecode.clone()
-    }
-
-    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
-        self.with_memory(|mem| mem.copy_range_to_vec(offset as u64..size as u64 + offset as u64))?
+    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.read(offset.into(), output))?
             .map_err(from_wasmer_memory_access_error)
-    }
-
-    fn memory_read_into(&self, offset: usize, output: &mut [u8]) -> VMResult<()> {
-        self.with_memory(|mem| {
-            mem.read(
-                offset.into(),
-                output,
-            )
-        })?
-        .map_err(from_wasmer_memory_access_error)
     }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {

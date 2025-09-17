@@ -44,7 +44,7 @@ use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
 
 use crate::{
-    abi::{CreateResult, ReadInfo},
+    abi::{CreateResult, EnvInfo, ReadInfo},
     context::Context,
     system,
 };

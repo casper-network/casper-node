@@ -26,6 +26,5 @@ either = "1.15"
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 parking_lot = "0.12"
-borsh = { version = "1.5", features = ["derive"] }
 thiserror = "2"
 tracing = "0.1"
