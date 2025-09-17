@@ -6,10 +6,6 @@ pub(crate) struct ReadInfo {
     pub(crate) data_ptr: u32,
     /// Size in bytes.
     pub(crate) data_size: u32,
-    /// Type UID of the data.
-    ///
-    /// This is a 64-bit unsigned integer that represents the type of the data.
-    pub(crate) data_type_uid: u64,
 }
 
 #[cfg(test)]
@@ -29,24 +25,6 @@ const _: () = assert!(
 
 #[cfg(test)]
 unsafe impl safe_transmute::TriviallyTransmutable for CreateResult {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, BorshSerialize)]
-pub(crate) struct CallResult {
-    /// Result of the call.
-    pub(crate) call_outcome: u32,
-    /// Pointer to the data as returned from user's callback code.
-    pub(crate) data_ptr: u32,
-    /// */ Size in bytes.
-    pub(crate) data_size: u32,
-    /// Type UID of the data.
-    ///
-    /// This is a 64-bit unsigned integer that represents the type of the data.
-    pub(crate) data_type: u64,
-}
-
-#[cfg(test)]
-unsafe impl safe_transmute::TriviallyTransmutable for CallResult {}
 
 #[derive(Clone, Copy, BorshSerialize, Debug, PartialEq)]
 #[repr(C)]
@@ -91,7 +69,6 @@ mod tests {
         let read_info = ReadInfo {
             data_ptr: 42,
             data_size: 100,
-            data_type_uid: 12345678901234567890,
         };
 
         let transmuted_bytes = safe_transmute::transmute_one_to_bytes(&read_info);

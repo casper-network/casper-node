@@ -47,10 +47,6 @@ pub struct CallResult {
     pub data_ptr: u32,
     /// Size in bytes.
     pub data_size: u32,
-    /// Type UID of the data.
-    ///
-    /// This is a 64-bit unsigned integer that represents the type of the data.
-    pub data_type: u64,
 }
 
 macro_rules! visit_host_function {

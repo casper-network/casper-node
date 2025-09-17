@@ -559,7 +559,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let read_info = ReadInfo {
         data_ptr: out_ptr,
         data_size: global_state_raw_bytes.len().try_into_wrapped()?,
-        data_type_uid: 0, // TODO: figure out a way to derive this
     };
 
     let read_info_bytes = borsh::to_vec(&read_info)
