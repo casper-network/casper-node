@@ -7330,16 +7330,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vm2-counter-proxy"
-version = "0.1.0"
-dependencies = [
- "casper-contract-macros",
- "casper-contract-sdk",
- "casper-contract-sdk-codegen",
- "serde_json",
-]
-
-[[package]]
 name = "vm2-escrow"
 version = "0.1.0"
 dependencies = [
@@ -7421,6 +7411,16 @@ version = "0.1.0"
 dependencies = [
  "casper-contract-macros",
  "casper-contract-sdk",
+]
+
+[[package]]
+name = "vm2-vm1-wrapper"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-macros",
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
+ "serde_json",
 ]
 
 [[package]]

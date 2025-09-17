@@ -875,37 +875,12 @@ fn backwards_compatibility() {
     let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
-    // Calling v1 vm directly by hash is not currently supported (i.e. disabling vm1 runtime, and
-    // allowing vm1 direct calls may circumvent chainspec setting) let execute_request =
-    // base_execute_builder()     .with_target(ExecutionKind::Stored {
-    //         address: *counter_hash,
-    //         entry_point: "counter_get".to_string(),
-    //     })
-    //     .with_input(runtime_args.into())
-    //     .with_gas_limit(DEFAULT_GAS_LIMIT)
-    //     .with_transferred_value(0)
-    //     .with_shared_address_generator(Arc::clone(&address_generator))
-    //     .with_state_hash(state_root_hash)
-    //     .with_block_height(1)
-    //     .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
-    //     .build()
-    //     .expect("should build");
-    // let res = run_wasm_session(
-    //     &mut executor,
-    //     &mut global_state,
-    //     state_root_hash,
-    //     execute_request,
-    // );
-    // state_root_hash = global_state
-    //     .commit_effects(state_root_hash, res.effects().clone())
-    //     .expect("Should commit");
-
     //
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_counter_proxy.wasm"))
+        .with_wasm_bytes(read_wasm("vm2_vm1_wrapper.wasm"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
