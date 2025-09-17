@@ -226,7 +226,15 @@ pub mod execution_engine_testing_test_support {
 pub mod node {
     use super::*;
 
+    pub static CHAINSPEC_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?m)(^version = )'([^']+)"#).unwrap());
+
+    fn chainspec_toml_replacement(updated_version: &str) -> String {
+        format!(r#"$1'{}"#, updated_version)
+    }
+
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+
         vec![
             DependentFile::new(
                 "node/Cargo.toml",
@@ -240,6 +248,36 @@ pub mod node {
                 )
                 .unwrap(),
                 replacement_with_slash,
+            ),
+            DependentFile::new(
+                "resources/local/chainspec.toml.in",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/production/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/mainnet/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/testnet/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/integration-test/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/dev-net/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
             ),
         ]
     });
