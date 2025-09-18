@@ -48,6 +48,7 @@ use casper_types::{
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
     BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
+    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use fs_extra::dir;
 use itertools::Itertools;

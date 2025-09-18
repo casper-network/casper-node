@@ -17,7 +17,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-const V2_MAIN_PURSE_ENTRY: &str = "__v2_main_purse";
+pub const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__main_purse";
 
 /// Runtime Address.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,7 +200,7 @@ impl RuntimeFootprint {
 
         let main_purse = {
             match named_keys
-                .remove(V2_MAIN_PURSE_ENTRY)
+                .remove(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
                 .map(|key| key.into_uref())
             {
                 Some(Some(uref)) => Some(uref),

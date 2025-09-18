@@ -64,7 +64,7 @@ use casper_types::contracts::{ContractHash, ContractPackage, ContractPackageHash
 use keccak_asm::Digest as KeccakDigest;
 use sha2::Sha256;
 
-const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__v2_main_purse";
+const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__main_purse";
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
 enum EntityKindTag {

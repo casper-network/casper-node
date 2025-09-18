@@ -47,7 +47,7 @@ use casper_types::{
     EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
     MessageLimits, MintCosts, Package, PackageHash, PackageStatus, Parameters, Phase,
     ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
-    WasmV2Config,
+    WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -61,8 +61,6 @@ pub mod testing;
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
-
-const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__main_purse";
 
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutorKind {
