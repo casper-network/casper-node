@@ -234,7 +234,6 @@ pub mod node {
     }
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-
         vec![
             DependentFile::new(
                 "node/Cargo.toml",
