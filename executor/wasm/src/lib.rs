@@ -62,7 +62,7 @@ const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
 
-const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__v2_main_purse";
+const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__main_purse";
 
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutorKind {
@@ -688,14 +688,13 @@ impl ExecutorV2 {
                                     {
                                         Ok(footprint) => footprint,
                                         Err(_) => {
-                                            println!("1");
                                             return Err(ExecuteError::EntityNotFound(caller_key));
                                         }
                                     };
 
                                     let main_purse = contract
                                         .named_keys()
-                                        .get("__v2_main_purse")
+                                        .get(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
                                         .ok_or(ExecuteError::MainPurseNotFound(vm1_key))?
                                         .into_uref()
                                         .ok_or(ExecuteError::InvalidKeyForPurse(vm1_key))?;
@@ -742,7 +741,6 @@ impl ExecutorV2 {
                                         "Dispatch error while transferring value to the contract's purse",
                                     );
 
-                                            println!("{:?}", error);
                                             return Err(ExecuteError::InternalHost(
                                                 InternalHostError::DispatchSystemContract,
                                             ));

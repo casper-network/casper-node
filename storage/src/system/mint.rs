@@ -244,7 +244,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
         let addr = match self.get_main_purse() {
             None => {
-                println!("foo");
                 return Err(Error::InvalidURef);
             }
             Some(uref) => uref.addr(),
