@@ -1,5 +1,5 @@
 ---
-name: trigger-devnet-upgrade.yml
+name: trigger-devnet-upgrade
 permissions:
   contents: read
   id-token: write
@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Get script without checkout for use on any repo
+      - name: Get script
+        run: |
+          curl -JLO https://raw.githubusercontent.com/casper-network/casper-node/refs/heads/dev/ci/dev_net_protocol_generate.sh
+          chmod +x dev_net_protocol_generate.sh
+
       # Assign AWS PROD role to get access to production cloudfronts and S3 buckets
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -21,7 +27,7 @@ jobs:
           aws-region: ${{ secrets.AWS_ACCESS_REGION_GENESIS }}
 
       - name: Build protocol update
-        run: ./ci/dev_net_protocol_generate.sh
+        run: ./dev_net_protocol_generate.sh
 
       - name: Upload artifacts to S3
         run: aws s3 sync ./target/genesis/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/dev-net/
