@@ -79,7 +79,7 @@ mod tests {
                 $(
                     #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
                     $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
-                        todo!("Called fn {}", stringify!($name));
+                        unreachable!("Called fn {}", stringify!($name));
                     }
                 )*
             }

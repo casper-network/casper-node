@@ -21,7 +21,7 @@ use casper_executor_wasm_interface::{
     executor::{
         CryptoMethods, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
     },
-    u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
+    u32_from_host_result, Caller, FatalHostError, VMError, VMResult,
 };
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
@@ -41,7 +41,7 @@ use casper_types::{
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     abi::{CreateResult, EnvInfo, ReadInfo},
@@ -73,7 +73,7 @@ where
     To: TryFrom<From>,
 {
     fn wrapped_try_into(self) -> VMResult<To> {
-        To::try_from(self).map_err(|_| VMError::Internal(InternalHostError::TypeConversion))
+        To::try_from(self).map_err(|_| VMError::Fatal(InternalHostError::TypeConversion))
     }
 }
 
@@ -124,7 +124,7 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     value: StoredValue,
 ) -> VMResult<()> {
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     charge_gas_storage(caller, value.serialized_length())?;
@@ -143,7 +143,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In restricted mode, writing is not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     let write_cost = caller.context().config.host_function_costs().write;
@@ -177,7 +177,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
                 Err(_) => {
-                    // TODO: Invalid key name encoding
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
@@ -226,7 +225,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
                 .context_mut()
                 .tracking_copy
                 .read(&global_state_key)
-                .map_err(|_| InternalHostError::TrackingCopy)?;
+                .map_err(|_| FatalHostError::TrackingCopy)?;
 
             let uref_to_use: URef =
                 if let Some(StoredValue::NamedKey(existing_named_key)) = maybe_existing_uref {
@@ -307,7 +306,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In restricted mode, removing is not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     let remove_cost = caller.context().config.host_function_costs().remove;
@@ -335,7 +334,6 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
                 Err(_) => {
-                    // TODO: Invalid key name encoding
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
@@ -391,17 +389,12 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
             return Ok(HOST_ERROR_NOT_FOUND);
         }
         Err(error) => {
-            // To protect the network against potential non-determinism (i.e. one validator runs out
-            // of space or just faces I/O issues that other validators may not have) we're simply
-            // aborting the process, hoping that once the node goes back online issues are resolved
-            // on the validator side. TODO: We should signal this to the contract
-            // runtime somehow, and let validator nodes skip execution.
-            error!(
+            debug!(
                 ?error,
                 ?global_state_key,
                 "Error while attempting a read before removing value; aborting"
             );
-            panic!("Error while attempting a read before removing value; aborting key={global_state_key:?} error={error:?}")
+            return Err(VMError::Fatal(FatalHostError::TrackingCopy));
         }
     }
 
@@ -461,8 +454,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not
-    // require it.
     let key_payload_bytes =
         caller.memory_read(key_ptr.wrapped_try_into()?, key_size.wrapped_try_into()?)?;
 
@@ -479,20 +470,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
 
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state read
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-            Keyspace::PaymentInfo(key_name)
-        }
-        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -518,7 +495,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 let CLType::Any = cl_value.cl_type() else {
-                    return Err(InternalHostError::TypeConversion)?;
+                    return Err(FatalHostError::TypeConversion)?;
                 };
                 Cow::Owned(cl_value.inner_bytes().to_owned())
             }
@@ -542,7 +519,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                         return Ok(HOST_ERROR_NOT_FOUND);
                     }
                     Err(_error) => {
-                        return Err(InternalHostError::TrackingCopy.into());
+                        return Err(FatalHostError::TrackingCopy.into());
                     }
                 }
             }
@@ -558,31 +535,23 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                 }
             }
             Ok(Some(stored_value)) => {
-                // TODO: Backwards compatibility with old EE, although it's not clear if we should
-                // do it at the storage level. Since new VM has storage isolated
-                // from the Wasm (i.e. we have Keyspace on the wasm which gets
-                // converted to a global state `Key`). I think if we were to pursue
-                // this we'd add a new `Keyspace` enum variant for each old
-                // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time,
-                // then deprecate this.
-                todo!("Unsupported {stored_value:?}")
+               return Err(VMError::Fatal(FatalHostError::UnexpectedStoredValueVariant {
+                    expected: "CLValue::Any".to_string(),
+                    found: stored_value.type_name(),
+               }));
             }
             Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
             Err(error) => {
-                // To protect the network against potential non-determinism (i.e. one validator runs
-                // out of space or just faces I/O issues that other validators may
-                // not have) we're simply aborting the process, hoping that once the
-                // node goes back online issues are resolved on the validator side.
-                // TODO: We should signal this to the contract runtime somehow, and
-                // let validator nodes skip execution.
+                // NOTE: Error log verbosity is appropriate here.
                 error!(?error, "Error while reading from storage; aborting");
-                panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
+                return Err(VMError::Fatal(FatalHostError::TrackingCopy));
             }
         };
         global_state_raw_bytes
     };
 
     let out_ptr: u32 = if cb_alloc != 0 {
+
         caller.alloc(cb_alloc, global_state_raw_bytes.len(), alloc_ctx)?
     } else {
         // treats alloc_ctx as data
@@ -669,7 +638,7 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
             u64::from(out_ptr),
             input.len().try_into().map_err(|err| {
                 error!("Failed to convert u64 to usize. Details: {err}");
-                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                ExecuteError::InternalHost(FatalHostError::TypeConversion)
             })?,
         ],
     )?;
@@ -726,7 +695,9 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    executor: &mut impl E,
     mut caller: impl Caller<Context = Context<S, E>>,
+
     code_ptr: u32,
     code_len: u32,
     transferred_value: u64,
@@ -740,7 +711,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 ) -> VMResult<u32> {
     // In restricted mode, contract creation is not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     let create_cost = caller.context().config.host_function_costs().create;
@@ -777,7 +748,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
             // SAFETY: We checked for length. This shouldn't happen
             error!("Error when converting seed_bytes from vec to static array");
-            ExecuteError::InternalHost(InternalHostError::TypeConversion)
+            ExecuteError::InternalHost(FatalHostError::TypeConversion)
         })?;
         Some(seed_bytes)
     } else {
@@ -847,10 +818,10 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .context_mut()
         .tracking_copy
         .read(&Key::Package(smart_contract_addr))
-        .map_err(|_| VMError::Internal(InternalHostError::TrackingCopy))?
+        .map_err(|_| VMError::Fatal(FatalHostError::TrackingCopy))?
         .is_some()
     {
-        return Err(VMError::Internal(InternalHostError::ContractAlreadyExists));
+        return Err(VMError::Fatal(FatalHostError::ContractAlreadyExists));
     }
 
     metered_write(
@@ -871,7 +842,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
     let addressable_entity_key = Key::AddressableEntity(entity_addr);
 
-    // TODO: abort(str) as an alternative to trap
     let address_generator = Arc::clone(&caller.context().address_generator);
     let transaction_hash = caller.context().transaction_hash;
     let runtime_native_config = caller.context().runtime_native_config.clone();
@@ -910,7 +880,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             let gas_limit = caller
                 .get_remaining_points()?
                 .try_into_remaining()
-                .map_err(|_| InternalHostError::TypeConversion)?;
+                .map_err(|_| FatalHostError::TypeConversion)?;
 
             let execute_request = ExecuteRequestBuilder::default()
                 .with_initiator(caller.context().initiator)
@@ -928,17 +898,17 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
                 .with_chain_name(caller.context().chain_name.clone())
                 .with_block_time(caller.context().block_time)
-                .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-                .with_block_height(1) // TODO: Carry on block height
-                .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+                .with_state_hash(Digest::from_raw([0; 32]))
+                .with_block_height(1)
+                .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
                 .with_runtime_native_config(caller.context().runtime_native_config.clone())
                 .build()
-                .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+                .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
             match caller
-                .context()
+                // .context()
                 .executor
                 .execute(tracking_copy_for_ctor, execute_request)
             {
@@ -998,7 +968,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
 ) -> VMResult<u32> {
     // In restricted mode, contract calls are not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
     // get option so we can determine cost, or charge if invalid
     let option: SystemMenu = match TryFrom::try_from(system_contract_opt) {
@@ -1007,7 +977,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
             // the following can produce a VMError::OutOfGas error
             let penalty_cost = caller.context().baseline_motes_amount;
             charge_gas(&mut caller, penalty_cost)?;
-            return Err(InternalHostError::InvalidSystemOption(system_contract_opt).into());
+            return Err(FatalHostError::InvalidSystemOption(system_contract_opt).into());
         }
     };
 
@@ -1053,7 +1023,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
             };
             u64::try_from(cost.value()).map_err(|err| {
                 error!("Couldn't execute host function due to cost calculation overflow. Details: {err}");
-                VMError::Internal(InternalHostError::TypeConversion)
+                VMError::Fatal(FatalHostError::TypeConversion)
             })?
         }
     };
@@ -1066,7 +1036,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let gas_limit = caller
         .get_remaining_points()?
         .try_into_remaining()
-        .map_err(|_| InternalHostError::TypeConversion)?;
+        .map_err(|_| FatalHostError::TypeConversion)?;
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(caller.context().initiator)
@@ -1078,12 +1048,12 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .with_chain_name(caller.context().chain_name.clone())
         .with_block_time(caller.context().block_time)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
         .build()
-        .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+        .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
     exec(caller, execute_request, cb_alloc, cb_ctx)
 }
@@ -1103,7 +1073,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 ) -> VMResult<u32> {
     // In restricted mode, contract calls are not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     let call_cost = caller.context().config.host_function_costs().call;
@@ -1156,7 +1126,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let gas_limit = caller
         .get_remaining_points()?
         .try_into_remaining()
-        .map_err(|_| InternalHostError::TypeConversion)?;
+        .map_err(|_| FatalHostError::TypeConversion)?;
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(caller.context().initiator)
@@ -1174,12 +1144,12 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .with_chain_name(caller.context().chain_name.clone())
         .with_block_time(caller.context().block_time)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
         .build()
-        .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+        .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
     let ret = exec(caller, execute_request, cb_alloc, cb_ctx);
     if let Err(execute_error) = &ret {
@@ -1247,7 +1217,7 @@ fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let gas_spent = gas_usage
         .gas_limit()
         .checked_sub(gas_usage.remaining_points())
-        .ok_or(InternalHostError::RemainingGasExceedsGasLimit)?;
+        .ok_or(FatalHostError::RemainingGasExceedsGasLimit)?;
 
     caller.consume_gas(gas_spent)?;
 
@@ -1294,18 +1264,18 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 Ok(Some(StoredValue::CLValue(clvalue))) => {
                     let addressable_entity_key = clvalue
                         .into_t::<Key>()
-                        .map_err(|_| InternalHostError::TypeConversion)?;
+                        .map_err(|_| FatalHostError::TypeConversion)?;
                     Either::Right(addressable_entity_key)
                 }
                 Ok(Some(StoredValue::Account(account))) => Either::Left(account.main_purse()),
                 Ok(Some(other_entity)) => {
                     error!("Unexpected entity type: {other_entity:?}");
-                    return Err(InternalHostError::UnexpectedEntityKind.into());
+                    return Err(FatalHostError::UnexpectedEntityKind.into());
                 }
                 Ok(None) => return Ok(HOST_ERROR_SUCCESS),
                 Err(error) => {
                     error!("Error while reading from storage; aborting key={account_key:?} error={error:?}");
-                    return Err(InternalHostError::TrackingCopy.into());
+                    return Err(FatalHostError::TrackingCopy.into());
                 }
             }
         }
@@ -1320,7 +1290,7 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
                 // SAFETY: We checked for length. This shouldn't happen
                 error!("Error when converting hash_bytes from vec to static array");
-                ExecuteError::InternalHost(InternalHostError::TypeConversion)
+                ExecuteError::InternalHost(FatalHostError::TypeConversion)
             })?;
             let smart_contract_key = Key::Package(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
@@ -1387,12 +1357,12 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
         .context_mut()
         .tracking_copy
         .get_total_balance(Key::URef(purse))
-        .map_err(|_| InternalHostError::TotalBalanceReadFailure)?;
+        .map_err(|_| FatalHostError::TotalBalanceReadFailure)?;
 
     let total_balance: u64 = total_balance
         .value()
         .try_into()
-        .map_err(|_| InternalHostError::TotalBalanceOverflow)?;
+        .map_err(|_| FatalHostError::TotalBalanceOverflow)?;
 
     caller.memory_write(output_ptr.wrapped_try_into()?, &total_balance.to_le_bytes())?;
     Ok(HOST_ERROR_NOT_FOUND)
@@ -1409,7 +1379,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
 ) -> VMResult<u32> {
     // In restricted mode, contract upgrades are not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     let upgrade_cost = caller.context().config.host_function_costs().upgrade;
@@ -1516,12 +1486,6 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         }
     };
 
-    // 1. Ensure that the new code is valid (maybe?)
-    // TODO: Is validating new code worth it if the user pays for the storage anyway? Should we
-    // protect users against invalid code?
-
-    // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka
-    //    hash(old_code))
     let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
         callee_addressable_entity.byte_code_addr(),
     ));
@@ -1542,7 +1506,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         let gas_limit = caller
             .get_remaining_points()?
             .try_into_remaining()
-            .map_err(|_| InternalHostError::TypeConversion)?;
+            .map_err(|_| FatalHostError::TypeConversion)?;
 
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(caller.context().initiator)
@@ -1562,12 +1526,12 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
             .with_chain_name(caller.context().chain_name.clone())
             .with_block_time(caller.context().block_time)
-            .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-            .with_block_height(1) // TODO: Carry on block height
-            .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+            .with_state_hash(Digest::from_raw([0; 32]))
+            .with_block_height(1)
+            .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
             .with_runtime_native_config(caller.context().runtime_native_config.clone())
             .build()
-            .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
+            .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
         let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
@@ -1687,7 +1651,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In restricted mode, emitting messages is not allowed
     if caller.context().sandboxed {
-        return Err(InternalHostError::AttemptWriteInRestricted.into());
+        return Err(FatalHostError::AttemptWriteInRestricted.into());
     }
 
     // Charge for parameter weights.
@@ -1792,7 +1756,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
                         .context_mut()
                         .tracking_copy
                         .read(&message_key)
-                        .map_err(|_| VMError::Internal(InternalHostError::TrackingCopy))?
+                        .map_err(|_| VMError::Fatal(FatalHostError::TrackingCopy))?
                         .is_some()
                 },
                 "Message index is not continuous"
@@ -1816,7 +1780,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     {
         Ok(Some(StoredValue::CLValue(value_pair))) => {
             let (prev_block_time, prev_count): MessageCountPair =
-                CLValue::into_t(value_pair).map_err(|_| InternalHostError::TypeConversion)?;
+                CLValue::into_t(value_pair).map_err(|_| FatalHostError::TypeConversion)?;
             if prev_block_time == current_block_time {
                 prev_count
             } else {
@@ -1862,11 +1826,11 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     let message_value = StoredValue::Message(
         message
             .checksum()
-            .map_err(|_| InternalHostError::MessageChecksumMissing)?,
+            .map_err(|_| FatalHostError::MessageChecksumMissing)?,
     );
     let message_count_pair: MessageCountPair = (current_block_time, block_message_count);
     let block_message_count_value = StoredValue::CLValue(
-        CLValue::from_t(message_count_pair).map_err(|_| InternalHostError::TypeConversion)?,
+        CLValue::from_t(message_count_pair).map_err(|_| FatalHostError::TypeConversion)?,
     );
 
     // Charge for amount as measured by serialized length
@@ -1921,13 +1885,13 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
     )?;
 
     let hash_algorithm =
-        HashAlgorithm::from_u32(hash_algorithm).ok_or(InternalHostError::TypeConversion)?;
+        HashAlgorithm::from_u32(hash_algorithm).ok_or(FatalHostError::TypeConversion)?;
 
     let hashed_bytes = match hash_algorithm {
         HashAlgorithm::Blake2b => {
             let mut result = [0; DIGEST_LENGTH];
             let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
-                ExecuteError::InternalHost(InternalHostError::CorruptExecutionState(
+                ExecuteError::InternalHost(FatalHostError::CorruptExecutionState(
                     "Error when creating instance of Blake2bVar hashing".to_owned(),
                 ))
             })?;

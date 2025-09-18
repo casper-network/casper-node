@@ -1,3 +1,5 @@
+pub mod entity;
+
 use core::marker::PhantomData;
 
 use casper_executor_wasm_common::{
@@ -10,6 +12,7 @@ use crate::{
     casper,
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
+    ToCallData,
 };
 
 pub use ::bytes::Bytes;
@@ -290,5 +293,31 @@ impl TryFrom<u32> for CryptoFunctionOption {
         } else {
             Err(())
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct CallResult<T: ToCallData> {
+    pub data: Option<Vec<u8>>,
+    pub result: Result<(), CallError>,
+    pub marker: PhantomData<T>,
+}
+
+impl<T: ToCallData> CallResult<T> {
+    pub fn into_result<'a>(self) -> Result<T::Return<'a>, CallError>
+    where
+        <T as ToCallData>::Return<'a>: BorshDeserialize,
+    {
+        match self.result {
+            Ok(()) | Err(CallError::CalleeReverted) => {
+                let data = self.data.unwrap_or_default();
+                Ok(borsh::from_slice(&data).unwrap())
+            }
+            Err(call_error) => Err(call_error),
+        }
+    }
+
+    pub fn did_revert(&self) -> bool {
+        self.result == Err(CallError::CalleeReverted)
     }
 }

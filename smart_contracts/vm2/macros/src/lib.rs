@@ -1844,6 +1844,8 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(CasperABI, attributes(casper))]
 pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
+     // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support
+    // this in the macro
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
         let mut populate_definitions = Vec::new();
         let name = input.ident.clone();

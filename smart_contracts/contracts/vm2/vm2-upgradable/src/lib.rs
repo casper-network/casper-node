@@ -72,7 +72,6 @@ impl UpgradableContract {
         log!("V1: starting upgrade process current value={}", self.value);
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
-        // TODO: Enforce valid wasm validation
         casper::upgrade(&new_code, Some("migrate"), None).unwrap();
     }
 }

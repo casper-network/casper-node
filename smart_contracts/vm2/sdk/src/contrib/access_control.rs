@@ -4,8 +4,9 @@ use crate as casper_contract_sdk; // Workaround for absolute crate path in deriv
 use casper_contract_macros::casper;
 
 use crate::{
-    casper::{self, Entity},
+    casper,
     collections::{sorted_vector::SortedVector, Map},
+    types::entity::Entity,
 };
 
 /// A role is a unique identifier for a specific permission or set of permissions.

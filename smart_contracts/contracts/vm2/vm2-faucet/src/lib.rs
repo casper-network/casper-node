@@ -1,8 +1,4 @@
-use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
-    macros::blake2b256,
-    prelude::*,
-};
+use casper_contract_sdk::prelude::*;
 
 pub const ADMIN_ROLE: Role = blake2b256!("ADMIN");
 pub const DEFAULT_TIME_INTERVAL: u64 = 7_200_000;

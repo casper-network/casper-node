@@ -215,19 +215,15 @@ fn main() {
             &regex_data::smart_contracts_contract::DEPENDENT_FILES,
         ),
         Package::cargo(
-            "smart_contracts/sdk_sys",
+            "smart_contracts/v2/sdk_sys",
             &regex_data::smart_contracts_sdk_sys::DEPENDENT_FILES,
         ),
         Package::cargo(
-            "smart_contracts/sdk",
+            "smart_contracts/vm2/sdk",
             &regex_data::smart_contracts_sdk::DEPENDENT_FILES,
         ),
         Package::cargo(
-            "smart_contracts/sdk_codegen",
-            &regex_data::smart_contracts_sdk_codegen::DEPENDENT_FILES,
-        ),
-        Package::cargo(
-            "smart_contracts/macros",
+            "smart_contracts/v2/macros",
             &regex_data::smart_contracts_macros::DEPENDENT_FILES,
         ),
         Package::cargo(

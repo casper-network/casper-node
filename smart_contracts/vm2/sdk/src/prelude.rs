@@ -33,10 +33,10 @@ pub use self::{
 };
 
 pub use crate::{
-    casper::{self, Entity},
-    log,
+    casper, log,
     macros::{self, casper, PanicOnDefault},
     revert,
+    types::entity::Entity,
 };
 
 #[cfg(test)]

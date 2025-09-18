@@ -747,6 +747,8 @@ pub enum EntityAddr {
     Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to a Userland smart contract.
     SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
+    /// The address of an entity that corresponds to a Package.
+    Package(PackageHash),
 }
 
 impl EntityAddr {
@@ -1633,6 +1635,11 @@ impl AddressableEntity {
     /// Is this an account?
     pub fn is_account_kind(&self) -> bool {
         matches!(self.entity_kind, EntityKind::Account(_))
+    }
+
+    /// Is this a contract?
+    pub fn is_smart_contract_kind(&self) -> bool {
+        matches!(self.entity_kind, EntityKind::SmartContract(_))
     }
 
     /// Key for the addressable entity

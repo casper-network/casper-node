@@ -25,8 +25,6 @@ impl Default for TokenContract {
 impl TokenContract {
     #[casper(constructor)]
     pub fn new(token_name: String) -> Self {
-        // TODO: If argument has same name as another entrypoint there's a compile error for some
-        // reason, so can't use "name"
         let mut state = CEP18State::new(&token_name, "Default symbol", 8, U256::from(0u64));
         state.enable_mint_burn = true;
 

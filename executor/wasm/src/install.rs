@@ -160,15 +160,15 @@ impl InstallContractRequestBuilder {
         let wasm_bytes = self.wasm_bytes.ok_or("Wasm bytes not set")?;
         let entry_point = self.entry_point;
         let input = self.input;
-        let transferred_value = self.transferred_value.ok_or("Value not set")?;
+        let transferred_value = self.transferred_value.unwrap_or_default();
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
-        let chain_name = self.chain_name.ok_or("Chain name not set")?;
-        let block_time = self.block_time.ok_or("Block time not set")?;
+        let chain_name = self.chain_name.unwrap_or("casper-test");
+        let block_time = self.block_time.unwrap_or_default();
         let seed = self.seed;
         let state_hash = self.state_hash.ok_or("State hash not set")?;
         let parent_block_hash = self.parent_block_hash.ok_or("Parent block hash not set")?;
-        let block_height = self.block_height.ok_or("Block height not set")?;
+        let block_height = self.block_height.unwrap_or_default();
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;

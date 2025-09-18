@@ -11,7 +11,7 @@ use bytes::Bytes;
 use casper_executor_wasm_common::error::TrapCode;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
-    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, InternalHostError,
+    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, FatalHostError,
     MeteringPoints, VMError, VMResult, WasmInstance, WasmPreparationError,
 };
 use casper_storage::global_state::GlobalStateReader;
@@ -56,9 +56,6 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
     match value {
         wasmer_types::TrapCode::StackOverflow => TrapCode::StackOverflow,
         wasmer_types::TrapCode::HeapAccessOutOfBounds => TrapCode::MemoryOutOfBounds,
-        wasmer_types::TrapCode::HeapMisaligned => {
-            unreachable!("Atomic operations are not supported")
-        }
         wasmer_types::TrapCode::TableAccessOutOfBounds => TrapCode::TableAccessOutOfBounds,
         wasmer_types::TrapCode::IndirectCallToNull => TrapCode::IndirectCallToNull,
         wasmer_types::TrapCode::BadSignature => TrapCode::BadSignature,
@@ -66,8 +63,9 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
         wasmer_types::TrapCode::IntegerDivisionByZero => TrapCode::IntegerDivisionByZero,
         wasmer_types::TrapCode::BadConversionToInteger => TrapCode::BadConversionToInteger,
         wasmer_types::TrapCode::UnreachableCodeReached => TrapCode::UnreachableCodeReached,
-        wasmer_types::TrapCode::UnalignedAtomic => {
-            todo!("Atomic memory extension is not supported")
+        wasmer_types::TrapCode::HeapMisaligned
+        | wasmer_types::TrapCode::UnalignedAtomic => {
+            unreachable!("Trap from unsupported Wasm extension");
         }
     }
 }
@@ -121,7 +119,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
     fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> VMResult<Ret> {
         let instance = self.env.data().instance.upgrade().ok_or({
             error!("Failed to upgrade instance");
-            VMError::Internal(InternalHostError::TypeConversion)
+            VMError::Fatal(FatalHostError::TypeConversion)
         })?;
         Ok(f(&instance))
     }
@@ -133,7 +131,7 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
         let (data, store) = self.env.data_and_store_mut();
         let instance = data.instance.upgrade().ok_or({
             error!("Failed to upgrade instance");
-            VMError::Internal(InternalHostError::TypeConversion)
+            VMError::Fatal(FatalHostError::TypeConversion)
         })?;
         Ok(f(store, &instance))
     }
@@ -195,41 +193,46 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             .exported_table
             .as_ref()
             .ok_or({
-                // TODO: if theres no table then no function pointer is stored in the wasm blob -
-                // probably safe
-                VMError::Internal(InternalHostError::CorruptExecutionState(
+                VMError::AllocError(
                     "Exported runtime has no exported table".to_owned(),
-                ))
+                )
             })?
             .get(&mut store.as_store_mut(), idx)
             .ok_or({
-                // TODO: better error handling - pass 0 as nullptr?
-                VMError::Internal(InternalHostError::CorruptExecutionState(format!(
+                VMError::AllocError(format!(
                     "Expected exported table entry with index {idx} to exist"
-                )))
+                ))
             })?;
         let funcref =
             value
                 .funcref()
-                .ok_or(VMError::Internal(InternalHostError::CorruptExecutionState(
+                .ok_or(VMError::AllocError(
                     "Expected value to be funcref".to_owned(),
-                )))?;
+                ))?;
         let valid_funcref =
             funcref
                 .as_ref()
-                .ok_or(VMError::Internal(InternalHostError::CorruptExecutionState(
+                .ok_or(VMError::AllocError(
                     "Expected value to be a valid funcref".to_owned(),
-                )))?;
-        let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref
-            .typed(&store)
-            .unwrap_or_else(|error| panic!("{error:?}"));
+                ))?;
+        let alloc_callback: TypedFunction<(u32, u32), u32> = match valid_funcref
+            .typed(&store) {
+                Ok(alloc_callback) => alloc_callback,
+                Err(_error) => {
+                    return Err(VMError::AllocError(
+                        "Failed to convert funcref to typed function".to_owned(),
+                    ));
+                },
+            };
+
         let size_u32 = size.try_into().map_err(|err| {
-            error!("Failed to convert usize to u32 . Details: {err}");
-            VMError::Internal(InternalHostError::TypeConversion)
+            VMError::AllocError("Failed to convert usize to u32".to_owned())
         })?;
+
         let ptr = alloc_callback
             .call(&mut store.as_store_mut(), size_u32, ctx)
             .map_err(handle_wasmer_runtime_error)?;
+
         Ok(ptr)
     }
 
@@ -273,7 +276,7 @@ impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
     }
     pub(crate) fn exported_runtime(&self) -> VMResult<&ExportedRuntime> {
         self.exported_runtime.as_ref().ok_or({
-            VMError::Internal(InternalHostError::CorruptExecutionState(
+            VMError::Fatal(FatalHostError::CorruptExecutionState(
                 "Valid instance of exported runtime".to_owned(),
             ))
         })
@@ -305,7 +308,7 @@ fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
             let wasmer_trap_code = if let Some(trap_code) = wasmer_runtime_error.to_trap() {
                 trap_code
             } else {
-                return VMError::Internal(InternalHostError::TypeConversion);
+                return VMError::Fatal(FatalHostError::TypeConversion);
             };
             VMError::Trap(from_wasmer_trap_code(wasmer_trap_code))
         })
@@ -394,9 +397,6 @@ where
             imports
         };
 
-        // TODO: Deal with "start" section that executes actual Wasm - test, measure gas, etc. ->
-        // Instance::new may fail with RuntimError
-
         let instance = {
             let instance = Instance::new(&mut store, &module, &imports)
                 .map_err(|error| WasmPreparationError::Instantiation(error.to_string()))?;
@@ -422,7 +422,7 @@ where
                             // SAFETY: regex guarantees this is a number, and imports table
                             // guarantees limited set of values.
                             error!("Couln't parse `version` parameter: {err}");
-                            WasmPreparationError::Internal(InternalHostError::TypeConversion)
+                            WasmPreparationError::Internal(FatalHostError::TypeConversion)
                         })?;
                         interface_versions.push(InterfaceVersion::from(version));
                     }
@@ -433,9 +433,6 @@ where
             interface_versions.pop()
         };
 
-        // TODO: get first export of type table as some compilers generate different names (i.e.
-        // rust __indirect_function_table, assemblyscript `table` etc). There's only one table
-        // allowed in a valid module.
         let table = match instance.exports.get_table("__indirect_function_table") {
             Ok(table) => Some(table.clone()),
             Err(error @ wasmer::ExportError::IncompatibleType) => {

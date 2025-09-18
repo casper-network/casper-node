@@ -14,7 +14,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
         ExecuteWithProviderResult, ExecutionKind,
     },
-    GasUsage, InternalHostError,
+    GasUsage, FatalHostError,
 };
 use casper_storage::{
     global_state::state::{CommitProvider, StateProvider},
@@ -81,7 +81,7 @@ pub(crate) enum WasmV2Error {
 }
 
 impl WasmV2Error {
-    pub(crate) fn as_internal_host_error(&self) -> Option<InternalHostError> {
+    pub(crate) fn as_internal_host_error(&self) -> Option<FatalHostError> {
         match self {
             WasmV2Error::Install(install_error) => {
                 if let InstallContractError::Execute(ExecuteError::InternalHost(

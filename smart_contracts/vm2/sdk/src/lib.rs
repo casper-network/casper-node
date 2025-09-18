@@ -22,30 +22,24 @@ pub mod types;
 
 use crate::prelude::{marker::PhantomData, ptr::NonNull};
 
-use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
-use casper::{CallResult, Entity};
+use crate::{
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
+    types::{entity::Entity, CallResult},
+};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
 pub use casper_executor_wasm_common;
 use types::{Address, CallError};
 
-cfg_if::cfg_if! {
+pub fn set_panic_hook() {
     if #[cfg(feature = "std")] {
-        #[inline]
-        pub fn set_panic_hook() {
-            static SET_HOOK: std::sync::Once = std::sync::Once::new();
-            SET_HOOK.call_once(|| {
-                std::panic::set_hook(Box::new(|panic_info| {
-                    let msg = panic_info.to_string();
-                    casper::print(&msg);
-                }));
-            });
-        }
-    }
-    else {
-        pub fn set_panic_hook() {
-            // TODO: What to do?
-        }
+        static SET_HOOK: std::sync::Once = std::sync::Once::new();
+        SET_HOOK.call_once(|| {
+            std::panic::set_hook(Box::new(|panic_info| {
+                let msg = panic_info.to_string();
+                casper::print(&msg);
+            }));
+        });
     }
 }
 
@@ -109,6 +103,22 @@ macro_rules! log {
     ($($arg:tt)*) => ({
         eprintln!("📝 {}", &$crate::prelude::format!($($arg)*));
     })
+}
+
+#[cfg(debug_assertions)]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => ({
+        $crate::log!($($arg)*);
+    })
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {{
+        // no-op in release builds
+    }};
 }
 
 #[macro_export]

@@ -1,8 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_contract_macros::{casper, PanicOnDefault};
-use casper_contract_sdk::{casper, log, types::Address};
+use casper_contract_sdk::prelude::*;
 
 /// This contract implements a simple Vm1Wrapper.
 #[derive(PanicOnDefault)]

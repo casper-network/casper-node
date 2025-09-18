@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
-    CallError, GasUsage, InternalHostError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    CallError, GasUsage, FatalHostError, SandboxedExecutionRequest, SandboxedExecutionResult,
     WasmPreparationError,
 };
 
@@ -82,6 +82,7 @@ pub struct ExecuteRequestBuilder {
     block_height: Option<u64>,
     sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
+    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -124,7 +125,7 @@ impl ExecuteRequestBuilder {
     pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Result<Self, ExecuteError> {
         let input = borsh::to_vec(&input)
             .map(Bytes::from)
-            .map_err(|_| ExecuteError::InternalHost(InternalHostError::TypeConversion))?;
+            .map_err(|_| ExecuteError::InternalHost(FatalHostError::TypeConversion))?;
         Ok(self.with_input(input))
     }
 
@@ -228,13 +229,13 @@ impl ExecuteRequestBuilder {
         let address_generator = self
             .address_generator
             .ok_or("Address generator is not set")?;
-        let chain_name = self.chain_name.ok_or("Chain name is not set")?;
-        let block_time = self.block_time.ok_or("Block time is not set")?;
+        let chain_name = self.chain_name.unwrap_or("casper-test");
+        let block_time = self.block_time.unwrap_or_default();
         let state_hash = self.state_hash.ok_or("State hash is not set")?;
         let parent_block_hash = self
             .parent_block_hash
             .ok_or("Parent block hash is not set")?;
-        let block_height = self.block_height.ok_or("Block height is not set")?;
+        let block_height = self.block_height.unwrap_or_default();
         let sandboxed = self.sandboxed.unwrap_or(false);
         let runtime_native_config = self
             .runtime_native_config
@@ -488,7 +489,7 @@ pub enum ExecuteError {
     WasmPreparation(#[from] WasmPreparationError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     #[error("Internal host error: {0}")]
-    InternalHost(#[from] InternalHostError),
+    InternalHost(#[from] FatalHostError),
     #[error("Code not found: {0:?}")]
     CodeNotFound(HashAddr),
     #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]

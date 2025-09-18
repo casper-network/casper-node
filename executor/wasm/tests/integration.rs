@@ -462,9 +462,9 @@ fn cep18() {
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_block_time(block_time_1)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
@@ -522,9 +522,9 @@ fn cep18() {
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(block_time_2)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(2) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .with_runtime_native_config(make_runtime_config(&chainspec_config))
         .build()
         .expect("should build");
@@ -1042,12 +1042,8 @@ fn backwards_compatibility() {
         Key::Account(*DEFAULT_ACCOUNT_HASH),
         Vec::new(),
     ));
-    let value = match result {
-        QueryResult::RootNotFound => todo!(),
-        QueryResult::ValueNotFound(value) => panic!("Value not found: {:?}", value),
-        QueryResult::Success { value, .. } => value,
-        QueryResult::Failure(failure) => panic!("Failed to query: {:?}", failure),
-    };
+
+    let value = result.as_value().expect("should have value");
 
     //
     // Calling VM1 contract directly by its address
@@ -1348,9 +1344,9 @@ fn escrow() {
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_block_time(block_time_1)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
@@ -1381,9 +1377,9 @@ fn escrow() {
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(1234567890.into())
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(2) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
@@ -1424,9 +1420,9 @@ fn should_not_fail_without_account() {
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_block_time(block_time_1)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
@@ -1465,9 +1461,9 @@ fn supports_named_args_convention() {
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_block_time(block_time_1)
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(1) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
@@ -1498,9 +1494,9 @@ fn supports_named_args_convention() {
         .with_transferred_value(10000)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_block_time(1234567890.into())
-        .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
-        .with_block_height(2) // TODO: Carry on block height
-        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .build()
         .expect("should build");
 
