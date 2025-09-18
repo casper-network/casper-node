@@ -2,7 +2,7 @@
 
 # This script will build
 #  - bin.tar.gz
-#  - config.tar.gz
+#  - config.tar.gz (and additional ones for each network directory in resources)
 #  - version.json
 # in target/upgrade_build
 
@@ -31,7 +31,7 @@ CONFIG_DIR="$UPGRADE_DIR/config"
 
 GIT_HASH=$(git rev-parse HEAD)
 BRANCH_NAME=$(git branch --show-current)
-PROTOCOL_VERSION=$(cat "$GENESIS_FILES_DIR/chainspec.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['protocol']['version'].replace('.','_'))")
+PROTOCOL_VERSION=$(cat "$PRODUCTION_GENESIS_FILES_DIR/chainspec.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['protocol']['version'].replace('.','_'))")
 NODE_VERSION=$(cat "$NODE_BUILD_DIR/Cargo.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['package']['version'])")
 
 echo "Creating $BRANCH_NAME.latest file"
