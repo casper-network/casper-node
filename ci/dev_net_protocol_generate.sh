@@ -9,7 +9,8 @@ TARGET_DIR="$ROOT_DIR/target"
 GENESIS_DIR="$TARGET_DIR/genesis"
 CONFIG_DIR="$TARGET_DIR/config"
 
-CURRENT_HASH=128ff6fb9472f0abab3d4d8392c23f378a8552e8
+# pull latest dev hash from artifacts
+CURRENT_HASH=$(curl -s https://genesis.casper.network/artifacts/casper-node/dev.latest)
 echo "Checked out Github hash $CURRENT_HASH"
 
 LATEST_HASH=$(curl -s https://genesis.casper.network/dev-net/latest_git_hash | tr -d '\n')
