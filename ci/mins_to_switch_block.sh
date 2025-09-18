@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <node ip for rpc>"
+  echo "Usage: $0 <node ip for rpc | url for rpc>"
   exit 1
 fi
 
@@ -10,9 +10,12 @@ if ! command -v "casper-client" &> /dev/null ; then
   exit 1 
 fi
 
-NODE_IP=$1
-
-NODE_ADDRESS="--node-address http://$NODE_IP:7777"
+if [[ $1 == http* ]]; then
+  # Starts with http, so assume good full url
+  NODE_ADDRESS="--node-address $1"
+else
+  NODE_ADDRESS="--node-address http://$NODE_IP:7777"
+fi
 
 LAST_SWITCH_BLOCK=$(casper-client get-era-summary $NODE_ADDRESS | jq -r .result.era_summary.block_hash | tr -d "/n")
 

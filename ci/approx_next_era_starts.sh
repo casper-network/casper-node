@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: $0 <node ip for rpc> [number of future eras]"
+  echo "Usage: $0 <node ip for rpc | url for rpc> [number of future eras]"
   exit 1
 fi
 
-NODE_IP=$1
+if [[ $1 == http* ]]; then
+  # Starts with http, so assume good full url
+  NODE_ADDRESS="--node-address $1"
+else
+  NODE_ADDRESS="--node-address http://$NODE_IP:7777"
+fi
 
 if ! command -v "casper-client" &> /dev/null ; then
   echo "casper-client is not installed and required. Exiting..."
@@ -18,8 +23,6 @@ if [ "$#" -lt 2 ]; then
 else
   FUTURE_ERAS=$2
 fi
-
-NODE_ADDRESS="--node-address http://$NODE_IP:7777"
 
 LAST_SWITCH_BLOCK=$(casper-client get-era-summary $NODE_ADDRESS | jq -r .result.era_summary.block_hash | tr -d "/n")
 
