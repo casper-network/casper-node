@@ -31,7 +31,7 @@ IFS="_"
 read -ra LPVA <<< "$LATEST_PROTOCOL_VERSION"
 
 # Incrementing one to patch
-NEW_PROTOCOL_VERSION=${LPVA[0]}_${LPVA[1]}_$((${LPVA[2]} + 1))
+NEW_PROTOCOL_VERSION=${LPVA[0]}_${LPVA[1]}_$((LPVA[2] + 1))
 echo "New dev-net protocol version: $NEW_PROTOCOL_VERSION"
 echo
 
@@ -40,14 +40,14 @@ echo "## Creating $PROTOCOL_DIR"
 mkdir -p "$PROTOCOL_DIR"
 echo
 
-echo $NEW_PROTOCOL_VERSION > "$GENESIS_DIR/protocol_versions"
+echo "$NEW_PROTOCOL_VERSION" > "$GENESIS_DIR/protocol_versions"
 echo "## protocol_versions file contents:"
 echo "---"
 cat "$GENESIS_DIR/protocol_versions"
 echo "---"
 echo
 
-echo $CURRENT_HASH > "$GENESIS_DIR/latest_git_hash"
+echo "$CURRENT_HASH" > "$GENESIS_DIR/latest_git_hash"
 echo "## latest_git_hash file contents:"
 echo "---"
 cat "$GENESIS_DIR/latest_git_hash"

@@ -15,8 +15,12 @@ jobs:
       # Get script without checkout for use on any repo
       - name: Get script
         run: |
+          mkdir ci
+          cd ci
           curl -JLO https://raw.githubusercontent.com/casper-network/casper-node/refs/heads/dev/ci/dev_net_protocol_generate.sh
           chmod +x dev_net_protocol_generate.sh
+          curl -JLO https://raw.githubusercontent.com/casper-network/casper-node/refs/heads/dev/ci/next_upgrade_era_with_buffer.sh
+          chmod +x next_upgrade_era_with_buffer.sh
 
       # Assign AWS PROD role to get access to production cloudfronts and S3 buckets
       - name: Configure AWS credentials
@@ -27,7 +31,7 @@ jobs:
           aws-region: ${{ secrets.AWS_ACCESS_REGION_GENESIS }}
 
       - name: Build protocol update
-        run: ./dev_net_protocol_generate.sh
+        run: ./ci/dev_net_protocol_generate.sh
 
       - name: Upload artifacts to S3
         run: aws s3 sync ./target/genesis/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/dev-net/
