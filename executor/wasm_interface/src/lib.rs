@@ -125,6 +125,8 @@ pub enum InternalHostError {
     InvalidPublicKey,
     #[error("invalid entity address")]
     InvalidEntityAddr,
+    #[error("serialization failure")]
+    Serialization,
 }
 
 /// The outcome of a call.

@@ -12,7 +12,6 @@ use std::{
 use crate::linkme::distributed_slice;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
-    env_info::EnvInfo,
     error::{
         CALLEE_REVERTED, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
         HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
@@ -24,6 +23,12 @@ use rand::Rng;
 
 use super::Entity;
 use crate::types::Address;
+
+#[repr(C)]
+pub struct Param {
+    pub name_ptr: *const u8,
+    pub name_len: usize,
+}
 
 /// The kind of export that is being registered.
 ///
@@ -168,8 +173,8 @@ pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
 #[allow(dead_code)]
 pub struct NativeParam(pub(crate) String);
 
-impl From<&casper_contract_sdk_sys::Param> for NativeParam {
-    fn from(val: &casper_contract_sdk_sys::Param) -> Self {
+impl From<&Param> for NativeParam {
+    fn from(val: &Param) -> Self {
         let name =
             String::from_utf8_lossy(unsafe { slice::from_raw_parts(val.name_ptr, val.name_len) })
                 .into_owned();
@@ -289,8 +294,8 @@ impl Environment {
 
                 if let Some(ptr) = ptr {
                     unsafe {
-                        (*info).data = ptr.as_ptr();
-                        (*info).size = tagged_value.len();
+                        (*info).data_ptr = ptr.as_ptr();
+                        (*info).data_size = tagged_value.len();
                     }
 
                     unsafe {
@@ -607,12 +612,15 @@ Example paths:
     }
 
     fn casper_env_info(&self, info_ptr: *const u8, info_size: u32) -> Result<u32, NativeTrap> {
-        assert_eq!(info_size as usize, size_of::<EnvInfo>());
+        assert_eq!(
+            info_size as usize,
+            size_of::<casper_contract_sdk_sys::EnvInfo>()
+        );
         let mut env_info = NonNull::new(info_ptr as *mut u8)
             .expect("Valid ptr")
-            .cast::<EnvInfo>();
+            .cast::<casper_contract_sdk_sys::EnvInfo>();
         let env_info = unsafe { env_info.as_mut() };
-        *env_info = EnvInfo {
+        *env_info = casper_contract_sdk_sys::EnvInfo {
             block_time: 0,
             transferred_value: 0,
             caller_addr: *self.caller.address(),

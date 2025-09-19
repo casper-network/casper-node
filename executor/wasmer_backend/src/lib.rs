@@ -186,11 +186,6 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             .map_err(from_wasmer_memory_access_error)
     }
 
-    // fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-    //     self.with_memory(|mem| mem.write(offset.into(), data))
-    //         .map_err(from_wasmer_memory_access_error)
-    // }
-
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
         let _interface_version = self.env.data().interface_version;
 

@@ -19,9 +19,8 @@ use crate::{
 };
 
 use crate::types::{EntityAddr, SystemContractOption};
-use casper_contract_sdk_sys::casper_env_info;
+use casper_contract_sdk_sys::{casper_env_info, EnvInfo};
 use casper_executor_wasm_common::{
-    env_info::EnvInfo,
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
@@ -121,8 +120,8 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
-        data: ptr::null(),
-        size: 0,
+        data_ptr: ptr::null(),
+        data_size: 0,
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(

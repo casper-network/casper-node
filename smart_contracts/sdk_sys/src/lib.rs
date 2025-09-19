@@ -1,20 +1,14 @@
 pub mod for_each_host_function;
 
-#[repr(C)]
-pub struct Param {
-    pub name_ptr: *const u8,
-    pub name_len: usize,
-}
-
 /// Signature of a function pointer that a host understands.
 pub type Fptr = extern "C" fn() -> ();
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct ReadInfo {
-    pub data: *const u8,
-    /// Size in bytes.
-    pub size: usize,
+    pub data_ptr: *const u8,
+    /// Size in bytes
+    pub data_size: usize,
 }
 
 #[repr(C)]
@@ -29,6 +23,22 @@ pub struct UpgradeResult {
     pub package_address: [u8; 32],
     pub contract_address: [u8; 32],
     pub version: u32,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct EnvInfo {
+    pub block_time: u64,
+    pub transferred_value: u64,
+    pub caller_addr: [u8; 32],
+    pub caller_kind: u32,
+    pub callee_addr: [u8; 32],
+    pub callee_kind: u32,
+    pub protocol_version_major: u32,
+    pub protocol_version_minor: u32,
+    pub protocol_version_patch: u32,
+    pub parent_block_hash: [u8; 32],
+    pub block_height: u64,
 }
 
 macro_rules! visit_host_function {

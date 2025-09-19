@@ -905,7 +905,6 @@ dependencies = [
  "hex",
  "num-derive",
  "num-traits",
- "safe-transmute",
  "serde",
  "thiserror 2.0.16",
 ]
@@ -929,7 +928,6 @@ dependencies = [
  "num-derive",
  "num-traits",
  "parking_lot",
- "safe-transmute",
  "sha2",
  "thiserror 2.0.16",
  "tracing",
@@ -5696,12 +5694,6 @@ name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
-
-[[package]]
-name = "safe-transmute"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3944826ff8fa8093089aba3acb4ef44b9446a99a16f3bf4e74af3f77d340ab7d"
 
 [[package]]
 name = "same-file"
