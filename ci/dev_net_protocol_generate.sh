@@ -56,14 +56,12 @@ echo
 
 mkdir -p "$CONFIG_DIR"
 cd "$TARGET_DIR" || exit 1
-echo "## Downloading: https://genesis.casper.network/artifacts/casper-node/$LATEST_HASH/bin.tar.gz"
-curl -JLO "https://genesis.casper.network/artifacts/casper-node/$LATEST_HASH/bin.tar.gz" || exit 1
+DOWNLOAD_PATH="https://genesis.casper.network/artifacts/casper-node/$CURRENT_HASH"
+echo "## Downloading: $DOWNLOAD_PATH/bin.tar.gz"
+curl -JLO "$DOWNLOAD_PATH/bin.tar.gz" || exit 1
 
-echo "## Downloading: https://genesis.casper.network/artifacts/casper-node/$LATEST_HASH/config-dev.tar.gz"
-curl -JLO "https://genesis.casper.network/artifacts/casper-node/$LATEST_HASH/config-dev.tar.gz" || exit 1
-
-pwd
-ls -alr
+echo "## Downloading: $DOWNLOAD_PATH/config-dev.tar.gz"
+curl -JLO "$DOWNLOAD_PATH/config-dev.tar.gz" || exit 1
 
 cd "$CONFIG_DIR" || exit 1
 # This will validate that files retrieved were good. Should error if just curl output
