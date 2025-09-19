@@ -4,20 +4,20 @@ pub mod for_each_host_function;
 pub type Fptr = extern "C" fn() -> ();
 
 #[derive(Debug)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct ReadInfo {
     pub data_ptr: *const u8,
     /// Size in bytes
     pub data_size: usize,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct CreateResult {
     pub contract_address: [u8; 32],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct UpgradeResult {
     pub package_address: [u8; 32],
@@ -26,7 +26,7 @@ pub struct UpgradeResult {
 }
 
 #[derive(Debug)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct EnvInfo {
     pub block_time: u64,
     pub transferred_value: u64,
