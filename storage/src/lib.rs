@@ -33,10 +33,7 @@ pub use block_store::{
 };
 
 pub use system::runtime_native::Config as RuntimeNativeConfig;
-const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
-const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
-const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
-const MESSAGING_ADDR_ENTITY_ADDR_TOPIC: &str = "addressable_entity_addr";
-const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
-const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
+const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_key";
+const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_key";
+const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "wasm_key";
 const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";

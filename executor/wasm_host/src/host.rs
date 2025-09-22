@@ -1463,45 +1463,46 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         Some(input_data)
     };
 
-    let (smart_contract_addr, callee_addressable_entity_key) = match caller.context().callee {
-        Key::Account(_account_hash) => {
-            error!("Account upgrade is not possible");
-            return Ok(CALLEE_NOT_CALLABLE);
-        }
-        addressable_entity_key @ Key::SmartContract(smart_contract_addr) => {
-            let smart_contract_key = addressable_entity_key;
-            match caller.context_mut().tracking_copy.read(&smart_contract_key) {
-                Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
-                    match smart_contract_package.versions().latest() {
-                        Some(addressable_entity_hash) => {
-                            let key = Key::AddressableEntity(EntityAddr::SmartContract(
-                                addressable_entity_hash.value(),
-                            ));
-                            (smart_contract_addr, key)
-                        }
-                        None => {
-                            warn!(
-                                ?smart_contract_key,
-                                "Unable to find latest addressable entity hash for contract"
-                            );
-                            return Ok(CALLEE_NOT_CALLABLE);
+    let (smart_contract_addr, version_key, callee_addressable_entity_key) =
+        match caller.context().callee {
+            Key::Account(_account_hash) => {
+                error!("Account upgrade is not possible");
+                return Ok(CALLEE_NOT_CALLABLE);
+            }
+            addressable_entity_key @ Key::SmartContract(smart_contract_addr) => {
+                let smart_contract_key = addressable_entity_key;
+                match caller.context_mut().tracking_copy.read(&smart_contract_key) {
+                    Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
+                        match smart_contract_package.versions().latest_with_key() {
+                            Some((version_key, addressable_entity_hash)) => {
+                                let key = Key::AddressableEntity(EntityAddr::SmartContract(
+                                    addressable_entity_hash.value(),
+                                ));
+                                (smart_contract_addr, version_key.clone(), key)
+                            }
+                            None => {
+                                warn!(
+                                    ?smart_contract_key,
+                                    "Unable to find latest addressable entity hash for contract"
+                                );
+                                return Ok(CALLEE_NOT_CALLABLE);
+                            }
                         }
                     }
-                }
-                Ok(Some(other)) => panic!("should be smart contract but got {other:?}"),
-                Ok(None) => return Ok(CALLEE_NOT_CALLABLE),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?smart_contract_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
+                    Ok(Some(other)) => panic!("should be smart contract but got {other:?}"),
+                    Ok(None) => return Ok(CALLEE_NOT_CALLABLE),
+                    Err(error) => {
+                        error!(
+                            ?error,
+                            ?smart_contract_key,
+                            "Error while reading from storage; aborting"
+                        );
+                        panic!("Error while reading from storage")
+                    }
                 }
             }
-        }
-        other => panic!("should be account or addressable entity but got {other:?}"),
-    };
+            other => panic!("should be account or addressable entity but got {other:?}"),
+        };
 
     let callee_addressable_entity = match caller
         .context_mut()
@@ -1524,9 +1525,12 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
 
     // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka
     //    hash(old_code))
-    let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-        callee_addressable_entity.byte_code_addr(),
-    ));
+    let bytecode_key = if let Some(bytecode_addr) = callee_addressable_entity.byte_code_addr() {
+        Key::ByteCode(bytecode_addr)
+    } else {
+        return Ok(CALLEE_NOT_CALLABLE);
+    };
+
     metered_write(
         &mut caller,
         bytecode_key,
@@ -1546,6 +1550,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .try_into_remaining()
             .map_err(|_| InternalHostError::TypeConversion)?;
 
+        let block_time = caller.context().block_time;
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(caller.context().initiator)
             .with_caller_key(caller.context().callee)
@@ -1563,7 +1568,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
             .with_chain_name(caller.context().chain_name.clone())
-            .with_block_time(caller.context().block_time)
+            .with_block_time(block_time)
             .with_state_hash(Digest::from_raw([0; 32])) // TODO: Carry on state root hash
             .with_block_height(1) // TODO: Carry on block height
             .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32]))) // TODO: Carry on parent block hash
@@ -1571,8 +1576,22 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .build()
             .map_err(InternalHostError::ExecuteRequestBuildFailure)?;
 
-        let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
-
+        let mut tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+        match tracking_copy_for_ctor.emit_messages_for_new_contract_version(
+            Key::SmartContract(smart_contract_addr),
+            callee_addressable_entity_key,
+            bytecode_key,
+            version_key.protocol_version_major(),
+            version_key.entity_version() + 1,
+            block_time,
+        ) {
+            Ok(_) => (),
+            Err(message_emission_error) => {
+                return Err(VMError::Execute(ExecuteError::Api(
+                    message_emission_error.to_string(),
+                )))
+            }
+        }
         match caller
             .context()
             .executor

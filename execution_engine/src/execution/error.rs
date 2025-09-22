@@ -204,6 +204,12 @@ pub enum Error {
     /// Error when casting types.
     #[error("Couldn't cast types {0}")]
     TypeCast(&'static str),
+    /// Tried to add messages to a topic but it's full
+    #[error("Couldn't add messages to topic with key: {0} becuase it's full")]
+    TopicFull(Key),
+    /// No more messages in block allowed
+    #[error("No more messages in block allowed")]
+    MaxMessagesPerBlockExceeded,
 }
 
 impl From<PreprocessingError> for Error {

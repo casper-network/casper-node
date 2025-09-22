@@ -854,14 +854,14 @@ where
                 }
                 Some(contract_wasm) => {
                     let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                        updated_entity.byte_code_addr(),
+                        updated_entity.byte_code().value(),
                     ));
                     let byte_code_cl_value = match CLValue::from_t(byte_code_key) {
                         Ok(cl_value) => cl_value,
                         Err(err) => return Err(Self::Error::CLValue(err)),
                     };
                     self.write(
-                        Key::Hash(updated_entity.byte_code_addr()),
+                        Key::Hash(updated_entity.byte_code().value()),
                         StoredValue::CLValue(byte_code_cl_value),
                     );
 

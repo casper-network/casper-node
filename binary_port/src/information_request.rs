@@ -11,7 +11,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractHash, ContractPackageHash},
     system::auction::DelegatorKind,
-    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, PublicKey, TransactionHash,
+    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, PackageHash, PublicKey,
+    TransactionHash,
 };
 
 /// Request for information from the node.
@@ -709,7 +710,7 @@ impl ToBytes for EntityIdentifier {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageIdentifier {
     ContractPackageHash(ContractPackageHash),
-    PackageAddr(PackageAddr),
+    PackageAddr(PackageHash),
 }
 
 impl PackageIdentifier {

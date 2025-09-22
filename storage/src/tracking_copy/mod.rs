@@ -5,6 +5,7 @@ mod byte_size;
 mod error;
 mod ext;
 mod ext_entity;
+mod messages;
 mod meter;
 #[cfg(test)]
 mod tests;
@@ -26,6 +27,7 @@ use crate::{
         error::Error as GlobalStateError, state::StateReader,
         trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
     },
+    tracking_copy::messages::NewContractMessagesEmitter,
     KeyPrefix,
 };
 use casper_types::{
@@ -37,8 +39,8 @@ use casper_types::{
         Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
     },
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
-    KeyTag, StoredValue, StoredValueTypeMismatch, U512,
+    handle_stored_dictionary_value, BlockGlobalAddr, BlockTime, CLType, CLValue, CLValueError,
+    Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -46,6 +48,7 @@ pub use self::{
     error::Error as TrackingCopyError,
     ext::TrackingCopyExt,
     ext_entity::{FeesPurseHandling, TrackingCopyEntityExt},
+    messages::MessageEmissionError,
 };
 
 /// Result of a query on a `TrackingCopy`.
@@ -883,6 +886,26 @@ where
                 }
             }
         }
+    }
+
+    /// Emits system messages for a new contract version by writing them to global state
+    pub fn emit_messages_for_new_contract_version(
+        &mut self,
+        key_of_package: Key,
+        key_of_contract: Key,
+        key_of_wasm: Key,
+        contract_major_version: u32,
+        contract_minor_version: u32,
+        current_blocktime: BlockTime,
+    ) -> Result<(), MessageEmissionError> {
+        let contract_emitter = NewContractMessagesEmitter::new(
+            key_of_package,
+            key_of_contract,
+            key_of_wasm,
+            contract_major_version,
+            contract_minor_version,
+        );
+        contract_emitter.emit_contract_creation_messages(self, current_blocktime)
     }
 }
 

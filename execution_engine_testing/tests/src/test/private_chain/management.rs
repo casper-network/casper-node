@@ -479,7 +479,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         let addressable_entity = builder
             .get_addressable_entity(stored_entity_hash)
             .expect("should be entity");
-        Key::Hash(addressable_entity.package_hash().value())
+        Key::Hash(addressable_entity.package().value())
     };
 
     let contract_package_before = Package::try_from(
@@ -679,10 +679,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     let addressable_entity = builder
         .get_addressable_entity(stored_entity_hash)
         .expect("should be addressable entity");
-    let test_payment_stored_package_key = { Key::Hash(addressable_entity.package_hash().value()) };
+    let test_payment_stored_package_key = { Key::Hash(addressable_entity.package().value()) };
 
     let test_payment_stored_package_hash =
-        PackageHash::new(addressable_entity.package_hash().value());
+        PackageHash::new(addressable_entity.package().value());
 
     let contract_package_before = Package::try_from(
         builder

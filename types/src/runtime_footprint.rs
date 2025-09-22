@@ -186,8 +186,8 @@ impl RuntimeFootprint {
     ) -> Self {
         let runtime_address = RuntimeAddress::new_stored_contract(
             entity_addr.value(),
-            entity.package_hash().value(),
-            entity.byte_code_hash().value(),
+            entity.package().value(),
+            entity.byte_code().value(),
             entity.protocol_version(),
         );
         let action_thresholds = {

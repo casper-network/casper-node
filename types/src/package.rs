@@ -239,6 +239,12 @@ impl EntityVersions {
         Some(value)
     }
 
+    /// Returns the latest entity version key if it exists.
+    pub fn latest_with_key(&self) -> Option<(&EntityVersionKey, &EntityAddr)> {
+        let (key, value) = self.0.last_key_value()?;
+        Some((key, value))
+    }
+
     /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
     pub fn iter_entries(&self) -> impl Iterator<Item = (&EntityVersionKey, &EntityAddr)> {
         self.0.iter()

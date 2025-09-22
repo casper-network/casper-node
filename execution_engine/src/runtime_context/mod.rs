@@ -16,8 +16,8 @@ use tracing::error;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{
-        AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt, TrackingCopyError,
-        TrackingCopyExt,
+        AddResult, MessageEmissionError, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt,
+        TrackingCopyError, TrackingCopyExt,
     },
     AddressGenerator,
 };
@@ -1649,5 +1649,25 @@ where
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))
+    }
+
+    pub(crate) fn emit_messages_for_new_contract_version(
+        &self,
+        current_blocktime: BlockTime,
+        contract_package_key: Key,
+        contract_key: Key,
+        contract_wasm_key: Key,
+        contract_major_version: u32,
+        contract_minor_version: u32,
+    ) -> Result<(), MessageEmissionError> {
+        let mut tracking_copy = self.tracking_copy.borrow_mut();
+        tracking_copy.emit_messages_for_new_contract_version(
+            contract_package_key,
+            contract_key,
+            contract_wasm_key,
+            contract_major_version,
+            contract_minor_version,
+            current_blocktime,
+        )
     }
 }

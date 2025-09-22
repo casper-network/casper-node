@@ -262,8 +262,9 @@ impl ExecutorV2 {
             seed,
         );
 
+        let smart_contract_key = Key::SmartContract(smart_contract_addr);
         tracking_copy.write(
-            Key::SmartContract(smart_contract_addr),
+            smart_contract_key,
             StoredValue::SmartContract(smart_contract),
         );
 
@@ -272,10 +273,8 @@ impl ExecutorV2 {
         let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, wasm_bytes.clone().into());
         let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
 
-        tracking_copy.write(
-            Key::ByteCode(bytecode_addr),
-            StoredValue::ByteCode(bytecode),
-        );
+        let bytecode_key = Key::ByteCode(bytecode_addr);
+        tracking_copy.write(bytecode_key, StoredValue::ByteCode(bytecode));
 
         // 3. Store addressable entity
         let addressable_entity_key =
@@ -382,8 +381,23 @@ impl ExecutorV2 {
                     .build()
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
-                let forked_tc = tracking_copy.fork2();
+                let mut forked_tc = tracking_copy.fork2();
 
+                match forked_tc.emit_messages_for_new_contract_version(
+                    Key::SmartContract(smart_contract_addr),
+                    addressable_entity_key,
+                    Key::ByteCode(bytecode_addr),
+                    entity_version_key.protocol_version_major(),
+                    entity_version_key.entity_version(),
+                    block_time,
+                ) {
+                    Ok(_) => (),
+                    Err(message_emission_error) => {
+                        return Err(InstallContractError::Execute(ExecuteError::Api(
+                            message_emission_error.to_string(),
+                        )))
+                    }
+                }
                 match Self::execute_with_tracking_copy(self, forked_tc, execute_request) {
                     Ok(ExecuteResult {
                         host_error,
@@ -396,7 +410,6 @@ impl ExecutorV2 {
                         if let Some(host_error) = host_error {
                             return Err(InstallContractError::Constructor { host_error });
                         }
-
                         tracking_copy.apply_changes(effects, cache, messages);
 
                         if let Some(output) = output {
@@ -580,9 +593,9 @@ impl ExecutorV2 {
                                 );
                             }
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2) => {
-                                Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-                                    addressable_entity.byte_code_addr(),
-                                ))
+                                //The unwrap here is safe because we know that we are in
+                                //SmartContract kind
+                                Key::ByteCode(addressable_entity.byte_code_addr().unwrap())
                             }
                         };
 

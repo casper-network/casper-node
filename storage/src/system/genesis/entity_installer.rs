@@ -14,10 +14,9 @@ use crate::{
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::blake2b,
     },
-    AddressGenerator, TrackingCopy, MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
-    MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC, MESSAGING_CONTRACT_ADDR_TOPIC,
-    MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
-    MESSAGING_CONTRACT_WASM_ADDR_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
+    AddressGenerator, TrackingCopy, MESSAGING_CONTRACT_ADDR_TOPIC,
+    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
+    MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
     addressable_entity::{
@@ -882,15 +881,9 @@ where
     }
 
     fn create_messaging_topics(&self, block_time: BlockTime) -> Result<(), Box<GenesisError>> {
-        if self.config.enable_entity() {
-            self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
-        } else {
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
-        }
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())
     }
