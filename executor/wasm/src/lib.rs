@@ -1,7 +1,7 @@
 pub mod install;
 
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
@@ -41,13 +41,21 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
-    bytesrepr, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    CLType, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
-    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, MintCosts, Package, PackageHash, PackageStatus, Parameters, Phase,
-    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
-    WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityEntryPoint, EntryPoints as EntityEntryPoints,
+    },
+    bytesrepr,
+    contracts::{
+        ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
+        EntryPoints as ContractEntryPoints,
+    },
+    AccessRights, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
+    ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash,
+    Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
+    EntryPointType, EntryPointValue, Gas, Groups, HashAddr, InitiatorAddr, Key, MessageLimits,
+    MintCosts, NamedKeys, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
+    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
+    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -229,7 +237,7 @@ impl ExecutorV2 {
         // TODO: Michal: why is this result not evaluated?
         let _result = get_purse_for_entity(&mut tracking_copy, caller_key);
 
-        // 1. Store package hash
+        let enable_addressable_entity = tracking_copy.enable_addressable_entity();
         let smart_contract_addr: [u8; 32] = chain_utils::compute_predictable_address(
             chain_name.as_bytes(),
             initiator.value(),
@@ -237,94 +245,76 @@ impl ExecutorV2 {
             seed,
         );
 
-        let mut smart_contract = Package::new(
-            Default::default(),
-            Default::default(),
-            Groups::default(),
-            PackageStatus::Unlocked,
-        );
+        // 1. Store package hash
+        let package_addr: HashAddr = {
+            address_generator
+                .write()
+                .new_uref(AccessRights::NONE)
+                .addr()
+        };
 
         let protocol_version = ProtocolVersion::V2_0_0;
         let protocol_version_major = protocol_version.value().major;
 
-        let next_version = smart_contract.next_entity_version_for(protocol_version_major);
+        if enable_addressable_entity {
+            let mut smart_contract_package = Package::new(
+                Default::default(),
+                Default::default(),
+                Groups::default(),
+                PackageStatus::Unlocked,
+            );
 
-        let entity_version_key = smart_contract.insert_entity_version(
-            protocol_version_major,
-            EntityAddr::SmartContract(smart_contract_addr),
-        );
-        debug_assert_eq!(entity_version_key.entity_version(), next_version);
+            let next_version =
+                smart_contract_package.next_entity_version_for(protocol_version_major);
 
-        let smart_contract_addr = chain_utils::compute_predictable_address(
-            chain_name.as_bytes(),
-            initiator.value(),
-            bytecode_hash,
-            seed,
-        );
+            let entity_version_key = smart_contract_package.insert_entity_version(
+                protocol_version_major,
+                EntityAddr::SmartContract(smart_contract_addr),
+            );
+            debug_assert_eq!(entity_version_key.entity_version(), next_version);
 
-        tracking_copy.write(
-            Key::SmartContract(smart_contract_addr),
-            StoredValue::SmartContract(smart_contract),
-        );
+            tracking_copy.write(
+                Key::SmartContract(package_addr),
+                StoredValue::SmartContract(smart_contract_package),
+            );
+        } else {
+            let mut contract_package = ContractPackage::new(
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Groups::default(),
+                ContractPackageStatus::Unlocked,
+            );
+
+            contract_package.next_contract_version_for(protocol_version_major);
+
+            contract_package.insert_contract_version(
+                protocol_version_major,
+                ContractHash::new(smart_contract_addr),
+            );
+
+            tracking_copy.write(
+                Key::Hash(package_addr),
+                StoredValue::ContractPackage(contract_package),
+            );
+        }
 
         // 2. Store wasm
-
         let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, wasm_bytes.clone().into());
         let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
+        let bytecode_key = Key::ByteCode(bytecode_addr);
 
-        tracking_copy.write(
-            Key::ByteCode(bytecode_addr),
-            StoredValue::ByteCode(bytecode),
-        );
+        tracking_copy.write(bytecode_key, StoredValue::ByteCode(bytecode));
 
-        // 3. Store addressable entity
-        let addressable_entity_key =
-            Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
+        // 2.1 Store contract wasm and setup indirection
+        if !enable_addressable_entity {
+            let bytecode_key_as_clvalue =
+                CLValue::from_t(bytecode_key).map_err(InstallContractError::CLValueError)?;
 
-        // 3.1 Store entry points first
-        {
-            let config = ConfigBuilder::new()
-                .with_gas_limit(gas_limit)
-                .with_memory_limit(self.config.memory_limit)
-                .build()
-                .map_err(|config_builder_error| {
-                    InstallContractError::Execute(ExecuteError::InternalHost(
-                        InternalHostError::ConfigBuilderError(config_builder_error.to_string()),
-                    ))
-                })?;
-
-            let entry_point_names = casper_executor_wasmer_backend::entry_point_names(
-                wasm_bytes, config,
-            )
-            .map_err(|wasm_prep_error| {
-                InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
-            })?;
-
-            for name in entry_point_names {
-                let entry_point = EntityEntryPoint::new(
-                    name.clone(),
-                    Parameters::new(),
-                    CLType::Unit,
-                    EntryPointAccess::Public,
-                    EntryPointType::Called,
-                    EntryPointPayment::Caller,
-                );
-
-                let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(
-                    EntityAddr::SmartContract(smart_contract_addr),
-                    &name,
-                )
-                .map_err(|err| {
-                    InstallContractError::GlobalState(GlobalStateError::BytesRepr(err))
-                })?;
-
-                let entry_point_key = Key::EntryPoint(entry_point_addr);
-
-                tracking_copy.write(
-                    entry_point_key,
-                    StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
-                )
-            }
+            tracking_copy.write(
+                Key::Hash(bytecode_hash),
+                StoredValue::CLValue(bytecode_key_as_clvalue),
+            );
         }
 
         // TODO: abort(str) as an alternative to trap
@@ -343,20 +333,104 @@ impl ExecutorV2 {
             }
         };
 
-        let addressable_entity = AddressableEntity::new(
-            PackageHash::new(smart_contract_addr),
-            ByteCodeHash::new(bytecode_hash),
-            ProtocolVersion::V2_0_0,
-            main_purse,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-            EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
-        );
+        // 3. Gather entrypoints first.
+        let entrypoints = {
+            let config = ConfigBuilder::new()
+                .with_gas_limit(gas_limit)
+                .with_memory_limit(self.config.memory_limit)
+                .build()
+                .map_err(|config_builder_error| {
+                    InstallContractError::Execute(ExecuteError::InternalHost(
+                        InternalHostError::ConfigBuilderError(config_builder_error.to_string()),
+                    ))
+                })?;
 
-        tracking_copy.write(
-            addressable_entity_key,
-            StoredValue::AddressableEntity(addressable_entity),
-        );
+            let entry_point_names = casper_executor_wasmer_backend::entry_point_names(
+                wasm_bytes, config,
+            )
+            .map_err(|wasm_prep_error| {
+                InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
+            })?;
+
+            let mut entrypoints = EntityEntryPoints::new();
+
+            for name in entry_point_names {
+                let entry_point = EntityEntryPoint::new(
+                    name.clone(),
+                    Parameters::new(),
+                    CLType::Unit,
+                    EntryPointAccess::Public,
+                    EntryPointType::Called,
+                    EntryPointPayment::Caller,
+                );
+
+                entrypoints.add_entry_point(entry_point);
+            }
+
+            entrypoints
+        };
+
+        if enable_addressable_entity {
+            // 3. Store addressable entity
+            let addressable_entity_key =
+                Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
+
+            for entrypoint in entrypoints.take_entry_points() {
+                let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(
+                    EntityAddr::SmartContract(smart_contract_addr),
+                    entrypoint.name(),
+                )
+                .map_err(|err| {
+                    InstallContractError::GlobalState(GlobalStateError::BytesRepr(err))
+                })?;
+
+                let entry_point_key = Key::EntryPoint(entry_point_addr);
+
+                tracking_copy.write(
+                    entry_point_key,
+                    StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entrypoint)),
+                )
+            }
+
+            // 3.1 Store entry points first
+            let addressable_entity = AddressableEntity::new(
+                PackageHash::new(smart_contract_addr),
+                ByteCodeHash::new(bytecode_hash),
+                ProtocolVersion::V2_0_0,
+                main_purse,
+                AssociatedKeys::default(),
+                ActionThresholds::default(),
+                EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
+            );
+
+            tracking_copy.write(
+                addressable_entity_key,
+                StoredValue::AddressableEntity(addressable_entity),
+            );
+        } else {
+            let contract_entrypoints = ContractEntryPoints::from(entrypoints);
+            let named_keys = {
+                let mut ret = BTreeMap::new();
+                ret.insert(
+                    NAME_FOR_V2_CONTRACT_MAIN_PURSE.to_string(),
+                    Key::URef(main_purse),
+                );
+                NamedKeys::from(ret)
+            };
+
+            let contract = Contract::new(
+                ContractPackageHash::new(package_addr),
+                ContractWasmHash::new(bytecode_hash),
+                named_keys,
+                contract_entrypoints,
+                protocol_version,
+            );
+
+            tracking_copy.write(
+                Key::Hash(smart_contract_addr),
+                StoredValue::Contract(contract),
+            )
+        }
 
         let ctor_gas_usage = match entry_point {
             Some(entry_point_name) => {
@@ -925,16 +999,20 @@ impl ExecutorV2 {
                 cache: final_tracking_copy.cache(),
                 messages: final_tracking_copy.messages(),
             }),
-            Err(VMError::Trap(trap_code)) => Ok(ExecuteResult {
-                host_error: Some(CallError::CalleeTrapped(trap_code)),
-                output: None,
-                gas_usage,
-                effects: initial_tracking_copy.effects(),
-                cache: initial_tracking_copy.cache(),
-                messages: initial_tracking_copy.messages(),
-            }),
+            Err(VMError::Trap(trap_code)) => {
+                println!("{:?}", trap_code);
+                Ok(ExecuteResult {
+                    host_error: Some(CallError::CalleeTrapped(trap_code)),
+                    output: None,
+                    gas_usage,
+                    effects: initial_tracking_copy.effects(),
+                    cache: initial_tracking_copy.cache(),
+                    messages: initial_tracking_copy.messages(),
+                })
+            }
             Err(VMError::Export(export_error)) => {
                 error!(?export_error, "export error");
+                println!("{:?}", export_error);
                 Ok(ExecuteResult {
                     host_error: Some(CallError::NotCallable),
                     output: None,

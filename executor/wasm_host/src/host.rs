@@ -1061,8 +1061,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             ProtocolVersion::V2_0_0,
         );
 
-        println!("{:?}", Key::Hash(smart_contract_addr));
-
         metered_write(
             &mut caller,
             Key::Hash(smart_contract_addr),
@@ -1673,9 +1671,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
 
-    println!("A {:?}", callee_addressable_entity_key);
+    println!("{}", callee_addressable_entity_key);
 
-    match caller
+    let new_version_addr = match caller
         .context_mut()
         .tracking_copy
         .read(&callee_addressable_entity_key)
@@ -1756,12 +1754,14 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                         entity_key,
                         StoredValue::AddressableEntity(entity),
                     )?;
+
+                    new_version_hash_addr
                 }
                 None => return Ok(CALLEE_NOT_CALLABLE),
             }
         }
         Ok(Some(StoredValue::Contract(contract))) => {
-            println!("foo");
+            println!("retrieving contract");
             let package_hash = contract.contract_package_hash();
 
             let package_key = Key::Hash(package_hash.value());
@@ -1780,7 +1780,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             };
 
             if package.is_locked() {
-                return Ok(CALLEE_NOT_CALLABLE);
+                return Ok(7);
             }
 
             match package.current_contract_hash() {
@@ -1798,7 +1798,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                         ContractHash::new(new_version_hash_addr),
                     );
                     if package.disable_contract_version(previous_hash).is_err() {
-                        return Ok(CALLEE_NOT_CALLABLE);
+                        return Ok(7);
                     };
 
                     metered_write(
@@ -1830,8 +1830,10 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                     let smart_contract = Key::Hash(new_version_hash_addr);
 
                     metered_write(&mut caller, smart_contract, StoredValue::Contract(entity))?;
+
+                    new_version_hash_addr
                 }
-                None => return Ok(CALLEE_NOT_CALLABLE),
+                None => return Ok(7),
             }
         }
         Ok(Some(other_entity)) => {
@@ -1865,7 +1867,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_caller_key(caller.context().callee)
             .with_gas_limit(gas_limit)
             .with_execution_kind(ExecutionKind::Stored {
-                address: smart_contract_addr,
+                address: new_version_addr,
                 entry_point: entry_point_name.clone(),
             })
             .with_input(input_data.unwrap_or_default())
