@@ -379,6 +379,7 @@ impl ExecutorV2 {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
+                    .with_authorization_keys(BTreeSet::from_iter([initiator]))
                     .build()
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
@@ -1121,6 +1122,7 @@ impl Executor for ExecutorV2 {
             .with_block_height(request.block_height)
             .with_sandboxed(true) // Enable sandboxed mode
             .with_runtime_native_config(runtime_native_config)
+            .with_authorization_keys(BTreeSet::from_iter([request.initiator]))
             .build()
             .map_err(|error| {
                 ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure(error))
