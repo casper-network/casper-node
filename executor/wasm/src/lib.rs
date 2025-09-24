@@ -499,6 +499,7 @@ impl ExecutorV2 {
             block_height,
             sandboxed,
             runtime_native_config,
+            authorization_keys,
         } = execute_request;
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
@@ -577,6 +578,7 @@ impl ExecutorV2 {
                                     block_info,
                                     transaction_hash,
                                     gas_limit,
+                                    authorization_keys.clone(),
                                 );
                             }
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2) => {
@@ -686,6 +688,7 @@ impl ExecutorV2 {
                             block_info,
                             transaction_hash,
                             gas_limit,
+                            authorization_keys,
                         );
                     }
                     Some(stored_value) => {
@@ -752,6 +755,7 @@ impl ExecutorV2 {
             runtime_native_config,
             parent_block_hash: parent_block_hash.inner().value(),
             block_height,
+            authorization_keys,
         };
 
         // Check that the input argument size does not exceed the VM memory limit
@@ -887,11 +891,16 @@ impl ExecutorV2 {
         block_info: BlockInfo,
         transaction_hash: TransactionHash,
         gas_limit: u64,
+        authorization_keys: BTreeSet<AccountHash>,
     ) -> Result<ExecuteResult, ExecuteError>
     where
         R: GlobalStateReader + 'static,
     {
-        let authorization_keys = BTreeSet::from_iter([initiator]);
+        let authorization_keys = if authorization_keys.is_empty() {
+            BTreeSet::from_iter([initiator])
+        } else {
+            authorization_keys
+        };
         let initiator_addr = InitiatorAddr::AccountHash(initiator);
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));

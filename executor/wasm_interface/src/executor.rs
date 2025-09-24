@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::collections::BTreeSet;
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
@@ -62,6 +63,8 @@ pub struct ExecuteRequest {
     pub sandboxed: bool,
     /// Runtime native config.
     pub runtime_native_config: RuntimeNativeConfig,
+    /// Authorization keys for this execution.
+    pub authorization_keys: BTreeSet<AccountHash>,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -82,6 +85,7 @@ pub struct ExecuteRequestBuilder {
     block_height: Option<u64>,
     sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
+    authorization_keys: Option<BTreeSet<AccountHash>>, 
 }
 
 impl ExecuteRequestBuilder {
@@ -216,6 +220,15 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the authorization keys.
+    pub fn with_authorization_keys(
+        mut self,
+        authorization_keys: BTreeSet<AccountHash>,
+    ) -> Self {
+        self.authorization_keys = Some(authorization_keys);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -239,6 +252,9 @@ impl ExecuteRequestBuilder {
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
+        let authorization_keys = self
+            .authorization_keys
+            .ok_or("Authorization keys are not set")?;
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -255,6 +271,7 @@ impl ExecuteRequestBuilder {
             block_height,
             sandboxed,
             runtime_native_config,
+            authorization_keys,
         })
     }
 }

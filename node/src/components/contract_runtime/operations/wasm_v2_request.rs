@@ -306,7 +306,12 @@ impl WasmV2Request {
 
                 builder = builder.with_execution_kind(execution_kind);
 
-                let execute_request = builder.build().expect("should build");
+                let authorization_keys = transaction.signers();
+
+                let execute_request = builder
+                    .with_authorization_keys(authorization_keys)
+                    .build()
+                    .expect("should build");
 
                 Ok(Self::Execute(execute_request))
             }
