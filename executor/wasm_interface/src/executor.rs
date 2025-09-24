@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
@@ -85,7 +84,7 @@ pub struct ExecuteRequestBuilder {
     block_height: Option<u64>,
     sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
-    authorization_keys: Option<BTreeSet<AccountHash>>, 
+    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -221,10 +220,7 @@ impl ExecuteRequestBuilder {
     }
 
     /// Set the authorization keys.
-    pub fn with_authorization_keys(
-        mut self,
-        authorization_keys: BTreeSet<AccountHash>,
-    ) -> Self {
+    pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = Some(authorization_keys);
         self
     }

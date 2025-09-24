@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_interface::executor::Executor;
