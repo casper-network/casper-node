@@ -819,7 +819,6 @@ fn traits() {
     );
 }
 
-#[ignore]
 #[test]
 fn upgradable() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)

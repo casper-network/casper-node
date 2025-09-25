@@ -12,6 +12,7 @@ use casper_execution_engine::{
 };
 use casper_executor_wasm_common::{
     chain_utils,
+    chain_utils::compute_next_contract_hash_version,
     error::{CallError, TrapCode},
     flags::ReturnFlags,
 };
@@ -53,9 +54,9 @@ use casper_types::{
     ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest,
     EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
     EntryPointValue, Gas, Groups, HashAddr, InitiatorAddr, Key, MessageLimits, MintCosts,
-    NamedKeys, Package, PackageHash, PackageStatus, Parameters, Phase, ProtocolVersion,
-    StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
-    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    NamedKeys, Package, PackageAddr, PackageHash, PackageStatus, Parameters, Phase,
+    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
+    WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -238,25 +239,19 @@ impl ExecutorV2 {
         let _result = get_purse_for_entity(&mut tracking_copy, caller_key);
 
         let enable_addressable_entity = tracking_copy.enable_addressable_entity();
-        let smart_contract_addr: [u8; 32] = chain_utils::compute_predictable_address(
+
+        // 1. Store package hash
+        let package_addr = chain_utils::compute_predictable_address(
             chain_name.as_bytes(),
             initiator.value(),
             bytecode_hash,
             seed,
         );
 
-        // 1. Store package hash
-        let package_addr: HashAddr = {
-            address_generator
-                .write()
-                .new_uref(AccessRights::NONE)
-                .addr()
-        };
-
         let protocol_version = ProtocolVersion::V2_0_0;
         let protocol_version_major = protocol_version.value().major;
 
-        if enable_addressable_entity {
+        let smart_contract_addr = if enable_addressable_entity {
             let mut smart_contract_package = Package::new(
                 Default::default(),
                 Default::default(),
@@ -266,6 +261,9 @@ impl ExecutorV2 {
 
             let next_version =
                 smart_contract_package.next_entity_version_for(protocol_version_major);
+
+            let smart_contract_addr =
+                compute_next_contract_hash_version(package_addr, next_version);
 
             let entity_version_key = smart_contract_package.insert_entity_version(
                 protocol_version_major,
@@ -277,6 +275,7 @@ impl ExecutorV2 {
                 Key::SmartContract(package_addr),
                 StoredValue::SmartContract(smart_contract_package),
             );
+            smart_contract_addr
         } else {
             let mut contract_package = ContractPackage::new(
                 Default::default(),
@@ -286,7 +285,10 @@ impl ExecutorV2 {
                 ContractPackageStatus::Unlocked,
             );
 
-            contract_package.next_contract_version_for(protocol_version_major);
+            let next_version = contract_package.next_contract_version_for(protocol_version_major);
+
+            let smart_contract_addr =
+                compute_next_contract_hash_version(package_addr, next_version);
 
             contract_package.insert_contract_version(
                 protocol_version_major,
@@ -297,7 +299,8 @@ impl ExecutorV2 {
                 Key::Hash(package_addr),
                 StoredValue::ContractPackage(contract_package),
             );
-        }
+            smart_contract_addr
+        };
 
         // 2. Store wasm
         let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, wasm_bytes.clone().into());
@@ -394,7 +397,7 @@ impl ExecutorV2 {
 
             // 3.1 Store entry points first
             let addressable_entity = AddressableEntity::new(
-                PackageHash::new(smart_contract_addr),
+                PackageHash::new(package_addr),
                 ByteCodeHash::new(bytecode_hash),
                 ProtocolVersion::V2_0_0,
                 main_purse,
@@ -439,7 +442,7 @@ impl ExecutorV2 {
                     .with_initiator(initiator)
                     .with_caller_key(caller_key)
                     .with_execution_kind(ExecutionKind::Stored {
-                        address: smart_contract_addr,
+                        address: package_addr,
                         entry_point: entry_point_name,
                     })
                     .with_gas_limit(gas_limit)
@@ -496,7 +499,7 @@ impl ExecutorV2 {
 
         match state_provider.commit_effects(state_root_hash, effects.clone()) {
             Ok(post_state_hash) => Ok(InstallContractResult {
-                smart_contract_addr,
+                smart_contract_addr: package_addr,
                 gas_usage: ctor_gas_usage,
                 effects,
                 post_state_hash,
@@ -581,14 +584,14 @@ impl ExecutorV2 {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
             } else if let ExecutionKind::Stored {
-                address: smart_contract_addr,
+                address: contract_package_addr,
                 entry_point,
             } = &execution_kind
             {
                 let smart_contract_key = Key::SmartContract(*smart_contract_addr);
                 let vm1_key = Key::Hash(*smart_contract_addr);
 
-                let mut contract = tracking_copy
+                let mut contract = match tracking_copy
                     .read_first(&[&vm1_key, &smart_contract_key])
                     .map_err(|read_error| {
                         error!(
@@ -596,32 +599,61 @@ impl ExecutorV2 {
                             [&vm1_key, &smart_contract_key]
                         );
                         ExecuteError::InternalHost(InternalHostError::TrackingCopy)
-                    })?;
-
-                if let Some(StoredValue::SmartContract(smart_contract_package)) = &contract {
-                    let enabled_versions = smart_contract_package.enabled_versions();
-                    let maybe_contract_hash = enabled_versions.latest();
-                    let contract_hash = if let Some(contract_hash) = maybe_contract_hash {
-                        contract_hash
-                    } else {
-                        //#TODO this probably should not be a node stopping error?
-                        error!(
+                    })? {
+                    Some(StoredValue::SmartContract(smart_contract_package)) => {
+                        let enabled_versions = smart_contract_package.enabled_versions();
+                        let maybe_contract_hash = enabled_versions.latest();
+                        let contract_hash = if let Some(contract_hash) = maybe_contract_hash {
+                            contract_hash
+                        } else {
+                            //#TODO this probably should not be a node stopping error?
+                            error!(
                             "Couldn't find an active version for smart contract under path {:?}",
                             [&vm1_key, &smart_contract_key]
                         );
-                        return Err(ExecuteError::NoActiveContract(smart_contract_key));
-                    };
-                    let entity_addr = EntityAddr::SmartContract(contract_hash.value());
-                    let latest_version_key = Key::AddressableEntity(entity_addr);
-                    assert_eq!(&entity_addr.value(), smart_contract_addr);
-                    let new_contract =
-                        tracking_copy
-                            .read(&latest_version_key)
-                            .map_err(|read_err| {
-                                error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
-                                ExecuteError::InternalHost(InternalHostError::TrackingCopy)
-                            })?;
-                    contract = new_contract;
+                            return Err(ExecuteError::NoActiveContract(smart_contract_key));
+                        };
+                        let entity_addr = EntityAddr::SmartContract(contract_hash.value());
+                        let latest_version_key = Key::AddressableEntity(entity_addr);
+                        assert_eq!(&entity_addr.value(), contract_package_addr);
+                        let new_contract =
+                            tracking_copy
+                                .read(&latest_version_key)
+                                .map_err(|read_err| {
+                                    error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
+                                    ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                                })?;
+
+                        new_contract
+                    }
+                    Some(StoredValue::ContractPackage(smart_contract_package)) => {
+                        let contract_hash = if let Some((_, contract_hash)) =
+                            smart_contract_package.enabled_versions().iter().last()
+                        {
+                            *contract_hash
+                        } else {
+                            //#TODO this probably should not be a node stopping error?
+                            error!(
+                            "Couldn't find an active version for smart contract under path {:?}",
+                            [&vm1_key, &smart_contract_key]
+                        );
+                            return Err(ExecuteError::NoActiveContract(smart_contract_key));
+                        };
+                        let latest_version_key = Key::Hash(contract_hash.value());
+                        let new_contract =
+                            tracking_copy
+                                .read(&latest_version_key)
+                                .map_err(|read_err| {
+                                    error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
+                                    ExecuteError::InternalHost(InternalHostError::TrackingCopy)
+                                })?;
+
+                        new_contract
+                    }
+                    Some(_) | None => {
+                        println!("none case");
+                        None
+                    }
                 };
 
                 match contract {
@@ -640,7 +672,7 @@ impl ExecutorV2 {
                                     self.execution_engine_v1.config().protocol_version(),
                                 );
 
-                                let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
+                                let entity_addr = EntityAddr::SmartContract(*contract_package_addr);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -830,7 +862,7 @@ impl ExecutorV2 {
                                     self.execution_engine_v1.config().protocol_version(),
                                 );
 
-                                let entity_addr = EntityAddr::SmartContract(*smart_contract_addr);
+                                let entity_addr = EntityAddr::SmartContract(*contract_package_addr);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -853,7 +885,7 @@ impl ExecutorV2 {
                     }
                     None => {
                         error!(
-                            smart_contract_addr = base16::encode_lower(&smart_contract_addr),
+                            smart_contract_addr = base16::encode_lower(&contract_package_addr),
                             ?execution_kind,
                             "No contract code found",
                         );
@@ -875,13 +907,13 @@ impl ExecutorV2 {
         // Derive callee key from the execution target.
         let callee_key = match &execution_kind {
             ExecutionKind::Stored {
-                address: smart_contract_addr,
+                address: smart_contract_package_addr,
                 ..
             } => {
                 if initial_tracking_copy.enable_addressable_entity() {
-                    Key::AddressableEntity(EntityAddr::SmartContract(*smart_contract_addr))
+                    Key::SmartContract(*smart_contract_package_addr)
                 } else {
-                    Key::Hash(*smart_contract_addr)
+                    Key::Hash(*smart_contract_package_addr)
                 }
             }
             ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
@@ -999,20 +1031,16 @@ impl ExecutorV2 {
                 cache: final_tracking_copy.cache(),
                 messages: final_tracking_copy.messages(),
             }),
-            Err(VMError::Trap(trap_code)) => {
-                println!("{:?}", trap_code);
-                Ok(ExecuteResult {
-                    host_error: Some(CallError::CalleeTrapped(trap_code)),
-                    output: None,
-                    gas_usage,
-                    effects: initial_tracking_copy.effects(),
-                    cache: initial_tracking_copy.cache(),
-                    messages: initial_tracking_copy.messages(),
-                })
-            }
+            Err(VMError::Trap(trap_code)) => Ok(ExecuteResult {
+                host_error: Some(CallError::CalleeTrapped(trap_code)),
+                output: None,
+                gas_usage,
+                effects: initial_tracking_copy.effects(),
+                cache: initial_tracking_copy.cache(),
+                messages: initial_tracking_copy.messages(),
+            }),
             Err(VMError::Export(export_error)) => {
                 error!(?export_error, "export error");
-                println!("{:?}", export_error);
                 Ok(ExecuteResult {
                     host_error: Some(CallError::NotCallable),
                     output: None,
@@ -1310,12 +1338,12 @@ impl Executor for ExecutorV2 {
 
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    entity_key: Key,
+    caller_key: Key,
 ) -> Result<(EntityAddr, URef), ExecuteError> {
     let stored_value = tracking_copy
-        .read(&entity_key)
+        .read(&caller_key)
         .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
-        .ok_or(ExecuteError::EntityNotFound(entity_key))?;
+        .ok_or(ExecuteError::EntityNotFound(caller_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key.into_t::<Key>().map_err(|cl_error| {
@@ -1355,8 +1383,8 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 contract_hash
             } else {
                 //#TODO this probably should not be a node stopping error?
-                error!("Couldn't find an active version for smart contract {entity_key}");
-                return Err(ExecuteError::NoActiveContract(entity_key));
+                error!("Couldn't find an active version for smart contract {caller_key}");
+                return Err(ExecuteError::NoActiveContract(caller_key));
             };
 
             let entity_addr = EntityAddr::SmartContract(contract_hash.value());
@@ -1376,17 +1404,29 @@ fn get_purse_for_entity<R: GlobalStateReader>(
 
             Ok((entity_addr, addressable_entity.main_purse()))
         }
-        StoredValue::Contract(contract) => {
-            let uref = contract
-                .named_keys()
-                .get(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
-                .ok_or(ExecuteError::MainPurseNotFound(entity_key))?
-                .into_uref()
-                .ok_or(ExecuteError::InvalidKeyForPurse(entity_key))?;
+        StoredValue::ContractPackage(contract_package) => {
+            let contract_hash = match contract_package.enabled_versions().last_key_value() {
+                Some((_, contract_hash)) => Key::Hash(contract_hash.value()),
+                None => return Err(ExecuteError::NoActiveContract(caller_key)),
+            };
 
-            let hash_addr = entity_key
-                .into_hash_addr()
-                .ok_or(ExecuteError::EntityNotFound(entity_key))?;
+            let named_keys = tracking_copy
+                .read(&contract_hash)
+                .map_err(|_error| ExecuteError::InternalHost(InternalHostError::TrackingCopy))?
+                .ok_or(ExecuteError::EntityNotFound(contract_hash))?
+                .into_contract()
+                .map(|contract| contract.take_named_keys())
+                .ok_or(ExecuteError::InvalidKeyForPurse(contract_hash))?;
+
+            let uref = named_keys
+                .get(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
+                .ok_or(ExecuteError::MainPurseNotFound(caller_key))?
+                .into_uref()
+                .ok_or(ExecuteError::InvalidKeyForPurse(caller_key))?;
+
+            let hash_addr = contract_hash
+                .into_entity_hash_addr()
+                .ok_or(ExecuteError::EntityNotFound(contract_hash))?;
 
             Ok((EntityAddr::SmartContract(hash_addr), uref))
         }
