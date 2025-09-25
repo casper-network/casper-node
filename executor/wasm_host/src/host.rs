@@ -8,7 +8,6 @@ use casper_executor_wasm_common::{
         ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
         ENTRY_POINT_PAYMENT_SELF_ONWARD,
     },
-    env_info::EnvInfo,
     error::{
         CallError, CALLEE_NOT_CALLABLE, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INVALID_DATA,
         HOST_ERROR_INVALID_INPUT, HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED,
@@ -45,7 +44,7 @@ use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
 
 use crate::{
-    abi::{CreateResult, ReadInfo},
+    abi::{CreateResult, EnvInfo, ReadInfo},
     context::Context,
     system,
 };
@@ -73,14 +72,14 @@ enum EntityKindTag {
 }
 
 pub trait FallibleInto<T> {
-    fn try_into_wrapped(self) -> VMResult<T>;
+    fn wrapped_try_into(self) -> VMResult<T>;
 }
 
 impl<From, To> FallibleInto<To> for From
 where
     To: TryFrom<From>,
 {
-    fn try_into_wrapped(self) -> VMResult<To> {
+    fn wrapped_try_into(self) -> VMResult<To> {
         To::try_from(self).map_err(|_| VMError::Internal(InternalHostError::TypeConversion))
     }
 }
@@ -175,7 +174,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into_wrapped()?)?;
+    let key_payload_bytes =
+        caller.memory_read(key_ptr.wrapped_try_into()?, key_size.wrapped_try_into()?)?;
 
     let keyspace = match keyspace_tag {
         KeyspaceTag::State => Keyspace::State,
@@ -217,7 +217,10 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    let value = caller.memory_read(value_ptr, value_size.try_into_wrapped()?)?;
+    let value = caller.memory_read(
+        value_ptr.wrapped_try_into()?,
+        value_size.wrapped_try_into()?,
+    )?;
 
     let stored_value = match keyspace {
         Keyspace::State | Keyspace::Context(_) => {
@@ -375,7 +378,8 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into_wrapped()?)?;
+    let key_payload_bytes =
+        caller.memory_read(key_ptr.wrapped_try_into()?, key_size.wrapped_try_into()?)?;
 
     let keyspace = match keyspace_tag {
         KeyspaceTag::State => Keyspace::State,
@@ -469,7 +473,10 @@ pub fn casper_print<S: GlobalStateReader, E: Executor>(
         [u64::from(message_ptr), u64::from(message_size)],
     )?;
 
-    let vec = caller.memory_read(message_ptr, message_size.try_into_wrapped()?)?;
+    let vec = caller.memory_read(
+        message_ptr.wrapped_try_into()?,
+        message_size.wrapped_try_into()?,
+    )?;
     let msg = String::from_utf8_lossy(&vec);
     eprintln!("⛓️ {msg}");
     Ok(())
@@ -509,7 +516,8 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
 
     // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not
     // require it.
-    let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into_wrapped()?)?;
+    let key_payload_bytes =
+        caller.memory_read(key_ptr.wrapped_try_into()?, key_size.wrapped_try_into()?)?;
 
     let keyspace = match keyspace_tag {
         KeyspaceTag::State => Keyspace::State,
@@ -677,14 +685,15 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     };
 
     let read_info = ReadInfo {
-        data: out_ptr,
-        data_size: global_state_raw_bytes.len().try_into_wrapped()?,
+        data_ptr: out_ptr,
+        data_size: global_state_raw_bytes.len().wrapped_try_into()?,
     };
 
-    let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
-    caller.memory_write(info_ptr, read_info_bytes)?;
+    let read_info_bytes = borsh::to_vec(&read_info)
+        .map_err(|_| VMError::Internal(InternalHostError::Serialization))?;
+    caller.memory_write(info_ptr.wrapped_try_into()?, &read_info_bytes)?;
     if out_ptr != 0 {
-        caller.memory_write(out_ptr, &global_state_raw_bytes)?;
+        caller.memory_write(out_ptr.wrapped_try_into()?, &global_state_raw_bytes)?;
     }
     Ok(HOST_ERROR_SUCCESS)
 }
@@ -777,7 +786,7 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
     if out_ptr == 0 {
         Ok(out_ptr)
     } else {
-        caller.memory_write(out_ptr, &input)?;
+        caller.memory_write(out_ptr.wrapped_try_into()?, &input)?;
         Ok(out_ptr + (input.len() as u32))
     }
 }
@@ -809,7 +818,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         None
     } else {
         let data = caller
-            .memory_read(data_ptr, data_len.try_into_wrapped()?)
+            .memory_read(data_ptr.wrapped_try_into()?, data_len.wrapped_try_into()?)
             .map(Bytes::from)?;
 
         let key = caller.context().callee;
@@ -863,7 +872,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     let code = if code_ptr != 0 {
         caller
-            .memory_read(code_ptr, code_len as usize)
+            .memory_read(code_ptr.wrapped_try_into()?, code_len as usize)
             .map(Bytes::from)?
     } else {
         caller.bytecode()
@@ -873,7 +882,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         if seed_len != 32 {
             return Ok(CALLEE_NOT_CALLABLE);
         }
-        let seed_bytes = caller.memory_read(seed_ptr, seed_len as usize)?;
+        let seed_bytes = caller.memory_read(seed_ptr.wrapped_try_into()?, seed_len as usize)?;
         let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
             // SAFETY: We checked for length. This shouldn't happen
             error!("Error when converting seed_bytes from vec to static array");
@@ -889,8 +898,10 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         let entry_point_ptr = NonZeroU32::new(entry_point_ptr);
         match entry_point_ptr {
             Some(entry_point_ptr) => {
-                let entry_point_bytes =
-                    caller.memory_read(entry_point_ptr.get(), entry_point_len as _)?;
+                let entry_point_bytes = caller.memory_read(
+                    entry_point_ptr.get().wrapped_try_into()?,
+                    entry_point_len as _,
+                )?;
                 match String::from_utf8(entry_point_bytes) {
                     Ok(entry_point) => Some(entry_point),
                     Err(utf8_error) => {
@@ -910,7 +921,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let input_data: Option<Bytes> = if input_ptr == 0 {
         None
     } else {
-        let input_data = caller.memory_read(input_ptr, input_len as _)?.into();
+        let input_data = caller
+            .memory_read(input_ptr.wrapped_try_into()?, input_len as _)?
+            .into();
         Some(input_data)
     };
 
@@ -1151,15 +1164,10 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         package_address: package_addr,
     };
 
-    let create_result_bytes = safe_transmute::transmute_one_to_bytes(&create_result);
+    let create_result_bytes =
+        borsh::to_vec(&create_result).map_err(|_| InternalHostError::Serialization)?;
 
-    debug_assert_eq!(
-        safe_transmute::transmute_one(create_result_bytes),
-        Ok(create_result),
-        "Sanity check", // NOTE: Remove these guards with sufficient test coverage
-    );
-
-    caller.memory_write(result_ptr, create_result_bytes)?;
+    caller.memory_write(result_ptr.wrapped_try_into()?, &create_result_bytes)?;
 
     Ok(CALLEE_SUCCEEDED)
 }
@@ -1310,13 +1318,16 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     // it's invalid, return error. 4. Output data is captured by calling `cb_alloc`.
     // let vm = VM::new();
     // vm.
-    let address = caller.memory_read(address_ptr, address_len as _)?;
-    let smart_contract_addr: HashAddr = address.try_into_wrapped()?;
+    let address = caller.memory_read(address_ptr.wrapped_try_into()?, address_len as _)?;
+    let smart_contract_addr: HashAddr = address.wrapped_try_into()?;
 
-    let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
+    let input_data: Bytes = caller
+        .memory_read(input_ptr.wrapped_try_into()?, input_len as _)?
+        .into();
 
     let entry_point = {
-        let entry_point_bytes = caller.memory_read(entry_point_ptr, entry_point_len as _)?;
+        let entry_point_bytes =
+            caller.memory_read(entry_point_ptr.wrapped_try_into()?, entry_point_len as _)?;
         match String::from_utf8(entry_point_bytes) {
             Ok(entry_point) => entry_point,
             Err(utf8_error) => {
@@ -1397,7 +1408,7 @@ fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 };
 
                 if out_ptr != 0 {
-                    caller.memory_write(out_ptr, &output)?;
+                    caller.memory_write(out_ptr.wrapped_try_into()?, &output)?;
                 }
             }
             let host_result = match host_error {
@@ -1457,8 +1468,11 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             if entity_addr_len != 32 {
                 return Ok(HOST_ERROR_SUCCESS);
             }
-            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            let account_hash: AccountHash = AccountHash::new(entity_addr.try_into_wrapped()?);
+            let entity_addr = caller.memory_read(
+                entity_addr_ptr.wrapped_try_into()?,
+                entity_addr_len as usize,
+            )?;
+            let account_hash: AccountHash = AccountHash::new(entity_addr.wrapped_try_into()?);
 
             let account_key = Key::Account(account_hash);
             match caller.context_mut().tracking_copy.read(&account_key) {
@@ -1484,7 +1498,10 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             if entity_addr_len != 32 {
                 return Ok(HOST_ERROR_SUCCESS);
             }
-            let hash_bytes = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            let hash_bytes = caller.memory_read(
+                entity_addr_ptr.wrapped_try_into()?,
+                entity_addr_len as usize,
+            )?;
             let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
                 // SAFETY: We checked for length. This shouldn't happen
                 error!("Error when converting hash_bytes from vec to static array");
@@ -1587,7 +1604,7 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
         .try_into()
         .map_err(|_| InternalHostError::TotalBalanceOverflow)?;
 
-    caller.memory_write(output_ptr, &total_balance.to_le_bytes())?;
+    caller.memory_write(output_ptr.wrapped_try_into()?, &total_balance.to_le_bytes())?;
     Ok(HOST_ERROR_NOT_FOUND)
 }
 
@@ -1620,14 +1637,16 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     )?;
 
     let code = caller
-        .memory_read(code_ptr, code_size as usize)
+        .memory_read(code_ptr.wrapped_try_into()?, code_size as usize)
         .map(Bytes::from)?;
 
     let entry_point = match NonZeroU32::new(entry_point_ptr) {
         Some(entry_point_ptr) => {
             // There's upgrade entry point to be called
-            let entry_point_bytes =
-                caller.memory_read(entry_point_ptr.get(), entry_point_size as usize)?;
+            let entry_point_bytes = caller.memory_read(
+                entry_point_ptr.get().wrapped_try_into()?,
+                entry_point_size as usize,
+            )?;
             match String::from_utf8(entry_point_bytes) {
                 Ok(entry_point) => Some(entry_point),
                 Err(utf8_error) => {
@@ -1646,7 +1665,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     let input_data: Option<Bytes> = if input_ptr == 0 {
         None
     } else {
-        let input_data = caller.memory_read(input_ptr, input_size as _)?.into();
+        let input_data = caller
+            .memory_read(input_ptr.wrapped_try_into()?, input_size as _)?
+            .into();
         Some(input_data)
     };
 
@@ -2026,9 +2047,9 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
     let parent_block_hash = caller.context().parent_block_hash;
     let block_height = caller.context().block_height;
     // `EnvInfo` in little-endian representation.
-    let env_info_le = EnvInfo {
+    let env_info = EnvInfo {
         caller_addr,
-        caller_kind: caller_kind.to_le(),
+        caller_kind,
         callee_addr,
         callee_kind: callee_kind.to_le(),
         transferred_value: transferred_value.to_le(),
@@ -2040,9 +2061,9 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         block_height,
     };
 
-    let env_info_bytes = safe_transmute::transmute_one_to_bytes(&env_info_le);
+    let env_info_bytes = borsh::to_vec(&env_info).map_err(|_| InternalHostError::Serialization)?;
     let write_len = env_info_bytes.len().min(info_size as usize);
-    caller.memory_write(info_ptr, &env_info_bytes[..write_len])?;
+    caller.memory_write(info_ptr.wrapped_try_into()?, &env_info_bytes[..write_len])?;
 
     Ok(HOST_ERROR_SUCCESS)
 }
@@ -2082,7 +2103,8 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     }
 
     let topic_name = {
-        let topic: Vec<u8> = caller.memory_read(topic_name_ptr, topic_name_size as usize)?;
+        let topic: Vec<u8> =
+            caller.memory_read(topic_name_ptr.wrapped_try_into()?, topic_name_size as usize)?;
         let Ok(topic) = String::from_utf8(topic) else {
             // Not a valid UTF-8 string
             return Ok(HOST_ERROR_INVALID_DATA);
@@ -2090,7 +2112,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         topic
     };
 
-    let payload = caller.memory_read(payload_ptr, payload_size as usize)?;
+    let payload = caller.memory_read(payload_ptr.wrapped_try_into()?, payload_size as usize)?;
 
     let entity_addr = context_to_entity_addr(caller.context());
 
@@ -2272,7 +2294,7 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     const DIGEST_LENGTH: usize = 32;
 
-    let in_bytes: Vec<u8> = caller.memory_read(in_ptr, in_size as usize)?;
+    let in_bytes: Vec<u8> = caller.memory_read(in_ptr.wrapped_try_into()?, in_size as usize)?;
 
     // Charge for parameter weights.
     let generic_hash_cost = caller.context().config.host_function_costs().generic_hash;
@@ -2324,7 +2346,7 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    caller.memory_write(out_ptr, &hashed_bytes)?;
+    caller.memory_write(out_ptr.wrapped_try_into()?, &hashed_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }
@@ -2378,8 +2400,9 @@ pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
         return Ok(HOST_ERROR_INVALID_INPUT);
     }
 
-    let message = caller.memory_read(message_ptr, message_size as usize)?;
-    let signature_bytes = caller.memory_read(signature_ptr, signature_size as usize)?;
+    let message = caller.memory_read(message_ptr.wrapped_try_into()?, message_size as usize)?;
+    let signature_bytes =
+        caller.memory_read(signature_ptr.wrapped_try_into()?, signature_size as usize)?;
     let Ok((signature, _)) = Signature::from_bytes(&signature_bytes) else {
         return Ok(HOST_ERROR_INVALID_DATA);
     };
@@ -2394,7 +2417,7 @@ pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
         return Ok(HOST_ERROR_PAYLOAD_TOO_LONG);
     };
 
-    caller.memory_write(public_key_ptr, &key_bytes)?;
+    caller.memory_write(public_key_ptr.wrapped_try_into()?, &key_bytes)?;
 
     Ok(HOST_ERROR_SUCCESS)
 }
