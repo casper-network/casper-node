@@ -100,7 +100,7 @@ pub fn transfer<R: GlobalStateReader>(
     match transfer_result {
         Ok(()) => Ok(()),
         Err(casper_types::system::mint::Error::InsufficientFunds) => {
-            Err(DispatchError::Call(CallError::CalleeReverted))
+            Err(DispatchError::Call(CallError::CalleeRolledBack))
         }
         Err(casper_types::system::mint::Error::GasLimit) => {
             Err(DispatchError::Call(CallError::CalleeGasDepleted))

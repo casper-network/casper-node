@@ -257,11 +257,11 @@ fn should_revert_invalid_system_option() {
     if let Ok(exec_result) = result {
         assert!(exec_result.host_error.is_some(), "should have error");
         match exec_result.host_error {
-            Some(CallError::CalleeReverted) => {
+            Some(CallError::CalleeRolledBack) => {
                 // noop, expected outcome
             }
             Some(err) => {
-                panic!("expected: CalleeReverted actual: {}", err);
+                panic!("expected: CalleeRolledBack actual: {}", err);
             }
             None => {
                 panic!("should have error")

@@ -32,8 +32,8 @@ pub(super) fn map_sandbox_error(
     match maybe_error {
         Some(error) => {
             let ret = match error {
-                InnerSandboxedExecutionError::CalleeReverted => {
-                    SandboxedExecutionError::CalleeReverted
+                InnerSandboxedExecutionError::CalleeRolledBack => {
+                    SandboxedExecutionError::CalleeRolledBack
                 }
                 InnerSandboxedExecutionError::CalleeTrapped => {
                     SandboxedExecutionError::CalleeTrapped

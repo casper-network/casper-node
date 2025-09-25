@@ -15,7 +15,7 @@ pub mod exports {
         let option = match SystemContractOption::try_from(opt) {
             Ok(option) => option,
             Err(_) => match &borsh::to_vec(&(opt,)) {
-                Ok(bytes) => return ret(ReturnFlags::REVERT, Some(bytes)),
+                Ok(bytes) => return ret(ReturnFlags::ROLLBACK, Some(bytes)),
                 Err(_) => unreachable!("failed to serialize opt"),
             },
         };
@@ -123,7 +123,7 @@ pub mod exports {
             Some(input) => {
                 let (_output, _result) = casper_system(option.into(), &input);
             }
-            None => ret(ReturnFlags::REVERT, None),
+            None => ret(ReturnFlags::ROLLBACK, None),
         }
     }
 }

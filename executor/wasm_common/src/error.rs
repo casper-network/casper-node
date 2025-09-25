@@ -104,7 +104,7 @@ pub enum TrapCode {
 }
 
 pub const CALLEE_SUCCEEDED: u32 = 0;
-pub const CALLEE_REVERTED: u32 = 1;
+pub const CALLEE_ROLLED_BACK: u32 = 1;
 pub const CALLEE_TRAPPED: u32 = 2;
 pub const CALLEE_GAS_DEPLETED: u32 = 3;
 pub const CALLEE_NOT_CALLABLE: u32 = 4;
@@ -117,7 +117,7 @@ pub const CALLEE_API_ERROR: u32 = 5;
 pub enum CallError {
     /// Callee contract reverted.
     #[error("callee reverted")]
-    CalleeReverted,
+    CalleeRolledBack,
     /// Called contract trapped.
     #[error("callee trapped: {0}")]
     CalleeTrapped(TrapCode),
@@ -137,7 +137,7 @@ impl CallError {
     #[must_use]
     pub fn into_u32(self) -> u32 {
         match self {
-            Self::CalleeReverted => CALLEE_REVERTED,
+            Self::CalleeRolledBack => CALLEE_ROLLED_BACK,
             Self::CalleeTrapped(_) => CALLEE_TRAPPED,
             Self::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
             Self::NotCallable => CALLEE_NOT_CALLABLE,

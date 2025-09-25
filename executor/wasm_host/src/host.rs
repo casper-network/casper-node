@@ -726,6 +726,25 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     Err(VMError::Return { flags, data })
 }
 
+/// Abort execution of the entire call stack with a message.
+pub fn casper_revert<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<Context = Context<S, E>>,
+    msg_ptr: u32,
+    msg_len: u32,
+) -> VMResult<u32> {
+    let cost = caller.context().config.host_function_costs().ret;
+    charge_host_function_call(&mut caller, &cost, [u64::from(msg_ptr), u64::from(msg_len)])?;
+
+    let message = if msg_ptr == 0 {
+        String::new()
+    } else {
+        let data = caller.memory_read(msg_ptr.wrapped_try_into()?, msg_len.wrapped_try_into()?)?;
+        String::from_utf8_lossy(&data).into_owned()
+    };
+
+    Ok(CallError::Api(message).into_u32())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     mut caller: impl Caller<Context = Context<S, E>>,
