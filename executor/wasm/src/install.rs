@@ -163,7 +163,7 @@ impl InstallContractRequestBuilder {
         let transferred_value = self.transferred_value.unwrap_or_default();
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
-        let chain_name = self.chain_name.unwrap_or("casper-test");
+        let chain_name = self.chain_name.unwrap_or(Arc::from("casper-test"));
         let block_time = self.block_time.unwrap_or_default();
         let seed = self.seed;
         let state_hash = self.state_hash.ok_or("State hash not set")?;

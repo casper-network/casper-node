@@ -135,7 +135,7 @@ impl ContractRuntime {
                 EraPrice::new(EraId::new(0), chainspec.vacancy_config.min_gas_price)
             }
         };
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = chainspec.core_config.addressable_entity_enabled;
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
             .with_max_associated_keys(chainspec.core_config.max_associated_keys)
@@ -154,7 +154,7 @@ impl ContractRuntime {
             .with_allow_unrestricted_transfers(chainspec.core_config.allow_unrestricted_transfers)
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
-            .with_enable_entity(enable_addressable_entity)
+            .with_enable_entity(addressable_entity_enabled)
             .with_trap_on_ambiguous_entity_version(
                 chainspec.core_config.trap_on_ambiguous_entity_version,
             )
@@ -167,7 +167,7 @@ impl ContractRuntime {
             Self::new_data_access_layer(
                 storage_dir,
                 contract_runtime_config,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             )
             .map_err(ConfigError::GlobalState)?,
         );
@@ -222,7 +222,7 @@ impl ContractRuntime {
     fn new_data_access_layer(
         storage_dir: &Path,
         contract_runtime_config: &Config,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
         let data_access_layer = {
             let environment = Arc::new(LmdbEnvironment::new(
@@ -245,14 +245,14 @@ impl ContractRuntime {
                 environment,
                 trie_store,
                 max_query_depth,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             )?;
 
             DataAccessLayer {
                 state: global_state,
                 block_store,
                 max_query_depth,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             }
         };
         Ok(data_access_layer)

@@ -11,7 +11,7 @@ use bytes::Bytes;
 use casper_executor_wasm_common::error::TrapCode;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
-    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, FatalHostError,
+    executor::Executor, Caller, Config, ExportError, FatalHostError, GasUsage, InterfaceVersion,
     MeteringPoints, VMError, VMResult, WasmInstance, WasmPreparationError,
 };
 use casper_storage::global_state::GlobalStateReader;
@@ -63,8 +63,7 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
         wasmer_types::TrapCode::IntegerDivisionByZero => TrapCode::IntegerDivisionByZero,
         wasmer_types::TrapCode::BadConversionToInteger => TrapCode::BadConversionToInteger,
         wasmer_types::TrapCode::UnreachableCodeReached => TrapCode::UnreachableCodeReached,
-        wasmer_types::TrapCode::HeapMisaligned
-        | wasmer_types::TrapCode::UnalignedAtomic => {
+        wasmer_types::TrapCode::HeapMisaligned | wasmer_types::TrapCode::UnalignedAtomic => {
             unreachable!("Trap from unsupported Wasm extension");
         }
     }
@@ -192,42 +191,31 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             .exported_runtime()?
             .exported_table
             .as_ref()
-            .ok_or({
-                VMError::AllocError(
-                    "Exported runtime has no exported table".to_owned(),
-                )
-            })?
+            .ok_or(VMError::AllocError("Exported runtime has no exported table".to_owned()))?
             .get(&mut store.as_store_mut(), idx)
             .ok_or({
                 VMError::AllocError(format!(
                     "Expected exported table entry with index {idx} to exist"
                 ))
             })?;
-        let funcref =
-            value
-                .funcref()
-                .ok_or(VMError::AllocError(
-                    "Expected value to be funcref".to_owned(),
-                ))?;
-        let valid_funcref =
-            funcref
-                .as_ref()
-                .ok_or(VMError::AllocError(
-                    "Expected value to be a valid funcref".to_owned(),
-                ))?;
-        let alloc_callback: TypedFunction<(u32, u32), u32> = match valid_funcref
-            .typed(&store) {
-                Ok(alloc_callback) => alloc_callback,
-                Err(_error) => {
-                    return Err(VMError::AllocError(
-                        "Failed to convert funcref to typed function".to_owned(),
-                    ));
-                },
-            };
+        let funcref = value.funcref().ok_or(VMError::AllocError(
+            "Expected value to be funcref".to_owned(),
+        ))?;
+        let valid_funcref = funcref.as_ref().ok_or(VMError::AllocError(
+            "Expected value to be a valid funcref".to_owned(),
+        ))?;
+        let alloc_callback: TypedFunction<(u32, u32), u32> = match valid_funcref.typed(&store) {
+            Ok(alloc_callback) => alloc_callback,
+            Err(_error) => {
+                return Err(VMError::AllocError(
+                    "Failed to convert funcref to typed function".to_owned(),
+                ));
+            }
+        };
 
-        let size_u32 = size.try_into().map_err(|err| {
-            VMError::AllocError("Failed to convert usize to u32".to_owned())
-        })?;
+        let size_u32 = size
+            .try_into()
+            .map_err(|_err| VMError::AllocError("Failed to convert usize to u32".to_owned()))?;
 
         let ptr = alloc_callback
             .call(&mut store.as_store_mut(), size_u32, ctx)

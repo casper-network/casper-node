@@ -236,7 +236,7 @@ fn should_allow_1x_user_to_add_contract_version_via_transaction_v1_installer_upg
         .with_current_protocol_version(old_protocol_version)
         .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
         .with_activation_point(EraId::new(1))
-        .with_enable_addressable_entity(true)
+        .with_addressable_entity_enabled(true)
         .build();
 
     builder

@@ -63,8 +63,6 @@ pub enum BidKind {
     Reservation(Box<Reservation>),
     /// Unbond
     Unbond(Box<Unbond>),
-
-    // UnbondExtra(Box<Unbond>, SourceOfD),
 }
 
 impl BidKind {

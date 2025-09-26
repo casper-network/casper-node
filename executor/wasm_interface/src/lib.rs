@@ -333,8 +333,9 @@ impl GasUsage {
         self.remaining_points
     }
 
+    /// Spend a given amount of gas. If the amount exceeds the remaining gas, it will be set to 0.
     pub fn spend(&mut self, amount: u64) {
-        self.remaining_points.saturating_sub(amount)
+        self.remaining_points = self.remaining_points.saturating_sub(amount);
     }
 }
 

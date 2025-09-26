@@ -174,7 +174,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         U512::from(*chainspec_config.core_config.validator_credit_cap.numer()),
         U512::from(*chainspec_config.core_config.validator_credit_cap.denom()),
     );
-    let enable_addressable_entity = chainspec_config.core_config.enable_addressable_entity;
+    let addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
     let native_transfer_cost = chainspec_config.system_costs_config.mint_costs().transfer;
     Config::new(
         protocol_version,
@@ -191,7 +191,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         balance_hold_interval,
         include_credits,
         credit_cap,
-        enable_addressable_entity,
+        addressable_entity_enabled,
         native_transfer_cost,
     )
 }

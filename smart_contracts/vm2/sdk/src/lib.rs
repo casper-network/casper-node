@@ -32,7 +32,7 @@ pub use casper_executor_wasm_common;
 use types::{Address, CallError};
 
 pub fn set_panic_hook() {
-    if #[cfg(feature = "std")] {
+    if cfg!(feature = "std") {
         static SET_HOOK: std::sync::Once = std::sync::Once::new();
         SET_HOOK.call_once(|| {
             std::panic::set_hook(Box::new(|panic_info| {

@@ -74,8 +74,7 @@ pub enum QueryResult {
     Failure(TrackingCopyError),
 }
 
-impl QueryResult
-{
+impl QueryResult {
     /// Returns stored value if the query was successful.
     pub fn as_value(&self) -> Option<&StoredValue> {
         match self {

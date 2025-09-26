@@ -193,7 +193,7 @@ where
         self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_hashes()?;
 
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             self.migrate_system_account(pre_state_hash)?;
             self.create_accumulation_purse_if_required(
                 &system_entity_addresses.handle_payment(),
@@ -328,7 +328,7 @@ where
         &mut self,
         block_time: BlockTime,
     ) -> Result<(), ProtocolUpgradeError> {
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
             self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
             self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
@@ -940,7 +940,7 @@ where
         &mut self,
         contract_hash: HashAddr,
     ) -> Result<NamedKeys, ProtocolUpgradeError> {
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             let named_keys = self
                 .tracking_copy
                 .get_named_keys(EntityAddr::System(contract_hash))?;

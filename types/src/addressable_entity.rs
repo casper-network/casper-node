@@ -747,8 +747,6 @@ pub enum EntityAddr {
     Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to a Userland smart contract.
     SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
-    /// The address of an entity that corresponds to a Package.
-    Package(PackageHash),
 }
 
 impl EntityAddr {

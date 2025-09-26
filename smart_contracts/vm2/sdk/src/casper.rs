@@ -67,9 +67,7 @@ pub fn copy_input() -> Vec<u8> {
     let last_ptr = copy_input_into(Some(|size| reserve_vec_space(&mut vec, size)));
     match last_ptr {
         Some(_last_ptr) => vec,
-        None => {
-            Vec::new()
-        }
+        None => Vec::new(),
     }
 }
 
@@ -111,6 +109,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::AllNamedKeys => (KeyspaceTag::NamedKey as u64, &[][..]),
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
@@ -156,7 +155,6 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
         Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
     let ret = unsafe {
@@ -177,7 +175,6 @@ pub fn remove(key: Keyspace) -> Result<(), HostResult> {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
         Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
     let ret = unsafe {

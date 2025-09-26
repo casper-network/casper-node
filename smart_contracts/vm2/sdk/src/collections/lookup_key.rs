@@ -1,4 +1,4 @@
-use borsh::BorshSerialize;
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 pub trait LookupKey<'a>: Default {
     type Output: AsRef<[u8]> + 'a;
@@ -8,7 +8,7 @@ pub trait LookupKey<'a>: Default {
 pub trait LookupKeyOwned: for<'a> LookupKey<'a> {}
 impl<T> LookupKeyOwned for T where T: for<'a> LookupKey<'a> {}
 
-#[derive(Default)]
+#[derive(Default, BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Identity;
 impl<'a> LookupKey<'a> for Identity {
     type Output = &'a [u8];

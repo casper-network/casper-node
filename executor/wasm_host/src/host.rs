@@ -33,9 +33,7 @@ use casper_types::{
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
-    EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment,
-    EntryPointType, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
     PackageHash, ProtocolVersion, Signature, StoredValue, URef,
 };
 use either::Either;
@@ -183,21 +181,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state write
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-
-            Keyspace::PaymentInfo(key_name)
-        }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
@@ -258,30 +241,6 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             StoredValue::NamedKey(named_key_value)
         }
-        Keyspace::PaymentInfo(_) => {
-            let entry_point_payment = match value.as_slice() {
-                [ENTRY_POINT_PAYMENT_CALLER] => EntryPointPayment::Caller,
-                [ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY] => {
-                    EntryPointPayment::DirectInvocationOnly
-                }
-                [ENTRY_POINT_PAYMENT_SELF_ONWARD] => EntryPointPayment::SelfOnward,
-                _ => {
-                    // Invalid entry point payment variant
-                    return Ok(HOST_ERROR_INVALID_INPUT);
-                }
-            };
-
-            let entry_point = EntityEntryPoint::new(
-                "_",
-                Vec::new(),
-                CLType::Unit,
-                EntryPointAccess::Public,
-                EntryPointType::Called,
-                entry_point_payment,
-            );
-            let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
-            StoredValue::EntryPoint(entry_point_value)
-        }
         Keyspace::AllNamedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
@@ -339,21 +298,6 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
             };
 
             Keyspace::NamedKey(key_name)
-        }
-        KeyspaceTag::PaymentInfo => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
-
-            if !caller.has_export(key_name)? {
-                // Missing wasm export, unable to perform global state write
-                return Ok(HOST_ERROR_NOT_FOUND);
-            }
-
-            Keyspace::PaymentInfo(key_name)
         }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
@@ -461,15 +405,16 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         KeyspaceTag::State => Keyspace::State,
         KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
         KeyspaceTag::NamedKey => {
-            let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                Ok(key_name) => key_name,
-                Err(_) => {
-                    return Ok(HOST_ERROR_INVALID_DATA);
-                }
-            };
+                        let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                            Ok(key_name) => key_name,
+                            Err(_) => {
+                                return Ok(HOST_ERROR_INVALID_DATA);
+                            }
+                        };
 
-            Keyspace::NamedKey(key_name)
-        }
+                        Keyspace::NamedKey(key_name)
+            }
+        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -535,10 +480,12 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
                 }
             }
             Ok(Some(stored_value)) => {
-               return Err(VMError::Fatal(FatalHostError::UnexpectedStoredValueVariant {
-                    expected: "CLValue::Any".to_string(),
-                    found: stored_value.type_name(),
-               }));
+                return Err(VMError::Fatal(
+                    FatalHostError::UnexpectedStoredValueVariant {
+                        expected: "CLValue::Any".to_string(),
+                        found: stored_value.type_name(),
+                    },
+                ));
             }
             Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
             Err(error) => {
@@ -551,7 +498,6 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     };
 
     let out_ptr: u32 = if cb_alloc != 0 {
-
         caller.alloc(cb_alloc, global_state_raw_bytes.len(), alloc_ctx)?
     } else {
         // treats alloc_ctx as data
@@ -593,11 +539,6 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
                 entity_addr,
                 digest.value(),
             )))
-        }
-        Keyspace::PaymentInfo(payload) => {
-            let entry_point_addr =
-                EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
-            Some(Key::EntryPoint(entry_point_addr))
         }
         Keyspace::AllNamedKeys => Some(Key::AddressableEntity(entity_addr)),
     }
@@ -695,9 +636,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
-    executor: &mut impl E,
     mut caller: impl Caller<Context = Context<S, E>>,
-
     code_ptr: u32,
     code_len: u32,
     transferred_value: u64,
@@ -908,7 +847,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
             match caller
-                // .context()
+                .context()
                 .executor
                 .execute(tracking_copy_for_ctor, execute_request)
             {

@@ -176,7 +176,12 @@ pub enum BidAddr {
         /// The unbonder.
         unbonder: AccountHash,
     },
-  
+    UnbondPurse {
+        /// The validator.
+        validator: AccountHash,
+        /// The unbonder.
+        unbonder: URefAddr,
+    },
     /// Validator BidAddr for reverse look up.
     /// For instance, in the case of a changed public key.
     ValidatorRev(AccountHash),

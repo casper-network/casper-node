@@ -15,13 +15,10 @@ use parking_lot::RwLock;
 pub struct Context<S: GlobalStateReader, E: Executor> {
     /// The address of the account that initiated the contract or session code.
     pub initiator: AccountHash,
-    // /// The address of the addressable entity that is currently executing the contract or session
-    // /// code.
-    // pub caller: Key,
-    // /// The address of the addressable entity that is being called.
-    // pub callee: Key,
-
-    execution_stack: VecDeque<ExecutionKind>,
+    /// The address of the addressable entity that is currently executing the contract or session code.
+    pub caller: Key,
+    /// The address of the addressable entity that is being called.
+    pub callee: Key,
     /// The state of the global state at the time of the call based on the currently executing
     /// contract or session address.
     // pub state_address: Address,

@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
-    CallError, GasUsage, FatalHostError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    CallError, FatalHostError, GasUsage, SandboxedExecutionRequest, SandboxedExecutionResult,
     WasmPreparationError,
 };
 
@@ -82,7 +82,6 @@ pub struct ExecuteRequestBuilder {
     block_height: Option<u64>,
     sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
-    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -229,7 +228,7 @@ impl ExecuteRequestBuilder {
         let address_generator = self
             .address_generator
             .ok_or("Address generator is not set")?;
-        let chain_name = self.chain_name.unwrap_or("casper-test");
+        let chain_name = self.chain_name.unwrap_or(Arc::from("casper-test"));
         let block_time = self.block_time.unwrap_or_default();
         let state_hash = self.state_hash.ok_or("State hash is not set")?;
         let parent_block_hash = self

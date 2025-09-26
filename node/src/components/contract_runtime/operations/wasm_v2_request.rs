@@ -14,7 +14,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
         ExecuteWithProviderResult, ExecutionKind,
     },
-    GasUsage, FatalHostError,
+    FatalHostError, GasUsage,
 };
 use casper_storage::{
     global_state::state::{CommitProvider, StateProvider},
