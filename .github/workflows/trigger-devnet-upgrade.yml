@@ -21,6 +21,10 @@ jobs:
           chmod +x dev_net_protocol_generate.sh
           curl -JLO https://raw.githubusercontent.com/casper-network/casper-node/refs/heads/dev/ci/next_upgrade_era_with_buffer.sh
           chmod +x next_upgrade_era_with_buffer.sh
+          mkdir -m 0755 -p /etc/apt/keyrings/
+          curl https://repo.casper.network/casper-repo-pubkey.gpg --output /etc/apt/keyrings/casper-repo-pubkey.gpg
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/casper-repo-pubkey.gpg] https://repo.casper.network/releases jammy main" | sudo tee /etc/apt/sources.list.d/casper.list
+          apt-get install casper-client -y
 
       # Assign AWS PROD role to get access to production cloudfronts and S3 buckets
       - name: Configure AWS credentials
@@ -34,10 +38,10 @@ jobs:
         run: ./ci/dev_net_protocol_generate.sh
 
       - name: Upload artifacts to S3
-        run: aws s3 sync ./target/genesis/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/dev-net/
+        run: aws s3 sync ./target/genesis/ s3://${{ secrets.AWS_BUCKET_GENESIS }}/devnet/
 
       # Required in case of overwrite
       - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/dev-net/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_GENESIS }} --paths "/devnet/*"
 
 
