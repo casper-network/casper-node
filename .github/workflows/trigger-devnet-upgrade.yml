@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install casper-client
+        run: |
+          sudo mkdir -m 0755 -p /etc/apt/keyrings/
+          sudo curl https://repo.casper.network/casper-repo-pubkey.gpg --output /etc/apt/keyrings/casper-repo-pubkey.gpg
+          sudo echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/casper-repo-pubkey.gpg] https://repo.casper.network/releases jammy main" | sudo tee /etc/apt/sources.list.d/casper.list
+          sudo apt-get update
+          sudo apt-get install casper-client -y
+
       # Get script without checkout for use on any repo
       - name: Get script
         run: |
@@ -21,10 +29,6 @@ jobs:
           chmod +x dev_net_protocol_generate.sh
           curl -JLO https://raw.githubusercontent.com/casper-network/casper-node/refs/heads/dev/ci/next_upgrade_era_with_buffer.sh
           chmod +x next_upgrade_era_with_buffer.sh
-          mkdir -m 0755 -p /etc/apt/keyrings/
-          curl https://repo.casper.network/casper-repo-pubkey.gpg --output /etc/apt/keyrings/casper-repo-pubkey.gpg
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/casper-repo-pubkey.gpg] https://repo.casper.network/releases jammy main" | sudo tee /etc/apt/sources.list.d/casper.list
-          apt-get install casper-client -y
 
       # Assign AWS PROD role to get access to production cloudfronts and S3 buckets
       - name: Configure AWS credentials
