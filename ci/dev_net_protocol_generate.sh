@@ -23,7 +23,7 @@ if [ "$CURRENT_HASH" == "$LATEST_HASH" ]; then
 	  exit 1 # This fails job and stops workflow
 fi
 
-LATEST_PROTOCOL_VERSION="$(curl -s https://genesis.casper.network/dev-net/protocol_versions | tail -n 1 | tr -d '\n')"
+LATEST_PROTOCOL_VERSION="$(curl -s https://genesis.casper.network/devnet/protocol_versions | tail -n 1 | tr -d '\n')"
 echo "Latest dev-net protocol version: $LATEST_PROTOCOL_VERSION"
 
 IFS="_"
