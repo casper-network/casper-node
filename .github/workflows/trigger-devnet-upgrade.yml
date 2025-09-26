@@ -6,7 +6,7 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Runs every 4 hours
+    - cron: '0 */2 * * *' # Runs every 2 hours
 jobs:
   push_dev_net_protocol_upgrade_if_needed:
     runs-on: ubuntu-latest
