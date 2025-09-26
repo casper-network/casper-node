@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+if ! command -v "casper-client" &> /dev/null ; then
+  echo "casper-client is not installed and required. Exiting..."
+  exit 1
+fi
+
 # Need IP for
 NODE_RPC_URL="https://node-1.dev.casper.network/rpc"
 
