@@ -234,7 +234,7 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
         .with_message_limits(message_limits)
         .build()
         .expect("Should build");
-    ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+    ExecutorV2::new(executor_config, execution_engine_v1)
 }
 
 pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
@@ -378,7 +378,7 @@ pub fn call_dummy_host_fn_by_name(
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");
-        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+        ExecutorV2::new(executor_config, execution_engine_v1)
     };
 
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();

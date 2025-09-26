@@ -1051,7 +1051,7 @@ fn backwards_compatibility() {
 
     let mut state_root_hash = post_state_hash;
 
-    let value = match *value {
+    let value = match value {
         StoredValue::Account(account) => account,
         _ => panic!("Expected CLValue"),
     };
