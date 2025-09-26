@@ -33,8 +33,9 @@ use casper_types::{
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
     execution::RetValue,
     AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, Package,
-    PackageHash, ProtocolVersion, Signature, StoredValue, URef,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr,
+    EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key,
+    Package, PackageHash, ProtocolVersion, Signature, StoredValue, URef,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -71,7 +72,7 @@ where
     To: TryFrom<From>,
 {
     fn wrapped_try_into(self) -> VMResult<To> {
-        To::try_from(self).map_err(|_| VMError::Fatal(InternalHostError::TypeConversion))
+        To::try_from(self).map_err(|_| VMError::Fatal(FatalHostError::TypeConversion))
     }
 }
 
@@ -405,15 +406,15 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         KeyspaceTag::State => Keyspace::State,
         KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
         KeyspaceTag::NamedKey => {
-                        let key_name = match std::str::from_utf8(&key_payload_bytes) {
-                            Ok(key_name) => key_name,
-                            Err(_) => {
-                                return Ok(HOST_ERROR_INVALID_DATA);
-                            }
-                        };
+            let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                Ok(key_name) => key_name,
+                Err(_) => {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                }
+            };
 
-                        Keyspace::NamedKey(key_name)
-            }
+            Keyspace::NamedKey(key_name)
+        }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
     };
 
@@ -509,8 +510,8 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         data_size: global_state_raw_bytes.len().wrapped_try_into()?,
     };
 
-    let read_info_bytes = borsh::to_vec(&read_info)
-        .map_err(|_| VMError::Internal(InternalHostError::Serialization))?;
+    let read_info_bytes =
+        borsh::to_vec(&read_info).map_err(|_| VMError::Fatal(FatalHostError::Serialization))?;
     caller.memory_write(info_ptr.wrapped_try_into()?, &read_info_bytes)?;
     if out_ptr != 0 {
         caller.memory_write(out_ptr.wrapped_try_into()?, &global_state_raw_bytes)?;
@@ -579,7 +580,7 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
             u64::from(out_ptr),
             input.len().try_into().map_err(|err| {
                 error!("Failed to convert u64 to usize. Details: {err}");
-                ExecuteError::InternalHost(FatalHostError::TypeConversion)
+                ExecuteError::Fatal(FatalHostError::TypeConversion)
             })?,
         ],
     )?;
@@ -687,7 +688,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         let seed_bytes: [u8; 32] = seed_bytes.try_into().map_err(|_| {
             // SAFETY: We checked for length. This shouldn't happen
             error!("Error when converting seed_bytes from vec to static array");
-            ExecuteError::InternalHost(FatalHostError::TypeConversion)
+            ExecuteError::Fatal(FatalHostError::TypeConversion)
         })?;
         Some(seed_bytes)
     } else {
@@ -889,7 +890,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     };
 
     let create_result_bytes =
-        borsh::to_vec(&create_result).map_err(|_| InternalHostError::Serialization)?;
+        borsh::to_vec(&create_result).map_err(|_| FatalHostError::Serialization)?;
 
     caller.memory_write(result_ptr.wrapped_try_into()?, &create_result_bytes)?;
 
@@ -1229,7 +1230,7 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             let hash_bytes: [u8; 32] = hash_bytes.try_into().map_err(|_| {
                 // SAFETY: We checked for length. This shouldn't happen
                 error!("Error when converting hash_bytes from vec to static array");
-                ExecuteError::InternalHost(FatalHostError::TypeConversion)
+                ExecuteError::Fatal(FatalHostError::TypeConversion)
             })?;
             let smart_contract_key = Key::Package(hash_bytes);
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
@@ -1574,7 +1575,7 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
         block_height,
     };
 
-    let env_info_bytes = borsh::to_vec(&env_info).map_err(|_| InternalHostError::Serialization)?;
+    let env_info_bytes = borsh::to_vec(&env_info).map_err(|_| FatalHostError::Serialization)?;
     let write_len = env_info_bytes.len().min(info_size as usize);
     caller.memory_write(info_ptr.wrapped_try_into()?, &env_info_bytes[..write_len])?;
 
@@ -1830,7 +1831,7 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
         HashAlgorithm::Blake2b => {
             let mut result = [0; DIGEST_LENGTH];
             let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
-                ExecuteError::InternalHost(FatalHostError::CorruptExecutionState(
+                ExecuteError::Fatal(FatalHostError::CorruptExecutionState(
                     "Error when creating instance of Blake2bVar hashing".to_owned(),
                 ))
             })?;

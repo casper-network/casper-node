@@ -191,7 +191,9 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
             .exported_runtime()?
             .exported_table
             .as_ref()
-            .ok_or(VMError::AllocError("Exported runtime has no exported table".to_owned()))?
+            .ok_or(VMError::AllocError(
+                "Exported runtime has no exported table".to_owned(),
+            ))?
             .get(&mut store.as_store_mut(), idx)
             .ok_or({
                 VMError::AllocError(format!(

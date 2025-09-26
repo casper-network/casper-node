@@ -124,7 +124,7 @@ impl ExecuteRequestBuilder {
     pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Result<Self, ExecuteError> {
         let input = borsh::to_vec(&input)
             .map(Bytes::from)
-            .map_err(|_| ExecuteError::InternalHost(FatalHostError::TypeConversion))?;
+            .map_err(|_| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
         Ok(self.with_input(input))
     }
 
@@ -488,7 +488,7 @@ pub enum ExecuteError {
     WasmPreparation(#[from] WasmPreparationError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     #[error("Internal host error: {0}")]
-    InternalHost(#[from] FatalHostError),
+    Fatal(#[from] FatalHostError),
     #[error("Code not found: {0:?}")]
     CodeNotFound(HashAddr),
     #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]

@@ -36,7 +36,7 @@ pub use crate::{
     casper, log,
     macros::{self, casper, PanicOnDefault},
     revert,
-    types::entity::Entity,
+    types::{entity::Entity, Address},
 };
 
 #[cfg(test)]

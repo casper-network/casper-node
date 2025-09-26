@@ -84,18 +84,16 @@ impl WasmV2Error {
     pub(crate) fn as_internal_host_error(&self) -> Option<FatalHostError> {
         match self {
             WasmV2Error::Install(install_error) => {
-                if let InstallContractError::Execute(ExecuteError::InternalHost(
-                    internal_host_error,
-                )) = install_error
+                if let InstallContractError::Execute(ExecuteError::Fatal(internal_host_error)) =
+                    install_error
                 {
                     return Some(internal_host_error.clone());
                 }
                 None
             }
             WasmV2Error::Execute(execute_with_provider_error) => {
-                if let ExecuteWithProviderError::Execute(ExecuteError::InternalHost(
-                    internal_host_error,
-                )) = execute_with_provider_error
+                if let ExecuteWithProviderError::Execute(ExecuteError::Fatal(internal_host_error)) =
+                    execute_with_provider_error
                 {
                     let err = internal_host_error.clone();
                     return Some(err);

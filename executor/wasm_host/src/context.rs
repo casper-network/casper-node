@@ -15,7 +15,8 @@ use parking_lot::RwLock;
 pub struct Context<S: GlobalStateReader, E: Executor> {
     /// The address of the account that initiated the contract or session code.
     pub initiator: AccountHash,
-    /// The address of the addressable entity that is currently executing the contract or session code.
+    /// The address of the addressable entity that is currently executing the contract or session
+    /// code.
     pub caller: Key,
     /// The address of the addressable entity that is being called.
     pub callee: Key,

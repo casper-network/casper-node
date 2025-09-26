@@ -172,7 +172,7 @@ impl ContractRuntime {
             .map_err(ConfigError::GlobalState)?,
         );
 
-        let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
+        let execution_engine_v1 = ExecutionEngineV1::new(engine_config);
 
         let executor_v2 = {
             let baseline_motes_amount = chainspec.core_config.baseline_motes_amount;
@@ -189,7 +189,7 @@ impl ContractRuntime {
                 .with_message_limits(chainspec.wasm_config.messages_limits())
                 .build()
                 .expect("Should build");
-            ExecutorV2::new(executor_config, Arc::clone(&execution_engine_v1))
+            ExecutorV2::new(executor_config, execution_engine_v1.clone())
         };
 
         let metrics = Arc::new(Metrics::new(registry)?);
@@ -197,7 +197,7 @@ impl ContractRuntime {
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
             execution_pre_state,
-            execution_engine_v1,
+            execution_engine_v1: Arc::new(execution_engine_v1),
             execution_engine_v2: executor_v2,
             metrics,
             exec_queue: Default::default(),

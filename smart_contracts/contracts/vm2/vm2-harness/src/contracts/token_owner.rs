@@ -2,8 +2,7 @@ use casper_contract_sdk::prelude::*;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    log, revert,
+    casper, log, revert,
     types::{Address, CallError},
     ContractHandle,
 };

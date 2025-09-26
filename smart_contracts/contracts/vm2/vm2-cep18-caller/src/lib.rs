@@ -11,8 +11,6 @@ pub mod exports {
 
     #[casper(export)]
     pub fn call(address: Address) -> String {
-        use casper_contract_sdk::casper::Entity;
-
         log!("Hello {address:?}");
         let handle = ContractHandle::<TokenContractRef>::from_address(address);
 

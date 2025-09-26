@@ -1,23 +1,8 @@
-use std::{
-    collections::{BTreeSet, HashMap, LinkedList},
-    ptr::NonNull,
-};
+use std::collections::{BTreeSet, HashMap, LinkedList};
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    casper_executor_wasm_common::{
-        entry_point::{
-            ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-            ENTRY_POINT_PAYMENT_SELF_ONWARD,
-        },
-        error::HostResult,
-        keyspace::Keyspace,
-    },
-    collections::Map,
-    log, revert,
-    types::CallError,
-    ContractHandle,
+    casper, collections::Map, log, prelude::Entity, revert, types::CallError, ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
