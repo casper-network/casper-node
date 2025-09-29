@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
@@ -158,10 +157,7 @@ impl InstallContractRequestBuilder {
         self
     }
 
-    pub fn with_authorization_keys(
-        mut self,
-        authorization_keys: BTreeSet<AccountHash>,
-    ) -> Self {
+    pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = Some(authorization_keys);
         self
     }
