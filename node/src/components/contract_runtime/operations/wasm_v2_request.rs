@@ -263,6 +263,7 @@ impl WasmV2Request {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
+                    .with_authorization_keys(transaction.signers())
                     .build()
                     .expect("should build");
 

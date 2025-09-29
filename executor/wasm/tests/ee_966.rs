@@ -452,8 +452,6 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
         execute_request,
     );
 
-    println!("{:?}", result);
-
     assert!(matches!(
         result,
         Ok(ExecuteWithProviderResult {

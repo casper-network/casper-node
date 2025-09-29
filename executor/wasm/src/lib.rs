@@ -221,6 +221,7 @@ impl ExecutorV2 {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            authorization_keys,
         } = install_request;
 
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
@@ -379,7 +380,7 @@ impl ExecutorV2 {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
-                    .with_authorization_keys(BTreeSet::from_iter([initiator]))
+                    .with_authorization_keys(authorization_keys)
                     .build()
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
@@ -897,11 +898,6 @@ impl ExecutorV2 {
     where
         R: GlobalStateReader + 'static,
     {
-        let authorization_keys = if authorization_keys.is_empty() {
-            BTreeSet::from_iter([initiator])
-        } else {
-            authorization_keys
-        };
         let initiator_addr = InitiatorAddr::AccountHash(initiator);
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
