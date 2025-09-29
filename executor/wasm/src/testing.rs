@@ -283,7 +283,7 @@ pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         Timestamp::now().millis(),
         casper_types::HoldBalanceHandling::Accrued,
         0,
-        true,
+        false,
         StorageCosts::default(),
     );
     let genesis_request: GenesisRequest = GenesisRequest::new(
