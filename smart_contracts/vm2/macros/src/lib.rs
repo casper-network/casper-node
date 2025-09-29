@@ -222,7 +222,7 @@ fn process_casper_message_for_struct(
             const TOPIC: &'static str = stringify!(#struct_name);
 
             #[inline]
-            fn payload(&self) -> Vec<u8> {
+            fn payload(&self) -> casper_contract_sdk::prelude::Vec<u8> {
                 #crate_path::serializers::borsh::to_vec(self).unwrap()
             }
         }
@@ -277,10 +277,10 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
             let _ret = #func_name(#(args.#arg_names,)*);
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
         #func
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
         const _: () = {
             #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
             #[linkme(crate = casper_contract_sdk::linkme)]
@@ -612,7 +612,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         #inner_func_name();
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                     #vis fn #extern_func_name() {
                         #inner_func_name();
                     }
@@ -637,7 +637,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         #handle_ret;
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                     const _: () = {
                         #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                         #[linkme(crate = casper_contract_sdk::linkme)]
@@ -809,10 +809,11 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_schema_entry_point_{func_name}");
 
             defs.push(quote! {
+                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                 fn #linkme_schema_entry_point_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                     casper_contract_sdk::schema::SchemaEntryPoint {
                         name: stringify!(#func_name).into(),
-                        arguments: vec![ #(#args,)* ],
+                        arguments: casper_sdk::prelude::vec![ #(#args,)* ],
                         result: #result,
                         flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                     }
@@ -824,6 +825,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_populate_definitions_{func_name}");
 
             defs.push(quote! {
+                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                 fn #linkme_abi_populate_defs_ident(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;
                 }
@@ -840,6 +842,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
     {
         maybe_abi_collectors = quote! {
             #(
+                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ABI_COLLECTORS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -850,7 +853,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
         maybe_entrypoint_defs = quote! {
             #(
-
+                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -960,7 +963,7 @@ fn generate_impl_trait_for_contract(
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
 
-                            #[cfg(not(target_arch = "wasm32"))]
+                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -973,7 +976,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
-                            #[cfg(not(target_arch = "wasm32"))]
+                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -997,7 +1000,7 @@ fn generate_impl_trait_for_contract(
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
 
-                            #[cfg(not(target_arch = "wasm32"))]
+                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1010,7 +1013,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
-                            #[cfg(not(target_arch = "wasm32"))]
+                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1345,7 +1348,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 {
                     extra_code.push(quote! {
-                        #[cfg(not(target_arch = "wasm32"))]
+                        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
                         fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                             casper_contract_sdk::schema::SchemaEntryPoint {
                                 name: stringify!(#export_name).into(),
@@ -1393,7 +1396,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             type Return<'a> = #call_data_return_lifetime;
 
                             fn entry_point(&self) -> &str { #entry_point_lit }
-                            fn input_data(&self) -> Option<Vec<u8>> {
+                            fn input_data(&self) -> Option<casper_contract_sdk::prelude::Vec<u8>> {
                                 #input_data_content
                             }
                         }
@@ -1873,6 +1876,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
+            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
             impl casper_contract_sdk::abi::CasperABI for #name {
                 fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;
@@ -2031,6 +2035,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
+            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
             impl casper_contract_sdk::abi::CasperABI for #name {
                 fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;

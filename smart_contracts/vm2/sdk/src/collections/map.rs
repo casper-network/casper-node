@@ -1,12 +1,12 @@
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{CasperABI, Declaration, Definition, StructField};
 use crate::{
-    abi::{CasperABI, Declaration, Definition, StructField},
     casper::{self, read_into_vec},
+    prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_str_64;
-
-use crate::prelude::marker::PhantomData;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 #[borsh(crate = "crate::serializers::borsh")]
@@ -67,6 +67,7 @@ where
     }
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
     fn populate_definitions(definitions: &mut crate::abi::Definitions) {
         definitions.populate_one::<K>();

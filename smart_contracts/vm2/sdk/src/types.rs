@@ -1,5 +1,3 @@
-pub mod entity;
-
 use core::marker::PhantomData;
 
 use casper_executor_wasm_common::{
@@ -7,12 +5,13 @@ use casper_executor_wasm_common::{
     keyspace::Keyspace,
 };
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{CasperABI, Declaration, Definition, EnumVariant};
+
 use crate::{
-    abi::{CasperABI, Declaration, Definition, EnumVariant},
     casper,
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    ToCallData,
 };
 
 pub use ::bytes::Bytes;
@@ -155,7 +154,7 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
     }
 
     /// Populate ABI definitions for the value type `T` of this named key.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
     pub fn collect_abi(&self, definitions: &mut crate::abi::Definitions)
     where
         T: CasperABI,
@@ -164,7 +163,7 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
     }
 
     /// Return the ABI declaration string for the value type `T` of this named key.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
     pub fn declaration(&self) -> Declaration
     where
         T: CasperABI,
@@ -232,6 +231,7 @@ impl TryFrom<u32> for CallError {
     }
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl CasperABI for CallError {
     fn populate_definitions(_definitions: &mut crate::abi::Definitions) {}
 
@@ -293,31 +293,5 @@ impl TryFrom<u32> for CryptoFunctionOption {
         } else {
             Err(())
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct CallResult<T: ToCallData> {
-    pub data: Option<Vec<u8>>,
-    pub result: Result<(), CallError>,
-    pub marker: PhantomData<T>,
-}
-
-impl<T: ToCallData> CallResult<T> {
-    pub fn into_result<'a>(self) -> Result<T::Return<'a>, CallError>
-    where
-        <T as ToCallData>::Return<'a>: BorshDeserialize,
-    {
-        match self.result {
-            Ok(()) | Err(CallError::CalleeReverted) => {
-                let data = self.data.unwrap_or_default();
-                Ok(borsh::from_slice(&data).unwrap())
-            }
-            Err(call_error) => Err(call_error),
-        }
-    }
-
-    pub fn did_revert(&self) -> bool {
-        self.result == Err(CallError::CalleeReverted)
     }
 }

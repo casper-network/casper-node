@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use super::{IterableMap, IterableMapHash};
@@ -48,6 +49,7 @@ impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet
     }
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 #[cfg(test)]
 mod tests {
     use super::*;

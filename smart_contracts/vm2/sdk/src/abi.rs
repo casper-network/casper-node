@@ -1,10 +1,15 @@
 use core::mem;
 
+#[cfg(not(feature = "hashbrown"))]
+use crate::prelude::collections::HashMap;
 use crate::prelude::{
     collections,
-    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+    collections::{BTreeMap, BTreeSet, LinkedList},
     str::FromStr,
 };
+#[cfg(feature = "hashbrown")]
+use hashbrown::HashMap;
+
 use impl_trait_for_tuples::impl_for_tuples;
 use serde::{Deserialize, Serialize};
 

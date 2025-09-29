@@ -1,6 +1,7 @@
 pub mod runtime;
 pub mod types;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 #[cfg(test)]
 mod tests {
     use crate::{

@@ -4,42 +4,49 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod abi;
 pub mod compat;
 pub mod prelude;
 pub mod serializers;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub use linkme;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod abi_generator;
 pub mod casper;
 pub mod collections;
 pub mod contrib;
-#[cfg(feature = "std")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod schema;
 pub mod types;
 
-use crate::prelude::{marker::PhantomData, ptr::NonNull};
+use crate::prelude::{marker::PhantomData, ptr::NonNull, *};
 
-use crate::{
-    serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{entity::Entity, CallResult},
-};
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
+use casper::{CallResult, Entity};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
 pub use casper_executor_wasm_common;
 use types::{Address, CallError};
 
-pub fn set_panic_hook() {
-    if cfg!(feature = "std") {
-        static SET_HOOK: std::sync::Once = std::sync::Once::new();
-        SET_HOOK.call_once(|| {
-            std::panic::set_hook(Box::new(|panic_info| {
-                let msg = panic_info.to_string();
-                casper::print(&msg);
-            }));
-        });
+cfg_if::cfg_if! {
+    if #[cfg(feature = "std")] {
+        #[inline]
+        pub fn set_panic_hook() {
+            static SET_HOOK: std::sync::Once = std::sync::Once::new();
+            SET_HOOK.call_once(|| {
+                std::panic::set_hook(Box::new(|panic_info| {
+                    let msg = panic_info.to_string();
+                    casper::print(&msg);
+                }));
+            });
+        }
+    }
+    else {
+        pub fn set_panic_hook() {
+            // TODO: What to do?
+        }
     }
 }
 
@@ -100,24 +107,8 @@ macro_rules! log {
 #[cfg(not(target_arch = "wasm32"))]
 #[macro_export]
 macro_rules! log {
-    ($($arg:tt)*) => ({
-        eprintln!("📝 {}", &$crate::prelude::format!($($arg)*));
-    })
-}
-
-#[cfg(debug_assertions)]
-#[macro_export]
-macro_rules! debug_log {
-    ($($arg:tt)*) => ({
-        $crate::log!($($arg)*);
-    })
-}
-
-#[cfg(not(debug_assertions))]
-#[macro_export]
-macro_rules! debug_log {
     ($($arg:tt)*) => {{
-        // no-op in release builds
+        // eprintln!("📝 {}", &$crate::prelude::format!($($arg)*));
     }};
 }
 

@@ -4,9 +4,8 @@ use crate as casper_contract_sdk; // Workaround for absolute crate path in deriv
 use casper_contract_macros::casper;
 
 use crate::{
-    casper,
-    collections::{Map, Set},
-    types::entity::Entity,
+    casper::{self, Entity},
+    collections::{Map, Vector},
 };
 
 /// A role is a unique identifier for a specific permission or set of permissions.
@@ -20,7 +19,7 @@ const ROLES_PREFIX: &str = "roles";
 /// The state of the access control contract, which contains a mapping of entities to their roles.
 #[casper(path = "crate")]
 pub struct AccessControlState {
-    roles: Map<Entity, Set<Role>>,
+    roles: Map<Entity, Vector<Role>>,
 }
 
 impl AccessControlState {
@@ -80,7 +79,7 @@ pub trait AccessControl {
     #[casper(private)]
     fn has_any_role(&self, entity: Entity, roles: &[Role]) -> bool {
         match self.state().roles.get(&entity) {
-            Some(roles_set) => roles.iter().any(|r| roles_set.contains(r)),
+            Some(roles_vec) => roles_vec.iter().any(|r| roles.contains(&r)),
             None => false,
         }
     }
@@ -93,15 +92,15 @@ pub trait AccessControl {
                 if roles.contains(&role) {
                     return;
                 }
-                roles.insert(role);
+                roles.push(role);
             }
             None => {
-                let mut roles = Set::new(format!(
+                let mut roles = Vector::new(format!(
                     "{ROLES_PREFIX}-{:02x}{}",
                     entity.tag(),
                     base16::encode_lower(&entity.address())
                 ));
-                roles.insert(role);
+                roles.push(role);
                 self.state_mut().roles.insert(&entity, &roles);
             }
         }
@@ -111,7 +110,7 @@ pub trait AccessControl {
     #[casper(private)]
     fn revoke_role(&mut self, entity: Entity, role: Role) {
         if let Some(mut roles) = self.state_mut().roles.get(&entity) {
-            roles.remove(&role);
+            roles.retain(|r| r != &role);
         }
     }
 

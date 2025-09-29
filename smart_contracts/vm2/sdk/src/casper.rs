@@ -2,17 +2,22 @@ pub mod altbn128;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{CasperABI, EnumVariant};
+
 use crate::{
+    compat::types::{CLType, CLTyped},
     log,
     prelude::{
         ffi::c_void,
         marker::PhantomData,
         mem::MaybeUninit,
         ptr::{self, NonNull},
+        *,
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{entity::Entity, Address, CallError, CallResult, HashAlgorithm, PublicKey},
+    types::{Address, CallError, HashAlgorithm, PublicKey},
     Message, ToCallData,
 };
 
@@ -67,7 +72,11 @@ pub fn copy_input() -> Vec<u8> {
     let last_ptr = copy_input_into(Some(|size| reserve_vec_space(&mut vec, size)));
     match last_ptr {
         Some(_last_ptr) => vec,
-        None => Vec::new(),
+        None => {
+            // TODO: size of input was 0, we could properly deal with this case by not calling alloc
+            // cb if size==0
+            Vec::new()
+        }
     }
 }
 
@@ -109,7 +118,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::AllNamedKeys => (KeyspaceTag::NamedKey as u64, &[][..]),
+        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
@@ -352,6 +361,7 @@ pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, HostResult> {
 
 /// Read from the global state into a vector.
 pub fn has_state() -> Result<bool, HostResult> {
+    // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
     let mut vec = Vec::new();
     let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
     match read_info {
@@ -375,6 +385,32 @@ pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), HostResult> {
     let new_state = borsh::to_vec(state).unwrap();
     write(Keyspace::State, &new_state)?;
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct CallResult<T: ToCallData> {
+    pub data: Option<Vec<u8>>,
+    pub result: Result<(), CallError>,
+    pub marker: PhantomData<T>,
+}
+
+impl<T: ToCallData> CallResult<T> {
+    pub fn into_result<'a>(self) -> Result<T::Return<'a>, CallError>
+    where
+        <T as ToCallData>::Return<'a>: BorshDeserialize,
+    {
+        match self.result {
+            Ok(()) | Err(CallError::CalleeReverted) => {
+                let data = self.data.unwrap_or_default();
+                Ok(borsh::from_slice(&data).unwrap())
+            }
+            Err(call_error) => Err(call_error),
+        }
+    }
+
+    pub fn did_revert(&self) -> bool {
+        self.result == Err(CallError::CalleeReverted)
+    }
 }
 
 /// Call a contract.
@@ -432,6 +468,92 @@ pub fn get_callee() -> Entity {
     Entity::from_parts(info.callee_kind, info.callee_addr).expect("Invalid callee kind")
 }
 
+/// Enum representing either an account or a contract.
+#[derive(
+    BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub enum Entity {
+    Account([u8; 32]),
+    Contract([u8; 32]),
+}
+
+impl CLTyped for Entity {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
+impl Entity {
+    /// Get the tag of the entity.
+    #[must_use]
+    pub fn tag(&self) -> u32 {
+        match self {
+            Entity::Account(_) => 0,
+            Entity::Contract(_) => 1,
+        }
+    }
+
+    #[must_use]
+    pub fn from_parts(tag: u32, address: [u8; 32]) -> Option<Self> {
+        match tag {
+            0 => Some(Self::Account(address)),
+            1 => Some(Self::Contract(address)),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        match self {
+            Entity::Account(addr) | Entity::Contract(addr) => addr,
+        }
+    }
+
+    #[must_use]
+    pub fn is_account(&self) -> bool {
+        match self {
+            Entity::Account(_) => true,
+            Entity::Contract(_) => false,
+        }
+    }
+
+    #[must_use]
+    pub fn is_contract(&self) -> bool {
+        match self {
+            Entity::Account(_) => false,
+            Entity::Contract(_) => true,
+        }
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl CasperABI for Entity {
+    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
+        definitions.populate_one::<[u8; 32]>();
+    }
+
+    fn declaration() -> crate::abi::Declaration {
+        "Entity".into()
+    }
+
+    fn definition() -> crate::abi::Definition {
+        crate::abi::Definition::Enum {
+            items: vec![
+                EnumVariant {
+                    name: "Account".into(),
+                    discriminant: 0,
+                    decl: <[u8; 32] as CasperABI>::declaration(),
+                },
+                EnumVariant {
+                    name: "Contract".into(),
+                    discriminant: 1,
+                    decl: <[u8; 32] as CasperABI>::declaration(),
+                },
+            ],
+        }
+    }
+}
+
 /// Get the balance of an account or contract.
 #[must_use]
 pub fn get_balance_of(entity_kind: &Entity) -> u64 {
@@ -464,6 +586,8 @@ pub fn transferred_value() -> u64 {
 
 /// Transfer tokens from the current contract to another account or contract.
 pub fn transfer(target_account: &Address, amount: u64) -> Result<(), CallError> {
+    // TODO: the variable name is called target_account, but
+    // logic would call it with misc addresses. need to confer w/ michal
     let entity_addr = EntityAddr::Account(*target_account);
     log!("transfer entity_addr {:?}", entity_addr);
     let bytes = match borsh::to_vec(&(entity_addr, amount)) {

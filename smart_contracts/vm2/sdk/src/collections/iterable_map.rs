@@ -1,4 +1,4 @@
-use core::marker::PhantomData;
+use crate::prelude::{marker::PhantomData, *};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
@@ -448,6 +448,7 @@ where
     }
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 #[cfg(test)]
 mod tests {
     use super::*;

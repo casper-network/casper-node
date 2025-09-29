@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use crate::prelude::{collections::BTreeMap, *};
 
 use crate::{
     compat::types::{CLType, CLTyped, CLValue, U512},

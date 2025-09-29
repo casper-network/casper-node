@@ -5,7 +5,7 @@
 //! of this pattern, allowing for ownership to be transferred or renounced.
 #[allow(unused_imports)]
 use crate as casper_contract_sdk;
-use crate::{macros::casper, types::entity::Entity};
+use crate::{casper::Entity, macros::casper};
 
 /// The state of the Ownable contract, which contains the owner of the contract.
 #[casper(path = crate)]

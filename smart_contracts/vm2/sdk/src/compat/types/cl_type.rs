@@ -1,4 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
+use crate::prelude::{
+    collections::{BTreeMap, BTreeSet, LinkedList},
+    *,
+};
+
+#[cfg(any(feature = "std", feature = "hashbrown"))]
+use crate::prelude::collections::HashMap;
 
 use crate::serializers::borsh::{
     io::{self, Read},
@@ -194,6 +200,7 @@ impl<K: CLTyped, V: CLTyped> CLTyped for BTreeMap<K, V> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "hashbrown"))]
 impl<K: CLTyped, V: CLTyped> CLTyped for HashMap<K, V> {
     fn cl_type() -> CLType {
         let key = Box::new(K::cl_type());
@@ -277,7 +284,7 @@ struct Frame {
 }
 
 impl BorshDeserialize for CLType {
-    fn deserialize_reader<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> crate::serializers::borsh::io::Result<Self> {
         let mut stack: Vec<Frame> = Vec::new();
 
         // 'current' holds the last parsed CLType.

@@ -19,6 +19,7 @@ cfg_if! {
         pub mod collections {
             pub use ::alloc::collections::btree_map::{self, BTreeMap};
             pub use ::alloc::collections::{linked_list::{self, LinkedList}};
+            #[cfg(feature = "hashbrown")]
             pub use ::alloc::collections::{hash_map::{self, HashMap}};
             pub use ::alloc::collections::{btree_set::{self, BTreeSet}};
         }
@@ -33,10 +34,10 @@ pub use self::{
 };
 
 pub use crate::{
-    casper, log,
+    casper::{self, Entity},
+    log,
     macros::{self, casper, PanicOnDefault},
     revert,
-    types::{entity::Entity, Address},
 };
 
 #[cfg(test)]
