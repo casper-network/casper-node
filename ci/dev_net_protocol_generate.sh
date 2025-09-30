@@ -18,18 +18,22 @@ CONFIG_DIR="$TARGET_DIR/config"
 CURRENT_HASH=$(curl -s https://genesis.casper.network/artifacts/casper-node/dev.latest)
 echo "Checked out Github hash $CURRENT_HASH"
 
-LATEST_HASH=$(curl -s https://genesis.casper.network/dev-net/latest_git_hash | tr -d '\n')
-echo "Latest Hash from dev-net protocol is $LATEST_HASH"
+LATEST_HASH=$(curl -s https://genesis.casper.network/devnet/latest_git_hash | tr -d '\n')
+echo "Latest Hash from devnet protocol is $LATEST_HASH"
+if [ ${#LATEST_HASH} -ne 40 ]; then
+  echo "Latest Hash Length is bad. Probably had retrieval error: $LATEST_HASH"
+  exit 1
+fi
 
 echo
 
 if [ "$CURRENT_HASH" == "$LATEST_HASH" ]; then
-	  echo "Last published dev-net protocol has same hash, erroring out."
+	  echo "Last published devnet protocol has same hash, erroring out."
 	  exit 1 # This fails job and stops workflow
 fi
 
 LATEST_PROTOCOL_VERSION="$(curl -s https://genesis.casper.network/devnet/protocol_versions | tail -n 1 | tr -d '\n')"
-echo "Latest dev-net protocol version: $LATEST_PROTOCOL_VERSION"
+echo "Latest devnet protocol version: $LATEST_PROTOCOL_VERSION"
 
 IFS="_"
 # Read latest protocol parts into array
@@ -37,7 +41,7 @@ read -ra LPVA <<< "$LATEST_PROTOCOL_VERSION"
 
 # Incrementing one to patch
 NEW_PROTOCOL_VERSION=${LPVA[0]}_${LPVA[1]}_$((LPVA[2] + 1))
-echo "New dev-net protocol version: $NEW_PROTOCOL_VERSION"
+echo "New devnet protocol version: $NEW_PROTOCOL_VERSION"
 echo
 
 PROTOCOL_DIR="$GENESIS_DIR/$NEW_PROTOCOL_VERSION"
