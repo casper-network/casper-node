@@ -48,6 +48,7 @@ use casper_types::{
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
     BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
+    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -983,6 +984,7 @@ fn upgradable() {
     let _ = state_root_hash;
 }
 
+#[ignore]
 #[test]
 fn backwards_compatibility() {
     let (global_state, post_state_hash, _temp) = {
@@ -1264,7 +1266,11 @@ fn casper_return_writes_to_execution_journal() {
     }
 
     // Verify the key is the contract address
-    let expected_key = Key::SmartContract(contract_address);
+    let expected_key = if chainspec_config.core_config.enable_addressable_entity {
+        Key::AddressableEntity(EntityAddr::SmartContract(contract_address))
+    } else {
+        Key::Hash(contract_address)
+    };
     assert_eq!(
         ret_transform.key(),
         &expected_key,

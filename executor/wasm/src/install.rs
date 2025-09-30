@@ -7,7 +7,8 @@ use casper_storage::{
     global_state::error::Error as GlobalStateError, AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, BlockHash, BlockTime, Digest, TransactionHash,
+    account::AccountHash, execution::Effects, BlockHash, BlockTime, CLValueError, Digest,
+    TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -251,4 +252,7 @@ pub enum InstallContractError {
 
     #[error("failed building BuildingExecuteRequest: {0}")]
     FailedBuildingExecuteRequest(&'static str),
+
+    #[error("CLValue error: {0}")]
+    CLValueError(CLValueError),
 }

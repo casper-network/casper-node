@@ -23,6 +23,18 @@ pub fn compute_predictable_address<T: AsRef<[u8]>>(
     hasher.finalize().into()
 }
 
+pub fn compute_next_contract_hash_version(
+    smart_contract_addr: [u8; 32],
+    next_version: u32,
+) -> [u8; 32] {
+    let mut hasher = Blake2b::<U32>::new();
+
+    hasher.update(smart_contract_addr);
+    hasher.update(next_version.to_le_bytes());
+
+    hasher.finalize().into()
+}
+
 pub fn compute_wasm_bytecode_hash<T: AsRef<[u8]>>(wasm_bytes: T) -> [u8; 32] {
     let mut hasher = Blake2b::<U32>::new();
     hasher.update(wasm_bytes);
