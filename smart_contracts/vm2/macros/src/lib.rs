@@ -813,7 +813,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 fn #linkme_schema_entry_point_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                     casper_contract_sdk::schema::SchemaEntryPoint {
                         name: stringify!(#func_name).into(),
-                        arguments: casper_sdk::prelude::vec![ #(#args,)* ],
+                        arguments: casper_contract_sdk::prelude::vec![ #(#args,)* ],
                         result: #result,
                         flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                     }
