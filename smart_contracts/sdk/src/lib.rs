@@ -149,11 +149,20 @@ macro_rules! ret {
 
 #[macro_export]
 macro_rules! revert {
+    () => {{
+        $crate::casper::ret(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            None,
+        );
+        unreachable!()
+    }};
     ($msg:expr) => {{
         let msg: &str = $msg;
         let bytes = msg.as_bytes();
-        unsafe { $crate::sys::casper_revert(bytes.as_ptr(), bytes.len()) };
-        #[cfg(target_arch = "wasm32")]
+        $crate::casper::ret(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            Some(bytes),
+        );
         unreachable!()
     }};
 }

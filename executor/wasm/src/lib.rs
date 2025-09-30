@@ -805,6 +805,21 @@ impl ExecutorV2 {
                 messages: final_tracking_copy.messages(),
             }),
             Err(VMError::Return { flags, data }) => {
+                if flags.contains(ReturnFlags::REVERT) {
+                    let message = data
+                        .as_ref()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default();
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::Api(message)),
+                        output: None,
+                        gas_usage,
+                        effects: initial_tracking_copy.effects(),
+                        cache: initial_tracking_copy.cache(),
+                        messages: initial_tracking_copy.messages(),
+                    });
+                }
+
                 let host_error = if flags.contains(ReturnFlags::ROLLBACK) {
                     // The contract has rolled back.
                     Some(CallError::CalleeRolledBack)
