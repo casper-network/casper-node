@@ -274,7 +274,7 @@ pub mod node {
                 chainspec_toml_replacement,
             ),
             DependentFile::new(
-                "resources/dev-net/chainspec.toml",
+                "resources/devnet/chainspec.toml",
                 CHAINSPEC_REGEX.clone(),
                 chainspec_toml_replacement,
             ),
