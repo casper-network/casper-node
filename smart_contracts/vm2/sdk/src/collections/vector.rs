@@ -1,5 +1,6 @@
 use crate::{
     casper::{self, read_into_vec},
+    log,
     prelude::{cmp::Ordering, marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
@@ -87,9 +88,11 @@ where
     pub fn get(&self, index: u64) -> Option<T> {
         let prefix = self.compute_prefix_bytes_for_index(index);
         let item_keyspace = Keyspace::Context(&prefix);
-        read_into_vec(item_keyspace)
-            .unwrap()
-            .map(|vec| borsh::from_slice(&vec).unwrap())
+        log!("Foooo");
+        read_into_vec(item_keyspace).unwrap().map(|vec| {
+            log!("vec {:?}", vec);
+            borsh::from_slice(&vec).unwrap()
+        })
     }
 
     /// Returns an iterator over self, with elements deserialized.

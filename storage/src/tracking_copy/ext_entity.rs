@@ -206,11 +206,26 @@ where
                             ret
                         };
 
-                        return Ok(RuntimeFootprint::new_contract_footprint(
-                            contract_hash,
-                            contract,
-                            maybe_system_entity_type,
-                        ));
+                        if maybe_system_entity_type.is_some() {
+                            return Ok(RuntimeFootprint::new_vm1_contract_footprint(
+                                contract_hash,
+                                contract,
+                                maybe_system_entity_type,
+                            ));
+                        }
+
+                        let footprint = if self
+                            .read(&Key::ByteCode(ByteCodeAddr::V2CasperWasm(
+                                contract.contract_wasm_hash().value(),
+                            )))?
+                            .is_some()
+                        {
+                            RuntimeFootprint::new_vm2_contract_footprint
+                        } else {
+                            RuntimeFootprint::new_vm1_contract_footprint
+                        };
+
+                        return Ok(footprint(contract_hash, contract, maybe_system_entity_type));
                     }
                     Some(StoredValue::CLValue(cl_value)) => cl_value.to_t::<Key>()?,
                     Some(_) | None => Key::AddressableEntity(entity_addr),

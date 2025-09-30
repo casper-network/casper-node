@@ -423,12 +423,20 @@ where
             interface_versions.pop()
         };
 
-        let table = match instance.exports.get_table("__indirect_function_table") {
-            Ok(table) => Some(table.clone()),
-            Err(error @ wasmer::ExportError::IncompatibleType) => {
-                return Err(WasmPreparationError::MissingExport(error.to_string()))
-            }
-            Err(wasmer::ExportError::Missing(_)) => None,
+        let table_export_name = module.exports().find_map(|export| match export.ty() {
+            wasmer::ExternType::Table(_) => Some(export.name().to_string()),
+            _ => None,
+        });
+
+        let table = match table_export_name {
+            Some(name) => match instance.exports.get_table(&name) {
+                Ok(table) => Some(table.clone()),
+                Err(error @ wasmer::ExportError::IncompatibleType) => {
+                    return Err(WasmPreparationError::MissingExport(error.to_string()))
+                }
+                Err(wasmer::ExportError::Missing(_)) => None,
+            },
+            None => None,
         };
 
         {

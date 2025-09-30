@@ -31,6 +31,16 @@ pub enum HostResult {
     MaxMessagesPerBlockExceeded = 8,
     /// Internal error (for example, failed to acquire a lock)
     Internal = 9,
+    /// Error related to CLValues
+    CLValue = 10,
+    /// No active version found in the package.
+    NoActiveContract = 11,
+    /// No byte code was found for execution.
+    CodeNotFound = 12,
+    /// Entity not found.
+    EntityNotFound = 13,
+    /// Package associated with the package was locked.
+    LockedPackage = 14,
     /// An error code not covered by the other variants.
     Other(u32),
 }
@@ -45,6 +55,11 @@ pub const HOST_ERROR_PAYLOAD_TOO_LONG: u32 = 6;
 pub const HOST_ERROR_MESSAGE_TOPIC_FULL: u32 = 7;
 pub const HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED: u32 = 8;
 pub const HOST_ERROR_INTERNAL: u32 = 9;
+pub const HOST_ERROR_CL_VALUE: u32 = 10;
+pub const HOST_NO_ACTIVE_CONTRACT: u32 = 11;
+pub const HOST_CODE_NOT_FOUND: u32 = 12;
+pub const HOST_ENTITY_NOT_FOUND: u32 = 13;
+pub const HOST_LOCKED_PACKAGE: u32 = 14;
 
 impl From<u32> for HostResult {
     fn from(value: u32) -> Self {
@@ -59,6 +74,11 @@ impl From<u32> for HostResult {
             HOST_ERROR_MESSAGE_TOPIC_FULL => Self::MessageTopicFull,
             HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED => Self::MaxMessagesPerBlockExceeded,
             HOST_ERROR_INTERNAL => Self::Internal,
+            HOST_ERROR_CL_VALUE => Self::CLValue,
+            HOST_NO_ACTIVE_CONTRACT => Self::NoActiveContract,
+            HOST_CODE_NOT_FOUND => Self::CodeNotFound,
+            HOST_ENTITY_NOT_FOUND => Self::EntityNotFound,
+            HOST_LOCKED_PACKAGE => Self::LockedPackage,
             other => Self::Other(other),
         }
     }
@@ -109,7 +129,6 @@ pub const CALLEE_TRAPPED: u32 = 2;
 pub const CALLEE_GAS_DEPLETED: u32 = 3;
 pub const CALLEE_NOT_CALLABLE: u32 = 4;
 pub const CALLEE_API_ERROR: u32 = 5;
-
 /// Represents the result of a host function call.
 ///
 /// 0 is used as a success.

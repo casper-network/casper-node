@@ -182,7 +182,7 @@ pub use package::{
 pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-pub use runtime_footprint::RuntimeFootprint;
+pub use runtime_footprint::{RuntimeFootprint, NAME_FOR_V2_CONTRACT_MAIN_PURSE};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{
     GlobalStateIdentifier, StoredValue, StoredValueTag, TypeMismatch as StoredValueTypeMismatch,

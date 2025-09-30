@@ -277,10 +277,10 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
             let _ret = #func_name(#(args.#arg_names,)*);
         }
 
-        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+        #[cfg(not(target_arch = "wasm32"))]
         #func
 
-        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+        #[cfg(not(target_arch = "wasm32"))]
         const _: () = {
             #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
             #[linkme(crate = casper_contract_sdk::linkme)]
@@ -612,7 +612,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         #inner_func_name();
                     }
 
-                    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                    #[cfg(not(target_arch = "wasm32"))]
                     #vis fn #extern_func_name() {
                         #inner_func_name();
                     }
@@ -637,7 +637,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         #handle_ret;
                     }
 
-                    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                    #[cfg(not(target_arch = "wasm32"))]
                     const _: () = {
                         #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                         #[linkme(crate = casper_contract_sdk::linkme)]
@@ -809,7 +809,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_schema_entry_point_{func_name}");
 
             defs.push(quote! {
-                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                #[cfg(not(target_arch = "wasm32"))]
                 fn #linkme_schema_entry_point_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                     casper_contract_sdk::schema::SchemaEntryPoint {
                         name: stringify!(#func_name).into(),
@@ -825,7 +825,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_populate_definitions_{func_name}");
 
             defs.push(quote! {
-                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                #[cfg(not(target_arch = "wasm32"))]
                 fn #linkme_abi_populate_defs_ident(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;
                 }
@@ -842,7 +842,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
     {
         maybe_abi_collectors = quote! {
             #(
-                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                #[cfg(not(target_arch = "wasm32"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ABI_COLLECTORS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -853,7 +853,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
         maybe_entrypoint_defs = quote! {
             #(
-                #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                #[cfg(not(target_arch = "wasm32"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -963,7 +963,7 @@ fn generate_impl_trait_for_contract(
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
 
-                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -976,7 +976,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
-                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1000,7 +1000,7 @@ fn generate_impl_trait_for_contract(
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
 
-                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::casper::native::ENTRY_POINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1013,7 +1013,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
-                            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1348,7 +1348,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 {
                     extra_code.push(quote! {
-                        #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+                        #[cfg(not(target_arch = "wasm32"))]
                         fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                             casper_contract_sdk::schema::SchemaEntryPoint {
                                 name: stringify!(#export_name).into(),
@@ -1876,7 +1876,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
-            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+            #[cfg(not(target_arch = "wasm32"))]
             impl casper_contract_sdk::abi::CasperABI for #name {
                 fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;
@@ -2035,7 +2035,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
-            #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+            #[cfg(not(target_arch = "wasm32"))]
             impl casper_contract_sdk::abi::CasperABI for #name {
                 fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;

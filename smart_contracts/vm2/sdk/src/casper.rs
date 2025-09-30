@@ -151,10 +151,15 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         )
     };
 
+    log!("ret {:?}", ret);
+
     match result_from_code(ret) {
         Ok(()) => Ok(Some(())),
         Err(HostResult::NotFound) => Ok(None),
-        Err(err) => Err(err),
+        Err(err) => {
+            log!("casper_system result_code {:?}", err);
+            Err(err)
+        }
     }
 }
 

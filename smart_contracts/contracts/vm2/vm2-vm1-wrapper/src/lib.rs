@@ -1,7 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_contract_sdk::prelude::*;
+use casper_contract_sdk::{prelude::*, types::Address};
 
 /// This contract implements a simple Vm1Wrapper.
 #[derive(PanicOnDefault)]
