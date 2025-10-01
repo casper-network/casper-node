@@ -809,7 +809,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_schema_entry_point_{func_name}");
 
             defs.push(quote! {
-                #[cfg(not(target_arch = "wasm32"))]
                 fn #linkme_schema_entry_point_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                     casper_contract_sdk::schema::SchemaEntryPoint {
                         name: stringify!(#func_name).into(),
@@ -825,7 +824,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 format_ident!("__casper_populate_definitions_{func_name}");
 
             defs.push(quote! {
-                #[cfg(not(target_arch = "wasm32"))]
                 fn #linkme_abi_populate_defs_ident(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;
                 }
@@ -842,7 +840,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
     {
         maybe_abi_collectors = quote! {
             #(
-                #[cfg(not(target_arch = "wasm32"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ABI_COLLECTORS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -853,7 +850,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
         maybe_entrypoint_defs = quote! {
             #(
-                #[cfg(not(target_arch = "wasm32"))]
                 const _: () = {
                     #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                     #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1572,6 +1568,13 @@ fn generate_casper_state_for_enum(
 }
 
 fn get_maybe_derive_abi(_crate_path: impl ToTokens) -> impl ToTokens {
+    #[cfg(feature = "__abi_generator")]
+    {
+        quote! {
+            #[cfg_attr(not(target_arch = "wasm32"), derive(#_crate_path::macros::CasperABI))]
+        }
+    }
+    #[cfg(not(feature = "__abi_generator"))]
     {
         quote! {
             #[cfg_attr(not(target_arch = "wasm32"), derive(#_crate_path::macros::CasperABI))]
@@ -1851,7 +1854,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
     // support this in the macro
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
         let mut populate_definitions = Vec::new();
-        let name = input.ident.clone();
+        let _name = input.ident.clone();
         let mut items = Vec::new();
         for field in &input.fields {
             match &field.ty {
@@ -1875,27 +1878,34 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
             }
         }
 
-        Ok(quote! {
-            #[cfg(not(target_arch = "wasm32"))]
-            impl casper_contract_sdk::abi::CasperABI for #name {
-                fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
-                    #(#populate_definitions)*;
-                }
+        #[cfg(feature = "__abi_generator")]
+        {
+            Ok(quote! {
 
-                fn declaration() -> casper_contract_sdk::abi::Declaration {
-                    const DECL: &str = concat!(module_path!(), "::", stringify!(#name));
-                    DECL.into()
-                }
+                impl casper_contract_sdk::abi::CasperABI for #_name {
+                    fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
+                        #(#populate_definitions)*;
+                    }
 
-                fn definition() -> casper_contract_sdk::abi::Definition {
-                    casper_contract_sdk::abi::Definition::Struct {
-                        items: vec![
-                            #(#items,)*
-                        ]
+                    fn declaration() -> casper_contract_sdk::abi::Declaration {
+                        const DECL: &str = concat!(module_path!(), "::", stringify!(#_name));
+                        DECL.into()
+                    }
+
+                    fn definition() -> casper_contract_sdk::abi::Definition {
+                        casper_contract_sdk::abi::Definition::Struct {
+                            items: vec![
+                                #(#items,)*
+                            ]
+                        }
                     }
                 }
-            }
-        })
+            })
+        }
+        #[cfg(not(feature = "__abi_generator"))]
+        {
+            Ok(quote! {})
+        }
     } else if let Ok(input) = syn::parse::<ItemEnum>(input.clone()) {
         // TODO: Check visibility
         let name = input.ident.clone();
@@ -2035,7 +2045,6 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
-            #[cfg(not(target_arch = "wasm32"))]
             impl casper_contract_sdk::abi::CasperABI for #name {
                 fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
                     #(#populate_definitions)*;

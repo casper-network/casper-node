@@ -1,0 +1,8 @@
+[package]
+name = "casper-contract-sdk-contrib"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base16 = { version = "0.2.1", default-features = false }
+casper-contract-sdk = { path = "../sdk" }

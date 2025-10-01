@@ -26,7 +26,7 @@ members = [
     "executor/wasm_interface",
     "executor/wasm_host",
     "executor/wasmer_backend",
-    "executor/wasm",
+    "executor/wasm", "smart_contracts/vm2/sdk_contrib",
 ]
 
 default-members = [

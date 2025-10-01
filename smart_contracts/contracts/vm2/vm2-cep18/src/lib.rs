@@ -1,11 +1,9 @@
-use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState},
-    prelude::*,
-    types::U256,
-};
-
-use casper_contract_sdk::contrib::cep18::{
-    Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
+use casper_contract_sdk::{prelude::*, types::U256};
+use casper_contract_sdk_contrib::{
+    access_control::{AccessControl, AccessControlExt, AccessControlState},
+    cep18::{
+        Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
+    },
 };
 
 #[casper(contract_state)]
@@ -50,7 +48,7 @@ impl TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl CEP18 for TokenContract {
     fn state(&self) -> &CEP18State {
         &self.state
@@ -61,7 +59,7 @@ impl CEP18 for TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::access_control)]
+#[casper(path = casper_contract_sdk_contrib::access_control)]
 impl AccessControl for TokenContract {
     fn state(&self) -> &AccessControlState {
         &self.access_control
@@ -72,10 +70,10 @@ impl AccessControl for TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl Mintable for TokenContract {}
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl Burnable for TokenContract {}
 
 #[cfg(test)]

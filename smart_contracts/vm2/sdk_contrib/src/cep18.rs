@@ -58,18 +58,17 @@
 //!   }
 //! }
 //! ```
-use bnum::types::U256;
+use casper_contract_sdk::{macros::casper, types::U256};
 
 use super::access_control::{AccessControl, AccessControlError, Role};
-#[allow(unused_imports)]
-use crate as casper_contract_sdk;
-use crate::{collections::Map, macros::blake2b256, prelude::*};
+
+use casper_contract_sdk::{collections::Map, macros::blake2b256, prelude::*};
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the `Error::User` variant or equivalently via the `ApiError::User`
 /// variant.
 #[derive(Debug, PartialEq, Eq)]
-#[casper(path = crate)]
+#[casper]
 pub enum Cep18Error {
     /// CEP-18 contract called from within an invalid context.
     InvalidContext,
@@ -117,14 +116,14 @@ impl From<AccessControlError> for Cep18Error {
     }
 }
 
-#[casper(message, path = crate)]
+#[casper(message)]
 pub struct Transfer {
     pub from: Option<Entity>,
     pub to: Entity,
     pub amount: U256,
 }
 
-#[casper(message, path = crate)]
+#[casper(message)]
 pub struct Approve {
     pub owner: Entity,
     pub spender: Entity,
@@ -134,7 +133,7 @@ pub struct Approve {
 pub const ADMIN_ROLE: Role = blake2b256!("admin");
 pub const MINTER_ROLE: Role = blake2b256!("minter");
 
-#[casper(path = crate)]
+#[casper]
 pub struct CEP18State {
     pub name: String,
     pub symbol: String,
@@ -188,7 +187,7 @@ impl CEP18State {
     }
 }
 
-#[casper(path = crate, export = true)]
+#[casper(export = true)]
 pub trait CEP18 {
     #[casper(private)]
     fn state(&self) -> &CEP18State;
@@ -331,7 +330,7 @@ pub trait CEP18 {
     }
 }
 
-#[casper(path = crate, export = true)]
+#[casper(export = true)]
 pub trait Mintable: CEP18 + AccessControl {
     #[casper(revert_on_error)]
     fn mint(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {
@@ -360,7 +359,7 @@ pub trait Mintable: CEP18 + AccessControl {
     }
 }
 
-#[casper(path = crate, export = true)]
+#[casper(export = true)]
 pub trait Burnable: CEP18 {
     #[casper(revert_on_error)]
     fn burn(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {

@@ -1,11 +1,7 @@
-#[allow(unused_imports)]
-use crate as casper_contract_sdk; // Workaround for absolute crate path in derive CasperABI macro
-
-use casper_contract_macros::casper;
-
-use crate::{
+use casper_contract_sdk::{
     casper::{self, Entity},
     collections::{Map, Vector},
+    macros::casper,
 };
 
 /// A role is a unique identifier for a specific permission or set of permissions.
@@ -17,7 +13,7 @@ pub type Role = [u8; 32];
 const ROLES_PREFIX: &str = "roles";
 
 /// The state of the access control contract, which contains a mapping of entities to their roles.
-#[casper(path = "crate")]
+#[casper]
 pub struct AccessControlState {
     roles: Map<Entity, Vector<Role>>,
 }
@@ -38,7 +34,7 @@ impl Default for AccessControlState {
 }
 
 /// Represents the possible errors that can occur during access control operations.
-#[casper(path = "crate")]
+#[casper]
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum AccessControlError {
     /// The caller is not authorized to perform the action.
@@ -58,7 +54,7 @@ pub enum AccessControlError {
 ///
 /// The `AccessControl` trait is designed to be used with the `casper` macro, which generates
 /// the necessary boilerplate code for the contract.
-#[casper(path = "crate", export = true)]
+#[casper(export = true)]
 pub trait AccessControl {
     /// The state of the contract, which contains the roles.
     #[casper(private)]

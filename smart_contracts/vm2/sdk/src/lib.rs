@@ -16,7 +16,7 @@ pub use linkme;
 pub mod abi_generator;
 pub mod casper;
 pub mod collections;
-pub mod contrib;
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod schema;
 pub mod types;
