@@ -1,4 +1,7 @@
-use casper_contract_sdk::prelude::*;
+use casper_contract_sdk::{macros::blake2b256, prelude::*};
+use casper_contract_sdk_contrib::access_control::{
+    AccessControl, AccessControlExt, AccessControlState, Role,
+};
 
 pub const ADMIN_ROLE: Role = blake2b256!("ADMIN");
 pub const DEFAULT_TIME_INTERVAL: u64 = 7_200_000;
@@ -318,7 +321,7 @@ impl FaucetContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::access_control)]
+#[casper(path = casper_contract_sdk_contrib::access_control)]
 impl AccessControl for FaucetContract {
     fn state(&self) -> &AccessControlState {
         &self.access_control
