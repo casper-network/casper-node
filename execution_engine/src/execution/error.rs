@@ -9,7 +9,8 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    ContractRuntimeTag, EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
+    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch,
+    URef,
 };
 use casper_wasm::elements;
 
@@ -204,6 +205,9 @@ pub enum Error {
     /// Error when casting types.
     #[error("Couldn't cast types {0}")]
     TypeCast(&'static str),
+    /// Unexpected entity addr.
+    #[error("Unexpected entity kind variant: {0}")]
+    UnexpectedEntityKind(EntityKind),
 }
 
 impl From<PreprocessingError> for Error {

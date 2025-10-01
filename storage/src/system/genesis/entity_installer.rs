@@ -678,12 +678,18 @@ where
                     AddressableEntityHash::new(account_hash.value())
                 }
             }
+            EntityKind::Package(_) => {
+                return Err(Box::new(GenesisError::InvalidEntityKind(entity_kind)))
+            }
         };
 
         let entity_addr = match entity_kind.tag() {
             EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
             EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
             EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
+            EntityKindTag::Package => {
+                return Err(Box::new(GenesisError::InvalidEntityKind(entity_kind)))
+            }
         };
 
         let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());

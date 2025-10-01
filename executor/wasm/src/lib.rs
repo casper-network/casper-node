@@ -651,6 +651,7 @@ impl ExecutorV2 {
                         let wasm_key = match addressable_entity.kind() {
                             EntityKind::System(_) => todo!(),
                             EntityKind::Account(_) => todo!(),
+                            EntityKind::Package(_) => todo!(),
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1) => {
                                 // We need to short circuit here to execute v1 contracts with
                                 // vm1 execute
@@ -662,7 +663,7 @@ impl ExecutorV2 {
                                     self.execution_engine_v1.config().protocol_version(),
                                 );
 
-                                let entity_addr = EntityAddr::SmartContract(*contract_package_addr);
+                                let entity_addr = EntityAddr::Package(*contract_package_addr);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -1079,7 +1080,11 @@ impl ExecutorV2 {
         let authorization_keys = BTreeSet::from_iter([initiator]);
         let initiator_addr = InitiatorAddr::AccountHash(initiator);
         let executable_item =
-            ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
+            ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
+                addr: entity_addr.value(),
+                version: None,
+                protocol_version_major: None,
+            });
         let entry_point = entry_point.clone();
         let args = bytesrepr::deserialize_from_slice(input)
             .map_err(|err| ExecuteError::InternalHost(InternalHostError::Bytesrepr(err)))?;
