@@ -155,6 +155,7 @@ use crate::{
         transaction_acceptor,
     },
     contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
+    effect::announcements::NonExecutableBlockAnnouncement,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -1932,6 +1933,20 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that a finalized block has been created, but it was not
+    /// executed due to subjective node state.
+    pub(crate) async fn announce_not_executing_block(self, block_height: u64)
+    where
+        REv: From<NonExecutableBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                NonExecutableBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
             .await;

@@ -82,8 +82,8 @@ use super::deploy_acquisition::TransactionIdentifier;
 ///     A -->|No| HaveApprovalsHashes
 ///     HaveApprovalsHashes --> C{is block empty?}
 ///     C -->|Yes| HaveStrictFinalitySignatures
-///     C -->|No| HaveAllDeploys
-///     HaveAllDeploys --> HaveStrictFinalitySignatures
+///     C -->|No| HaveAllTransactions
+///     HaveAllTransactions --> HaveStrictFinalitySignatures
 ///     HaveStrictFinalitySignatures --> D{is historical?}
 ///     D -->|Yes| Complete
 ///     D -->|No| HaveFinalizedBlock
@@ -108,7 +108,7 @@ pub(super) enum BlockAcquisitionState {
         ExecutionResultsChecksum,
     ),
     HaveApprovalsHashes(Box<Block>, SignatureAcquisition, TransactionAcquisition),
-    HaveAllDeploys(Box<Block>, SignatureAcquisition),
+    HaveAllTransactions(Box<Block>, SignatureAcquisition),
     HaveStrictFinalitySignatures(Box<Block>, SignatureAcquisition),
     // We keep the `Block` as well as the `FinalizedBlock` because the
     // block is necessary to reach the `Complete` state and the finalized
@@ -171,8 +171,13 @@ impl Display for BlockAcquisitionState {
                 block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveAllDeploys(block, _) => {
-                write!(f, "have deploys({}) for: {}", block.height(), block.hash())
+            BlockAcquisitionState::HaveAllTransactions(block, _) => {
+                write!(
+                    f,
+                    "have transactions({}) for: {}",
+                    block.height(),
+                    block.hash()
+                )
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => write!(
                 f,
@@ -214,7 +219,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
-            | BlockAcquisitionState::HaveAllDeploys(block, _)
+            | BlockAcquisitionState::HaveAllTransactions(block, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
             | BlockAcquisitionState::HaveExecutableBlock(block, ..)
             | BlockAcquisitionState::Complete(block) => *block.hash(),
@@ -227,7 +232,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..) => None,
-            BlockAcquisitionState::HaveAllDeploys(block, _)
+            BlockAcquisitionState::HaveAllTransactions(block, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
             | BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
@@ -263,12 +268,12 @@ pub(super) struct RegisterExecResultsOutcome {
 ///     Block -->> GlobalState: is historical?
 ///     GlobalState ->> AllExecutionResults: get execution results
 ///     AllExecutionResults -->> ApprovalsHashes: is not legacy?
-///     AllExecutionResults -->> AllDeploys: is legacy?
-///     ApprovalsHashes ->> AllDeploys: get deploys
+///     AllExecutionResults -->> AllTransactions: is legacy?
+///     ApprovalsHashes ->> AllTransactions: get transactions
 ///     GlobalState -->> StrictFinalitySignatures: is block empty?
-///     Block -->> AllDeploys: is not historical and is not empty?
+///     Block -->> AllTransactions: is not historical and is not empty?
 ///     Block -->> StrictFinalitySignatures: is not historical and is empty?
-///     AllDeploys ->> StrictFinalitySignatures: get strict finality
+///     AllTransactions ->> StrictFinalitySignatures: get strict finality
 ///     StrictFinalitySignatures ->> FinalizedBlock: is forward and finalized block created
 ///     StrictFinalitySignatures -->> Complete: is historical and block marked complete
 ///     FinalizedBlock ->> Complete: is forward and block executed
@@ -284,8 +289,8 @@ impl BlockAcquisitionState {
     //   HaveWeakFinalitySignatures -> need block
     //
     //   HaveBlock -> if should_fetch_execution_state -> need global state
-    //              else if block has deploys need approvals hashes
-    //              else if no deploys need strict finality
+    //              else if block has transactions need approvals hashes
+    //              else if no transactions need strict finality
     //
     //   HaveGlobalState -> if should_fetch_execution_state
     //                      if block has deploys ->
@@ -373,12 +378,14 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
-                deploy_state,
+                transaction_state,
                 exec_results,
             ) => {
                 if false == is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
-                } else if deploy_state.needs_transaction() {
+                } else if block.transaction_count() == 0 || transaction_state.needs_transaction() {
+                    // There is an execution result checksum and there is a derived utilization
+                    // score that is meaningfull even when there are no transactions.
                     BlockAcquisitionAction::maybe_execution_results(
                         block,
                         peer_list,
@@ -433,7 +440,7 @@ impl BlockAcquisitionState {
                     ))
                 } else {
                     Ok(
-                        BlockAcquisitionAction::next_action_after_deploy_acquisition(
+                        BlockAcquisitionAction::next_action_after_transaction_acquisition(
                             *block.hash(),
                             block.height(),
                             block.era_id(),
@@ -467,7 +474,7 @@ impl BlockAcquisitionState {
                     ))
                 } else {
                     Ok(
-                        BlockAcquisitionAction::next_action_after_deploy_acquisition(
+                        BlockAcquisitionAction::next_action_after_transaction_acquisition(
                             *block.hash(),
                             block.height(),
                             block.era_id(),
@@ -481,7 +488,7 @@ impl BlockAcquisitionState {
                     )
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(block, signatures) => {
+            BlockAcquisitionState::HaveAllTransactions(block, signatures) => {
                 if signatures.has_sufficient_finality(is_historical, true) {
                     Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
                         *block.hash(),
@@ -501,7 +508,8 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, ..) => {
                 if is_historical {
-                    // we have enough signatures; need to make sure we've stored the necessary bits
+                    // we have enough signatures; need to make sure we've
+                    // stored the necessary bits
                     Ok(BlockAcquisitionAction::block_marked_complete(
                         *block.hash(),
                         block.height(),
@@ -550,7 +558,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(block, ..)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
-            | BlockAcquisitionState::HaveAllDeploys(block, ..)
+            | BlockAcquisitionState::HaveAllTransactions(block, ..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
             | BlockAcquisitionState::Complete(block) => Some(block.height()),
         }
@@ -589,7 +597,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -642,7 +650,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -670,7 +678,7 @@ impl BlockAcquisitionState {
         let maybe_new_state = match self {
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, ..)
             | BlockAcquisitionState::HaveGlobalState(block, acquired_signatures, ..)
-            | BlockAcquisitionState::HaveAllDeploys(block, acquired_signatures)
+            | BlockAcquisitionState::HaveAllTransactions(block, acquired_signatures)
             | BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..) => {
                 if acquired_signatures.has_sufficient_finality(is_historical, true) {
                     Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -704,7 +712,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(_, acquired_signatures, ..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, acquired_signatures, ..)
             | BlockAcquisitionState::HaveAllExecutionResults(_, acquired_signatures, ..)
-            | BlockAcquisitionState::HaveAllDeploys(_, acquired_signatures)
+            | BlockAcquisitionState::HaveAllTransactions(_, acquired_signatures)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, acquired_signatures)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(_, acquired_signatures) => {
                 acquired_signatures.register_pending(validator);
@@ -757,7 +765,7 @@ impl BlockAcquisitionState {
                     && acquired_deploys.needs_transaction() == false
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict
             }
-            BlockAcquisitionState::HaveAllDeploys(_, acquired_signatures) => {
+            BlockAcquisitionState::HaveAllTransactions(_, acquired_signatures) => {
                 acquired_signatures.signature_weight() != SignatureWeight::Strict
             }
         }
@@ -858,7 +866,7 @@ impl BlockAcquisitionState {
                     None
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(block, acquired_signatures) => {
+            BlockAcquisitionState::HaveAllTransactions(block, acquired_signatures) => {
                 maybe_block_hash = Some(*block.hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if acquired_signatures.has_sufficient_finality(is_historical, true) {
@@ -951,7 +959,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveBlockHeader(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -1001,7 +1009,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -1037,7 +1045,7 @@ impl BlockAcquisitionState {
                     .apply_checksum(execution_results_checksum)
                     .map_err(BlockAcquisitionError::ExecutionResults)?;
             }
-            BlockAcquisitionState::HaveAllDeploys(..)
+            BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::Initialized(..)
@@ -1127,7 +1135,7 @@ impl BlockAcquisitionState {
                     }
                 }
             }
-            BlockAcquisitionState::HaveAllDeploys(..)
+            BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::Initialized(..)
@@ -1176,7 +1184,7 @@ impl BlockAcquisitionState {
                 )
             }
             BlockAcquisitionState::HaveGlobalState(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveBlockHeader(..)
@@ -1194,13 +1202,13 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    /// Register a deploy for this block.
-    pub(super) fn register_deploy(
+    /// Register a transaction for this block.
+    pub(super) fn register_transaction(
         &mut self,
         txn_id: TransactionId,
         is_historical: bool,
     ) -> Result<Option<Acceptance>, BlockAcquisitionError> {
-        let (block, signatures, deploys) = match self {
+        let (block, signatures, transactions) = match self {
             BlockAcquisitionState::HaveBlock(block, signatures, transactions)
                 if false == is_historical =>
             {
@@ -1212,10 +1220,10 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveAllExecutionResults(
                 block,
                 signatures,
-                deploys,
+                transactions,
                 checksum,
             ) if is_historical => match checksum {
-                ExecutionResultsChecksum::Uncheckable => (block, signatures, deploys),
+                ExecutionResultsChecksum::Uncheckable => (block, signatures, transactions),
                 ExecutionResultsChecksum::Checkable(_) => {
                     return Err(BlockAcquisitionError::InvalidAttemptToApplyTransaction { txn_id });
                 }
@@ -1226,7 +1234,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveBlock(_, _, _)
             | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
-            | BlockAcquisitionState::HaveAllDeploys(_, _)
+            | BlockAcquisitionState::HaveAllTransactions(_, _)
             | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
             | BlockAcquisitionState::Failed(_, _)
@@ -1240,10 +1248,10 @@ impl BlockAcquisitionState {
             }
         };
         info!("BlockAcquisition: registering deploy for: {}", block.hash());
-        let maybe_acceptance = deploys.apply_transaction(txn_id);
-        if !deploys.needs_transaction() {
+        let maybe_acceptance = transactions.apply_transaction(txn_id);
+        if !transactions.needs_transaction() {
             let new_state =
-                BlockAcquisitionState::HaveAllDeploys(block.clone(), signatures.clone());
+                BlockAcquisitionState::HaveAllTransactions(block.clone(), signatures.clone());
             self.set_state(new_state);
         }
         Ok(maybe_acceptance)
@@ -1273,7 +1281,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
@@ -1303,7 +1311,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {}
@@ -1335,7 +1343,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
@@ -1370,7 +1378,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {

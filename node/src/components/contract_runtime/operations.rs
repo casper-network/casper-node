@@ -1204,7 +1204,6 @@ pub fn execute_finalized_block(
                 }
             }
         };
-
     let era_end = match (
         executable_block.era_report,
         maybe_next_era_validator_weights,
