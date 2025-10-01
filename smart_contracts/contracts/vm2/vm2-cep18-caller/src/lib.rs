@@ -2,11 +2,11 @@
 
 pub mod exports {
     use casper_contract_sdk::{
-        contrib::cep18::{CEP18Ext, MintableExt},
         prelude::*,
         types::{Address, U256},
         ContractHandle,
     };
+    use casper_contract_sdk_contrib::cep18::{CEP18Ext, MintableExt};
     use vm2_cep18::TokenContractRef;
 
     #[casper(export)]

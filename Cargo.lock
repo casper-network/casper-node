@@ -7299,6 +7299,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
  "vm2-cep18",
 ]
 
