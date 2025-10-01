@@ -64,6 +64,194 @@ pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
 });
 
 #[test]
+fn vm2_should_return_output_to_caller() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("initialize".to_string())
+        .with_input(Bytes::from(b"".as_slice()))
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    let contract_hash = EntityAddr::SmartContract(*create_result.smart_contract_addr());
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let input = borsh::to_vec(&(String::from("hi"),))
+        .map(Bytes::from)
+        .unwrap();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "entry_point_without_state_with_args_and_output".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block")))
+        .with_input(input)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+    assert!(result.host_error.is_none(), "should be success");
+    let out = result.output().expect("should have output");
+    let returned: String = borsh::from_slice(out).expect("borsh string");
+    assert_eq!(returned, "hiextra");
+}
+
+#[test]
+fn vm2_rollback_should_return_to_caller_with_data() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("initialize".to_string())
+        .with_input(Bytes::from(b"".as_slice()))
+        .build()
+        .expect("should build");
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+    let contract_hash = EntityAddr::SmartContract(*create_result.smart_contract_addr());
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let input = borsh::to_vec(&())
+        .map(Bytes::from)
+        .unwrap();
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "emit_revert_with_data".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"bl0ck")))
+        .with_input(input)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request)
+        .expect("exec ok");
+    match result.host_error {
+        Some(CallError::CalleeRolledBack) => {}
+        Some(other) => panic!("expected CalleeRolledBack got {other:?}"),
+        None => panic!("expected error"),
+    }
+
+    let out = result.output().expect("should carry rollback data");
+    assert!(!out.is_empty(), "rollback should return some data");
+}
+
+#[test]
+fn vm2_revert_should_abort_whole_stack() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("initialize".to_string())
+        .with_input(Bytes::from(b"".as_slice()))
+        .build()
+        .expect("should build");
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+    let contract_hash = EntityAddr::SmartContract(*create_result.smart_contract_addr());
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+
+    let input = borsh::to_vec(&())
+        .map(Bytes::from)
+        .unwrap();
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: contract_hash.value(),
+            entry_point: "emit_revert_without_data".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"bl0ck")))
+        .with_input(input)
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .build()
+        .expect("should build");
+
+    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request)
+        .expect("exec ok");
+    match result.host_error {
+        Some(CallError::Api(_)) => {}
+        Some(other) => panic!("expected Api(_) got {other:?}"),
+        None => panic!("expected error"),
+    }
+}
+
 fn harness() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
