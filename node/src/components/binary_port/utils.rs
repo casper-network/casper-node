@@ -46,6 +46,9 @@ pub(super) fn map_sandbox_error(
                 InnerSandboxedExecutionError::InternalHostError => {
                     SandboxedExecutionError::InternalHostError
                 }
+                InnerSandboxedExecutionError::Api(api_error) => {
+                    SandboxedExecutionError::Api(api_error)
+                }
             };
             Some(ret)
         }

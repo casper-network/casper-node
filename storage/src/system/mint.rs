@@ -11,6 +11,11 @@ pub mod system_provider;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
+use crate::system::mint::{
+    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
+};
+
 use casper_types::{
     account::AccountHash,
     system::{
@@ -18,11 +23,6 @@ use casper_types::{
         Caller,
     },
     Key, PublicKey, URef, U512,
-};
-
-use crate::system::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    system_provider::SystemProvider,
 };
 
 /// Mint trait.
@@ -224,6 +224,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
+        if !self.is_valid_uref(&source) {
+            return Err(Error::ForgedReference);
+        }
         let source_available_balance: U512 = match self.available_balance(source)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::SourceNotFound),
@@ -240,7 +243,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::DestNotFound);
         }
         let addr = match self.get_main_purse() {
-            None => return Err(Error::InvalidURef),
+            None => {
+                return Err(Error::InvalidURef);
+            }
             Some(uref) => uref.addr(),
         };
         if self.get_caller() != PublicKey::System.to_account_hash() && addr == source.addr() {

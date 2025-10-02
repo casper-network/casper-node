@@ -408,6 +408,10 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                 func.attrs.clear();
 
+                if method_attribute.private {
+                    continue;
+                }
+
                 let func_name = func.sig.ident.clone();
                 if func_name.to_string().starts_with("__casper_") {
                     return TokenStream::from(

@@ -1,3 +1,4 @@
+pub mod altbn128;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
 
@@ -6,6 +7,7 @@ use crate::abi::{ABITypeInfo, CasperABI, EnumVariant};
 
 use crate::{
     compat::types::{CLType, CLTyped},
+    log,
     prelude::{
         ffi::c_void,
         marker::PhantomData,
@@ -19,16 +21,16 @@ use crate::{
     Message, ToCallData,
 };
 
+use crate::types::{EntityAddr, SystemContractOption};
 use casper_contract_macros::TypeUid;
-use casper_contract_sdk_sys::casper_env_info;
+use casper_contract_sdk_sys::{casper_env_info, EnvInfo};
+#[cfg(not(target_arch = "wasm32"))]
+use casper_executor_wasm_common::type_uid;
 use casper_executor_wasm_common::{
-    env_info::EnvInfo,
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
-#[cfg(not(target_arch = "wasm32"))]
-use casper_executor_wasm_common::type_uid;
 
 /// Print a message.
 #[inline]
@@ -119,11 +121,12 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
 
     let mut info = casper_contract_sdk_sys::ReadInfo {
-        data: ptr::null(),
-        size: 0,
+        data_ptr: ptr::null(),
+        data_size: 0,
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -151,10 +154,15 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         )
     };
 
+    log!("ret {:?}", ret);
+
     match result_from_code(ret) {
         Ok(()) => Ok(Some(())),
         Err(HostResult::NotFound) => Ok(None),
-        Err(err) => Err(err),
+        Err(err) => {
+            log!("casper_system result_code {:?}", err);
+            Err(err)
+        }
     }
 }
 
@@ -164,6 +172,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
     let ret = unsafe {
         casper_contract_sdk_sys::casper_write(
@@ -183,6 +192,7 @@ pub fn remove(key: Keyspace) -> Result<(), HostResult> {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
     };
     let ret = unsafe {
         casper_contract_sdk_sys::casper_remove(key_space, key_bytes.as_ptr(), key_bytes.len())
@@ -251,12 +261,50 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     call_result_from_code(result_code)
 }
 
+pub(crate) fn call_into_system<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+    system_contract_opt: u32,
+    input_data: &[u8],
+    alloc: Option<F>,
+) -> Result<(), CallError> {
+    let result_code = unsafe {
+        casper_contract_sdk_sys::casper_system(
+            system_contract_opt,
+            input_data.as_ptr(),
+            input_data.len(),
+            alloc_callback::<F>,
+            &alloc as *const _ as *mut _,
+        )
+    };
+    call_result_from_code(result_code)
+}
+
 fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
     if result_code == HOST_ERROR_SUCCESS {
         Ok(())
     } else {
         Err(CallError::try_from(result_code).expect("Unexpected error code"))
     }
+}
+
+/// Call a system contract.
+pub fn casper_system(
+    system_contract_opt: u32,
+    input_data: &[u8],
+) -> (Option<Vec<u8>>, Result<(), CallError>) {
+    let mut output = None;
+    let result_code = call_into_system(
+        system_contract_opt,
+        input_data,
+        Some(|size| {
+            let mut vec = Vec::new();
+            reserve_vec_space(&mut vec, size);
+            let result = Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) });
+            output = Some(vec);
+            result
+        }),
+    );
+    log!("casper_system result_code {:?}", result_code);
+    (output, result_code)
 }
 
 /// Call a contract.
@@ -557,15 +605,17 @@ pub fn transferred_value() -> u64 {
 
 /// Transfer tokens from the current contract to another account or contract.
 pub fn transfer(target_account: &Address, amount: u64) -> Result<(), CallError> {
-    let amount: *const c_void = &amount as *const _ as *const c_void;
-    let result_code = unsafe {
-        casper_contract_sdk_sys::casper_transfer(
-            target_account.as_ptr(),
-            target_account.len(),
-            amount,
-        )
+    // TODO: the variable name is called target_account, but
+    // logic would call it with misc addresses. need to confer w/ michal
+    let entity_addr = EntityAddr::Account(*target_account);
+    log!("transfer entity_addr {:?}", entity_addr);
+    let bytes = match borsh::to_vec(&(entity_addr, amount)) {
+        Ok(bytes) => bytes,
+        Err(_err) => return Err(CallError::CalleeTrapped),
     };
-    call_result_from_code(result_code)
+    let opt = SystemContractOption::Transfer.into();
+    let (_ret, result) = casper_system(opt, &bytes);
+    result
 }
 
 /// Get the current block time.

@@ -13,6 +13,8 @@ pub enum KeyspaceTag {
     Context = 1,
     /// Used for a named key based storage which usually involves named keys.
     NamedKey = 2,
+    /// Used for getting all named keys
+    AllNamedKeys = 3,
 }
 
 #[repr(u64)]
@@ -27,6 +29,10 @@ pub enum Keyspace<'a> {
     Context(&'a [u8]),
     /// Stores contract's named keys.
     NamedKey(&'a str),
+    /// All the named keys for the given contract
+    ///
+    /// No additional info as the contracts address will be used as the base.
+    AllNamedKeys,
 }
 
 impl Keyspace<'_> {
@@ -36,6 +42,7 @@ impl Keyspace<'_> {
             Keyspace::State => KeyspaceTag::State,
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
+            Keyspace::AllNamedKeys => KeyspaceTag::AllNamedKeys,
         }
     }
 

@@ -20,6 +20,8 @@ pub enum SandboxedExecutionError {
     CodeNotFound,
     /// An internal host error occurred.
     InternalHostError,
+    /// Api error occurred.
+    Api(String),
 }
 
 impl core::fmt::Display for SandboxedExecutionError {
@@ -31,6 +33,7 @@ impl core::fmt::Display for SandboxedExecutionError {
             SandboxedExecutionError::NotCallable => write!(f, "contract not callable"),
             SandboxedExecutionError::CodeNotFound => write!(f, "contract code not found"),
             SandboxedExecutionError::InternalHostError => write!(f, "internal host error"),
+            SandboxedExecutionError::Api(api_error) => write!(f, "{}", api_error),
         }
     }
 }

@@ -1152,6 +1152,11 @@ where
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
 
+                let vesting_schedule_period_millis = self
+                    .context
+                    .engine_config()
+                    .vesting_schedule_period_millis();
+
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
 
@@ -1162,6 +1167,7 @@ where
                         public_key,
                         delegation_rate,
                         amount,
+                        vesting_schedule_period_millis,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
                         minimum_bid_amount,
@@ -1763,7 +1769,7 @@ where
 
                         let maybe_system_entity_type = self.maybe_system_type(contract_hash);
 
-                        RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_vm1_contract_footprint(
                             ContractHash::new(contract_hash),
                             contract,
                             maybe_system_entity_type,
@@ -1863,7 +1869,7 @@ where
                             self.migrate_contract_and_contract_package(hash_addr)?;
                         };
                         let maybe_system_entity_type = self.maybe_system_type(hash_addr);
-                        RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_vm1_contract_footprint(
                             ContractHash::new(hash_addr),
                             contract,
                             maybe_system_entity_type,
@@ -2037,7 +2043,7 @@ where
                     .context
                     .runtime_footprint()
                     .borrow()
-                    .extract_access_rights(context_entity_hash);
+                    .extract_access_rights();
                 access_rights.extend(&extended_access_rights);
 
                 let named_keys = self
@@ -2050,7 +2056,7 @@ where
                 (named_keys, access_rights)
             }
             EntryPointType::Called | EntryPointType::Factory => {
-                let mut access_rights = footprint.extract_access_rights(entity_hash.value());
+                let mut access_rights = footprint.extract_access_rights();
                 access_rights.extend(&extended_access_rights);
                 let named_keys = footprint.named_keys().clone();
                 (named_keys, access_rights)
@@ -2138,6 +2144,26 @@ where
                     ByteCode::new(ByteCodeKind::V1CasperWasm, wasm.take_bytes())
                 }
                 Some(StoredValue::ByteCode(byte_code)) => byte_code,
+                Some(StoredValue::CLValue(key_as_cl_value)) => {
+                    let byte_code_key =
+                        key_as_cl_value.to_t::<Key>().map_err(ExecError::CLValue)?;
+                    if let Key::ByteCode(_) = byte_code_key {
+                        match self.context.read_gs(&byte_code_key)? {
+                            Some(StoredValue::ByteCode(byte_code)) => match byte_code.kind() {
+                                ByteCodeKind::Empty | ByteCodeKind::V1CasperWasm => byte_code,
+                                ByteCodeKind::V2CasperWasm => {
+                                    return Err(ExecError::IncompatibleRuntime(
+                                        ContractRuntimeTag::VmCasperV2,
+                                    ))
+                                }
+                            },
+                            Some(_) => return Err(ExecError::UnexpectedStoredValueVariant),
+                            None => return Err(ExecError::KeyNotFound(byte_code_key)),
+                        }
+                    } else {
+                        return Err(ExecError::UnexpectedKeyVariant(byte_code_key));
+                    }
+                }
                 Some(_) => {
                     return Err(ExecError::InvalidByteCode(ByteCodeHash::new(
                         byte_code_addr,

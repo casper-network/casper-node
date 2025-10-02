@@ -304,7 +304,7 @@ impl WasmV2Request {
                     Target::Install { .. } => unreachable!(),
                 };
 
-                builder = builder.with_target(execution_kind);
+                builder = builder.with_execution_kind(execution_kind);
 
                 let execute_request = builder.build().expect("should build");
 

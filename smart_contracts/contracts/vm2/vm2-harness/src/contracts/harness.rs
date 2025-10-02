@@ -11,7 +11,7 @@ use casper_contract_sdk::{
 
 use crate::traits::{DepositExt, DepositRef};
 
-pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
+pub const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";
 
 #[derive(Debug)]
@@ -59,6 +59,12 @@ pub enum CustomError {
     Transfer(String),
     #[error("deposit error {0}")]
     Deposit(CallError),
+}
+
+#[derive(Debug, PartialEq)]
+#[casper]
+pub struct PublicStructUsedOnlyByPrivateEntrypoint {
+    pub value: u64,
 }
 
 impl Default for Harness {
@@ -321,9 +327,10 @@ impl Harness {
 
         match caller {
             Entity::Account(account) => {
+                log!("caller account {:?}", account);
                 // if this fails, the transfer will be reverted and the state will be rolled back
                 match casper::transfer(&account, amount) {
-                    Ok(()) => {}
+                    Ok(_) => {}
                     Err(call_error) => {
                         log!("Unable to perform a transfer: {call_error:?}");
                         return Err(CustomError::Transfer(call_error.to_string()));
@@ -331,6 +338,7 @@ impl Harness {
                 }
             }
             Entity::Contract(contract) => {
+                log!("caller contract {:?}", contract);
                 let result = ContractHandle::<DepositRef>::from_address(contract)
                     .build_call()
                     .with_transferred_value(amount)
@@ -348,11 +356,6 @@ impl Harness {
                         return Err(CustomError::Deposit(call_error));
                     }
                 }
-
-                // if let Err(call_error) = result.unwrap().result {
-                //     log!("Unable to perform a transfer: {call_error:?}");
-                //     return Err(CustomError::Deposit(call_error));
-                // }
             }
         }
 
@@ -362,6 +365,7 @@ impl Harness {
 
         let balance_after = balance_before + amount;
 
+        log!("balance_after {}", balance_after);
         assert_eq!(
             casper::get_balance_of(&caller),
             balance_after,
@@ -407,5 +411,10 @@ impl Harness {
         _arg23: u64,
     ) {
         log!("Nothing");
+    }
+
+    #[casper(private)]
+    pub fn private_only_uses_public_struct(&self, _arg: PublicStructUsedOnlyByPrivateEntrypoint) {
+        log!("This function should be private and its arg type should not appear in schema");
     }
 }

@@ -11,7 +11,6 @@ use std::{
 use crate::abi_collector::ABI_ITEMS;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
-    env_info::EnvInfo,
     error::{HOST_ERROR_INTERNAL, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
 };
@@ -71,19 +70,6 @@ pub enum NativeTrap {
 }
 
 pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
-
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub struct NativeParam(pub(crate) String);
-
-impl From<&casper_contract_sdk_sys::Param> for NativeParam {
-    fn from(val: &casper_contract_sdk_sys::Param) -> Self {
-        let name =
-            String::from_utf8_lossy(unsafe { slice::from_raw_parts(val.name_ptr, val.name_len) })
-                .into_owned();
-        NativeParam(name)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Environment {
@@ -198,8 +184,8 @@ impl Environment {
 
                 if let Some(ptr) = ptr {
                     unsafe {
-                        (*info).data = ptr.as_ptr();
-                        (*info).size = tagged_value.len();
+                        (*info).data_ptr = ptr.as_ptr();
+                        (*info).data_size = tagged_value.len();
                     }
 
                     unsafe {
@@ -518,12 +504,15 @@ Example paths:
     }
 
     fn casper_env_info(&self, info_ptr: *const u8, info_size: u32) -> Result<u32, NativeTrap> {
-        assert_eq!(info_size as usize, size_of::<EnvInfo>());
+        assert_eq!(
+            info_size as usize,
+            size_of::<casper_contract_sdk_sys::EnvInfo>()
+        );
         let mut env_info = NonNull::new(info_ptr as *mut u8)
             .expect("Valid ptr")
-            .cast::<EnvInfo>();
+            .cast::<casper_contract_sdk_sys::EnvInfo>();
         let env_info = unsafe { env_info.as_mut() };
-        *env_info = EnvInfo {
+        *env_info = casper_contract_sdk_sys::EnvInfo {
             block_time: 0,
             transferred_value: 0,
             caller_addr: *self.caller.address(),
@@ -747,6 +736,17 @@ mod symbols {
     }
 
     #[no_mangle]
+    pub extern "C" fn casper_system(
+        _system_contract_opt: u32,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        _alloc_ctx: *const core::ffi::c_void,
+    ) -> u32 {
+        todo!()
+    }
+
+    #[no_mangle]
     pub extern "C" fn casper_call(
         address_ptr: *const u8,
         address_size: usize,
@@ -812,15 +812,6 @@ mod symbols {
         _entity_addr_ptr: *const u8,
         _entity_addr_len: usize,
     ) -> u64 {
-        todo!()
-    }
-    #[no_mangle]
-    pub extern "C" fn casper_transfer(
-        _entity_kind: u32,
-        _entity_addr_ptr: *const u8,
-        _entity_addr_len: usize,
-        _amount: u64,
-    ) -> u32 {
         todo!()
     }
     #[no_mangle]
