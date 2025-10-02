@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use bytes::Bytes;
 use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_executor_wasm::{
@@ -74,7 +72,7 @@ fn argument_size_exceeds_memory_limit() {
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");
-        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+        ExecutorV2::new(executor_config, execution_engine_v1)
     };
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
