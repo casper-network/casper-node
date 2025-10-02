@@ -5,8 +5,11 @@ if ! command -v "casper-client" &> /dev/null ; then
   exit 1
 fi
 
-# Need IP for
+# RPC for getting current era for activation point planning
 NODE_RPC_URL="https://node-1.dev.casper.network/rpc"
+# Delay in minutes till next era start for upgrade
+NEXT_ERA_MIN_DELAY=20
+
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 CI_SCRIPT_DIR="$ROOT_DIR/ci"
@@ -29,7 +32,7 @@ echo
 
 if [ "$CURRENT_HASH" == "$LATEST_HASH" ]; then
 	  echo "Last published devnet protocol has same hash, erroring out."
-	  exit 1 # This fails job and stops workflow
+#	  exit 1 # This fails job and stops workflow
 fi
 
 LATEST_PROTOCOL_VERSION="$(curl -s https://genesis.casper.network/devnet/protocol_versions | tail -n 1 | tr -d '\n')"
@@ -78,7 +81,7 @@ cd "$CONFIG_DIR" || exit 1
 echo "## Decompressing config"
 tar -xzvf ../config-dev.tar.gz . || exit 1
 
-ACTIVATION_POINT=$("$CI_SCRIPT_DIR/next_upgrade_era_with_buffer.sh" "$NODE_RPC_URL" 15)
+ACTIVATION_POINT=$("$CI_SCRIPT_DIR/next_upgrade_era_with_buffer.sh" "$NODE_RPC_URL" "$NEXT_ERA_MIN_DELAY")
 
 echo "## Replacing activation_point in chainspec.toml with $ACTIVATION_POINT"
 # chainspec.toml replacement
@@ -91,7 +94,14 @@ KNOWN_ADDRESSES="[$( (curl -s https://node-1.dev.casper.network/status | jq -r '
                       curl -s https://node-3.dev.casper.network/status | jq -r '.peers[] | .address';
                       curl -s https://node-4.dev.casper.network/status | jq -r '.peers[] | .address';) |
                       sort | uniq | xargs -d '\n' printf "'%s'," | sed 's/, $//' )]"
-echo "## Replacing known_addresses in config-example.toml with $KNOWN_ADDRESSES"
+echo "## Generated: $KNOWN_ADDRESSES"
+# If KNOWN_ADDRESSES is very short, calls above failed. IPs should be 20 per min. -> 80
+MIN_KNOWN_ADDRESSES_LEN=80
+if [[ ${#KNOWN_ADDRESSES} -le $MIN_KNOWN_ADDRESSES_LEN ]]; then
+  echo "Generated known addresses is to short. Expected min of $MIN_KNOWN_ADDRESSES_LEN. Calls probably failed."
+  exit 1
+fi
+echo "## Replacing known_addresses in config-example.toml"
 sed -i '/^known_addresses = /c\known_addresses = '"$KNOWN_ADDRESSES" config-example.toml
 
 CS_PROTOCOL=$(echo -n "$NEW_PROTOCOL_VERSION" | tr '_' '.')

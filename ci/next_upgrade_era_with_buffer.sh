@@ -33,9 +33,9 @@ NOW_EPOCH=$(date +%s)
 MINS_TILL_SB=$(( 120 - ((NOW_EPOCH - $SB_EPOCH) / 60) ))
 
 if [ "$MINS_TILL_SB" -gt "$BUFFER_MINS" ]; then 
-  NEXT_BUF_ERA=$(( LAST_ERA_ID + 1 )); 
+  NEXT_BUF_ERA=$(( LAST_ERA_ID + 2 ));
 else 
-  NEXT_BUF_ERA=$(( LAST_ERA_ID + 2 )); 
+  NEXT_BUF_ERA=$(( LAST_ERA_ID + 3 ));
 fi
 
 echo "$NEXT_BUF_ERA"
