@@ -121,7 +121,7 @@ refund_handling = { type = 'refund', refund_ratio = [75, 100] }
 #   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
 #                 administrator accounts
 #   'burn': fees are burned
-fee_handling = { type = 'pay_to_proposer' }
+fee_handling = { type = 'burn' }
 # If a validator would recieve a validator credit, it cannot exceed this percentage of their total stake.
 validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
