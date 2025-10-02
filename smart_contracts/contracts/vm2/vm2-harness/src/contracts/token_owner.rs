@@ -163,7 +163,7 @@ impl Deposit for TokenOwnerContract {
             }
             FallbackHandler::RejectWithData(data) => {
                 // This will cause a revert with data.
-                revert!(data);
+                rollback!(data);
             }
         }
     }

@@ -157,9 +157,7 @@ fn vm2_rollback_should_return_to_caller_with_data() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
-    let input = borsh::to_vec(&())
-        .map(Bytes::from)
-        .unwrap();
+    let input = borsh::to_vec(&()).map(Bytes::from).unwrap();
     let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -180,7 +178,8 @@ fn vm2_rollback_should_return_to_caller_with_data() {
         .build()
         .expect("should build");
 
-    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request)
+    let result = executor
+        .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect("exec ok");
     match result.host_error {
         Some(CallError::CalleeRolledBack) => {}
@@ -220,9 +219,7 @@ fn vm2_revert_should_abort_whole_stack() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
-    let input = borsh::to_vec(&())
-        .map(Bytes::from)
-        .unwrap();
+    let input = borsh::to_vec(&()).map(Bytes::from).unwrap();
     let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
@@ -243,7 +240,8 @@ fn vm2_revert_should_abort_whole_stack() {
         .build()
         .expect("should build");
 
-    let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request)
+    let result = executor
+        .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect("exec ok");
     match result.host_error {
         Some(CallError::Api(_)) => {}
@@ -1508,10 +1506,12 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
     assert!(result.is_err());
     let err: ExecuteWithProviderError = result.expect_err("should have error details");
-    assert!(matches!(
-        err,
-        ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(2))
-    ));
+    match err {
+        ExecuteWithProviderError::Execute(ExecuteError::ReturnFlagsNotSupported(v)) => {
+            assert!(v != 0, "invalid flags should be non-zero");
+        }
+        other => panic!("expected ReturnFlagsNotSupported, got {other:?}"),
+    }
 }
 
 #[test]

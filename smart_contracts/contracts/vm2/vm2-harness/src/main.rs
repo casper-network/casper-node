@@ -146,7 +146,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(false))
             .expect("Call succeed");
-        assert!(!call_result.did_revert());
+        assert!(!call_result.did_rollback());
         assert_eq!(call_result.into_result().unwrap(), Ok(()));
 
         log!("Revert on error success (ok case)");
@@ -154,7 +154,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(true))
             .expect("Call succeed");
-        assert!(call_result.did_revert());
+        assert!(call_result.did_rollback());
         assert_eq!(
             call_result.into_result().unwrap(),
             Err(CustomError::WithBody("Reverted".to_string()))
