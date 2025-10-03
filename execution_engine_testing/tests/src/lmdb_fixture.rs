@@ -99,7 +99,7 @@ pub fn builder_from_global_state_fixture(
 
 pub fn builder_from_global_state_fixture_with_enable_ae(
     fixture_name: &str,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> (LmdbWasmTestBuilder, LmdbFixtureState, TempDir) {
     let source = path_to_lmdb_fixtures().join(fixture_name);
     let to = tempfile::tempdir().expect("should create temp dir");
@@ -114,7 +114,7 @@ pub fn builder_from_global_state_fixture_with_enable_ae(
     (
         LmdbWasmTestBuilder::open(
             &path_to_gs,
-            ChainspecConfig::default().with_enable_addressable_entity(enable_addressable_entity),
+            ChainspecConfig::default().with_addressable_entity_enabled(addressable_entity_enabled),
             lmdb_fixture_state.genesis_protocol_version(),
             lmdb_fixture_state.post_state_hash,
         ),

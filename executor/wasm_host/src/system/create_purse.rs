@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use casper_executor_wasm_interface::{InternalHostError, VMError, VMResult};
+use casper_executor_wasm_interface::{FatalHostError, VMError, VMResult};
 use casper_storage::{
     global_state::GlobalStateReader, system::mint::Mint, AddressGenerator, RuntimeNativeConfig,
     TrackingCopy,
@@ -29,7 +29,7 @@ pub fn create_purse<R: GlobalStateReader>(
         Ok(mint_result) => mint_result,
         Err(error) => {
             error!(%error, "create purse failed on dispatch");
-            return Err(VMError::Internal(InternalHostError::DispatchSystemContract));
+            return Err(VMError::Fatal(FatalHostError::DispatchSystemContract));
         }
     };
 
@@ -38,7 +38,7 @@ pub fn create_purse<R: GlobalStateReader>(
         Err(casper_types::system::mint::Error::GasLimit) => Err(VMError::OutOfGas),
         Err(mint_error) => {
             error!(%mint_error, "create purse failed with error");
-            Err(VMError::Internal(InternalHostError::DispatchSystemContract))
+            Err(VMError::Fatal(FatalHostError::DispatchSystemContract))
         }
     }
 }

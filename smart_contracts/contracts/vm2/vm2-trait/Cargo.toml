@@ -8,8 +8,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-macros = { path = "../../../macros" }
-casper-contract-sdk = { path = "../../../sdk" }
+casper-contract-macros = { path = "../../../vm2/macros" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }
+casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }
 base16 = "0.2.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

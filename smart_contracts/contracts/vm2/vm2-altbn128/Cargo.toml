@@ -8,7 +8,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-sdk = { path = "../../../sdk" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }
 base16 = { version = "0.2.1", default-features = false, features = [] }
 bn = { version = "0.5", package = "zeropool-bn", default-features = false, optional = true }
 

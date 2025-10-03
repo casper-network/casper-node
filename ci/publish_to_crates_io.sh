@@ -108,7 +108,7 @@ publish execution_engine_testing/test_support
 publish smart_contracts/contract
 
 # smart_contracts/sdk_sys (casper-contract-sdk_sys) -> None
-publish smart_contracts/sdk_sys
+publish smart_contracts/vm2/sdk_sys
 
 # executor/wasm_common (casper-executor-wasm_common)
 #     casper-contract-sdk_sys

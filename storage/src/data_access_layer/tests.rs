@@ -236,7 +236,7 @@ fn build_data_access_layer() -> DataAccessLayer<LmdbGlobalState> {
         block_store: BlockStore::new(),
         state: global_state,
         max_query_depth: 5,
-        enable_addressable_entity: false,
+        addressable_entity_enabled: false,
     }
 }
 
