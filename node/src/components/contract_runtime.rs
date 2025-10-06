@@ -479,8 +479,8 @@ impl ContractRuntime {
                     let start = Instant::now();
                     let entity_key = match entity_addr {
                         EntityAddr::Package(hash) => {
-                            if data_access_layer.enable_addressable_entity {
-                                Key::SmartContract(hash)
+                            if data_access_layer.addressable_entity_enabled {
+                                Key::Package(hash)
                             } else {
                                 Key::Hash(hash)
                             }

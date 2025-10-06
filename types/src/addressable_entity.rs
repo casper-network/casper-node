@@ -1696,7 +1696,7 @@ impl AddressableEntity {
             EntityKind::SmartContract(_) => {
                 Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
             }
-            EntityKind::Package(_) => Key::SmartContract(entity_hash.value()),
+            EntityKind::Package(_) => Key::Package(entity_hash.value()),
         }
     }
 

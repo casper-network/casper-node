@@ -163,7 +163,7 @@ where
         &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
-        let enable_addressable_entity = self.enable_addressable_entity;
+        let enable_addressable_entity = self.addressable_entity_enabled;
         let entity_key = match entity_addr {
             EntityAddr::Account(account_addr) => {
                 let account_key = Key::Account(AccountHash::new(account_addr));
@@ -193,7 +193,7 @@ where
             }
             EntityAddr::Package(addr) => {
                 let key = if enable_addressable_entity {
-                    Key::SmartContract(addr)
+                    Key::Package(addr)
                 } else {
                     Key::Hash(addr)
                 };
