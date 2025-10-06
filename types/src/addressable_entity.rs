@@ -454,6 +454,7 @@ impl TryFrom<u8> for EntityKindTag {
             0 => Ok(EntityKindTag::System),
             1 => Ok(EntityKindTag::Account),
             2 => Ok(EntityKindTag::SmartContract),
+            3 => Ok(EntityKindTag::Package),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
