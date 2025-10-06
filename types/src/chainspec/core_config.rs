@@ -182,8 +182,9 @@ pub struct CoreConfig {
     /// Administrative accounts are a valid option for a private chain only.
     //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
-    /// Turn on migration to addressable entity behavior.
-    pub enable_addressable_entity: bool,
+    /// Flag indicating whether the migration to addressable-entity behavior is enabled.
+    /// true = addressable entity behavior is ON; false = it is OFF.
+    pub addressable_entity_enabled: bool,
     /// This value is used as the penalty payment amount, the minimum balance amount,
     /// and the minimum consumed amount.
     pub baseline_motes_amount: u64,
@@ -193,9 +194,9 @@ pub struct CoreConfig {
 }
 
 impl CoreConfig {
-    /// Turn on migration to addressable entity behavior.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    /// Returns true when addressable entities are enabled in this core configuration.
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 
     /// The number of eras that have already started and whose validators are still bonded.
@@ -332,7 +333,7 @@ impl CoreConfig {
             gas_hold_balance_handling,
             gas_hold_interval,
             validator_credit_cap,
-            enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
+            addressable_entity_enabled: DEFAULT_ENABLE_ENTITY,
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
             trap_on_ambiguous_entity_version: false,
         }
@@ -379,7 +380,7 @@ impl Default for CoreConfig {
             gas_hold_balance_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
             gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
             validator_credit_cap: Ratio::new(1, 5),
-            enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
+            addressable_entity_enabled: DEFAULT_ENABLE_ENTITY,
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
             trap_on_ambiguous_entity_version: false,
         }
@@ -428,7 +429,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.gas_hold_balance_handling.to_bytes()?);
         buffer.extend(self.gas_hold_interval.to_bytes()?);
         buffer.extend(self.validator_credit_cap.to_bytes()?);
-        buffer.extend(self.enable_addressable_entity.to_bytes()?);
+        buffer.extend(self.addressable_entity_enabled.to_bytes()?);
         buffer.extend(self.baseline_motes_amount.to_bytes()?);
         buffer.extend(self.trap_on_ambiguous_entity_version.to_bytes()?);
         Ok(buffer)
@@ -473,7 +474,7 @@ impl ToBytes for CoreConfig {
             + self.gas_hold_balance_handling.serialized_length()
             + self.gas_hold_interval.serialized_length()
             + self.validator_credit_cap.serialized_length()
-            + self.enable_addressable_entity.serialized_length()
+            + self.addressable_entity_enabled.serialized_length()
             + self.baseline_motes_amount.serialized_length()
             + self.trap_on_ambiguous_entity_version.serialized_length()
     }
@@ -518,7 +519,7 @@ impl FromBytes for CoreConfig {
         let (gas_hold_balance_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
-        let (enable_addressable_entity, remainder) = FromBytes::from_bytes(remainder)?;
+        let (addressable_entity_enabled, remainder) = FromBytes::from_bytes(remainder)?;
         let (baseline_motes_amount, remainder) = u64::from_bytes(remainder)?;
         let (trap_on_ambiguous_entity_version, remainder) = bool::from_bytes(remainder)?;
         let config = CoreConfig {
@@ -558,7 +559,7 @@ impl FromBytes for CoreConfig {
             gas_hold_balance_handling,
             gas_hold_interval,
             validator_credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             baseline_motes_amount,
             trap_on_ambiguous_entity_version,
         };

@@ -219,7 +219,7 @@ pub struct ScratchGlobalState {
     /// Max query depth
     pub max_query_depth: u64,
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub enable_addressable_entity: bool,
+    pub addressable_entity_enabled: bool,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -256,7 +256,7 @@ impl ScratchGlobalState {
             trie_store,
             empty_root_hash,
             max_query_depth,
-            enable_addressable_entity: enable_entity,
+            addressable_entity_enabled: enable_entity,
         }
     }
 
@@ -478,7 +478,7 @@ impl StateProvider for ScratchGlobalState {
             Some(tc) => Ok(Some(TrackingCopy::new(
                 tc,
                 self.max_query_depth,
-                self.enable_addressable_entity,
+                self.addressable_entity_enabled,
             ))),
             None => Ok(None),
         }
@@ -586,7 +586,7 @@ impl StateProvider for ScratchGlobalState {
     }
 
     fn enable_entity(&self) -> bool {
-        self.enable_addressable_entity
+        self.addressable_entity_enabled
     }
 }
 

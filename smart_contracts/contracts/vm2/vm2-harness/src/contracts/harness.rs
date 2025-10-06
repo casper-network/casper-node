@@ -1,23 +1,8 @@
-use std::{
-    collections::{BTreeSet, HashMap, LinkedList},
-    ptr::NonNull,
-};
+use std::collections::{BTreeSet, HashMap, LinkedList};
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    casper_executor_wasm_common::{
-        entry_point::{
-            ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-            ENTRY_POINT_PAYMENT_SELF_ONWARD,
-        },
-        error::HostResult,
-        keyspace::Keyspace,
-    },
-    collections::Map,
-    log, revert,
-    types::CallError,
-    ContractHandle,
+    casper, collections::Map, log, prelude::Entity, revert, types::CallError, ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
@@ -103,36 +88,6 @@ impl Harness {
 
         log!("👋 Hello from constructor with args: {who}");
 
-        assert_eq!(
-            casper::write(Keyspace::PaymentInfo("this does not exists"), &[0]),
-            Err(HostResult::NotFound)
-        );
-
-        {
-            for payment_info in [
-                ENTRY_POINT_PAYMENT_CALLER,
-                ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-                ENTRY_POINT_PAYMENT_SELF_ONWARD,
-            ] {
-                casper::write(Keyspace::PaymentInfo("counter"), &[payment_info]).unwrap();
-
-                let mut buffer = [255; 1];
-                assert_eq!(
-                    casper::read(Keyspace::PaymentInfo("counter"), |size| {
-                        assert_eq!(size, 1, "Size should be 1");
-                        NonNull::new(&mut buffer[0])
-                    }),
-                    Ok(Some(()))
-                );
-                assert_eq!(&buffer, &[payment_info]);
-            }
-
-            assert_eq!(
-                casper::write(Keyspace::PaymentInfo("counter"), &[255, 255]),
-                Err(HostResult::InvalidInput)
-            );
-        }
-
         Self {
             counter: 0,
             greeting: format!("Hello, {who}!"),
@@ -151,8 +106,6 @@ impl Harness {
     #[casper(constructor)]
     pub fn trapping_constructor() -> Self {
         log!("👋 Hello from trapping constructor");
-        // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
-        // the tracking copy.
         panic!("This will revert the execution of this constructor and won't create a new package");
     }
 
@@ -399,10 +352,6 @@ impl Harness {
                 }
             }
         }
-
-        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed
-        // with error, or something like that) return Err(CustomError::WithBody("Transfer
-        // failed".into())); }
 
         let balance_after = balance_before + amount;
 

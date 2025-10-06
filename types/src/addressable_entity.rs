@@ -1679,6 +1679,11 @@ impl AddressableEntity {
         matches!(self.entity_kind, EntityKind::Account(_))
     }
 
+    /// Is this a contract?
+    pub fn is_smart_contract_kind(&self) -> bool {
+        matches!(self.entity_kind, EntityKind::SmartContract(_))
+    }
+
     /// Key for the addressable entity
     pub fn entity_key(&self, entity_hash: AddressableEntityHash) -> Key {
         match self.entity_kind {

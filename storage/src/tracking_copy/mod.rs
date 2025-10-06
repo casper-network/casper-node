@@ -339,7 +339,7 @@ pub struct TrackingCopy<R> {
     effects: Effects,
     max_query_depth: u64,
     messages: Messages,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -381,7 +381,7 @@ where
     pub fn new(
         reader: R,
         max_query_depth: u64,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> TrackingCopy<R> {
         TrackingCopy {
             reader: Arc::new(reader),
@@ -390,7 +390,7 @@ where
             effects: Effects::new(),
             max_query_depth,
             messages: Vec::new(),
-            enable_addressable_entity,
+            addressable_entity_enabled,
         }
     }
 
@@ -416,7 +416,7 @@ where
     /// the main `TrackingCopy`. Therefore, forking should be done repeatedly, which is
     /// suboptimal and will be improved in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
-        TrackingCopy::new(self, self.max_query_depth, self.enable_addressable_entity)
+        TrackingCopy::new(self, self.max_query_depth, self.addressable_entity_enabled)
     }
 
     /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
@@ -436,7 +436,7 @@ where
             effects: self.effects.clone(),
             max_query_depth: self.max_query_depth,
             messages: self.messages.clone(),
-            enable_addressable_entity: self.enable_addressable_entity,
+            addressable_entity_enabled: self.addressable_entity_enabled,
         }
     }
 
@@ -476,8 +476,8 @@ where
     }
 
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 
     /// Get record by key.
@@ -1134,7 +1134,7 @@ use tempfile::TempDir;
 pub fn new_temporary_tracking_copy(
     initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
     max_query_depth: Option<u64>,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) = make_temporary_global_state(initial_data);
 
@@ -1146,7 +1146,7 @@ pub fn new_temporary_tracking_copy(
     let query_depth = max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
 
     (
-        TrackingCopy::new(reader, query_depth, enable_addressable_entity),
+        TrackingCopy::new(reader, query_depth, addressable_entity_enabled),
         tempdir,
     )
 }

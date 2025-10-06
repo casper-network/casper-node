@@ -32,7 +32,7 @@ pub struct GenesisConfig {
     genesis_timestamp_millis: u64,
     gas_hold_balance_handling: HoldBalanceHandling,
     gas_hold_interval_millis: u64,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
     storage_costs: StorageCosts,
 }
 
@@ -51,7 +51,7 @@ impl GenesisConfig {
         genesis_timestamp_millis: u64,
         gas_hold_balance_handling: HoldBalanceHandling,
         gas_hold_interval_millis: u64,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
         storage_costs: StorageCosts,
     ) -> GenesisConfig {
         GenesisConfig {
@@ -66,7 +66,7 @@ impl GenesisConfig {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             storage_costs,
         }
     }
@@ -160,12 +160,12 @@ impl GenesisConfig {
 
     /// Enable entity.
     pub fn enable_entity(&self) -> bool {
-        self.enable_addressable_entity
+        self.addressable_entity_enabled
     }
 
     /// Set enable entity.
     pub fn set_enable_entity(&mut self, enable: bool) {
-        self.enable_addressable_entity = enable
+        self.addressable_entity_enabled = enable
     }
 
     /// Push genesis validator.
@@ -225,7 +225,7 @@ impl Distribution<GenesisConfig> for Standard {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
-            enable_addressable_entity: false,
+            addressable_entity_enabled: false,
             storage_costs,
         }
     }
@@ -253,7 +253,7 @@ impl From<&Chainspec> for GenesisConfig {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
-            enable_addressable_entity: chainspec.core_config.enable_addressable_entity,
+            addressable_entity_enabled: chainspec.core_config.addressable_entity_enabled,
             storage_costs,
         }
     }

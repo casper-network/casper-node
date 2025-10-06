@@ -82,7 +82,7 @@ pub enum MemoryError {
 
 /// Represents a catastrophic internal host error.
 #[derive(Error, Debug, Clone, Serialize)]
-pub enum InternalHostError {
+pub enum FatalHostError {
     #[error("type conversion failure")]
     TypeConversion,
     #[error("contract already exists")]
@@ -134,6 +134,10 @@ pub enum InternalHostError {
 /// type.
 #[derive(Debug, Error)]
 pub enum VMError {
+    /// NOTE: This will kill the node.
+    #[error("Fatal host error: {0}")]
+    Fatal(#[from] FatalHostError),
+
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,
@@ -141,6 +145,8 @@ pub enum VMError {
     },
     #[error("export: {0}")]
     Export(ExportError),
+    #[error("missing table entry: {0}")]
+    AllocError(String),
     #[error("Out of gas")]
     OutOfGas,
     /// Error while executing Wasm: traps, memory access errors, etc.
@@ -149,8 +155,6 @@ pub enum VMError {
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Trap: {0}")]
     Trap(TrapCode),
-    #[error("Internal host error")]
-    Internal(#[from] InternalHostError),
     #[error("Execute error: {0}")]
     Execute(#[from] ExecuteError),
 }
@@ -293,7 +297,7 @@ pub enum WasmPreparationError {
     #[error("Instantiation error: {0}")]
     Instantiation(String),
     #[error("Internal host error {0}")]
-    Internal(#[from] InternalHostError),
+    Internal(#[from] FatalHostError),
 }
 
 #[derive(Debug)]
@@ -327,6 +331,11 @@ impl GasUsage {
     #[must_use]
     pub fn remaining_points(&self) -> u64 {
         self.remaining_points
+    }
+
+    /// Spend a given amount of gas. If the amount exceeds the remaining gas, it will be set to 0.
+    pub fn spend(&mut self, amount: u64) {
+        self.remaining_points = self.remaining_points.saturating_sub(amount);
     }
 }
 

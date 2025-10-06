@@ -615,7 +615,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS + 1;
     let core_config = CoreConfig {
         max_associated_keys,
-        enable_addressable_entity: enable_entity,
+        addressable_entity_enabled: enable_entity,
         ..Default::default()
     };
 

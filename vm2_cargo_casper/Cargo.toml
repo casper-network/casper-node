@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-casper-contract-sdk-sys = { path = "../smart_contracts/sdk_sys" }
-casper-contract-sdk = { path = "../smart_contracts/sdk", features = ["__abi_generator"] }
+casper-contract-sdk-sys = { path = "../smart_contracts/vm2/sdk_sys" }
+casper-contract-sdk = { path = "../smart_contracts/vm2/sdk", features = ["__abi_generator"] }
 clap = { version = "4.4.11", features = ["derive"] }
 clap-cargo = { version = "0.14.0", features = ["cargo_metadata"] }
 libloading = "0.8.6"

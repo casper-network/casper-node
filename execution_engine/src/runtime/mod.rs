@@ -2505,7 +2505,7 @@ where
         let access_key = if self.context.engine_config().enable_entity {
             let (package, access_key) = self.create_package(lock_status)?;
             self.context
-                .metered_write_gs_unsafe(Key::SmartContract(addr), package)?;
+                .metered_write_gs_unsafe(Key::Package(addr), package)?;
             access_key
         } else {
             let (package, access_key) = self.create_contract_package(lock_status)?;
@@ -3170,7 +3170,7 @@ where
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
-            let contract_package_key = Key::SmartContract(contract_package_hash.value());
+            let contract_package_key = Key::Package(contract_package_hash.value());
             self.context.validate_key(&contract_package_key)?;
 
             let mut contract_package: Package =
@@ -3220,7 +3220,7 @@ where
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
-            let contract_package_key = Key::SmartContract(contract_package_hash.value());
+            let contract_package_key = Key::Package(contract_package_hash.value());
             self.context.validate_key(&contract_package_key)?;
 
             let mut contract_package: Package =

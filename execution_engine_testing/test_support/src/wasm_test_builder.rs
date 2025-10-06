@@ -307,12 +307,12 @@ impl LmdbWasmTestBuilder {
         );
 
         let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = chainspec.core_config.addressable_entity_enabled;
         let global_state = LmdbGlobalState::empty(
             environment,
             trie_store,
             max_query_depth,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         )
         .expect("should create LmdbGlobalState");
 
@@ -320,7 +320,7 @@ impl LmdbWasmTestBuilder {
             block_store: BlockStore::new(),
             state: global_state,
             max_query_depth,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         });
 
         let engine_config = chainspec.engine_config();
@@ -370,7 +370,7 @@ impl LmdbWasmTestBuilder {
 
         let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
 
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = chainspec.core_config.addressable_entity_enabled;
         let global_state = match mode {
             GlobalStateMode::Create(database_flags) => {
                 let trie_store = LmdbTrieStore::new(&environment, None, database_flags)
@@ -379,7 +379,7 @@ impl LmdbWasmTestBuilder {
                     Arc::new(environment),
                     Arc::new(trie_store),
                     max_query_depth,
-                    enable_addressable_entity,
+                    addressable_entity_enabled,
                 )
                 .expect("should create LmdbGlobalState")
             }
@@ -391,7 +391,7 @@ impl LmdbWasmTestBuilder {
                     Arc::new(trie_store),
                     post_state_hash,
                     max_query_depth,
-                    enable_addressable_entity,
+                    addressable_entity_enabled,
                 )
             }
         };
@@ -400,7 +400,7 @@ impl LmdbWasmTestBuilder {
             block_store: BlockStore::new(),
             state: global_state,
             max_query_depth,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         });
         let mut engine_config = chainspec.engine_config();
         engine_config.set_protocol_version(protocol_version);
@@ -832,7 +832,7 @@ where
             U512::from(*config.core_config.validator_credit_cap.numer()),
             U512::from(*config.core_config.validator_credit_cap.denom()),
         );
-        let enable_addressable_entity = config.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = config.core_config.addressable_entity_enabled;
         let runtime_native_config = RuntimeNativeConfig::new(
             protocol_version,
             TransferConfig::Unadministered,
@@ -848,7 +848,7 @@ where
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             config.system_costs_config.mint_costs().transfer,
         );
 
@@ -1022,7 +1022,7 @@ where
             self.chainspec.core_config.gas_hold_interval.millis(),
             include_credits,
             credit_cap,
-            self.chainspec.core_config.enable_addressable_entity,
+            self.chainspec.core_config.addressable_entity_enabled,
             self.chainspec.system_costs_config.mint_costs().transfer,
         )
     }
@@ -1421,7 +1421,7 @@ where
             .get_system_entity_hash(HANDLE_PAYMENT)
             .expect("should have handle payment contract");
 
-        let handle_payment_contract = if self.chainspec.core_config.enable_addressable_entity {
+        let handle_payment_contract = if self.chainspec.core_config.addressable_entity_enabled {
             Key::addressable_entity_key(EntityKindTag::System, hash)
         } else {
             Key::Hash(hash.value())
@@ -1573,7 +1573,7 @@ where
         &self,
         entity_hash: AddressableEntityHash,
     ) -> Option<AddressableEntity> {
-        if !self.chainspec.core_config.enable_addressable_entity {
+        if !self.chainspec.core_config.addressable_entity_enabled {
             let contract_hash = ContractHash::new(entity_hash.value());
             return self
                 .get_contract(contract_hash)
@@ -1630,8 +1630,8 @@ where
 
     /// Queries for a contract package by `PackageHash`.
     pub fn get_package(&self, package_hash: PackageHash) -> Option<Package> {
-        let key = if self.chainspec.core_config.enable_addressable_entity {
-            Key::SmartContract(package_hash.value())
+        let key = if self.chainspec.core_config.addressable_entity_enabled {
+            Key::Package(package_hash.value())
         } else {
             Key::Hash(package_hash.value())
         };
@@ -1955,7 +1955,7 @@ where
             state_root_hash,
             ProtocolVersion::V2_0_0,
             SystemEntityRegistrySelector::auction(),
-            self.chainspec.core_config.enable_addressable_entity,
+            self.chainspec.core_config.addressable_entity_enabled,
         );
         self.system_entity_key(request)
             .into_entity_hash()
@@ -1969,7 +1969,7 @@ where
             state_root_hash,
             ProtocolVersion::V2_0_0,
             SystemEntityRegistrySelector::mint(),
-            self.chainspec.core_config.enable_addressable_entity,
+            self.chainspec.core_config.addressable_entity_enabled,
         );
         self.system_entity_key(request)
             .into_entity_hash()
@@ -1987,7 +1987,7 @@ where
             state_root_hash,
             protocol_version,
             SystemEntityRegistrySelector::handle_payment(),
-            self.chainspec.core_config.enable_addressable_entity,
+            self.chainspec.core_config.addressable_entity_enabled,
         );
         self.system_entity_key(request)
             .into_entity_hash()

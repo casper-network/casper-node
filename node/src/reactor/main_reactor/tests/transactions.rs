@@ -558,7 +558,7 @@ fn get_entity_addr_from_account_hash(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .as_cl_value()
             .expect("should have a CLValue")
@@ -583,7 +583,7 @@ fn get_entity(
     entity_addr: EntityAddr,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let (key, is_contract) = if fixture.chainspec.core_config.enable_addressable_entity {
+    let (key, is_contract) = if fixture.chainspec.core_config.addressable_entity_enabled {
         (Key::AddressableEntity(entity_addr), false)
     } else {
         match entity_addr {
@@ -604,7 +604,7 @@ fn get_entity(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    if fixture.chainspec.core_config.enable_addressable_entity {
+    if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .into_addressable_entity()
             .expect("should have an AddressableEntity")
@@ -621,7 +621,7 @@ fn get_entity_named_key(
     entity_addr: EntityAddr,
     named_key: &str,
 ) -> Option<Key> {
-    if fixture.chainspec.core_config.enable_addressable_entity {
+    if fixture.chainspec.core_config.addressable_entity_enabled {
         let key = if let EntityAddr::Package(hash) = entity_addr {
             let key = Key::SmartContract(hash);
             match query_global_state(fixture, state_root_hash, key) {
@@ -713,7 +713,7 @@ fn get_entity_by_account_hash(
     account_hash: AccountHash,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         Key::AddressableEntity(EntityAddr::Account(account_hash.value()))
     } else {
         Key::Account(account_hash)

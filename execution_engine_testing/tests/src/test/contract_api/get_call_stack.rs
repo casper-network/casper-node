@@ -1126,8 +1126,8 @@ mod session {
 
             let effects = builder.get_effects().last().unwrap().clone();
 
-            let key = if builder.chainspec().core_config.enable_addressable_entity {
-                Key::SmartContract(current_contract_package_hash)
+            let key = if builder.chainspec().core_config.addressable_entity_enabled {
+                Key::Package(current_contract_package_hash)
             } else {
                 Key::Hash(current_contract_package_hash)
             };

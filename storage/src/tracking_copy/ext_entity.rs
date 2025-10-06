@@ -416,7 +416,7 @@ where
 
         let entity_addr = match self.get(&account_key)? {
             Some(StoredValue::Account(account)) => {
-                if self.enable_addressable_entity {
+                if self.addressable_entity_enabled {
                     self.create_addressable_entity_from_account(account.clone(), protocol_version)?;
                 }
 
@@ -587,7 +587,7 @@ where
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.addressable_entity_enabled {
             return Err(Self::Error::AddressableEntityDisable);
         }
 
@@ -607,7 +607,7 @@ where
         entity_addr: EntityAddr,
         entry_points: EntryPoints,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.addressable_entity_enabled {
             return Err(Self::Error::AddressableEntityDisable);
         }
 
@@ -645,7 +645,7 @@ where
                 let uref_key = Key::URef(uref).normalize();
                 self.write(uref_key, stored_value);
 
-                if self.enable_addressable_entity {
+                if self.addressable_entity_enabled {
                     let entry_value = {
                         let named_key_value =
                             NamedKeyValue::from_concrete_values(uref_key, name.to_string())
@@ -680,7 +680,7 @@ where
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.addressable_entity_enabled {
             debug!("ae is not enabled, skipping migration");
             return Ok(());
         }
@@ -761,7 +761,7 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
-        if !self.enable_addressable_entity {
+        if !self.addressable_entity_enabled {
             self.write(Key::Account(account_hash), StoredValue::Account(account));
             return Ok(());
         }
@@ -841,7 +841,7 @@ where
         legacy_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.addressable_entity_enabled {
             return Err(Self::Error::AddressableEntityDisable);
         }
 
@@ -946,7 +946,7 @@ where
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
         }
 
-        let package_key = Key::SmartContract(
+        let package_key = Key::Package(
             legacy_package_key
                 .into_hash_addr()
                 .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,

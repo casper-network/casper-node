@@ -87,7 +87,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
 fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
-    let enable_entity = builder.chainspec().core_config.enable_addressable_entity;
+    let enable_entity = builder.chainspec().core_config.addressable_entity_enabled;
 
     let bytes = if enable_entity {
         let factory_contract = builder
@@ -201,7 +201,7 @@ fn should_install_and_use_factory_pattern() {
         .get_addressable_entity(new_counter_2)
         .expect("should have contract instance");
 
-    let counter_1_wasm = if builder.chainspec().core_config.enable_addressable_entity {
+    let counter_1_wasm = if builder.chainspec().core_config.addressable_entity_enabled {
         builder
             .query(
                 None,

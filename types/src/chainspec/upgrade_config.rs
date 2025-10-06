@@ -27,7 +27,7 @@ pub struct ProtocolUpgradeConfig {
     validator_minimum_bid_amount: u64,
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 }
 
 impl ProtocolUpgradeConfig {
@@ -51,7 +51,7 @@ impl ProtocolUpgradeConfig {
         validator_minimum_bid_amount: u64,
         maximum_delegation_amount: u64,
         minimum_delegation_amount: u64,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -71,7 +71,7 @@ impl ProtocolUpgradeConfig {
             validator_minimum_bid_amount,
             maximum_delegation_amount,
             minimum_delegation_amount,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         }
     }
 
@@ -165,7 +165,9 @@ impl ProtocolUpgradeConfig {
         self.minimum_delegation_amount
     }
 
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    /// Returns true if the addressable entity feature is enabled (on), or false if it is disabled
+    /// (off).
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 }
