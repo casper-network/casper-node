@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_interface::executor::Executor;
@@ -47,4 +47,6 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub sandboxed: bool,
     /// Runtime native config.
     pub runtime_native_config: RuntimeNativeConfig,
+    /// Authorization keys for this execution.
+    pub authorization_keys: BTreeSet<AccountHash>,
 }

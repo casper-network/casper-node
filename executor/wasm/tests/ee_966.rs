@@ -1,3 +1,5 @@
+use std::{collections::BTreeSet, sync::Arc};
+
 use bytes::Bytes;
 use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_executor_wasm::{
@@ -95,6 +97,7 @@ fn argument_size_exceeds_memory_limit() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
     let result = executor.execute_with_provider(state_root_hash, &global_state, execute_request);
@@ -136,6 +139,7 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -174,6 +178,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -218,6 +223,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -262,6 +268,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -306,6 +313,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -355,6 +363,7 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -395,6 +404,7 @@ fn should_run_ee_966_should_request_exactly_maximum() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -434,6 +444,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
         .build()
         .expect("should build");
 
@@ -443,8 +454,6 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
         state_root_hash,
         execute_request,
     );
-
-    println!("{:?}", result);
 
     assert!(matches!(
         result,

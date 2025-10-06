@@ -1030,6 +1030,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_block_height(1)
                 .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
                 .with_runtime_native_config(caller.context().runtime_native_config.clone())
+                .with_authorization_keys(caller.context().authorization_keys.clone())
                 .build()
                 .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
@@ -1180,6 +1181,7 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
+        .with_authorization_keys(caller.context().authorization_keys.clone())
         .build()
         .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
@@ -1276,6 +1278,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
         .with_runtime_native_config(caller.context().runtime_native_config.clone())
+        .with_authorization_keys(caller.context().authorization_keys.clone())
         .build()
         .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
@@ -1864,6 +1867,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_block_height(1)
             .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
             .with_runtime_native_config(caller.context().runtime_native_config.clone())
+            .with_authorization_keys(caller.context().authorization_keys.clone())
             .build()
             .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
