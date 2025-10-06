@@ -814,7 +814,7 @@ fn should_verify_remove_key_is_not_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    if builder.chainspec().core_config.enable_addressable_entity {
+    if builder.chainspec().core_config.addressable_entity_enabled {
         assert_eq!(
             // should charge zero, because we do not charge for storage when removing a key
             builder.last_exec_gas_consumed(),

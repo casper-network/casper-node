@@ -32,7 +32,7 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub baseline_motes_amount: u64,
     pub message_limits: MessageLimits,
     pub tracking_copy: TrackingCopy<S>,
-    pub executor: E, // TODO: This could be part of the caller
+    pub executor: E,
     pub transaction_hash: TransactionHash,
     pub address_generator: Arc<RwLock<AddressGenerator>>,
     pub chain_name: Arc<str>,

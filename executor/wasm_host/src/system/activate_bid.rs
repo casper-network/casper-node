@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::system::DispatchError;
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::InternalHostError;
+use casper_executor_wasm_interface::FatalHostError;
 use casper_storage::{
     global_state::GlobalStateReader, system::auction::Auction, AddressGenerator,
     RuntimeNativeConfig, TrackingCopy,
@@ -71,7 +71,7 @@ pub fn activate_bid<R: GlobalStateReader>(
         Err(error) => {
             error!(%error, "activate bid failed on dispatch");
             return Err(DispatchError::Internal(
-                InternalHostError::DispatchSystemContract,
+                FatalHostError::DispatchSystemContract,
             ));
         }
     };

@@ -2,11 +2,7 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::casper;
-use casper_contract_sdk::{
-    casper::{self, Entity},
-    log,
-    serializers::borsh::BorshDeserialize,
-};
+use casper_contract_sdk::{casper, log, prelude::Entity, serializers::borsh::BorshDeserialize};
 
 const CURRENT_VERSION: &str = "v2";
 

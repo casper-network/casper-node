@@ -17,6 +17,7 @@ VM2_LIBS=(
   "vm2-host"
   "vm2-escrow"
   "vm2-named-args"
+  "vm2-counter"
 )
 
 

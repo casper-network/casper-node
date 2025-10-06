@@ -1106,10 +1106,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_snapshot_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_snapshot_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ SeigniorageRecipientsResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -1959,7 +1959,7 @@ pub trait StateProvider: Send + Sync + Sized {
             },
             SystemEntityRegistrySelector::ByName(name) => match reg.get(name).copied() {
                 Some(entity_hash) => {
-                    let key = if !request.enable_addressable_entity() {
+                    let key = if !request.addressable_entity_enabled() {
                         Key::Hash(entity_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(entity_hash))
@@ -2078,10 +2078,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return TotalSupplyResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_total_supply_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_total_supply_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ TotalSupplyResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2116,10 +2116,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return RoundSeigniorageRateResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_round_seigniorage_rate_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_round_seigniorage_rate_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ RoundSeigniorageRateResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2258,7 +2258,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 return TransferResult::Failure(TransferError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
@@ -2385,7 +2385,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 return BurnResult::Failure(BurnError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
@@ -2527,11 +2527,11 @@ fn get_round_seigniorage_rate_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> RoundSeigniorageRateResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2575,11 +2575,11 @@ fn get_total_supply_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> TotalSupplyResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2618,10 +2618,10 @@ fn get_snapshot_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> SeigniorageRecipientsResult {
     let (snapshot_query_request, snapshot_version_query_request) =
-        match build_query_requests(scr, state_hash, enable_addressable_entity) {
+        match build_query_requests(scr, state_hash, addressable_entity_enabled) {
             Ok(res) => res,
             Err(res) => return res,
         };
@@ -2733,11 +2733,11 @@ fn query_snapshot_version<T: StateProvider>(
 fn build_query_requests(
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> Result<(QueryRequest, QueryRequest), SeigniorageRecipientsResult> {
     match scr.get(AUCTION).copied() {
         Some(auction_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(auction_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(auction_hash))

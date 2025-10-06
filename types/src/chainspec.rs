@@ -193,7 +193,7 @@ impl Chainspec {
         let validator_minimum_bid_amount = self.core_config.minimum_bid_amount;
         let maximum_delegation_amount = self.core_config.maximum_delegation_amount;
         let minimum_delegation_amount = self.core_config.minimum_delegation_amount;
-        let enable_addressable_entity = self.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = self.core_config.addressable_entity_enabled;
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -213,7 +213,7 @@ impl Chainspec {
             validator_minimum_bid_amount,
             maximum_delegation_amount,
             minimum_delegation_amount,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         ))
     }
 

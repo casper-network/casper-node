@@ -193,7 +193,7 @@ where
         self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_hashes()?;
 
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             self.migrate_system_account(pre_state_hash)?;
             self.create_accumulation_purse_if_required(
                 &system_entity_addresses.handle_payment(),
@@ -328,7 +328,7 @@ where
         &mut self,
         block_time: BlockTime,
     ) -> Result<(), ProtocolUpgradeError> {
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
             self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
             self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
@@ -468,13 +468,13 @@ where
         );
 
         self.tracking_copy.write(
-            Key::SmartContract(entity.package_hash().value()),
+            Key::Package(entity.package_hash().value()),
             StoredValue::SmartContract(package),
         );
 
         if must_carry_forward {
             // carry forward
-            let package_key = Key::SmartContract(entity.package_hash().value());
+            let package_key = Key::Package(entity.package_hash().value());
             let uref = URef::default();
             let indirection = CLValue::from_t((package_key, uref))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
@@ -512,7 +512,7 @@ where
         debug!(%system_contract_type, "retrieve system package");
         if let Some(StoredValue::SmartContract(system_entity)) = self
             .tracking_copy
-            .read(&Key::SmartContract(package_hash.value()))
+            .read(&Key::Package(package_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     system_contract_type.to_string(),
@@ -940,7 +940,7 @@ where
         &mut self,
         contract_hash: HashAddr,
     ) -> Result<NamedKeys, ProtocolUpgradeError> {
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             let named_keys = self
                 .tracking_copy
                 .get_named_keys(EntityAddr::System(contract_hash))?;

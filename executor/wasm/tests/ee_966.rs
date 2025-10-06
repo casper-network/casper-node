@@ -7,7 +7,7 @@ use casper_executor_wasm::{
     testing::{
         expect_successful_execution, make_address_generator, make_executor,
         make_global_state_with_genesis, read_wasm, run_wasm_session, DEFAULT_ACCOUNT_HASH,
-        DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, DEFAULT_GAS_PER_BYTE_COST, TRANSACTION_HASH,
+        DEFAULT_CHAIN_NAME, DEFAULT_GAS_LIMIT, TRANSACTION_HASH,
     },
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
@@ -55,6 +55,9 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
 
 #[test]
 fn argument_size_exceeds_memory_limit() {
+    // NOTE: Don't use this anywhere else.
+    const DEFAULT_GAS_PER_BYTE_COST: u32 = 1_117_587;
+
     use casper_executor_wasm_interface::executor::ExecuteError;
     let executor = {
         let storage_costs = StorageCosts::new(DEFAULT_GAS_PER_BYTE_COST);
@@ -71,7 +74,7 @@ fn argument_size_exceeds_memory_limit() {
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");
-        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+        ExecutorV2::new(executor_config, execution_engine_v1)
     };
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();

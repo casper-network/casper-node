@@ -8,6 +8,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-sdk = { path = "../../../sdk" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }
+casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }
 vm2-cep18 = { path = "../vm2-cep18" }
 borsh = { version = "1.5", features = ["derive"] }
