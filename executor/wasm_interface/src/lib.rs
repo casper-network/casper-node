@@ -264,6 +264,7 @@ impl MeteringPoints {
 /// instance, wasm linear memory access, etc.
 pub trait Caller {
     type Context;
+    type Executor: crate::executor::Executor;
 
     fn context(&self) -> &Self::Context;
     fn context_mut(&mut self) -> &mut Self::Context;
@@ -284,6 +285,8 @@ pub trait Caller {
     fn get_remaining_points(&mut self) -> VMResult<MeteringPoints>;
     /// Check for gas exhaustion, then reduce remaining by amount if able.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
+    /// Returns a reference to the executor used by the current instance.
+    fn executor(&self) -> &Self::Executor;
 }
 
 #[derive(Debug, Error)]

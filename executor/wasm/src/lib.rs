@@ -918,7 +918,6 @@ impl ExecutorV2 {
             callee: callee_key,
             transferred_value,
             tracking_copy,
-            executor: self.clone(),
             address_generator: Arc::clone(&address_generator),
             transaction_hash,
             chain_name,
@@ -951,7 +950,7 @@ impl ExecutorV2 {
             })?;
 
         let mut instance = vm
-            .instantiate(wasm_bytes, context, wasm_instance_config)
+            .instantiate(wasm_bytes, self.clone(), context, wasm_instance_config)
             .map_err(ExecuteError::WasmPreparation)?;
 
         self.push_execution_stack(execution_kind.clone());
