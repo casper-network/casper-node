@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn foobar() {
-        let abi_items = casper_contract_sdk::abi_collector::ABI_ITEMS
+        let abi_items = casper_contract_sdk::abi::collector::ABI_ITEMS
             .iter()
             .collect::<Vec<_>>();
 

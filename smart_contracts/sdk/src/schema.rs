@@ -3,7 +3,7 @@ pub trait CasperSchema {
 }
 
 use crate::{
-    abi_collector::AbiEntryPoint,
+    abi::collector::AbiEntryPoint,
     prelude::{
         collections::{BTreeMap, BTreeSet},
         fmt::LowerHex,
@@ -18,8 +18,10 @@ use casper_executor_wasm_common::type_uid::{Uid, UidRepr};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    abi::{ABITypeInfo, ABIVisitor, AbiDeclaration, Definition},
-    abi_collector::{AbiItem, AbiReceiver, ABI_ITEMS},
+    abi::{
+        collector::{AbiItem, AbiReceiver, ABI_ITEMS},
+        ABITypeInfo, ABIVisitor, AbiDeclaration, Definition,
+    },
     compat::types::CLType,
 };
 
@@ -207,10 +209,7 @@ pub struct SchemaDefinition {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaDefinitions(BTreeMap<SchemaUid, SchemaDefinition>);
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaCLTypes(BTreeMap<String, CLType>);
+pub struct SchemaDefinitions(pub(crate) BTreeMap<SchemaUid, SchemaDefinition>);
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaMetadata {

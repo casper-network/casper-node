@@ -2,7 +2,10 @@
 
 pub mod exports {
     use casper_contract_sdk::{
-        casper::{casper_system, ret}, common::flags::ReturnFlags, prelude::*, types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption}
+        casper::{casper_system, ret},
+        common::flags::ReturnFlags,
+        prelude::*,
+        types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption},
     };
 
     #[casper(export)]

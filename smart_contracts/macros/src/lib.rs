@@ -186,11 +186,11 @@ fn process_casper_message_for_struct(
         maybe_entrypoint_defs = quote! {
             #[cfg(not(target_arch = "wasm32"))]
             const _: () = {
-                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
                 #[linkme(crate = casper_contract_sdk::linkme)]
-                pub static ABI_ITEM: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::Message(casper_contract_sdk::abi_collector::AbiMessage {
+                pub static ABI_ITEM: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::Message(casper_contract_sdk::abi::collector::AbiMessage {
                     name: core::any::type_name::<#struct_name>, // TODO: Currently it is equal to the struct name but should be customizable
-                    decl: casper_contract_sdk::abi_collector::AbiType {
+                    decl: casper_contract_sdk::abi::collector::AbiType {
                         type_name: core::any::type_name::<#struct_name>,
                         type_id: casper_contract_sdk::common::type_uid::of::<#struct_name>(),
                         cl_type: <#struct_name as casper_contract_sdk::compat::types::CLTyped>::cl_type,
@@ -290,19 +290,19 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
             const NAME: &str = stringify!(#func_name);
             const EXPORT_NAME: &str = NAME;
 
-            #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+            #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
             #[linkme(crate = casper_contract_sdk::linkme)]
-            pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
+            pub static EXPORTS: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::EntryPoint(casper_contract_sdk::abi::collector::AbiEntryPoint {
                 name: NAME,
                 export_name: EXPORT_NAME,
-                receiver: None,// casper_contract_sdk::abi_collector::AbiReceiver::ByRef,
+                receiver: None,// casper_contract_sdk::abi::collector::AbiReceiver::ByRef,
                 is_constructor: false, // todo
                 is_payable: false, // todo
                 params: &[
                     #(
-                    casper_contract_sdk::abi_collector::AbiParam {
+                    casper_contract_sdk::abi::collector::AbiParam {
                         name: stringify!(#arg_names),
-                        decl: casper_contract_sdk::abi_collector::AbiType {
+                        decl: casper_contract_sdk::abi::collector::AbiType {
                             type_name: core::any::type_name::<#arg_types>,
                             type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
                             cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
@@ -315,7 +315,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                 ],
                 abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
                 result_decl: {
-                    casper_contract_sdk::abi_collector::AbiType {
+                    casper_contract_sdk::abi::collector::AbiType {
                         type_name: core::any::type_name::<#ret>,
                         type_id: casper_contract_sdk::common::type_uid::of::<#ret>(),
                         cl_type: <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
@@ -324,8 +324,8 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                         },
                     }
                 },
-                kind: casper_contract_sdk::abi_collector::AbiKind::Function,
-                location: casper_contract_sdk::abi_collector::AbiLocation {
+                kind: casper_contract_sdk::abi::collector::AbiKind::Function,
+                location: casper_contract_sdk::abi::collector::AbiLocation {
                     file: file!(),
                     line: line!(),
                     col: column!(),
@@ -472,7 +472,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         if receiver.reference.is_some() {
                             // &mut self does write updated state
 
-                            abi_receiver = quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef };
+                            abi_receiver = quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByMutRef };
 
                             Some(quote! {
                                 casper_contract_sdk::casper::write_state(&instance).unwrap();
@@ -482,7 +482,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             // method call
                             // will consume self and there's nothing to persist.
                             abi_receiver =
-                                quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByVal };
+                                quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByVal };
 
                             None
                         }
@@ -491,7 +491,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         entry_point_requires_state = true;
 
                         abi_receiver =
-                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByRef };
+                            quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByRef };
 
                         // &self does not write state
                         None
@@ -508,7 +508,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     }
                     Some(_) | None => {
                         abi_receiver =
-                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::NoReceiver };
+                            quote! { casper_contract_sdk::abi::collector::AbiReceiver::NoReceiver };
 
                         if method_attribute.constructor {
                             Some(quote! {
@@ -741,9 +741,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                     #[cfg(not(target_arch = "wasm32"))]
                     const _: () = {
-                        #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                        #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
                         #[linkme(crate = casper_contract_sdk::linkme)]
-                        pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
+                        pub static EXPORTS: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::EntryPoint(casper_contract_sdk::abi::collector::AbiEntryPoint {
                             name: stringify!(#export_name),
                             export_name: stringify!(#export_name),
                             receiver: #abi_receiver,
@@ -751,9 +751,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             is_payable: #is_payable,
                             params: &[
                                 #(
-                                    casper_contract_sdk::abi_collector::AbiParam {
+                                    casper_contract_sdk::abi::collector::AbiParam {
                                         name: stringify!(#arg_names),
-                                        decl: casper_contract_sdk::abi_collector::AbiType {
+                                        decl: casper_contract_sdk::abi::collector::AbiType {
                                             type_name: core::any::type_name::<#arg_types>,
                                             type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
                                             cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type,
@@ -765,7 +765,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                                 )*
                             ],
                             abi_convention: #resolve_abi_convention,
-                            result_decl: casper_contract_sdk::abi_collector::AbiType {
+                            result_decl: casper_contract_sdk::abi::collector::AbiType {
                                 type_name: core::any::type_name::<#ret_ty>,
                                 type_id: casper_contract_sdk::common::type_uid::of::<#ret_ty>(),
                                 cl_type: <#ret_ty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
@@ -773,8 +773,8 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                                     casper_contract_sdk::abi::visit_types_recursively::<#ret_ty>(visitor);
                                 },
                             },
-                            kind: casper_contract_sdk::abi_collector::AbiKind::SmartContract { struct_name: stringify!(#struct_name) },
-                            location: casper_contract_sdk::abi_collector::AbiLocation {
+                            kind: casper_contract_sdk::abi::collector::AbiKind::SmartContract { struct_name: stringify!(#struct_name) },
+                            location: casper_contract_sdk::abi::collector::AbiLocation {
                                 file: file!(),
                                 line: line!(),
                                 col: column!(),
@@ -960,9 +960,9 @@ fn generate_impl_trait_for_contract(
                                     const NAME: &str = stringify!($name);
                                     const EXPORT_NAME: &str = stringify!($export_name);
 
-                                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
                                     #[linkme(crate = casper_contract_sdk::linkme)]
-                                    pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
+                                    pub static EXPORTS: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::EntryPoint(casper_contract_sdk::abi::collector::AbiEntryPoint {
                                         name: NAME,
                                         export_name: EXPORT_NAME,
                                         receiver: $receiver,
@@ -970,9 +970,9 @@ fn generate_impl_trait_for_contract(
                                         is_payable: $is_payable,
                                         params: &[
                                             $(
-                                                casper_contract_sdk::abi_collector::AbiParam {
+                                                casper_contract_sdk::abi::collector::AbiParam {
                                                     name: stringify!($arg),
-                                                    decl: casper_contract_sdk::abi_collector::AbiType {
+                                                    decl: casper_contract_sdk::abi::collector::AbiType {
                                                         type_name: core::any::type_name::<$argty>,
                                                         type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
                                                         cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
@@ -986,7 +986,7 @@ fn generate_impl_trait_for_contract(
                                         abi_convention: $abi_convention,
                                         result_decl: {
                                             use #path_to_crate::*;
-                                            casper_contract_sdk::abi_collector::AbiType {
+                                            casper_contract_sdk::abi::collector::AbiType {
                                                 type_name: core::any::type_name::<$ret>,
                                                 type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
                                                 cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
@@ -995,8 +995,8 @@ fn generate_impl_trait_for_contract(
                                                 },
                                             }
                                         },
-                                        kind: casper_contract_sdk::abi_collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
-                                        location: casper_contract_sdk::abi_collector::AbiLocation {
+                                        kind: casper_contract_sdk::abi::collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
+                                        location: casper_contract_sdk::abi::collector::AbiLocation {
                                             file: file!(),
                                             line: line!(),
                                             col: column!(),
@@ -1029,9 +1029,9 @@ fn generate_impl_trait_for_contract(
                                     const NAME: &str = stringify!($name);
                                     const EXPORT_NAME: &str = stringify!($export_name);
 
-                                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+                                    #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
                                     #[linkme(crate = casper_contract_sdk::linkme)]
-                                    pub static EXPORTS: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::EntryPoint(casper_contract_sdk::abi_collector::AbiEntryPoint {
+                                    pub static EXPORTS: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::EntryPoint(casper_contract_sdk::abi::collector::AbiEntryPoint {
                                         name: NAME,
                                         export_name: EXPORT_NAME,
 
@@ -1040,9 +1040,9 @@ fn generate_impl_trait_for_contract(
                                         is_payable: $is_payable,
                                         params: &[
                                             $(
-                                                casper_contract_sdk::abi_collector::AbiParam {
+                                                casper_contract_sdk::abi::collector::AbiParam {
                                                     name: stringify!($arg),
-                                                    decl: casper_contract_sdk::abi_collector::AbiType {
+                                                    decl: casper_contract_sdk::abi::collector::AbiType {
                                                         type_name: core::any::type_name::<$argty>,
                                                         type_id: casper_contract_sdk::common::type_uid::of::<$argty>(),
                                                         cl_type: <$argty as casper_contract_sdk::compat::types::CLTyped>::cl_type,
@@ -1055,7 +1055,7 @@ fn generate_impl_trait_for_contract(
                                         ],
                                         abi_convention: $abi_convention,
                                         result_decl: {
-                                            casper_contract_sdk::abi_collector::AbiType {
+                                            casper_contract_sdk::abi::collector::AbiType {
                                                 type_name: core::any::type_name::<$ret>,
                                                 type_id: casper_contract_sdk::common::type_uid::of::<$ret>(),
                                                 cl_type: || { <$ret as casper_contract_sdk::compat::types::CLTyped>::cl_type() },
@@ -1064,8 +1064,8 @@ fn generate_impl_trait_for_contract(
                                                 },
                                             }
                                         },
-                                        kind: casper_contract_sdk::abi_collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
-                                        location: casper_contract_sdk::abi_collector::AbiLocation {
+                                        kind: casper_contract_sdk::abi::collector::AbiKind::TraitImpl { struct_name: NAME, trait_name: stringify!(#trait_name)},
+                                        location: casper_contract_sdk::abi::collector::AbiLocation {
                                             file: file!(),
                                             line: line!(),
                                             col: column!(),
@@ -1383,13 +1383,13 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let abi_receiver = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
                         if receiver.reference.is_some() {
-                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByMutRef }
+                            quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByMutRef }
                         } else {
-                            quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByVal }
+                            quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByVal }
                         }
                     }
                     Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_none() => {
-                        quote! { casper_contract_sdk::abi_collector::AbiReceiver::ByRef }
+                        quote! { casper_contract_sdk::abi::collector::AbiReceiver::ByRef }
                     }
 
                     Some(syn::FnArg::Receiver(receiver)) if receiver.lifetime().is_some() => {
@@ -1402,7 +1402,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         );
                     }
                     Some(_) | None => {
-                        quote! { casper_contract_sdk::abi_collector::AbiReceiver::NoReceiver }
+                        quote! { casper_contract_sdk::abi::collector::AbiReceiver::NoReceiver }
                     }
                 };
 
@@ -1691,12 +1691,12 @@ fn process_casper_contract_state_for_struct(
 
         #[cfg(not(target_arch = "wasm32"))]
         const _: () = {
-            #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_collector::ABI_ITEMS)]
+            #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
             #[linkme(crate = casper_contract_sdk::linkme)]
-            pub static ABI_ITEM: casper_contract_sdk::abi_collector::AbiItem = casper_contract_sdk::abi_collector::AbiItem::SmartContract(casper_contract_sdk::abi_collector::AbiSmartContract {
+            pub static ABI_ITEM: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::SmartContract(casper_contract_sdk::abi::collector::AbiSmartContract {
                 struct_name: stringify!(#struct_name),
                 abi_convention: #abi_conv,
-                decl: #crate_path::abi_collector::AbiType {
+                decl: #crate_path::abi::collector::AbiType {
                     type_name: core::any::type_name::<#struct_name>,
                     type_id: #crate_path::common::type_uid::of::<#struct_name>(),
                     cl_type: <#struct_name as #crate_path::compat::types::CLTyped>::cl_type,
@@ -1753,9 +1753,9 @@ fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
 
         maybe_stable_key_def = quote! {
             const _: () = {
-                #[#crate_path::linkme::distributed_slice(#crate_path::abi_collector::NAMED_KEYS)]
+                #[#crate_path::linkme::distributed_slice(#crate_path::abi::collector::NAMED_KEYS)]
                 #[linkme(crate = #crate_path::linkme)]
-                static NAMED_KEY: #crate_path::abi_collector::NamedKey = #crate_path::abi_collector::NamedKey {
+                static NAMED_KEY: #crate_path::abi::collector::NamedKey = #crate_path::abi::collector::NamedKey {
                     name: #_const_ident.name(),
                     decl: || #_const_ident.declaration(),
                 };

@@ -10,10 +10,9 @@ pub mod compat;
 pub mod prelude;
 pub mod serializers;
 #[cfg(not(target_arch = "wasm32"))]
-pub use linkme;
-
+pub mod bundle;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod abi_collector;
+pub use linkme;
 pub mod build;
 pub mod casper;
 pub mod collections;

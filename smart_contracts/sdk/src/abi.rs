@@ -1,3 +1,5 @@
+pub mod collector;
+
 use core::any::Any;
 
 #[cfg(feature = "std")]

@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::abi_collector::ABI_ITEMS;
+use crate::abi::collector::ABI_ITEMS;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
     error::{HOST_ERROR_INTERNAL, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS},

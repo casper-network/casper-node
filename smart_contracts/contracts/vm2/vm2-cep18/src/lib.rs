@@ -91,7 +91,7 @@ mod tests {
     use super::*;
 
     use casper_contract_sdk::{
-        abi_collector::ABI_ITEMS,
+        abi::collector::ABI_ITEMS,
         casper::{
             self,
             native::{

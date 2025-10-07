@@ -25,9 +25,19 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
-    account::AccountHash, addressable_entity::{
+    account::AccountHash,
+    addressable_entity::{
         ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr, NamedKeyValue,
-    }, bytesrepr::{FromBytes, ToBytes}, contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary}, execution::RetValue, AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm, HostFunctionV2, Key, NamedKeys, Package, PackageHash, ProtocolVersion, Signature, StoredValue, URef, };
+    },
+    bytesrepr::{FromBytes, ToBytes},
+    contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
+    execution::RetValue,
+    AccessRights, AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash,
+    Digest, EntityAddr, EntityKind, EntryPointPayment, EntryPointValue, HashAddr, HashAlgorithm,
+    HostFunctionV2, Key, NamedKeys, Package, PackageHash, ProtocolVersion, Signature, StoredValue,
+    URef,
+};
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -974,8 +984,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         )?;
     } else {
         let contract_package_hash = ContractPackageHash::new(package_addr);
-        let contract_wasm_hash = ContractWasmHash
-        ::new(bytecode_hash);
+        let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
 
         let named_keys = {
             let mut ret = NamedKeys::default();
