@@ -6,7 +6,9 @@ mod tests;
 
 use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
-use casper_types::{contracts::ProtocolVersionMajor, ContractRuntimeTag};
+use casper_types::{
+    contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
+};
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
@@ -546,9 +548,23 @@ impl TransactionAcceptor {
                         NextStep::CryptoValidation
                     }
                 },
-                TransactionTarget::Native | TransactionTarget::Session { .. } => {
+                TransactionTarget::Session {
+                    is_install_upgrade,
+                    runtime,
+                    ..
+                } => {
+                    if *is_install_upgrade && txn.is_v2_wasm() && runtime.seed().is_none() {
+                        return self.reject_transaction(
+                            effect_builder,
+                            *event_metadata,
+                            Error::InvalidTransaction(InvalidTransaction::V1(
+                                InvalidTransactionV1::MissingSeed,
+                            )),
+                        );
+                    }
                     NextStep::CryptoValidation
                 }
+                TransactionTarget::Native => NextStep::CryptoValidation,
             },
         };
 
@@ -682,7 +698,8 @@ impl TransactionAcceptor {
         match addressable_entity.kind() {
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1)
             | EntityKind::Account(_)
-            | EntityKind::System(_) => {
+            | EntityKind::System(_)
+            | EntityKind::Package(_) => {
                 if !entry_point_exist {
                     let error = Error::parameter_failure(
                         &block_header,

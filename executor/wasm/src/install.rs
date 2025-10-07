@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
@@ -47,6 +47,8 @@ pub struct InstallContractRequest {
     pub(crate) seed: Option<[u8; 32]>,
     /// Runtime native config.
     pub(crate) runtime_native_config: RuntimeNativeConfig,
+    /// Authorization keys for this installation.
+    pub(crate) authorization_keys: BTreeSet<AccountHash>,
 }
 
 #[derive(Default)]
@@ -66,6 +68,7 @@ pub struct InstallContractRequestBuilder {
     block_height: Option<u64>,
     runtime_native_config: Option<RuntimeNativeConfig>,
     seed: Option<[u8; 32]>,
+    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl InstallContractRequestBuilder {
@@ -155,24 +158,32 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
+        self.authorization_keys = Some(authorization_keys);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
         let wasm_bytes = self.wasm_bytes.ok_or("Wasm bytes not set")?;
         let entry_point = self.entry_point;
         let input = self.input;
-        let transferred_value = self.transferred_value.ok_or("Value not set")?;
+        let transferred_value = self.transferred_value.unwrap_or_default();
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
-        let chain_name = self.chain_name.ok_or("Chain name not set")?;
-        let block_time = self.block_time.ok_or("Block time not set")?;
+        let chain_name = self.chain_name.unwrap_or(Arc::from("casper-test"));
+        let block_time = self.block_time.unwrap_or_default();
         let seed = self.seed;
         let state_hash = self.state_hash.ok_or("State hash not set")?;
         let parent_block_hash = self.parent_block_hash.ok_or("Parent block hash not set")?;
-        let block_height = self.block_height.ok_or("Block height not set")?;
+        let block_height = self.block_height.unwrap_or_default();
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
+        let authorization_keys = self
+            .authorization_keys
+            .ok_or("Authorization keys not set")?;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -189,6 +200,7 @@ impl InstallContractRequestBuilder {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            authorization_keys,
         })
     }
 }

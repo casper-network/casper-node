@@ -727,7 +727,7 @@ fn should_only_upgrade_if_threshold_is_met() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    if !builder.chainspec().core_config.enable_addressable_entity {
+    if !builder.chainspec().core_config.addressable_entity_enabled {
         return;
     }
 
@@ -878,7 +878,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(true)
+        .with_addressable_entity_enabled(true)
         .build();
 
     builder
@@ -899,7 +899,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
 fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let (mut builder, entity_1) = setup_upgrade_threshold_state();
 
-    if !builder.chainspec().core_config.enable_addressable_entity {
+    if !builder.chainspec().core_config.addressable_entity_enabled {
         return;
     }
 
@@ -990,7 +990,7 @@ enum MigrationScenario {
 fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario) {
     let (mut builder, _) = setup_upgrade_threshold_state();
 
-    if !builder.chainspec().core_config.enable_addressable_entity {
+    if !builder.chainspec().core_config.addressable_entity_enabled {
         return;
     }
 
@@ -1241,7 +1241,7 @@ fn setup_state_for_version_tests(
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_addressable_entity_enabled(false)
         .build();
 
     let config = EngineConfigBuilder::new()
@@ -1584,7 +1584,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_addressable_entity_enabled(false)
         .build();
 
     builder

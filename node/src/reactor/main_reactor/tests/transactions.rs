@@ -558,7 +558,7 @@ fn get_entity_addr_from_account_hash(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .as_cl_value()
             .expect("should have a CLValue")
@@ -583,11 +583,13 @@ fn get_entity(
     entity_addr: EntityAddr,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let (key, is_contract) = if fixture.chainspec.core_config.enable_addressable_entity {
+    let (key, is_contract) = if fixture.chainspec.core_config.addressable_entity_enabled {
         (Key::AddressableEntity(entity_addr), false)
     } else {
         match entity_addr {
-            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => (Key::Hash(hash), true),
+            EntityAddr::System(hash)
+            | EntityAddr::SmartContract(hash)
+            | EntityAddr::Package(hash) => (Key::Hash(hash), true),
             EntityAddr::Account(hash) => (Key::Account(AccountHash::new(hash)), false),
         }
     };
@@ -602,7 +604,7 @@ fn get_entity(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    if fixture.chainspec.core_config.enable_addressable_entity {
+    if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .into_addressable_entity()
             .expect("should have an AddressableEntity")
@@ -619,11 +621,31 @@ fn get_entity_named_key(
     entity_addr: EntityAddr,
     named_key: &str,
 ) -> Option<Key> {
-    if fixture.chainspec.core_config.enable_addressable_entity {
-        let key = Key::NamedKey(
-            NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
-                .expect("should be valid NamedKeyAddr"),
-        );
+    if fixture.chainspec.core_config.addressable_entity_enabled {
+        let key = if let EntityAddr::Package(hash) = entity_addr {
+            let key = Key::Package(hash);
+            match query_global_state(fixture, state_root_hash, key) {
+                Some(val) => match &*val {
+                    StoredValue::SmartContract(package) => {
+                        let entity_addr = *package
+                            .versions()
+                            .latest()
+                            .expect("must have at least one active version");
+                        Key::NamedKey(
+                            NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                                .expect("should be valid NamedKeyAddr"),
+                        )
+                    }
+                    value => panic!("Expected Package but got {:?}", value),
+                },
+                None => return None,
+            }
+        } else {
+            Key::NamedKey(
+                NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                    .expect("should be valid NamedKeyAddr"),
+            )
+        };
 
         match query_global_state(fixture, state_root_hash, key) {
             Some(val) => match &*val {
@@ -636,7 +658,9 @@ fn get_entity_named_key(
         }
     } else {
         match entity_addr {
-            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => {
+            EntityAddr::System(hash)
+            | EntityAddr::SmartContract(hash)
+            | EntityAddr::Package(hash) => {
                 match query_global_state(fixture, state_root_hash, Key::Hash(hash)) {
                     Some(val) => match &*val {
                         StoredValue::Contract(contract) => {
@@ -689,7 +713,7 @@ fn get_entity_by_account_hash(
     account_hash: AccountHash,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         Key::AddressableEntity(EntityAddr::Account(account_hash.value()))
     } else {
         Key::Account(account_hash)

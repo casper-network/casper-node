@@ -2075,7 +2075,7 @@ impl<REv> EffectBuilder<REv> {
             QueryResult::RootNotFound | QueryResult::Failure(_) => None,
             QueryResult::ValueNotFound(_) => {
                 let query_request =
-                    QueryRequest::new(state_root_hash, Key::SmartContract(package_addr), vec![]);
+                    QueryRequest::new(state_root_hash, Key::Package(package_addr), vec![]);
                 debug!("requesting under different key");
                 if let QueryResult::Success { value, .. } =
                     self.query_global_state(query_request).await

@@ -250,6 +250,7 @@ enum TestScenario {
         ContractVersionExistance,
     ),
     VmCasperV2ByPackageHash,
+    VmCasperV2MissingSeedValue,
 }
 
 impl TestScenario {
@@ -305,7 +306,8 @@ impl TestScenario {
             | TestScenario::RedelegateExceedingMaximumDelegation
             | TestScenario::DelegateExceedingMaximumDelegation
             | TestScenario::VmCasperV2ByPackageHash
-            | TestScenario::V1ByPackage(..) => Source::Client,
+            | TestScenario::V1ByPackage(..)
+            | TestScenario::VmCasperV2MissingSeedValue => Source::Client,
         }
     }
 
@@ -860,6 +862,20 @@ impl TestScenario {
                 .unwrap();
                 Transaction::from(txn)
             }
+            TestScenario::VmCasperV2MissingSeedValue => {
+                let transaction_runtime = TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value: 3_000_000_000u64,
+                    seed: None,
+                };
+                let module_bytes = Bytes::from(vec![1]);
+                let txn =
+                    TransactionV1Builder::new_session(true, module_bytes, transaction_runtime)
+                        .with_chain_name("casper-example")
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
+                Transaction::from(txn)
+            }
         }
     }
 
@@ -937,6 +953,7 @@ impl TestScenario {
                     HashOrName::Name => true,
                 }
             },
+            TestScenario::VmCasperV2MissingSeedValue => false,
         }
     }
 
@@ -961,7 +978,10 @@ impl TestScenario {
     }
 
     fn is_v2_casper_vm(&self) -> bool {
-        matches!(self, TestScenario::VmCasperV2ByPackageHash)
+        matches!(
+            self,
+            TestScenario::VmCasperV2ByPackageHash | TestScenario::VmCasperV2MissingSeedValue
+        )
     }
 }
 
@@ -1036,9 +1056,7 @@ impl reactor::Reactor for Reactor {
                     request: query_request,
                     responder,
                 } => {
-                    let query_result = if let Key::Hash(_) | Key::SmartContract(_) =
-                        query_request.key()
-                    {
+                    let query_result = if let Key::Hash(_) | Key::Package(_) = query_request.key() {
                         match &self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContractPackage(
                                 ContractPackageScenario::MissingPackageAtHash,
@@ -1694,6 +1712,14 @@ async fn run_transaction_acceptor_without_timeout(
                     ..
                 })
             ),
+            TestScenario::VmCasperV2MissingSeedValue => {
+                matches!(
+                    event,
+                    Event::TransactionAcceptorAnnouncement(
+                        TransactionAcceptorAnnouncement::InvalidTransaction { .. }
+                    )
+                )
+            }
             TestScenario::V1ByPackage(
                 hash_or_name,
                 entity_version,
@@ -3064,4 +3090,18 @@ async fn should_succeed_when_asking_for_active_exact_version() {
     ))
     .await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_vm2_installs_without_seed_value() {
+    let result = run_transaction_acceptor(TestScenario::VmCasperV2MissingSeedValue).await;
+    assert!(
+        matches!(
+            result,
+            Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+                InvalidTransactionV1::MissingSeed
+            )))
+        ),
+        "{result:?}"
+    );
 }

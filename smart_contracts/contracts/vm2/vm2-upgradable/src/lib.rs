@@ -1,7 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use casper_contract_macros::casper;
-use casper_contract_sdk::{casper, casper::Entity, log, prelude::*};
+use casper_contract_sdk::{casper, log, prelude::*};
 
 const CURRENT_VERSION: &str = "v1";
 
@@ -72,7 +72,6 @@ impl UpgradableContract {
         log!("V1: starting upgrade process current value={}", self.value);
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
-        // TODO: Enforce valid wasm validation
         casper::upgrade(&new_code, Some("migrate"), None).unwrap();
     }
 }

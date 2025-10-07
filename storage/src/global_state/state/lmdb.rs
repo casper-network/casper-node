@@ -50,7 +50,7 @@ pub struct LmdbGlobalState {
     /// Max query depth
     pub max_query_depth: u64,
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub enable_entity: bool,
+    pub addressable_entity_enabled: bool,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -69,7 +69,7 @@ impl LmdbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         max_query_depth: u64,
-        enable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Result<Self, GlobalStateError> {
         let root_hash: Digest = {
             let (root_hash, root) = compute_empty_root_hash()?;
@@ -84,7 +84,7 @@ impl LmdbGlobalState {
             trie_store,
             root_hash,
             max_query_depth,
-            enable_entity,
+            addressable_entity_enabled,
         ))
     }
 
@@ -95,14 +95,14 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
         max_query_depth: u64,
-        enable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
             max_query_depth,
-            enable_entity,
+            addressable_entity_enabled,
         }
     }
 
@@ -113,7 +113,7 @@ impl LmdbGlobalState {
             Arc::clone(&self.trie_store),
             self.empty_root_hash,
             self.max_query_depth,
-            self.enable_entity,
+            self.addressable_entity_enabled,
         )
     }
 
@@ -325,7 +325,7 @@ impl StateProvider for LmdbGlobalState {
             Some(reader) => Ok(Some(TrackingCopy::new(
                 reader,
                 self.max_query_depth,
-                self.enable_entity,
+                self.addressable_entity_enabled,
             ))),
             None => Ok(None),
         }
@@ -424,7 +424,7 @@ impl StateProvider for LmdbGlobalState {
     }
 
     fn enable_entity(&self) -> bool {
-        self.enable_entity
+        self.addressable_entity_enabled
     }
 }
 

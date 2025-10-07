@@ -210,20 +210,11 @@ fn cycles(operator: &Operator) -> u64 {
         Operator::Unreachable => 1,
         Operator::Nop => 1,
         Operator::Block { .. } | Operator::Loop { .. } | Operator::Else => 1,
-        Operator::TryTable { .. }
-        | Operator::Throw { .. }
-        | Operator::ThrowRef
-        | Operator::Try { .. }
-        | Operator::Catch { .. }
-        | Operator::Rethrow { .. }
-        | Operator::Delegate { .. }
-        | Operator::CatchAll => todo!("try/catch operators are not metered yet; gatekeeper config should not enable this extension"),
         Operator::End
         | Operator::Return
         | Operator::ReturnCall { .. }
         | Operator::ReturnCallIndirect { .. } => 1,
         Operator::Drop => 1,
-        Operator::TypedSelect { .. } => unreachable!(),
         Operator::LocalSet { .. } => 1,
         Operator::RefNull { .. }
         | Operator::RefIsNull
@@ -625,7 +616,19 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::ArrayAtomicRmwXor { .. }
         | Operator::ArrayAtomicRmwXchg { .. }
         | Operator::ArrayAtomicRmwCmpxchg { .. }
-        | Operator::RefI31Shared => todo!("{operator:?}"),
+        | Operator::RefI31Shared => {
+            unreachable!("unsupported extension; gatekeeper config should not enable this extension")
+        }
+
+        | Operator::TryTable { .. }
+        | Operator::Throw { .. }
+        | Operator::ThrowRef
+        | Operator::Try { .. }
+        | Operator::Catch { .. }
+        | Operator::Rethrow { .. }
+        | Operator::Delegate { .. }
+        | Operator::CatchAll => unreachable!("try/catch operators are not metered yet; gatekeeper config should not enable this extension"),
+        Operator::TypedSelect { .. } => unreachable!("typed select is not metered yet; gatekeeper config should not enable this extension"),
     }
 }
 

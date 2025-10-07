@@ -85,11 +85,11 @@ pub fn execute_finalized_block(
     let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
     let prune_batch_size = chainspec.core_config.prune_batch_size;
     let runtime_native_config = RuntimeNativeConfig::from_chainspec(chainspec);
-    let addressable_entity_enabled = chainspec.core_config.enable_addressable_entity();
+    let addressable_entity_enabled = chainspec.core_config.addressable_entity_enabled();
 
-    if addressable_entity_enabled != data_access_layer.enable_addressable_entity {
+    if addressable_entity_enabled != data_access_layer.addressable_entity_enabled {
         return Err(BlockExecutionError::InvalidAESetting(
-            data_access_layer.enable_addressable_entity,
+            data_access_layer.addressable_entity_enabled,
         ));
     }
 
