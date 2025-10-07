@@ -76,7 +76,7 @@ pub(crate) enum Error {
     FailedToDeserialize {
         block_hash: BlockHash,
     },
-    ExecutionResultToDeployHashLengthDiscrepancy {
+    ExecutionResultToTransactionHashLengthDiscrepancy {
         block_hash: BlockHash,
         expected: usize,
         actual: usize,
@@ -96,14 +96,14 @@ impl Display for Error {
                     expected, actual
                 )
             }
-            Error::ExecutionResultToDeployHashLengthDiscrepancy {
+            Error::ExecutionResultToTransactionHashLengthDiscrepancy {
                 block_hash,
                 expected,
                 actual,
             } => {
                 write!(
                     f,
-                    "discrepancy between the number of deploys and corresponding execution results for block_hash: {}; expected {} actual: {}",
+                    "discrepancy between the number of transactions and corresponding execution results for block_hash: {}; expected {} actual: {}",
                     block_hash, expected, actual
                 )
             }
@@ -404,9 +404,9 @@ impl ExecutionResultsAcquisition {
         if transaction_hashes.len() != execution_results.len() {
             debug!(
                 %block_hash,
-                "apply_block_execution_results_or_chunk: Error::ExecutionResultToDeployHashLengthDiscrepancy"
+                "apply_block_execution_results_or_chunk: Error::ExecutionResultToTransactionHashLengthDiscrepancy"
             );
-            return Err(Error::ExecutionResultToDeployHashLengthDiscrepancy {
+            return Err(Error::ExecutionResultToTransactionHashLengthDiscrepancy {
                 block_hash,
                 expected: transaction_hashes.len(),
                 actual: execution_results.len(),

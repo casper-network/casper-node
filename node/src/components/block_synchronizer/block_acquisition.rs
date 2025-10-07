@@ -15,28 +15,28 @@ use casper_types::{
 
 use crate::{
     components::block_synchronizer::{
-        block_acquisition_action::BlockAcquisitionAction,
-        deploy_acquisition::TransactionAcquisition, peer_list::PeerList,
-        signature_acquisition::SignatureAcquisition, BlockAcquisitionError,
+        block_acquisition_action::BlockAcquisitionAction, peer_list::PeerList,
+        signature_acquisition::SignatureAcquisition,
+        transaction_acquisition::TransactionAcquisition, BlockAcquisitionError,
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock, SignatureWeight},
     NodeRng,
 };
 
-use super::deploy_acquisition::TransactionIdentifier;
+use super::transaction_acquisition::TransactionIdentifier;
 
 // BlockAcquisitionState is a milestone oriented state machine; it is always in a resting state
 // indicating the last completed step, while attempting to acquire the necessary data to transition
 // to the next resting state milestone. the start and end of the workflow is linear, but the
 // middle steps conditionally branch depending upon if this is a historical block (needs execution
-// state) or a block we intend to execute, and if the block body has one or more deploys.
+// state) or a block we intend to execute, and if the block body has one or more transactions.
 //
 // blocks always require a header & body and sufficient finality signatures; blocks may contain
-// one or more deploys. if a block has any deploys, we must also acquire execution effects
-// for the deploys in the block (we do this as a chunked aggregate), and for post 1.5 blocks
+// one or more transactions. if a block has any transactions, we must also acquire execution effects
+// for the transactions in the block (we do this as a chunked aggregate), and for post 1.5 blocks
 // we must also acquire approvals hashes (which correlate to which authorized account holders
-// signed the deploys).
+// signed the transactions).
 //
 // there are two levels of finality, weak and strict. we first get the block header (which is
 // the minimum amount of necessary information we need to function), and then attempt to acquire
@@ -60,8 +60,8 @@ use super::deploy_acquisition::TransactionIdentifier;
 // of global state, other than the first downloaded historical block we likely already have
 // the vast majority of global state data locally. for these reasons, it is common for most
 // blocks to transition thru the various states very quickly...particularly blocks without
-// deploys. however, the first block downloaded or blocks with a lot of deploys and / or
-// execution state delta can take arbitrarily longer on their relevant steps.
+// transactions. however, the first block downloaded or blocks with a lot of transactions
+// and / or execution state delta can take arbitrarily longer on their relevant steps.
 //
 // similarly, it is possible that the peer set available to us to acquire this data can become
 // partitioned. the block synchronizer will periodically attempt to refresh its peer list to
@@ -293,7 +293,7 @@ impl BlockAcquisitionState {
     //              else if no transactions need strict finality
     //
     //   HaveGlobalState -> if should_fetch_execution_state
-    //                      if block has deploys ->
+    //                      if block has transactions ->
     //                       if have execution effects -> need approvals hashes
     //                       else -> need execution effects
     //                      else -> need strict finality
@@ -301,12 +301,12 @@ impl BlockAcquisitionState {
     //
     //   HaveAllExecutionResults -> if should_fetch_execution_state
     //                                if approvals checkable -> need approvals hashes
-    //                                else -> need deploys
+    //                                else -> need transactions
     //                               else error
     //
-    //   HaveApprovalsHashes -> need deploys
+    //   HaveApprovalsHashes -> need transactions
     //
-    //   HaveDeploys -> need strict finality
+    //   HaveTransactions -> need strict finality
     //
     //   HaveStrictFinalitySignatures -> if should_fetch_execution_state -> need to mark block
     // complete                                else need to convert block to FinalizedBlock
@@ -412,7 +412,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveAllExecutionResults(
                 block,
                 signatures,
-                deploys,
+                transactions,
                 checksum,
             ) if is_historical => {
                 let is_checkable = checksum.is_checkable();
@@ -421,11 +421,11 @@ impl BlockAcquisitionState {
                     Ok(BlockAcquisitionAction::approvals_hashes(
                         block, peer_list, rng,
                     ))
-                } else if let Some(needed_deploy) = deploys.next_needed_transaction() {
+                } else if let Some(needed_transaction) = transactions.next_needed_transaction() {
                     // If the checksum is not checkable, it means that we are dealing with a legacy
                     // deploys. If the required transactions are not deploys for
                     // this block it means that something went wrong.
-                    let deploy_hash = match needed_deploy {
+                    let deploy_hash = match needed_transaction {
                         TransactionIdentifier::ByHash(TransactionHash::Deploy(deploy_hash)) => {
                             deploy_hash
                         }
@@ -636,13 +636,13 @@ impl BlockAcquisitionState {
                         .collect(),
                     Block::V2(v2) => v2.all_transactions().copied().collect(),
                 };
-                let deploy_acquisition =
+                let transaction_acquisition =
                     TransactionAcquisition::new_by_hash(transaction_hashes, need_execution_state);
 
                 BlockAcquisitionState::HaveBlock(
                     Box::new(block),
                     signatures.clone(),
-                    deploy_acquisition,
+                    transaction_acquisition,
                 )
             }
             BlockAcquisitionState::Initialized(..)
@@ -741,28 +741,28 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveGlobalState(
                 _,
                 acquired_signatures,
-                acquired_deploys,
+                acquired_transactions,
                 ..,
             ) => {
-                acquired_deploys.needs_transaction() == false
+                acquired_transactions.needs_transaction() == false
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict
             }
             BlockAcquisitionState::HaveApprovalsHashes(
                 _,
                 acquired_signatures,
-                acquired_deploys,
+                acquired_transactions,
             ) => {
-                acquired_deploys.needs_transaction() == false
+                acquired_transactions.needs_transaction() == false
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict
             }
             BlockAcquisitionState::HaveAllExecutionResults(
                 _,
                 acquired_signatures,
-                acquired_deploys,
+                acquired_transactions,
                 ..,
             ) => {
                 acquired_signatures.is_legacy()
-                    && acquired_deploys.needs_transaction() == false
+                    && acquired_transactions.needs_transaction() == false
                     && acquired_signatures.signature_weight() != SignatureWeight::Strict
             }
             BlockAcquisitionState::HaveAllTransactions(_, acquired_signatures) => {
@@ -811,8 +811,8 @@ impl BlockAcquisitionState {
                     && acquired_transactions.needs_transaction() == false
                     && acquired_signatures.has_sufficient_finality(is_historical, true)
                 {
-                    // When syncing a forward block, if we don't need deploys and have all required
-                    // signatures, advance the state
+                    // When syncing a forward block, if we don't need transactions and have all
+                    // required signatures, advance the state
                     Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
                         block.clone(),
                         acquired_signatures.clone(),
@@ -825,12 +825,12 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 acquired_signatures,
-                acquired_deploys,
+                acquired_transactions,
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
-                if !acquired_deploys.needs_transaction()
+                if !acquired_transactions.needs_transaction()
                     && acquired_signatures.has_sufficient_finality(is_historical, true)
                 {
                     Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -849,13 +849,13 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveAllExecutionResults(
                 block,
                 acquired_signatures,
-                acquired_deploys,
+                acquired_transactions,
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if acquired_signatures.is_legacy()
-                    && acquired_deploys.needs_transaction() == false
+                    && acquired_transactions.needs_transaction() == false
                     && acquired_signatures.has_sufficient_finality(is_historical, true)
                 {
                     Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -951,8 +951,8 @@ impl BlockAcquisitionState {
                     transactions.clone(),
                 )
             }
-            // we never ask for deploys in the following states, and thus it is erroneous to attempt
-            // to apply any
+            // we never ask for transactions in the following states, and thus it is erroneous to
+            // attempt to apply any
             BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::Initialized(..)
@@ -1076,7 +1076,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
-                deploys,
+                transactions,
                 exec_results_acq,
             ) if need_execution_state => {
                 info!(
@@ -1111,7 +1111,7 @@ impl BlockAcquisitionState {
                             let new_state = BlockAcquisitionState::HaveGlobalState(
                                 block.clone(),
                                 signatures.clone(),
-                                deploys.clone(),
+                                transactions.clone(),
                                 new_acquisition.clone(),
                             );
                             let maybe_exec_results = Some(results.clone());
@@ -1122,7 +1122,7 @@ impl BlockAcquisitionState {
                             let new_state = BlockAcquisitionState::HaveGlobalState(
                                 block.clone(),
                                 signatures.clone(),
-                                deploys.clone(),
+                                transactions.clone(),
                                 new_acquisition,
                             );
                             let maybe_exec_results = None;
@@ -1169,7 +1169,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
-                deploys,
+                transactions,
                 ExecutionResultsAcquisition::Complete { checksum, .. },
             ) if need_execution_state => {
                 info!(
@@ -1179,7 +1179,7 @@ impl BlockAcquisitionState {
                 BlockAcquisitionState::HaveAllExecutionResults(
                     block.clone(),
                     signatures.clone(),
-                    deploys.clone(),
+                    transactions.clone(),
                     *checksum,
                 )
             }
@@ -1241,13 +1241,16 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::Complete(..) => {
                 debug!(
                     ?txn_id,
-                    "BlockAcquisition: invalid attempt to register deploy for: {}",
+                    "BlockAcquisition: invalid attempt to register transaction for: {}",
                     self.block_hash()
                 );
                 return Ok(None);
             }
         };
-        info!("BlockAcquisition: registering deploy for: {}", block.hash());
+        info!(
+            "BlockAcquisition: registering transaction for: {}",
+            block.hash()
+        );
         let maybe_acceptance = transactions.apply_transaction(txn_id);
         if !transactions.needs_transaction() {
             let new_state =

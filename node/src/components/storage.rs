@@ -340,6 +340,9 @@ impl Storage {
                     // Truncate the sequences in case we removed blocks via a hard reset.
                     if let Some(header) = DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)? {
                         sequences.truncate(header.height());
+                    } else {
+                        // No tip left, the database is empty
+                        sequences.clear();
                     }
 
                     component.completed_blocks = sequences;

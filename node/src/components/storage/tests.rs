@@ -3179,7 +3179,7 @@ fn storage_should_warm_up_utilization_tracking() {
     // We want the warm up to happen again
     let storage = storage_fixture(&harness);
     // We don't care about old eras
-    assert!(storage.utilization_tracker.get(&EraId::new(1)).is_none());
+    assert!(!storage.utilization_tracker.contains_key(&EraId::new(1)));
     let utilization_for_era_2 = storage
         .utilization_tracker
         .get(&EraId::new(2))

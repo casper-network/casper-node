@@ -719,8 +719,8 @@ impl BlockBuilder {
                     execution_results_acquisition::Error::InvalidChunkCount { .. }
                     | execution_results_acquisition::Error::ChecksumMismatch { .. }
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
-                    | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
-                        debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
+                    | execution_results_acquisition::Error::ExecutionResultToTransactionHashLengthDiscrepancy { .. } => {
+                        debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToTransactionHashLengthDiscrepancy");
                         if let Some(peer) = maybe_peer {
                             self.disqualify_peer(peer);
                         }
@@ -794,11 +794,11 @@ impl BlockBuilder {
         txn_id: TransactionId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        let was_waiting_for_deploys = self.waiting_for_transactions();
+        let was_waiting_for_transactions = self.waiting_for_transactions();
         let acceptance = self
             .acquisition_state
             .register_transaction(txn_id, self.should_fetch_execution_state);
-        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_deploys)
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_transactions)
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
