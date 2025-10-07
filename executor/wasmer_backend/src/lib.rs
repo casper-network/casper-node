@@ -88,15 +88,17 @@ impl WasmerEngine {
     pub fn instantiate<T: Into<Bytes>, S: GlobalStateReader + 'static, E: Executor + 'static>(
         &self,
         wasm_bytes: T,
-        context: Context<S, E>,
+        executor: E,
+        context: Context<S>,
         config: Config,
-    ) -> Result<impl WasmInstance<Context = Context<S, E>>, WasmPreparationError> {
-        WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)
+    ) -> Result<impl WasmInstance<Context = Context<S>>, WasmPreparationError> {
+        WasmerInstance::from_wasm_bytes(wasm_bytes, executor, context, config)
     }
 }
 
 struct WasmerEnv<S: GlobalStateReader, E: Executor> {
-    context: Context<S, E>,
+    context: Context<S>,
+    executor: E,
     instance: Weak<Instance>,
     bytecode: Bytes,
     exported_runtime: Option<ExportedRuntime>,
@@ -154,19 +156,24 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
 }
 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
-    type Context = Context<S, E>;
+    type Context = Context<S>;
+    type Executor = E;
 
     fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()> {
         self.with_memory(|mem| mem.write(offset.into(), data))?
             .map_err(from_wasmer_memory_access_error)
     }
 
-    fn context(&self) -> &Context<S, E> {
+    fn context(&self) -> &Context<S> {
         &self.env.data().context
     }
 
-    fn context_mut(&mut self) -> &mut Context<S, E> {
+    fn context_mut(&mut self) -> &mut Context<S> {
         &mut self.env.data_mut().context
+    }
+
+    fn executor(&self) -> &Self::Executor {
+        &self.env.data().executor
     }
 
     fn bytecode(&self) -> Bytes {
@@ -255,9 +262,15 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
 }
 
 impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
-    fn new(context: Context<S, E>, code: Bytes, interface_version: InterfaceVersion) -> Self {
+    fn new(
+        context: Context<S>,
+        executor: E,
+        code: Bytes,
+        interface_version: InterfaceVersion,
+    ) -> Self {
         Self {
             context,
+            executor,
             instance: Weak::new(),
             exported_runtime: None,
             bytecode: code,
@@ -324,7 +337,8 @@ where
 
     pub(crate) fn from_wasm_bytes<C: Into<Bytes>>(
         wasm_bytes: C,
-        context: Context<S, E>,
+        executor: E,
+        context: Context<S>,
         config: Config,
     ) -> Result<Self, WasmPreparationError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
@@ -360,7 +374,8 @@ where
 
         let mut store = Store::new(engine);
 
-        let wasmer_env = WasmerEnv::new(context, wasm_bytes, InterfaceVersion::from(1u32));
+        let wasmer_env =
+            WasmerEnv::new(context, executor, wasm_bytes, InterfaceVersion::from(1u32));
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
 
         let memory = Memory::new(
@@ -465,7 +480,7 @@ where
     S: GlobalStateReader + 'static,
     E: Executor + 'static,
 {
-    type Context = Context<S, E>;
+    type Context = Context<S>;
     fn call_export(&mut self, name: &str) -> (VMResult<()>, GasUsage) {
         let vm_result = self.call_export(name);
 
@@ -483,7 +498,7 @@ where
     }
 
     /// Consume instance object and retrieve the [`Context`] object.
-    fn teardown(self) -> Context<S, E> {
+    fn teardown(self) -> Context<S> {
         let WasmerInstance { env, mut store, .. } = self;
 
         let mut env_mut = env.into_mut(&mut store);
@@ -503,7 +518,6 @@ where
             baseline_motes_amount: data.context.baseline_motes_amount,
             transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
-            executor: data.context.executor.clone(),
             transaction_hash: data.context.transaction_hash,
             address_generator: Arc::clone(&data.context.address_generator),
             chain_name: data.context.chain_name.clone(),

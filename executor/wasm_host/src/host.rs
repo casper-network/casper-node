@@ -85,8 +85,8 @@ where
 }
 
 /// Consumes imputed amount of gas.
-fn charge_gas<S: GlobalStateReader, E: Executor>(
-    caller: &mut impl Caller<Context = Context<S, E>>,
+fn charge_gas<S: GlobalStateReader>(
+    caller: &mut impl Caller<Context = Context<S>>,
     imputed: u64,
 ) -> VMResult<()> {
     caller.consume_gas(imputed)?;
@@ -94,8 +94,8 @@ fn charge_gas<S: GlobalStateReader, E: Executor>(
 }
 
 /// Consumes a set amount of gas for the specified storage value.
-fn charge_gas_storage<S: GlobalStateReader, E: Executor>(
-    caller: &mut impl Caller<Context = Context<S, E>>,
+fn charge_gas_storage<S: GlobalStateReader>(
+    caller: &mut impl Caller<Context = Context<S>>,
     size_bytes: usize,
 ) -> VMResult<()> {
     let storage_costs = &caller.context().storage_costs;
@@ -106,14 +106,13 @@ fn charge_gas_storage<S: GlobalStateReader, E: Executor>(
 }
 
 /// Consumes a set amount of gas for the specified host function and weights
-fn charge_host_function_call<S, E, const N: usize>(
-    caller: &mut impl Caller<Context = Context<S, E>>,
+fn charge_host_function_call<S, const N: usize>(
+    caller: &mut impl Caller<Context = Context<S>>,
     host_function: &HostFunctionV2<[u64; N]>,
     weights: [u64; N],
 ) -> VMResult<()>
 where
     S: GlobalStateReader,
-    E: Executor,
 {
     let Some(cost) = host_function.calculate_gas_cost(weights) else {
         // Overflowing gas calculation means gas limit was exceeded
@@ -125,8 +124,8 @@ where
 }
 
 /// Writes a message to the global state and charges for storage used.
-fn metered_write<S: GlobalStateReader, E: Executor>(
-    caller: &mut impl Caller<Context = Context<S, E>>,
+fn metered_write<S: GlobalStateReader>(
+    caller: &mut impl Caller<Context = Context<S>>,
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
@@ -140,8 +139,8 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
 }
 
 /// Write value under a key.
-pub fn casper_write<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_write<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     key_space: u64,
     key_ptr: u32,
     key_size: u32,
@@ -312,8 +311,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 ///
 /// The name for this host function is `remove` to keep it simple and consistent with read/write
 /// verbs, and also consistent with the rust stdlib vocabulary i.e. `V`
-pub fn casper_remove<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_remove<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     key_space: u64,
     key_ptr: u32,
     key_size: u32,
@@ -400,8 +399,8 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     Ok(HOST_ERROR_SUCCESS)
 }
 
-pub fn casper_print<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_print<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     message_ptr: u32,
     message_size: u32,
 ) -> VMResult<()> {
@@ -422,8 +421,8 @@ pub fn casper_print<S: GlobalStateReader, E: Executor>(
 }
 
 /// Write value under a key.
-pub fn casper_read<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_read<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     key_tag: u64,
     key_ptr: u32,
     key_size: u32,
@@ -616,8 +615,8 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     Ok(HOST_ERROR_SUCCESS)
 }
 
-fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
-    context: &Context<S, E>,
+fn keyspace_to_global_state_key<S: GlobalStateReader>(
+    context: &Context<S>,
     keyspace: Keyspace<'_>,
 ) -> Option<Key> {
     let entity_addr = context_to_entity_addr(context);
@@ -655,9 +654,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
     }
 }
 
-fn context_to_entity_addr<S: GlobalStateReader, E: Executor>(
-    context: &Context<S, E>,
-) -> EntityAddr {
+fn context_to_entity_addr<S: GlobalStateReader>(context: &Context<S>) -> EntityAddr {
     match context.callee {
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
         Key::Hash(hash_addr) => EntityAddr::SmartContract(hash_addr),
@@ -669,8 +666,8 @@ fn context_to_entity_addr<S: GlobalStateReader, E: Executor>(
     }
 }
 
-pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_copy_input<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> VMResult<u32> {
@@ -705,8 +702,8 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
 }
 
 /// Returns from the execution of a smart contract with an optional flags.
-pub fn casper_return<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_return<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     flags: u32,
     data_ptr: u32,
     data_len: u32,
@@ -747,8 +744,8 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_create<S: GlobalStateReader + 'static>(
+    mut caller: impl Caller<Context = Context<S>>,
     code_ptr: u32,
     code_len: u32,
     transferred_value: u64,
@@ -1037,8 +1034,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
             let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
             match caller
-                .context()
-                .executor
+                .executor()
                 .execute(tracking_copy_for_ctor, execute_request)
             {
                 Ok(ExecuteResult {
@@ -1087,8 +1083,8 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_system<S: GlobalStateReader + 'static>(
+    mut caller: impl Caller<Context = Context<S>>,
     system_contract_opt: u32,
     input_ptr: u32,
     input_len: u32,
@@ -1189,8 +1185,8 @@ pub fn casper_system<S: GlobalStateReader + 'static, E: Executor + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_call<S: GlobalStateReader + 'static>(
+    mut caller: impl Caller<Context = Context<S>>,
     address_ptr: u32,
     address_len: u32,
     transferred_value: u64,
@@ -1294,19 +1290,15 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     ret
 }
 
-fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+fn exec<S: GlobalStateReader + 'static>(
+    mut caller: impl Caller<Context = Context<S>>,
     execute_request: ExecuteRequest,
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> VMResult<u32> {
     let tracking_copy = caller.context().tracking_copy.fork2();
 
-    let (gas_usage, host_result) = match caller
-        .context()
-        .executor
-        .execute(tracking_copy, execute_request)
-    {
+    let (gas_usage, host_result) = match caller.executor().execute(tracking_copy, execute_request) {
         Ok(ExecuteResult {
             host_error,
             output,
@@ -1360,8 +1352,8 @@ fn exec<S: GlobalStateReader + 'static, E: Executor + 'static>(
     Ok(u32_from_host_result(host_result))
 }
 
-pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_env_balance<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     entity_kind: u32,
     entity_addr_ptr: u32,
     entity_addr_len: u32,
@@ -1525,8 +1517,8 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
     Ok(HOST_ERROR_NOT_FOUND)
 }
 
-pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_upgrade<S: GlobalStateReader + 'static>(
+    mut caller: impl Caller<Context = Context<S>>,
     code_ptr: u32,
     code_size: u32,
     entry_point_ptr: u32,
@@ -1874,8 +1866,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
         let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
         match caller
-            .context()
-            .executor
+            .executor()
             .execute(tracking_copy_for_ctor, execute_request)
         {
             Ok(ExecuteResult {
@@ -1924,8 +1915,8 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     Ok(CALLEE_SUCCEEDED)
 }
 
-pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_env_info<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     info_ptr: u32,
     info_size: u32,
 ) -> VMResult<u32> {
@@ -1982,8 +1973,8 @@ pub fn casper_env_info<S: GlobalStateReader, E: Executor>(
     Ok(HOST_ERROR_SUCCESS)
 }
 
-pub fn casper_emit<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_emit<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     topic_name_ptr: u32,
     topic_name_size: u32,
     payload_ptr: u32,
@@ -2199,8 +2190,8 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
 /// * `in_size` - size of output pointer
 /// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
 /// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
-pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_generic_hash<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     in_ptr: u32,
     in_size: u32,
     hash_algorithm: u32,
@@ -2282,8 +2273,8 @@ pub fn casper_generic_hash<S: GlobalStateReader, E: Executor>(
 ///     multiplication 𝑘×𝑮 odd?
 ///   - Hi bit (3/4): did the affine x-coordinate of 𝑘×𝑮 overflow the order of the scalar field,
 ///     requiring a reduction when computing r?
-pub fn casper_recover_secp256k1<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<Context = Context<S, E>>,
+pub fn casper_recover_secp256k1<S: GlobalStateReader>(
+    mut caller: impl Caller<Context = Context<S>>,
     message_ptr: u32,
     message_size: u32,
     signature_ptr: u32,
