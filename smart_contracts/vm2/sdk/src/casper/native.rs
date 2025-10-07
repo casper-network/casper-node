@@ -13,7 +13,7 @@ use crate::linkme::distributed_slice;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
     error::{
-        CALLEE_REVERTED, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
+        CALLEE_ROLLED_BACK, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
         HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
     },
     flags::ReturnFlags,
@@ -497,7 +497,7 @@ impl Environment {
             match result {
                 Ok(()) => {}
                 Err(NativeTrap::Return(flags, bytes)) => {
-                    if flags.contains(ReturnFlags::REVERT) {
+                    if flags.contains(ReturnFlags::ROLLBACK) {
                         todo!("Constructor returned with a revert flag");
                     }
                     assert!(bytes.is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
@@ -576,8 +576,8 @@ impl Environment {
                     }
                 }
 
-                if flags.contains(ReturnFlags::REVERT) {
-                    Ok(CALLEE_REVERTED)
+                if flags.contains(ReturnFlags::ROLLBACK) {
+                    Ok(CALLEE_ROLLED_BACK)
                 } else {
                     Ok(CALLEE_SUCCEEDED)
                 }

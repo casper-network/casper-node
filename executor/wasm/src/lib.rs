@@ -988,9 +988,24 @@ impl ExecutorV2 {
                 messages: final_tracking_copy.messages(),
             }),
             Err(VMError::Return { flags, data }) => {
-                let host_error = if flags.contains(ReturnFlags::REVERT) {
-                    // The contract has reverted.
-                    Some(CallError::CalleeReverted)
+                if flags.contains(ReturnFlags::REVERT) {
+                    let message = data
+                        .as_ref()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default();
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::Api(message)),
+                        output: None,
+                        gas_usage,
+                        effects: initial_tracking_copy.effects(),
+                        cache: initial_tracking_copy.cache(),
+                        messages: initial_tracking_copy.messages(),
+                    });
+                }
+
+                let host_error = if flags.contains(ReturnFlags::ROLLBACK) {
+                    // The contract has rolled back.
+                    Some(CallError::CalleeRolledBack)
                 } else {
                     // Merge the tracking copy parts since the execution has succeeded.
                     initial_tracking_copy.apply_changes(
@@ -1147,7 +1162,7 @@ impl ExecutorV2 {
                 }
                 let revert_code: u32 = (*revert_code).into();
                 output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.
-                Some(CallError::CalleeReverted)
+                Some(CallError::CalleeRolledBack)
             }
             Some(_) => Some(CallError::CalleeTrapped(TrapCode::UnreachableCodeReached)),
             None => None,
@@ -1309,7 +1324,7 @@ impl Executor for ExecutorV2 {
             error: execute_result
                 .host_error
                 .map(|call_error| match call_error {
-                    CallError::CalleeReverted => SandboxedExecutionError::CalleeReverted,
+                    CallError::CalleeRolledBack => SandboxedExecutionError::CalleeRolledBack,
                     CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,

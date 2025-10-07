@@ -113,10 +113,10 @@ macro_rules! log {
 }
 
 #[macro_export]
-macro_rules! revert {
+macro_rules! rollback {
     () => {{
         $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
             None,
         );
         unreachable!()
@@ -126,11 +126,45 @@ macro_rules! revert {
         let data =
             $crate::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
         $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
             Some(data.as_slice()),
         );
         #[allow(unreachable_code)]
         value
+    }};
+}
+
+#[macro_export]
+macro_rules! ret {
+    ($arg:expr) => {{
+        let data =
+            $crate::serializers::borsh::to_vec(&$arg).expect("Return value should serialize");
+        $crate::casper::ret(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::empty(),
+            Some(data.as_slice()),
+        );
+        #[allow(unreachable_code)]
+        $arg
+    }};
+}
+
+#[macro_export]
+macro_rules! revert {
+    () => {{
+        $crate::casper::ret(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            None,
+        );
+        unreachable!()
+    }};
+    ($msg:expr) => {{
+        let msg: &str = $msg;
+        let bytes = msg.as_bytes();
+        $crate::casper::ret(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            Some(bytes),
+        );
+        unreachable!()
     }};
 }
 
@@ -148,7 +182,7 @@ where
         self.unwrap_or_else(|error| {
             let error_data = borsh::to_vec(&error).expect("Revert value should serialize");
             casper::ret(
-                casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+                casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
                 Some(error_data.as_slice()),
             );
             unreachable!("Support for unwrap_or_revert")
