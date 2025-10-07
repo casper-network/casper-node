@@ -163,6 +163,7 @@ where
         &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
+        let enable_addressable_entity = self.addressable_entity_enabled;
         let entity_key = match entity_addr {
             EntityAddr::Account(account_addr) => {
                 let account_key = Key::Account(AccountHash::new(account_addr));
@@ -185,51 +186,57 @@ where
             EntityAddr::SmartContract(addr) | EntityAddr::System(addr) => {
                 let contract_key = Key::Hash(addr);
                 match self.read(&contract_key)? {
-                    Some(StoredValue::Contract(contract)) => {
-                        let contract_hash = ContractHash::new(entity_addr.value());
-                        let maybe_system_entity_type = {
-                            let mut ret = None;
-                            let registry = self.get_system_entity_registry()?;
-                            for (name, hash) in registry.inner().into_iter() {
-                                if hash == entity_addr.value() {
-                                    match name.as_ref() {
-                                        MINT => ret = Some(SystemEntityType::Mint),
-                                        AUCTION => ret = Some(SystemEntityType::Auction),
-                                        HANDLE_PAYMENT => {
-                                            ret = Some(SystemEntityType::HandlePayment)
-                                        }
-                                        _ => continue,
-                                    }
-                                }
-                            }
-
-                            ret
-                        };
-
-                        if maybe_system_entity_type.is_some() {
-                            return Ok(RuntimeFootprint::new_vm1_contract_footprint(
-                                contract_hash,
-                                contract,
-                                maybe_system_entity_type,
-                            ));
-                        }
-
-                        let footprint = if self
-                            .read(&Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-                                contract.contract_wasm_hash().value(),
-                            )))?
-                            .is_some()
-                        {
-                            RuntimeFootprint::new_vm2_contract_footprint
-                        } else {
-                            RuntimeFootprint::new_vm1_contract_footprint
-                        };
-
-                        return Ok(footprint(contract_hash, contract, maybe_system_entity_type));
-                    }
+                    Some(StoredValue::Contract(_)) => contract_key,
                     Some(StoredValue::CLValue(cl_value)) => cl_value.to_t::<Key>()?,
                     Some(_) | None => Key::AddressableEntity(entity_addr),
                 }
+            }
+            EntityAddr::Package(addr) => {
+                let key = if enable_addressable_entity {
+                    Key::Package(addr)
+                } else {
+                    Key::Hash(addr)
+                };
+
+                let contract_key = match self.read(&key)? {
+                    Some(StoredValue::SmartContract(package)) => {
+                        match package.versions().latest() {
+                            Some(entity_addr) => {
+                                if !enable_addressable_entity {
+                                    return Err(Self::Error::UnexpectedStoredValueVariant);
+                                }
+                                Key::AddressableEntity(*entity_addr)
+                            }
+                            None => return Err(Self::Error::NoActiveContracts),
+                        }
+                    }
+                    Some(StoredValue::ContractPackage(package)) => {
+                        match package.versions().last_key_value() {
+                            Some((_, hash)) => {
+                                if enable_addressable_entity {
+                                    return Err(Self::Error::UnexpectedStoredValueVariant);
+                                }
+                                Key::Hash(hash.value())
+                            }
+                            None => return Err(Self::Error::NoActiveContracts),
+                        }
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "ContractPackage and Package".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(TrackingCopyError::KeyNotFound(Key::AddressableEntity(
+                            entity_addr,
+                        )))
+                    }
+                };
+
+                contract_key
             }
         };
 
@@ -258,13 +265,12 @@ where
                                         "runtime_footprint_by_entity_addr TODO: Karan what is the expected behavior for this case, for a AE package?"
                                     );
                                 }
-                                // return Err(TrackingCopyError::TypeMismatch(
-                                //     StoredValueTypeMismatch::new(
-                                //         "CLValue".to_string(),
-                                //         cl_value.cl_type().to_string(),
-                                //     ),
-                                // ));
-                                continue; // skip? not sure what the expected handling is
+                                return Err(TrackingCopyError::TypeMismatch(
+                                    StoredValueTypeMismatch::new(
+                                        "CLValue".to_string(),
+                                        cl_value.cl_type().to_string(),
+                                    ),
+                                ));
                             }
                             Some(other) => {
                                 return Err(TrackingCopyError::TypeMismatch(
@@ -340,6 +346,47 @@ where
                     entry_points,
                 ))
             }
+            Some(StoredValue::Contract(contract)) => {
+                let contract_hash = ContractHash::new(entity_addr.value());
+                let maybe_system_entity_type = {
+                    let mut ret = None;
+                    let registry = self.get_system_entity_registry()?;
+                    for (name, hash) in registry.inner().into_iter() {
+                        if hash == entity_addr.value() {
+                            match name.as_ref() {
+                                MINT => ret = Some(SystemEntityType::Mint),
+                                AUCTION => ret = Some(SystemEntityType::Auction),
+                                HANDLE_PAYMENT => ret = Some(SystemEntityType::HandlePayment),
+                                _ => continue,
+                            }
+                        }
+                    }
+
+                    ret
+                };
+
+                if maybe_system_entity_type.is_some() {
+                    return Ok(RuntimeFootprint::new_vm1_contract_footprint(
+                        contract_hash,
+                        contract,
+                        maybe_system_entity_type,
+                    ));
+                }
+
+                let footprint = if self
+                    .read(&Key::ByteCode(ByteCodeAddr::V2CasperWasm(
+                        contract.contract_wasm_hash().value(),
+                    )))?
+                    .is_some()
+                {
+                    RuntimeFootprint::new_vm2_contract_footprint
+                } else {
+                    RuntimeFootprint::new_vm1_contract_footprint
+                };
+
+                Ok(footprint(contract_hash, contract, maybe_system_entity_type))
+            }
+
             Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("AddressableEntity".to_string(), other.type_name()),
             )),
@@ -616,9 +663,9 @@ where
                 } else {
                     let named_key_value = StoredValue::CLValue(CLValue::from_t((name, uref_key))?);
                     let base_key = match entity_addr {
-                        EntityAddr::System(hash_addr) | EntityAddr::SmartContract(hash_addr) => {
-                            Key::Hash(hash_addr)
-                        }
+                        EntityAddr::System(hash_addr)
+                        | EntityAddr::SmartContract(hash_addr)
+                        | EntityAddr::Package(hash_addr) => Key::Hash(hash_addr),
                         EntityAddr::Account(addr) => Key::Account(AccountHash::new(addr)),
                     };
                     self.add(base_key, named_key_value)?;

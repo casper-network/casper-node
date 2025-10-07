@@ -1631,6 +1631,7 @@ where
                 EntityAddr::System(system_hash_addr) => Key::Hash(system_hash_addr),
                 EntityAddr::Account(hash_addr) => Key::Account(AccountHash::new(hash_addr)),
                 EntityAddr::SmartContract(contract_hash_addr) => Key::Hash(contract_hash_addr),
+                EntityAddr::Package(package_hash) => Key::Hash(package_hash),
             }
         }
     }
@@ -1918,6 +1919,7 @@ where
                     }
                     EntityKind::Account(_) => {}
                     EntityKind::SmartContract(_) => {}
+                    EntityKind::Package(_) => {}
                 }
                 return Err(ExecError::NoSuchMethod(entry_point_name.to_owned()));
             }
@@ -2133,6 +2135,9 @@ where
                     } else {
                         Key::Hash(byte_code_addr)
                     }
+                }
+                EntityKind::Package(_) => {
+                    return Err(ExecError::UnexpectedEntityKind(footprint.entity_kind()))
                 }
                 EntityKind::SmartContract(runtime @ ContractRuntimeTag::VmCasperV2) => {
                     return Err(ExecError::IncompatibleRuntime(runtime));

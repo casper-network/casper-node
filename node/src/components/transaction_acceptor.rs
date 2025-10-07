@@ -682,7 +682,8 @@ impl TransactionAcceptor {
         match addressable_entity.kind() {
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1)
             | EntityKind::Account(_)
-            | EntityKind::System(_) => {
+            | EntityKind::System(_)
+            | EntityKind::Package(_) => {
                 if !entry_point_exist {
                     let error = Error::parameter_failure(
                         &block_header,

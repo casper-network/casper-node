@@ -1159,6 +1159,7 @@ impl Key {
             EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
             EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
             EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
+            EntityKindTag::Package => EntityAddr::new_package(entity_hash.value()),
         };
 
         Key::AddressableEntity(entity_addr)
@@ -1231,10 +1232,7 @@ impl Key {
     /// Returns if the inner address is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
         if let Self::AddressableEntity(entity_addr) = self {
-            return match entity_addr.tag() {
-                EntityKindTag::System => true,
-                EntityKindTag::SmartContract | EntityKindTag::Account => false,
-            };
+            return matches!(entity_addr.tag(), EntityKindTag::System);
         }
         false
     }

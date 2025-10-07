@@ -4476,6 +4476,18 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Package"
+          ],
+          "properties": {
+            "Package": {
+              "$ref": "#/definitions/PackageHash"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4676,7 +4688,7 @@
       "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
       "anyOf": [
         {
-          "description": "The address for a system entity account or contract.",
+          "description": "The address for a system entity contract.",
           "type": "string"
         },
         {
@@ -4685,6 +4697,10 @@
         },
         {
           "description": "The address of an entity that corresponds to a Userland smart contract.",
+          "type": "string"
+        },
+        {
+          "description": "The address of an entity that corresponds to a Userland smart contract package.",
           "type": "string"
         }
       ]

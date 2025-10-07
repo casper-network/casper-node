@@ -2262,7 +2262,9 @@ pub trait StateProvider: Send + Sync + Sized {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
-                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::System(hash)
+                | EntityAddr::SmartContract(hash)
+                | EntityAddr::Package(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
             }
         };
@@ -2391,6 +2393,7 @@ pub trait StateProvider: Send + Sync + Sized {
             match entity_addr {
                 EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+                EntityAddr::Package(hash_addr) => Key::Hash(hash_addr),
             }
         };
 

@@ -91,6 +91,9 @@ pub enum Error {
     /// Error occurred when trying to rewrap a historical record
     #[error("Error when mapping historical entity to contemporary form {0}")]
     ErrorWhenRewraping(String),
+    /// No active contracts in the package
+    #[error("No active versions in a give package")]
+    NoActiveContracts,
 }
 
 impl Error {

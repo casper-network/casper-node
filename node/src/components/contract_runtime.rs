@@ -478,6 +478,13 @@ impl ContractRuntime {
                 async move {
                     let start = Instant::now();
                     let entity_key = match entity_addr {
+                        EntityAddr::Package(hash) => {
+                            if data_access_layer.addressable_entity_enabled {
+                                Key::Package(hash)
+                            } else {
+                                Key::Hash(hash)
+                            }
+                        }
                         EntityAddr::SmartContract(_) | EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
                         EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
                     };
