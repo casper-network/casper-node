@@ -6,6 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use casper_execution_engine::runtime::cryptography;
 use casper_executor_wasm::{
     install::{InstallContractError, InstallContractRequest},
     testing::{
@@ -32,6 +33,7 @@ use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         MessageTopicsRequest, MessageTopicsResult, QueryRequest, QueryResult,
     },
     global_state::{
@@ -45,9 +47,11 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::ToBytes,
+    contract_messages::{Message, MessageChecksum, MessagePayload},
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
-    BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
+    BlockHash, BlockTime, Digest, EntityAddr, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue,
+    Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -1765,4 +1769,273 @@ fn supports_named_args_convention() {
         .expect("Should commit");
 
     assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn installing_contract_should_produce_system_messages() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+    let request = TaggedValuesRequest::new(
+        post_state_root_hash,
+        TaggedValuesSelection::All(KeyTag::Message),
+    );
+    let message_checksums: Vec<MessageChecksum> = as_values(global_state.tagged_values(request))
+        .unwrap()
+        .into_iter()
+        .filter_map(|stored_value| match stored_value {
+            StoredValue::Message(message_checksum) => Some(message_checksum),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(message_checksums.len(), 4);
+    let key_of_contract = Key::AddressableEntity(EntityAddr::SmartContract(
+        *create_result.smart_contract_addr(),
+    ));
+    let (key_of_package, key_of_wasm) =
+        get_contract_package_and_wasms(post_state_root_hash, &global_state, key_of_contract);
+
+    let system_account_hash = PublicKey::System.to_account_hash().value();
+    let entity_addr = EntityAddr::Account(system_account_hash);
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_package.to_formatted_string(),
+        "package_key",
+        entity_addr,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_contract.to_formatted_string(),
+        "contract_key",
+        entity_addr,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_wasm.to_formatted_string(),
+        "wasm_key",
+        entity_addr,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &format!("{}.{}", 2, 1),
+        "contract_version",
+        entity_addr,
+        3,
+        0,
+    );
+}
+
+#[test]
+fn installing_contract_should_produce_system_messages_after_upgrade() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let upgradable_address;
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    state_root_hash = {
+        let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
+
+        let create_request = base_install_request_builder(&chainspec_config)
+            .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+            .with_shared_address_generator(Arc::clone(&address_generator))
+            .with_gas_limit(DEFAULT_GAS_LIMIT)
+            .with_transferred_value(0)
+            .with_entry_point("new".to_string())
+            .with_input(input_data)
+            .build()
+            .expect("should build");
+
+        let create_result = run_create_contract(
+            &mut executor,
+            &global_state,
+            state_root_hash,
+            create_request,
+        );
+
+        upgradable_address = *create_result.smart_contract_addr();
+
+        global_state
+            .commit_effects(state_root_hash, create_result.effects().clone())
+            .expect("Should commit")
+    };
+    let binding = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = binding.as_ref();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_transferred_value(0)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: upgradable_address,
+            entry_point: "perform_upgrade".to_string(),
+        })
+        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_serialized_input((new_code,))
+        .expect("expected serialized input to be correct")
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+    let res = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+    let state_root_hash_after_upgrade = global_state
+        .commit_effects(state_root_hash, res.effects().clone())
+        .expect("Should commit");
+
+    let request = TaggedValuesRequest::new(
+        state_root_hash_after_upgrade,
+        TaggedValuesSelection::All(KeyTag::Message),
+    );
+    let message_checksums: Vec<MessageChecksum> = as_values(global_state.tagged_values(request))
+        .unwrap()
+        .into_iter()
+        .filter_map(|stored_value| match stored_value {
+            StoredValue::Message(message_checksum) => Some(message_checksum),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(message_checksums.len(), 4);
+    let key_of_contract = Key::AddressableEntity(EntityAddr::SmartContract(upgradable_address));
+    let (key_of_package, key_of_wasm) = get_contract_package_and_wasms(
+        state_root_hash_after_upgrade,
+        &global_state,
+        key_of_contract,
+    );
+
+    let system_account_hash = PublicKey::System.to_account_hash().value();
+    let entity_addr = EntityAddr::Account(system_account_hash);
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_package.to_formatted_string(),
+        "package_key",
+        entity_addr,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_contract.to_formatted_string(),
+        "contract_key",
+        entity_addr,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_wasm.to_formatted_string(),
+        "wasm_key",
+        entity_addr,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &format!("{}.{}", 2, 2),
+        "contract_version",
+        entity_addr,
+        3,
+        0,
+    );
+}
+
+fn get_contract_package_and_wasms(
+    state_hash: Digest,
+    global_state: &LmdbGlobalState,
+    key_of_contract: Key,
+) -> (Key, Key) {
+    let mut tc = global_state.tracking_copy(state_hash).unwrap().unwrap();
+    let z = tc.read(&key_of_contract).unwrap().unwrap();
+    match z {
+        StoredValue::AddressableEntity(ae) => (
+            Key::SmartContract(ae.package_hash().value()),
+            Key::ByteCode(ByteCodeAddr::V2CasperWasm(ae.byte_code_addr())),
+        ),
+        StoredValue::Contract(ctr) => (
+            Key::Hash(ctr.contract_package_hash().value()),
+            ctr.contract_wasm_key(),
+        ),
+        _ => unreachable!(),
+    }
+}
+
+fn as_values(res: TaggedValuesResult) -> Option<Vec<StoredValue>> {
+    match res {
+        TaggedValuesResult::Success {
+            selection: _,
+            values,
+        } => Some(values),
+        _ => None,
+    }
+}
+
+fn expect_message_on_topic_and_index(
+    state_hash: Digest,
+    global_state: &LmdbGlobalState,
+    message: &str,
+    topic_name: &str,
+    entity_addr: EntityAddr,
+    index_in_block: u64,
+    index_in_topic: u32,
+) {
+    let topic_name_hash = cryptography::blake2b(topic_name);
+    let key = Key::message(entity_addr, topic_name_hash.into(), index_in_topic);
+    let res = global_state.query(QueryRequest::new(state_hash, key, vec![]));
+    let got_message_checksum = match res {
+        QueryResult::Success { value, proofs: _ } => value.as_message_checksum().unwrap().clone(),
+        _ => unreachable!(),
+    };
+    let message = Message::new(
+        entity_addr,
+        MessagePayload::String(message.to_string()),
+        topic_name.to_string(),
+        topic_name_hash.into(),
+        index_in_topic,
+        index_in_block,
+    );
+    let message_checksum = message.checksum().unwrap();
+    assert_eq!(got_message_checksum, message_checksum);
 }

@@ -46,10 +46,8 @@ use casper_types::{
 use crate::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator, MESSAGING_ADDR_ENTITY_ADDR_TOPIC, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
-    MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
-    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
-    MESSAGING_PACKAGE_ADDR_TOPIC,
+    AddressGenerator, MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
+    MESSAGING_CONTRACT_WASM_ADDR_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 
 const NO_CARRY_FORWARD: bool = false;
@@ -328,15 +326,9 @@ where
         &mut self,
         block_time: BlockTime,
     ) -> Result<(), ProtocolUpgradeError> {
-        if self.config.addressable_entity_enabled() {
-            self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
-        } else {
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
-        }
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())
     }

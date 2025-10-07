@@ -18,9 +18,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageIdentifier,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
+    DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{

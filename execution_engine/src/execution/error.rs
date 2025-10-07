@@ -208,6 +208,12 @@ pub enum Error {
     /// Unexpected entity addr.
     #[error("Unexpected entity kind variant: {0}")]
     UnexpectedEntityKind(EntityKind),
+    /// Tried to add messages to a topic but it's full
+    #[error("Couldn't add messages to topic with key: {0} becuase it's full")]
+    TopicFull(Key),
+    /// No more messages in block allowed
+    #[error("No more messages in block allowed")]
+    MaxMessagesPerBlockExceeded,
 }
 
 impl From<PreprocessingError> for Error {

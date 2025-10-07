@@ -1847,6 +1847,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
             .try_into_remaining()
             .map_err(|_| FatalHostError::TypeConversion)?;
 
+        let block_time = caller.context().block_time;
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(caller.context().initiator)
             .with_caller_key(caller.context().callee)
@@ -1873,8 +1874,22 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
             .build()
             .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
-        let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
-
+        let mut tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+        match tracking_copy_for_ctor.emit_messages_for_new_contract_version(
+            Key::SmartContract(smart_contract_addr),
+            callee_addressable_entity_key,
+            bytecode_key,
+            version_key.protocol_version_major(),
+            version_key.entity_version() + 1,
+            block_time,
+        ) {
+            Ok(_) => (),
+            Err(message_emission_error) => {
+                return Err(VMError::Execute(ExecuteError::Api(
+                    message_emission_error.to_string(),
+                )))
+            }
+        }
         match caller
             .executor()
             .execute(tracking_copy_for_ctor, execute_request)

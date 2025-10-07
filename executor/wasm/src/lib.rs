@@ -455,8 +455,23 @@ impl ExecutorV2 {
                     .build()
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
-                let forked_tc = tracking_copy.fork2();
+                let mut forked_tc = tracking_copy.fork2();
 
+                match forked_tc.emit_messages_for_new_contract_version(
+                    Key::SmartContract(smart_contract_addr),
+                    addressable_entity_key,
+                    Key::ByteCode(bytecode_addr),
+                    entity_version_key.protocol_version_major(),
+                    entity_version_key.entity_version(),
+                    block_time,
+                ) {
+                    Ok(_) => (),
+                    Err(message_emission_error) => {
+                        return Err(InstallContractError::Execute(ExecuteError::Api(
+                            message_emission_error.to_string(),
+                        )))
+                    }
+                }
                 match Self::execute_with_tracking_copy(self, forked_tc, execute_request) {
                     Ok(ExecuteResult {
                         host_error,
@@ -469,7 +484,6 @@ impl ExecutorV2 {
                         if let Some(host_error) = host_error {
                             return Err(InstallContractError::Constructor { host_error });
                         }
-
                         tracking_copy.apply_changes(effects, cache, messages);
 
                         if let Some(output) = output {

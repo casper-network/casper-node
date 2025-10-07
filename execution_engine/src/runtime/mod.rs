@@ -8,6 +8,7 @@ mod host_function_flag;
 mod mint_internal;
 pub mod stack;
 mod utils;
+
 pub(crate) mod wasm_prep;
 
 use std::{
@@ -30,7 +31,7 @@ use num_rational::Ratio;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
-    tracking_copy::TrackingCopyExt,
+    tracking_copy::{MessageEmissionError, TrackingCopyExt},
 };
 use casper_types::{
     account::{
@@ -76,16 +77,6 @@ pub use wasm_prep::{
     DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS, DEFAULT_MAX_PARAMETER_COUNT,
     DEFAULT_MAX_TABLE_SIZE,
 };
-
-const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
-const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
-const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
-
-const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
-const MESSAGING_ADDR_ENTITY_ADDR_TOPIC: &str = "addressable_entity_addr";
-const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
-
-const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";
 
 #[derive(Debug)]
 enum CallContractIdentifier {
@@ -2799,40 +2790,35 @@ where
         let contract_package_key = Key::Hash(contract_package_hash.value());
         self.context
             .metered_write_gs_unsafe(contract_package_key, contract_package)?;
-        let system_account_hash = PublicKey::System.to_account_hash().value();
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(contract_package_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_ADDR_TOPIC,
-            MessagePayload::String(contract_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
-            MessagePayload::String(contract_wasm_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_VERSION_TOPIC,
-            MessagePayload::String(insert_contract_result.to_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
+        let current_blocktime = self.context.get_block_info().block_time();
 
+        match self.context.emit_messages_for_new_contract_version(
+            current_blocktime,
+            contract_package_key,
+            contract_key,
+            contract_wasm_key,
+            insert_contract_result.protocol_version_major(),
+            insert_contract_result.contract_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
+        }
         // set return values to buffer
         {
             let hash_bytes = match contract_hash_addr.to_bytes() {
@@ -2978,43 +2964,34 @@ where
                 return Err(ExecError::Interpreter(error.into()));
             }
         }
-
-        let system_account_hash = PublicKey::System.to_account_hash().value();
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(Key::Hash(package_hash.value()).to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
+        let current_blocktime = self.context.get_block_info().block_time();
+        match self.context.emit_messages_for_new_contract_version(
+            current_blocktime,
+            Key::Hash(package_hash.value()),
+            entity_key,
+            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
+            insert_entity_version_result.protocol_version_major(),
+            insert_entity_version_result.entity_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
         }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
-            MessagePayload::String(entity_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
-            MessagePayload::String(
-                Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)).to_formatted_string(),
-            ),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_VERSION_TOPIC,
-            MessagePayload::String(insert_entity_version_result.to_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-
         Ok(Ok(()))
     }
 
