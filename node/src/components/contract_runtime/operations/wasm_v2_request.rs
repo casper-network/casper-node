@@ -261,6 +261,7 @@ impl WasmV2Request {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
+                    .with_authorization_keys(transaction.signers())
                     .build()
                     .expect("should build");
 
@@ -304,7 +305,12 @@ impl WasmV2Request {
 
                 builder = builder.with_execution_kind(execution_kind);
 
-                let execute_request = builder.build().expect("should build");
+                let authorization_keys = transaction.signers();
+
+                let execute_request = builder
+                    .with_authorization_keys(authorization_keys)
+                    .build()
+                    .expect("should build");
 
                 Ok(Self::Execute(execute_request))
             }

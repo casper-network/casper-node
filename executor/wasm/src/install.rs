@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
@@ -47,6 +47,8 @@ pub struct InstallContractRequest {
     pub(crate) seed: Option<[u8; 32]>,
     /// Runtime native config.
     pub(crate) runtime_native_config: RuntimeNativeConfig,
+    /// Authorization keys for this installation.
+    pub(crate) authorization_keys: BTreeSet<AccountHash>,
 }
 
 #[derive(Default)]
@@ -66,6 +68,7 @@ pub struct InstallContractRequestBuilder {
     block_height: Option<u64>,
     runtime_native_config: Option<RuntimeNativeConfig>,
     seed: Option<[u8; 32]>,
+    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl InstallContractRequestBuilder {
@@ -155,6 +158,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
+        self.authorization_keys = Some(authorization_keys);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -173,6 +181,9 @@ impl InstallContractRequestBuilder {
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
+        let authorization_keys = self
+            .authorization_keys
+            .ok_or("Authorization keys not set")?;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -189,6 +200,7 @@ impl InstallContractRequestBuilder {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            authorization_keys,
         })
     }
 }

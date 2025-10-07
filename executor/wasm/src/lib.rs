@@ -227,6 +227,7 @@ impl ExecutorV2 {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            authorization_keys,
         } = install_request;
 
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
@@ -450,6 +451,7 @@ impl ExecutorV2 {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
+                    .with_authorization_keys(authorization_keys)
                     .build()
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
@@ -570,6 +572,7 @@ impl ExecutorV2 {
             block_height,
             sandboxed,
             runtime_native_config,
+            authorization_keys,
         } = execute_request;
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
@@ -668,6 +671,7 @@ impl ExecutorV2 {
                                     block_info,
                                     transaction_hash,
                                     gas_limit,
+                                    authorization_keys.clone(),
                                 );
                             }
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2) => {
@@ -859,6 +863,7 @@ impl ExecutorV2 {
                                     block_info,
                                     transaction_hash,
                                     gas_limit,
+                                    authorization_keys,
                                 );
                             }
                         }
@@ -928,6 +933,7 @@ impl ExecutorV2 {
             runtime_native_config,
             parent_block_hash: parent_block_hash.inner().value(),
             block_height,
+            authorization_keys,
         };
 
         // Check that the input argument size does not exceed the VM memory limit
@@ -1066,11 +1072,11 @@ impl ExecutorV2 {
         block_info: BlockInfo,
         transaction_hash: TransactionHash,
         gas_limit: u64,
+        authorization_keys: BTreeSet<AccountHash>,
     ) -> Result<ExecuteResult, ExecuteError>
     where
         R: GlobalStateReader + 'static,
     {
-        let authorization_keys = BTreeSet::from_iter([initiator]);
         let initiator_addr = InitiatorAddr::AccountHash(initiator);
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
@@ -1283,6 +1289,7 @@ impl Executor for ExecutorV2 {
             .with_block_height(request.block_height)
             .with_sandboxed(true) // Enable sandboxed mode
             .with_runtime_native_config(runtime_native_config)
+            .with_authorization_keys(BTreeSet::from_iter([request.initiator]))
             .build()
             .map_err(|error| {
                 ExecuteError::Fatal(FatalHostError::ExecuteRequestBuildFailure(error))

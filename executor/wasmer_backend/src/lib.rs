@@ -528,6 +528,7 @@ where
             runtime_native_config: data.context.runtime_native_config.clone(),
             parent_block_hash: data.context.parent_block_hash,
             block_height: data.context.block_height,
+            authorization_keys: data.context.authorization_keys.clone(),
         }
     }
 }

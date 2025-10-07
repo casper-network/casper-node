@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -151,6 +152,7 @@ pub fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteReques
         .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
 }
 
 pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfig {
@@ -212,6 +214,7 @@ pub fn base_install_request_builder(
         .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
 }
 
 pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
