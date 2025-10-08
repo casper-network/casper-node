@@ -458,7 +458,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     assert!(matches!(
         result,
         Ok(ExecuteWithProviderResult {
-            host_error: Some(CallError::CalleeReverted),
+            host_error: Some(CallError::CalleeRolledBack),
             ..
         })
     ));

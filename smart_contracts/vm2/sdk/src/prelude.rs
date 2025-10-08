@@ -37,7 +37,7 @@ pub use crate::{
     casper::{self, Entity},
     log,
     macros::{self, casper, PanicOnDefault},
-    revert,
+    ret, revert, rollback,
 };
 
 #[cfg(test)]

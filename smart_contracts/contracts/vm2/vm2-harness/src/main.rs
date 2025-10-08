@@ -124,7 +124,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
                 .try_call(|harness| harness.emit_revert_with_data())
                 .expect("Call succeed");
 
-            assert_eq!(call_result.result, Err(CallError::CalleeReverted));
+            assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
             assert_eq!(call_result.into_result().unwrap(), Err(CustomError::Bar),);
 
             let counter_value_after = contract_handle
@@ -139,7 +139,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.emit_revert_without_data())
             .expect("Call succeed");
-        assert_eq!(call_result.result, Err(CallError::CalleeReverted));
+        assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
         assert_eq!(call_result.data, None);
 
         log!("Revert without data success");
@@ -147,7 +147,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(false))
             .expect("Call succeed");
-        assert!(!call_result.did_revert());
+        assert!(!call_result.did_rollback());
         assert_eq!(call_result.into_result().unwrap(), Ok(()));
 
         log!("Revert on error success (ok case)");
@@ -155,7 +155,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(true))
             .expect("Call succeed");
-        assert!(call_result.did_revert());
+        assert!(call_result.did_rollback());
         assert_eq!(
             call_result.into_result().unwrap(),
             Err(CustomError::WithBody("Reverted".to_string()))
@@ -199,7 +199,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             Ok(_) => panic!("Constructor that reverts should fail to create"),
             Err(error) => error,
         };
-        assert_eq!(error, CallError::CalleeReverted);
+        assert_eq!(error, CallError::CalleeRolledBack);
 
         let error = match ContractBuilder::<HarnessRef>::new()
             .with_seed(&seed.next_seed())

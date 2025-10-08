@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use casper_executor_wasm_common::{
-    error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
+    error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_ROLLED_BACK, CALLEE_TRAPPED},
     keyspace::Keyspace,
 };
 
@@ -200,7 +200,7 @@ pub enum HashAlgorithm {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub enum CallError {
-    CalleeReverted,
+    CalleeRolledBack,
     CalleeTrapped,
     CalleeGasDepleted,
     NotCallable,
@@ -209,7 +209,7 @@ pub enum CallError {
 impl fmt::Display for CallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CallError::CalleeReverted => write!(f, "callee reverted"),
+            CallError::CalleeRolledBack => write!(f, "callee rolled back"),
             CallError::CalleeTrapped => write!(f, "callee trapped"),
             CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
             CallError::NotCallable => write!(f, "not callable"),
@@ -222,7 +222,7 @@ impl TryFrom<u32> for CallError {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            CALLEE_REVERTED => Ok(Self::CalleeReverted),
+            CALLEE_ROLLED_BACK => Ok(Self::CalleeRolledBack),
             CALLEE_TRAPPED => Ok(Self::CalleeTrapped),
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
@@ -243,7 +243,7 @@ impl CasperABI for CallError {
         Definition::Enum {
             items: vec![
                 EnumVariant {
-                    name: "CalleeReverted".into(),
+                    name: "CalleeRolledBack".into(),
                     discriminant: 0,
                     decl: <()>::declaration(),
                 },

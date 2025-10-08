@@ -405,7 +405,7 @@ impl<T: ToCallData> CallResult<T> {
         <T as ToCallData>::Return<'a>: BorshDeserialize,
     {
         match self.result {
-            Ok(()) | Err(CallError::CalleeReverted) => {
+            Ok(()) | Err(CallError::CalleeRolledBack) => {
                 let data = self.data.unwrap_or_default();
                 Ok(borsh::from_slice(&data).unwrap())
             }
@@ -413,8 +413,8 @@ impl<T: ToCallData> CallResult<T> {
         }
     }
 
-    pub fn did_revert(&self) -> bool {
-        self.result == Err(CallError::CalleeReverted)
+    pub fn did_rollback(&self) -> bool {
+        self.result == Err(CallError::CalleeRolledBack)
     }
 }
 
@@ -433,7 +433,7 @@ pub fn call<T: ToCallData>(
         &input_data,
     );
     match result_code {
-        Ok(()) | Err(CallError::CalleeReverted) => Ok(CallResult::<T> {
+        Ok(()) | Err(CallError::CalleeRolledBack) => Ok(CallResult::<T> {
             data: maybe_data,
             result: result_code,
             marker: PhantomData,

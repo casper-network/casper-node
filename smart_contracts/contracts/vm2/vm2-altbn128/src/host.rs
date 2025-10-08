@@ -130,7 +130,7 @@ fn test_alt_bn128_add() {
     if actual != expected {
         casper::print(&format!("left {:?} right {:?}", actual, expected));
         let error_code = line!().to_le_bytes();
-        casper::ret(ReturnFlags::REVERT, Some(&error_code));
+        casper::ret(ReturnFlags::ROLLBACK, Some(&error_code));
     }
 }
 
@@ -139,7 +139,7 @@ fn test_zero_add() {
         != Ok((Fq::zero(), Fq::zero()))
     {
         let error_code = line!().to_le_bytes();
-        casper::ret(ReturnFlags::REVERT, Some(&error_code));
+        casper::ret(ReturnFlags::ROLLBACK, Some(&error_code));
     }
 }
 
@@ -150,7 +150,7 @@ fn test_add_error() {
         != Err(Error::InvalidPoint)
     {
         let error_code = line!().to_le_bytes();
-        casper::ret(ReturnFlags::REVERT, Some(&error_code));
+        casper::ret(ReturnFlags::ROLLBACK, Some(&error_code));
     }
 }
 

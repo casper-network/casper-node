@@ -572,12 +572,12 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     }
 
                     quote! {
-                        let _ret: &Result<_, _> = &_ret;
-                        if _ret.is_err() {
-                            flags |= casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::REVERT;
-                        }
+                                    let _ret: &Result<_, _> = &_ret;
+                                    if _ret.is_err() {
+                    flags |= casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK;
+                                    }
 
-                    }
+                                }
                 } else {
                     quote! {}
                 };
