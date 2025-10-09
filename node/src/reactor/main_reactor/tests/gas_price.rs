@@ -25,8 +25,11 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
-    let initial_stakes: Vec<U512> =
-        vec![alice_stake.into(), bob_stake.into(), charlie_stake.into()];
+    let initial_stakes: Vec<(U512, U512)> = vec![
+        (U512::from(u64::MAX), alice_stake.into()),
+        (U512::from(u64::MAX), bob_stake.into()),
+        (U512::from(u64::MAX), charlie_stake.into()),
+    ];
 
     let mut secret_keys: Vec<Arc<SecretKey>> = (0..3)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -35,7 +38,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let stakes = secret_keys
         .iter()
         .zip(initial_stakes)
-        .map(|(secret_key, stake)| (PublicKey::from(secret_key.as_ref()), stake))
+        .map(|(secret_key, (bal, stake))| (PublicKey::from(secret_key.as_ref()), (bal, stake)))
         .collect();
 
     let non_validating_secret_key = SecretKey::random(&mut rng);
