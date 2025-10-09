@@ -1796,6 +1796,16 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
                             code.clone().into(),
                         )),
                     )?;
+                    let contract_wasm_key = Key::Hash(new_byte_code_hash);
+                    let byte_code_key_as_cl_value = match CLValue::from_t(bytecode_key) {
+                        Ok(cl_value) => cl_value,
+                        Err(_) => return Ok(HOST_ERROR_CL_VALUE),
+                    };
+                    metered_write(
+                        &mut caller,
+                        contract_wasm_key,
+                        StoredValue::CLValue(byte_code_key_as_cl_value),
+                    )?;
 
                     let entity = Contract::new(
                         package_hash,
