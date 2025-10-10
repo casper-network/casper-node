@@ -1331,6 +1331,11 @@ impl EraSupervisor {
         let initial_era_height = self.era(era_id).start_height;
         initial_era_height.saturating_add(block_context.ancestor_values().len() as u64)
     }
+
+    // What is the block height of the next block we expect to execute?
+    pub(crate) fn next_executed_height(&self) -> u64 {
+        self.next_executed_height
+    }
 }
 
 /// A serialized consensus network message.

@@ -9,8 +9,7 @@ use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        sync_leaper,
-        sync_leaper::{LeapActivityError, LeapState},
+        sync_leaper::{self, LeapActivityError, LeapState},
         ValidatorBoundComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},

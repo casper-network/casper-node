@@ -256,7 +256,7 @@ impl BlockAcquisitionAction {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn next_action_after_deploy_acquisition(
+    pub(super) fn next_action_after_transaction_acquisition(
         block_hash: BlockHash,
         block_height: u64,
         era_id: EraId,
