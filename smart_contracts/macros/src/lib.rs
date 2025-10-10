@@ -2,7 +2,7 @@ pub(crate) mod utils;
 
 extern crate proc_macro;
 
-use darling::{ast, FromAttributes, FromMeta};
+use darling::{ast, util::Override, FromAttributes, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
@@ -31,6 +31,10 @@ struct MethodAttribute {
     #[darling(default)]
     abi_convention: Option<syn::Path>,
 }
+#[derive(Debug, Clone, FromMeta)]
+struct MessageMeta {
+    topic: String,
+}
 
 #[derive(Debug, FromMeta)]
 struct StructMeta {
@@ -41,7 +45,7 @@ struct StructMeta {
     contract_state: bool,
     /// Message is a special struct that is used to send messages to other contracts.
     #[darling(default)]
-    message: bool,
+    message: Option<Override<MessageMeta>>,
     #[darling(default)]
     abi_convention: Option<syn::Path>,
 }
@@ -109,7 +113,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
     if let Ok(item_struct) = syn::parse::<ItemStruct>(item.clone()) {
         let struct_meta = StructMeta::from_list(&attr_args).unwrap();
-        if struct_meta.message {
+        if struct_meta.message.is_some() {
             process_casper_message_for_struct(&item_struct, struct_meta)
         } else if struct_meta.contract_state {
             // #[casper(contract_state)]
@@ -178,6 +182,21 @@ fn process_casper_message_for_struct(
         )
     };
 
+    let topic = match struct_meta.message {
+        Some(Override::Inherit) => quote! { stringify!(#struct_name) },
+        Some(Override::Explicit(message_meta)) => {
+            let MessageMeta { topic } = message_meta;
+            quote! { #topic }
+        }
+        None => {
+            let err = syn::Error::new_spanned(
+                &item_struct.ident,
+                "Message attribute requires a topic",
+            );
+            return TokenStream::from(err.to_compile_error());
+        }
+    };
+
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
     let maybe_entrypoint_defs;
 
@@ -189,7 +208,7 @@ fn process_casper_message_for_struct(
                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi::collector::ABI_ITEMS)]
                 #[linkme(crate = casper_contract_sdk::linkme)]
                 pub static ABI_ITEM: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::Message(casper_contract_sdk::abi::collector::AbiMessage {
-                    name: core::any::type_name::<#struct_name>, // TODO: Currently it is equal to the struct name but should be customizable
+                    topic: || #topic,
                     decl: casper_contract_sdk::abi::collector::AbiType {
                         type_name: core::any::type_name::<#struct_name>,
                         type_id: casper_contract_sdk::common::type_uid::of::<#struct_name>(),

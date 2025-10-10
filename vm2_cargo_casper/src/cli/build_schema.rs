@@ -1,10 +1,11 @@
 mod artifact;
 
-use std::{env::consts::DLL_EXTENSION, ffi::OsStr, io::Write, path::PathBuf};
+use std::{env::consts::DLL_EXTENSION, ffi::OsStr, fs, io::Write, path::PathBuf};
 
 use anyhow::Context;
 use artifact::Artifact;
 use cargo_metadata::MetadataCommand;
+use casper_contract_sdk::{bundle::{self, Bundle, BundleV1}, schema::Schema, serializers::borsh};
 
 use crate::compilation::CompileJob;
 
@@ -12,7 +13,8 @@ use crate::compilation::CompileJob;
 /// [`Write`] implementer.
 pub fn build_schema_impl<W: Write>(
     package_name: Option<&str>,
-    output_writer: &mut W,
+    schema_writer: &mut W,
+    bundle_writer: &mut W,
 ) -> Result<(), anyhow::Error> {
     // Compile contract package to a native library with extra code that will
     // produce ABI information including entrypoints, types, etc.
@@ -82,6 +84,13 @@ pub fn build_schema_impl<W: Write>(
 
     let artifact = Artifact::from_path(artifact_path).context("Load library")?;
     let collected = artifact.collect_schema().context("Collect schema")?;
-    serde_json::to_writer(output_writer, &collected).context("Serialize collected schema")?;
+    let schema: Schema = serde_json::from_value(collected.clone()).context("Deserialize schema")?;
+    let bundle_v1: BundleV1 = schema.into();
+    let bundle = Bundle::V1(bundle_v1);
+
+    serde_json::to_writer(schema_writer, &collected).context("Serialize collected schema")?;
+    // bundle_writer borsh::to_vec(&bundle).context("Serialize bundle")?)
+    borsh::to_writer(bundle_writer, &bundle)
+        .context("Write bundle")?;
     Ok(())
 }

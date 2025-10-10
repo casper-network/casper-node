@@ -16,6 +16,7 @@ use core::{mem, ptr::NonNull};
 use bitflags::Flags;
 use casper_executor_wasm_common::type_uid::{Uid, UidRepr};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use crate::serializers::borsh::{BorshSerialize, BorshDeserialize};
 
 use crate::{
     abi::{
@@ -137,7 +138,7 @@ pub enum SchemaType {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaMessage {
-    pub name: String,
+    pub topic: String,
     #[serde(
         serialize_with = "serialize_schema_type_uid",
         deserialize_with = "deserialize_schema_type_uid"
@@ -161,7 +162,7 @@ where
         let s = format!("{:#0width$x}", uid.into_raw(), width = width);
         serializer.serialize_str(&s)
     } else {
-        uid.into_raw().serialize(serializer)
+        Serialize::serialize(&uid.into_raw(), serializer)
     }
 }
 
@@ -170,7 +171,7 @@ where
     D: Deserializer<'de>,
 {
     if deserializer.is_human_readable() {
-        let s = String::deserialize(deserializer)?;
+        let s: String = Deserialize::deserialize(deserializer)?;
         let hex = s
             .strip_prefix("0x")
             .or_else(|| s.strip_prefix("0X"))
@@ -179,12 +180,12 @@ where
             .map_err(|e| serde::de::Error::custom(format!("invalid hex value for Uid: {e}")))?;
         Ok(Uid::new_raw(val))
     } else {
-        let raw = UidRepr::deserialize(deserializer)?;
+        let raw: UidRepr = Deserialize::deserialize(deserializer)?;
         Ok(Uid::new_raw(raw))
     }
 }
 
-#[derive(Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Debug, Copy, Clone, Hash)]
+#[derive(Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Debug, Copy, Clone, Hash, BorshSerialize, BorshDeserialize)]
 pub struct SchemaUid(
     #[serde(
         serialize_with = "serialize_schema_type_uid",
@@ -234,7 +235,6 @@ pub struct Schema {
     pub definitions: SchemaDefinitions,
     pub entry_points: Vec<SchemaEntryPoint>,
     pub messages: Vec<SchemaMessage>,
-    pub named_keys: Vec<SchemaStableKey>,
 }
 
 #[derive(Debug)]
@@ -346,7 +346,7 @@ pub fn casper_collect_schema() -> Schema {
                 // Process message
 
                 schema_messages.push(SchemaMessage {
-                    name: (abi_message.name)().to_string(),
+                    topic: (abi_message.topic)().to_string(),
                     decl: abi_message.decl.type_id,
                 });
             }
@@ -434,7 +434,6 @@ pub fn casper_collect_schema() -> Schema {
         definitions: schema_defs,
         entry_points: schema_entry,
         messages: schema_messages,
-        named_keys: Default::default(),
     }
 }
 

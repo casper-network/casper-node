@@ -13,15 +13,20 @@ fn main() -> anyhow::Result<()> {
         Command::BuildSchema { output, workspace } => {
             // If user specified an output path, write there.
             // Otherwise print to standard output.
-            let mut schema_writer: Box<dyn Write> = match output {
+            let mut schema_writer: Box<dyn Write> = match output.clone() {
                 Some(path) => Box::new(File::create(path)?),
                 None => Box::new(std::io::stdout()),
+            };
+
+            let mut bundle_writer: Box<dyn Write> = match output.map(|p| p.with_extension("bundle")) {
+                Some(path) => Box::new(File::create(path)?),
+                None => Box::new(std::io::empty()),
             };
 
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build_schema::build_schema_impl(package_name, &mut schema_writer)?
+            cli::build_schema::build_schema_impl(package_name, &mut schema_writer, &mut bundle_writer)?
         }
         Command::Build {
             output,

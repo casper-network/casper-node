@@ -1,3 +1,4 @@
+use crate::serializers::borsh::{BorshSerialize, BorshDeserialize};
 use crate::{prelude::collections::BTreeMap, schema::Schema};
 
 use serde::{Deserialize, Serialize};
@@ -5,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::{abi::Definition, compat::types::CLType, schema::SchemaUid};
 
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleDefinition {
     pub definition: Definition,
     pub cl_type: CLType,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleArgument {
     pub decl: SchemaUid,
 }
@@ -31,7 +32,20 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+impl BorshSerialize for BundleEntryPointFlags {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+      BorshSerialize::serialize(&self.bits(), writer)
+    }
+}
+
+impl BorshDeserialize for BundleEntryPointFlags {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let bits = u32::deserialize_reader(reader)?;
+        Ok(BundleEntryPointFlags::from_bits_truncate(bits))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleEntryPoint {
     pub name: String,
     pub export_name: String,
@@ -40,22 +54,32 @@ pub struct BundleEntryPoint {
     pub flags: BundleEntryPointFlags,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Bundle {
-    definitions: BTreeMap<SchemaUid, BundleDefinition>,
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub struct BundleMessage {
+    /// The topic of the message.
+    ///
+    /// This, unlike the type names etc, is crucial for discovering messages.
+    pub topic: String,
+    pub decl: SchemaUid,
 }
 
-impl From<Schema> for Bundle {
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub struct BundleV1 {
+    definitions: BTreeMap<SchemaUid, BundleDefinition>,
+    entry_points: Vec<BundleEntryPoint>,
+    messages: Vec<BundleMessage>,
+}
+
+impl From<Schema> for BundleV1 {
     fn from(schema: Schema) -> Self {
 
         let Schema {
             definitions,
-            metadata,
-            type_,
-            declarations,
+            metadata: _,
+            type_: _,
+            declarations: _,
             entry_points,
             messages,
-            named_keys,
         } = schema;
 
         let bundle_definitions = definitions
@@ -63,6 +87,16 @@ impl From<Schema> for Bundle {
             .into_iter()
             .map(|(k, v)| (k, BundleDefinition { definition: v.definition, cl_type: v.cl_type }))
             .collect();
+
+        let bundle_messages = messages
+            .into_iter()
+            .map(|msg| {
+                BundleMessage {
+                    topic: msg.topic,
+                    decl: SchemaUid::from(msg.decl),
+                }
+            })
+            .collect::<Vec<_>>();
 
         let bundle_entry_points = entry_points
             .into_iter()
@@ -83,17 +117,18 @@ impl From<Schema> for Bundle {
                         Some(crate::schema::SchemaReceiver::Mutable) => {
                             // This is the default behavior
                         }
-                        None => {}
+                        None => {
+                            // Although the macro does not perform read/write state operations (there's no self that we can dispatch entry points onto),
+                            // we consider entry points without a receiver as mutable to allow state modifications via runtime functions.
+                        }
                     }
+
                     match ep.abi_convention {
-                        crate::schema::EntryPointAbiConvention::Named => {
+                        crate::schema::SchemaAbiConvention::Named => {
                             flags |= BundleEntryPointFlags::USES_NAMED_CONVENTION;
                         }
-                        crate::schema::EntryPointAbiConvention::Positional => {
-                            flags |= BundleEntryPointFlags::USES_POSITIONAL_CONVENTION;
-                        }
-                        crate::schema::EntryPointAbiConvention::Default => {
-                            // This is the default behavior
+                        crate::schema::SchemaAbiConvention::Positional => {
+                            // Default behavior
                         }
                     }
 
@@ -114,6 +149,19 @@ impl From<Schema> for Bundle {
         Self {
             definitions: bundle_definitions,
             entry_points: bundle_entry_points,
+            messages: bundle_messages,
         }
+    }
+}
+
+
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub enum Bundle {
+    V1(BundleV1),
+}
+
+impl From<BundleV1> for Bundle {
+    fn from(value: BundleV1) -> Self {
+        Self::V1(value)
     }
 }

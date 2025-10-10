@@ -1,7 +1,7 @@
 pub mod collector;
 
 use core::any::Any;
-
+use crate::serializers::borsh::{BorshSerialize, BorshDeserialize};
 #[cfg(feature = "std")]
 use crate::prelude::collections::HashMap;
 use crate::{
@@ -17,7 +17,7 @@ use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
 use impl_trait_for_tuples::impl_for_tuples;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, BorshDeserialize)]
 pub struct EnumVariant {
     pub name: String,
     pub discriminant: u64,
@@ -28,13 +28,13 @@ pub struct EnumVariant {
     pub decl: Option<SchemaUid>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, BorshDeserialize)]
 pub struct StructField {
     pub name: String,
     pub decl: SchemaUid,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, BorshDeserialize)]
 pub enum Primitive {
     Char,
     U8,
@@ -81,7 +81,7 @@ pub trait Keyable {
     const PRIMITIVE: Primitive;
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type")]
 pub enum Definition {
     /// Primitive type.
@@ -157,7 +157,7 @@ impl Definition {
 /// Small builder that keeps up to 8 fragments on-stack before allocating.
 pub type AbiDeclaration = String;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 
 pub struct ABITypeInfo {
     type_id: Uid,
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn visit_all_nested_types() {
-        #[derive(Default)]
+        #[derive(Default, BorshSerialize, BorshDeserialize)]
         struct Test(Vec<ABITypeInfo>);
 
         // default derived

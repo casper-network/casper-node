@@ -17,12 +17,13 @@ pub fn build_impl(
     // embedded schema JSON file for discoverability (aka internal schema).
     let production_wasm_path = if embed_schema {
         // Build the schema first
-        let mut buffer = Cursor::new(Vec::new());
-        super::build_schema::build_schema_impl(package_name, &mut buffer)
+        let mut schema_buffer = Cursor::new(Vec::new());
+        let mut bundle_buffer = Cursor::new(Vec::new());
+        super::build_schema::build_schema_impl(package_name, &mut schema_buffer, &mut bundle_buffer)
             .context("Failed to build contract schema")?;
 
         let contract_schema =
-            String::from_utf8(buffer.into_inner()).context("Failed to read contract schema")?;
+            String::from_utf8(schema_buffer.into_inner()).context("Failed to read contract schema")?;
 
         // Build the contract with above schema injected
         eprintln!("🔨 Step 2: Building contract with schema injected...");
@@ -41,12 +42,15 @@ pub fn build_impl(
 
         // Write the schema next to the wasm
         let schema_file_path = production_wasm_path.with_extension("json");
+        let bundle_file_path = production_wasm_path.with_extension("bundle");
 
         std::fs::create_dir_all(schema_file_path.parent().unwrap())
             .context("Failed creating directory for wasm schema")?;
 
         std::fs::write(&schema_file_path, contract_schema)
             .context("Failed writing contract schema")?;
+        std::fs::write(&bundle_file_path, bundle_buffer.into_inner())
+            .context("Failed writing contract bundle")?;
 
         production_wasm_path
     } else {
@@ -69,6 +73,7 @@ pub fn build_impl(
     // Move to output_dir if specified
     let mut out_wasm_path = production_wasm_path.clone();
     let mut out_schema_path = None;
+    let mut out_bundle_path = None;
 
     if let Some(output_dir) = output_dir {
         out_wasm_path = output_dir
@@ -84,12 +89,20 @@ pub fn build_impl(
         std::fs::rename(&production_schema_path, out_schema_path.as_ref().unwrap())
             .context("Couldn't write to the specified output directory.")?;
     }
+    out_bundle_path = Some(out_wasm_path.with_extension("bundle"));
+    let production_bundle_path = production_wasm_path.with_extension("bundle");
+    std::fs::rename(&production_bundle_path, out_bundle_path.as_ref().unwrap())
+        .context("Couldn't write to the specified output directory.")?;
 
     // Report paths
     eprintln!("✅ Completed. Build artifacts:");
     eprintln!("{:?}", out_wasm_path.canonicalize()?);
     if let Some(schema_path) = out_schema_path {
         eprintln!("{:?}", schema_path.canonicalize()?);
+    }
+
+    if let Some(bundle_path) = out_bundle_path {
+        eprintln!("{:?}", bundle_path.canonicalize()?);
     }
 
     Ok(())

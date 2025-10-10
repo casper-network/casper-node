@@ -20,7 +20,7 @@ use contracts::token_owner::TokenOwnerContractRef;
 #[allow(dead_code)]
 const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
 
-#[casper(message)]
+#[casper(message(topic = "TestMessage"))]
 pub struct TestMessage {
     pub message: String,
 }

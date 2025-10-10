@@ -110,8 +110,7 @@ pub enum AbiItem {
 
 #[derive(Debug)]
 pub struct AbiMessage {
-    /// This by default is the 'struct name' but may be changed into any other name as desired.
-    pub name: fn() -> &'static str,
+    pub topic: fn() -> &'static str,
     pub decl: AbiType,
 }
 
@@ -141,13 +140,3 @@ impl AbiItem {
 #[distributed_slice]
 #[linkme(crate = crate::linkme)]
 pub static ABI_ITEMS: [AbiItem] = [..];
-
-#[derive(Debug, Clone)]
-pub struct NamedKey {
-    pub name: &'static str,
-    pub decl: fn() -> AbiDeclaration,
-}
-
-#[distributed_slice]
-#[linkme(crate = crate::linkme)]
-pub static NAMED_KEYS: [NamedKey] = [..];
