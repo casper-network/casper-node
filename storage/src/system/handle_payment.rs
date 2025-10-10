@@ -63,18 +63,14 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         gas_price: u8,
         cost: U512,
         consumed: U512,
-        source_purse: URef,
         refund_ratio: Ratio<U512>,
+        available_balance: U512,
     ) -> Result<(U512, U512), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to calculate overpayment and fee");
             return Err(Error::InvalidCaller);
         }
 
-        let available_balance = match self.available_balance(source_purse)? {
-            Some(balance) => balance,
-            None => return Err(Error::PaymentPurseBalanceNotFound),
-        };
         internal::calculate_overpayment_and_fee(
             limit,
             gas_price,

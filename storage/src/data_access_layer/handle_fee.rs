@@ -162,4 +162,13 @@ impl HandleFeeResult {
             HandleFeeResult::Success { effects, .. } => effects.clone(),
         }
     }
+
+    /// The error message, if any.
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            HandleFeeResult::RootNotFound => Some("root not found".to_string()),
+            HandleFeeResult::Failure(tce) => Some(format!("{}", tce)),
+            HandleFeeResult::Success { .. } => None,
+        }
+    }
 }

@@ -1374,8 +1374,14 @@ async fn binary_port_sandboxed_execution_request() {
     let bob_public_key = PublicKey::from(&*bob_secret_key);
 
     let stakes = vec![
-        (alice_public_key.clone(), U512::from(u128::MAX)),
-        (bob_public_key.clone(), U512::from(1)),
+        (
+            alice_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(u128::MAX)),
+        ),
+        (
+            bob_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(1)),
+        ),
     ]
     .into_iter()
     .collect();

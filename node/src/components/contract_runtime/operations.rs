@@ -211,17 +211,13 @@ pub fn execute_finalized_block(
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
-        let mut artifact_builder = ExecutionArtifactBuilder::new(
-            &stored_transaction,
-            baseline_motes_amount, // <-- default minimum cost, may be overridden later in logic
-            current_gas_price,
-        );
         let transaction = MetaTransaction::from_transaction(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
             transaction_config,
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
+
         let initiator_addr = transaction.initiator_addr();
         let transaction_hash = transaction.hash();
         let transaction_args = transaction.session_args().clone();
@@ -250,34 +246,55 @@ pub fn execute_finalized_block(
         we check these top level concerns early so that we can skip if there is an error
         */
 
-        // NOTE: this is the allowed computation limit (gas limit)
-        let gas_limit =
-            match stored_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
+        let mut artifact_builder = {
+            // NOTE: this is the allowed computation limit (gas limit)
+            let gas_limit = match transaction.gas_limit(chainspec) {
                 Ok(gas) => gas,
                 Err(ite) => {
                     debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
-                    artifact_builder.with_invalid_transaction(&ite);
-                    artifacts.push(artifact_builder.build());
+                    artifacts.push(
+                        ExecutionArtifactBuilder::pre_condition_failure(
+                            &stored_transaction,
+                            current_gas_price,
+                            ite,
+                        )
+                        .build(),
+                    );
                     continue;
                 }
             };
-        artifact_builder.with_gas_limit(gas_limit);
 
-        // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-        let cost = match stored_transaction.gas_cost(
-            chainspec,
-            transaction.transaction_lane(),
-            current_gas_price,
-        ) {
-            Ok(motes) => motes.value(),
-            Err(ite) => {
-                debug!(%transaction_hash, "invalid transaction (motes conversion)");
-                artifact_builder.with_invalid_transaction(&ite);
-                artifacts.push(artifact_builder.build());
-                continue;
-            }
+            // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
+            let cost = match stored_transaction.gas_cost(
+                chainspec,
+                transaction.transaction_lane(),
+                current_gas_price,
+            ) {
+                Ok(motes) => motes.value(),
+                Err(ite) => {
+                    debug!(%transaction_hash, "invalid transaction (motes conversion)");
+                    artifacts.push(
+                        ExecutionArtifactBuilder::pre_condition_failure(
+                            &stored_transaction,
+                            current_gas_price,
+                            ite,
+                        )
+                        .build(),
+                    );
+                    continue;
+                }
+            };
+
+            // this is the minimum we will charge, even if 0 is consumed
+            let min_cost = gas_limit.value().min(baseline_motes_amount);
+            ExecutionArtifactBuilder::new(
+                &stored_transaction,
+                gas_limit,
+                current_gas_price,
+                cost,
+                min_cost,
+            )
         };
-        artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
         let is_custom_payment = !is_standard_payment && transaction.is_custom_payment();
@@ -390,7 +407,7 @@ pub fn execute_finalized_block(
                     Ok(mut pay_request) => {
                         pay_request
                             .args
-                            .insert(ARG_AMOUNT, cost)
+                            .insert(ARG_AMOUNT, artifact_builder.cost_to_use())
                             .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
                         execution_engine_v1.execute(&scratch_state, pay_request)
                     }
@@ -399,8 +416,10 @@ pub fn execute_finalized_block(
                     }
                 };
 
-                let insufficient_payment_deposited =
-                    !pay_result.balance_increased_by_amount(payment_balance_addr, cost);
+                let insufficient_payment_deposited = !pay_result.balance_increased_by_amount(
+                    payment_balance_addr,
+                    artifact_builder.cost_to_use(),
+                );
 
                 if insufficient_payment_deposited || pay_result.error().is_some() {
                     // Charge initiator for the penalty payment amount
@@ -468,6 +487,7 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
+        artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
         let lane_id = transaction.transaction_lane();
 
         let allow_execution = {
@@ -477,16 +497,24 @@ pub fn execute_finalized_block(
             // amount in the happy path or the penalty amount in the sad path...in whichever case
             // the sad path is handled by is_penalty and the balance in the payment purse is
             // the penalty payment or the full amount but is 'sufficient' either way
+            let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let is_sufficient_balance =
-                is_custom_payment || post_payment_balance_result.is_sufficient(cost);
+                is_custom_payment || post_payment_balance_result.is_sufficient(actual_cost);
             let is_allowed_by_chainspec = chainspec.is_supported(lane_id);
             let allow = is_not_penalized && is_sufficient_balance && is_allowed_by_chainspec;
             if !allow {
+                let err_msg = {
+                    if !is_sufficient_balance {
+                        "Insufficient funds".to_string()
+                    } else {
+                        format!(
+                            "penalized: {}, sufficient balance: {}, allowed by chainspec: {}",
+                            !is_not_penalized, is_sufficient_balance, is_allowed_by_chainspec
+                        )
+                    }
+                };
                 if artifact_builder.error_message().is_none() {
-                    artifact_builder.with_error_message(format!(
-                        "penalized: {}, sufficient balance: {}, allowed by chainspec: {}",
-                        !is_not_penalized, is_sufficient_balance, is_allowed_by_chainspec
-                    ));
+                    artifact_builder.with_error_message(err_msg);
                 }
                 info!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, "payment preprocessing unsuccessful");
             } else {
@@ -499,7 +527,7 @@ pub fn execute_finalized_block(
             debug!(%transaction_hash, ?allow_execution, "execution allowed");
             if is_standard_payment {
                 // place a processing hold on the paying account to prevent double spend.
-                let hold_amount = cost;
+                let hold_amount = artifact_builder.cost_to_use();
                 let hold_request = BalanceHoldRequest::new_processing_hold(
                     state_root_hash,
                     protocol_version,
@@ -536,8 +564,7 @@ pub fn execute_finalized_block(
                         state_root_hash = scratch_state
                             .commit_effects(state_root_hash, transfer_result.effects().clone())?;
                         artifact_builder
-                            .with_min_cost(gas_limit.value())
-                            .with_added_consumed(gas_limit)
+                            .consume_limit()
                             .with_transfer_result(transfer_result)
                             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     } else if let TransactionEntryPoint::Burn = entry_point {
@@ -553,8 +580,7 @@ pub fn execute_finalized_block(
                         state_root_hash = scratch_state
                             .commit_effects(state_root_hash, burn_result.effects().clone())?;
                         artifact_builder
-                            .with_min_cost(gas_limit.value())
-                            .with_added_consumed(gas_limit)
+                            .consume_limit()
                             .with_burn_result(burn_result)
                             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     } else {
@@ -583,8 +609,7 @@ pub fn execute_finalized_block(
                                 bidding_result.effects().clone(),
                             )?;
                             artifact_builder
-                                .with_min_cost(gas_limit.value())
-                                .with_added_consumed(gas_limit)
+                                .consume_limit()
                                 .with_bidding_result(bidding_result)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
@@ -609,7 +634,7 @@ pub fn execute_finalized_block(
                             block_height,
                             protocol_version,
                         ),
-                        gas_limit,
+                        artifact_builder.gas_limit(),
                         &session_input_data,
                     ) {
                         Ok(wasm_v1_request) => {
@@ -638,7 +663,7 @@ pub fn execute_finalized_block(
                     }
                 }
                 _ if is_v2_wasm => match WasmV2Request::new(
-                    gas_limit,
+                    artifact_builder.gas_limit(),
                     chainspec.network_config.name.clone(),
                     runtime_native_config.clone(),
                     state_root_hash,
@@ -719,6 +744,8 @@ pub fn execute_finalized_block(
                     artifact_builder.consumed()
                 };
 
+            let available = artifact_builder.available().unwrap_or(U512::zero());
+
             let refund_mode = match refund_handling {
                 RefundHandling::NoRefund => {
                     if fee_handling.is_no_fee() && is_custom_payment {
@@ -729,21 +756,22 @@ pub fn execute_finalized_block(
                         balance_identifier = BalanceIdentifier::Refund;
                         Some(HandleRefundMode::RefundNoFeeCustomPayment {
                             initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
-                            cost,
+                            cost: artifact_builder.cost_to_use(),
                         })
                     } else {
                         None
                     }
                 }
                 RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
-                    limit: gas_limit.value(),
+                    limit: artifact_builder.limit(),
                     gas_price: current_gas_price,
-                    cost,
+                    cost: artifact_builder.cost_to_use(),
                     consumed,
                     source: Box::new(balance_identifier.clone()),
                     ratio: refund_ratio,
+                    available,
                 }),
                 RefundHandling::Refund { refund_ratio } => {
                     let source = Box::new(balance_identifier.clone());
@@ -760,16 +788,16 @@ pub fn execute_finalized_block(
                         // purposes of refund. instead, `BalanceIdentifier::Refund` is used by outer
                         // logic, which is interpreted by inner logic to use the currently set
                         // refund purse.
-                        let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
-                            cost,
+                            cost: artifact_builder.cost_to_use(),
                             ratio: refund_ratio,
                             source,
-                            target,
+                            target: Box::new(BalanceIdentifier::Refund),
+                            available,
                         })
                     } else {
                         // in normal payment handling we put a temporary processing hold
@@ -782,12 +810,12 @@ pub fn execute_finalized_block(
                         // multiple permanent records) and then transfer some of it back (which
                         // writes more permanent records).
                         Some(HandleRefundMode::CalculateAmount {
-                            limit: gas_limit.value(),
+                            limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
-                            cost,
+                            cost: artifact_builder.cost_to_use(),
                             ratio: refund_ratio,
-                            source,
+                            available,
                         })
                     }
                 }
@@ -815,16 +843,22 @@ pub fn execute_finalized_block(
             }
         };
         artifact_builder.with_refund_amount(refund_amount);
+
+        // take the lower of the difference between cost - refund OR available
+        let fee_amount = artifact_builder
+            .cost_to_use()
+            .saturating_sub(refund_amount)
+            .min(artifact_builder.available().unwrap_or(U512::zero()));
+
         // handle fees per the chainspec determined setting.
         let handle_fee_result = match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a gas hold is placed on the payer's purse.
-                let amount = cost.saturating_sub(refund_amount);
                 let hold_request = BalanceHoldRequest::new_gas_hold(
                     state_root_hash,
                     protocol_version,
                     balance_identifier,
-                    amount,
+                    fee_amount,
                     insufficient_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
@@ -837,24 +871,22 @@ pub fn execute_finalized_block(
                     runtime_native_config.clone(),
                     state_root_hash,
                     transaction_hash,
-                    HandleFeeMode::credit(proposer.clone(), amount, era_id),
+                    HandleFeeMode::credit(proposer.clone(), fee_amount, era_id),
                 );
                 scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Burn => {
                 // in this mode, the fee portion is burned.
-                let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     runtime_native_config.clone(),
                     state_root_hash,
                     transaction_hash,
-                    HandleFeeMode::burn(balance_identifier, Some(amount)),
+                    HandleFeeMode::burn(balance_identifier, Some(fee_amount)),
                 );
                 scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::PayToProposer => {
                 // in this mode, the consumed gas is paid as a fee to the block proposer
-                let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     runtime_native_config.clone(),
                     state_root_hash,
@@ -863,7 +895,7 @@ pub fn execute_finalized_block(
                         Box::new(initiator_addr.clone()),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
-                        amount,
+                        fee_amount,
                     ),
                 );
                 scratch_state.handle_fee(handle_fee_request)
@@ -871,7 +903,6 @@ pub fn execute_finalized_block(
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse
                 // for later distribution
-                let amount = cost.saturating_sub(refund_amount);
                 let handle_fee_request = HandleFeeRequest::new(
                     runtime_native_config.clone(),
                     state_root_hash,
@@ -880,7 +911,7 @@ pub fn execute_finalized_block(
                         Box::new(initiator_addr.clone()),
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
-                        amount,
+                        fee_amount,
                     ),
                 );
                 scratch_state.handle_fee(handle_fee_request)
