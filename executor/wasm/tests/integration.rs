@@ -356,7 +356,7 @@ fn exec_system_call(system_menu: SystemMenu, initiator: Option<AccountHash>) {
     let initiator = initiator.unwrap_or(DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash());
 
     let system_function_option: u32 = system_menu.into();
-    let input_data = borsh::to_vec(&(system_function_option,))
+    let input_data = borsh::to_vec(&(system_function_option, false))
         .map(Bytes::from)
         .unwrap();
     let execute_request = make_execution_request(
@@ -423,7 +423,7 @@ fn should_revert_invalid_system_option() {
     let block_time = Timestamp::now().into();
 
     let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
-    let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
+    let input_data = borsh::to_vec(&(9999, false)).map(Bytes::from).unwrap();
 
     let execute_request = make_execution_request(
         &chainspec_config,
@@ -543,7 +543,7 @@ fn should_handle_reservations() {
     // need to bump the delegator reservation limit up to allow add_reservation to work
     let bid_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::Bid).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -579,9 +579,9 @@ fn should_handle_reservations() {
     }
 
     // make a couple of reservations
-    let add_res_request = {
+    let add_res_pubk_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -594,16 +594,45 @@ fn should_handle_reservations() {
         )
     };
 
-    state_root_hash =
-        match exec_and_commit(&executor, &global_state, &state_root_hash, add_res_request) {
-            Ok(post_state) => post_state,
-            Err(err_str) => panic!("{err_str}"),
-        };
+    state_root_hash = match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        add_res_pubk_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
+
+    let add_res_purse_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
+        let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    state_root_hash = match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        add_res_purse_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
 
     // cancel those reservations
-    let cancel_request = {
+    let cancel_pubk_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -616,7 +645,37 @@ fn should_handle_reservations() {
         )
     };
 
-    match exec_and_commit(&executor, &global_state, &state_root_hash, cancel_request) {
+    match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        cancel_pubk_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
+
+    let cancel_purse_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
+        let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        cancel_purse_request,
+    ) {
         Ok(post_state) => post_state,
         Err(err_str) => panic!("{err_str}"),
     };
