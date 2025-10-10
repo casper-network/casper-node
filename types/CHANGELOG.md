@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
+- functions `Block::block_utilization` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
+- functions `Block::has_hit_slot_capacity` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
 - renamed `package::PackageHash` to `package::PackageAddr`
 - renamed `package::TryFromSliceForPackageHashError` to `package::TryFromSliceForPackageAddrError`
 - In struct AddressableEntity:
