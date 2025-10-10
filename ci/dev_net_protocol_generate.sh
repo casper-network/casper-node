@@ -32,7 +32,7 @@ echo
 
 if [ "$CURRENT_HASH" == "$LATEST_HASH" ]; then
 	  echo "Last published devnet protocol has same hash, erroring out."
-#	  exit 1 # This fails job and stops workflow
+	  exit 1 # This fails job and stops workflow
 fi
 
 LATEST_PROTOCOL_VERSION="$(curl -s https://genesis.casper.network/devnet/protocol_versions | tail -n 1 | tr -d '\n')"
