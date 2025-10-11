@@ -1305,7 +1305,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(wasm_addr)),
-        "wasm_key",
+        "bytecode_key",
         system_account_entity,
         2,
         0,

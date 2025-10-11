@@ -35,5 +35,5 @@ pub use block_store::{
 pub use system::runtime_native::Config as RuntimeNativeConfig;
 const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_key";
 const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_key";
-const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "wasm_key";
+const MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC: &str = "bytecode_key";
 const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";

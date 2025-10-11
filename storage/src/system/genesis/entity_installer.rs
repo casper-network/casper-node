@@ -15,7 +15,7 @@ use crate::{
         protocol_upgrade::blake2b,
     },
     AddressGenerator, TrackingCopy, MESSAGING_CONTRACT_ADDR_TOPIC,
-    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
+    MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
     MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
@@ -889,7 +889,7 @@ where
     fn create_messaging_topics(&self, block_time: BlockTime) -> Result<(), Box<GenesisError>> {
         self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())
     }

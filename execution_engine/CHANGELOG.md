@@ -2,31 +2,32 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog].
 
-[comment]: <> (Added:      new features)
+[comment]: <> (Added: new features)
 
-[comment]: <> (Changed:    changes in existing functionality)
+[comment]: <> (Changed: changes in existing functionality)
 
 [comment]: <> (Deprecated: soon-to-be removed features)
 
-[comment]: <> (Removed:    now removed features)
+[comment]: <> (Removed: now removed features)
 
-[comment]: <> (Fixed:      any bug fixes)
+[comment]: <> (Fixed: any bug fixes)
 
-[comment]: <> (Security:   in case of vulnerabilities)
+[comment]: <> (Security: in case of vulnerabilities)
 
 ## [Unreleased]
 
 ### Added
+
 - A VM1 contract version install (both new and upgrade) will now produce a native message to system-owned topics:
   - in case `addressable_entity` is turned off:
-    - `contract_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::Contract` value 
-    - `package_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractPackage` value 
-    - `wasm_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractWasm` value 
+    - `contract_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::Contract` value
+    - `package_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractPackage` value
+    - `bytecode_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractWasm` value
     - `contract_version` topic will receive a string containing the major contract and minor installed contract version (for example "2.1")
   - in case `addressable_entity` is turned on:
-    - `contract_key` topic will receive string-formatted `Key::AddressableEntity` containing the address of the new `AddressableEntity` of kind `SmartContract` value 
-    - `package_key` topic will receive string-formatted `Key::SmartContract` containing the address of the new `SmartContract::Package` value 
-    - `wasm_key` topic will receive string-formatted `Key::ByteCode` containing the address of the new `StoredValue::ByteCode` value 
+    - `contract_key` topic will receive string-formatted `Key::AddressableEntity` containing the address of the new `AddressableEntity` of kind `SmartContract` value
+    - `package_key` topic will receive string-formatted `Key::SmartContract` containing the address of the new `SmartContract::Package` value
+    - `bytecode_key` topic will receive string-formatted `Key::ByteCode` containing the address of the new `StoredValue::ByteCode` value
     - `contract_version` topic will receive a string containing the major contract and minor installed contract version (for example "2.1")
 
 ## 8.0.0
@@ -429,27 +430,27 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
-* Change the cost of `wasm.storage_costs.gas_per_byte` and `shared::storage_costs::DEFAULT_GAS_PER_BYTE_COST` from
+- Change the cost of `wasm.storage_costs.gas_per_byte` and `shared::storage_costs::DEFAULT_GAS_PER_BYTE_COST` from
   `630_000` to `1_117_587`.
-* Change the cost of the host function `casper_add_associated_key` from `9_000` to `1_200_000`.
-* Change the cost of the argument `entry_points_size` of host function `casper_add_contract_version` from `0` to
+- Change the cost of the host function `casper_add_associated_key` from `9_000` to `1_200_000`.
+- Change the cost of the argument `entry_points_size` of host function `casper_add_contract_version` from `0` to
   `120_000`.
-* Change the cost of the host function `casper_blake2b`and its argument `in_size` from `200` and `0` respectively to
+- Change the cost of the host function `casper_blake2b`and its argument `in_size` from `200` and `0` respectively to
   `1_200_000` to `120_000`.
-* Change the cost of the host function `casper_call_contract` and its arguments `entry_point_name_size` and
+- Change the cost of the host function `casper_call_contract` and its arguments `entry_point_name_size` and
   `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_call_versioned_contract` and the arguments `entry_point_name_size` and
+- Change the cost of the host function `casper_call_versioned_contract` and the arguments `entry_point_name_size` and
   `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_get_balance` from `3_800` to `3_000_000`.
-* Change the cost of arguments `name_size` and `dest_size` of host function `casper_get_named_arg` from `0` to
+- Change the cost of the host function `casper_get_balance` from `3_800` to `3_000_000`.
+- Change the cost of arguments `name_size` and `dest_size` of host function `casper_get_named_arg` from `0` to
   `120_000`.
-* Change the cost of the host function `casper_put_key` and its arguments `name_size` and `key_size` from `38_000`,
+- Change the cost of the host function `casper_put_key` and its arguments `name_size` and `key_size` from `38_000`,
   `1_100` and `0` respectively to `100_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_read_value` and its argument `key_size` from `6_000` and `0` respectively
+- Change the cost of the host function `casper_read_value` and its argument `key_size` from `6_000` and `0` respectively
   to `60_000` and `120_000`.
-* Change the cost of the argument `urefs_size` of host function `casper_remove_contract_user_group_urefs` from `0` to
+- Change the cost of the argument `urefs_size` of host function `casper_remove_contract_user_group_urefs` from `0` to
   `120_000`.
-* Change the cost of the host function `casper_transfer_from_purse_to_purse` from `82_000` to `82_000_000`.
+- Change the cost of the host function `casper_transfer_from_purse_to_purse` from `82_000` to `82_000_000`.
 
 ## [Unreleased] (node 1.5.4)
 
@@ -457,211 +458,211 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
-* Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two
+- Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two
   peers. Disabling this option makes sense only for private chains.
-* Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid`
+- Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid`
   to operate. Disabling this option makes sense only for private chains.
-* Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option
+- Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option
   makes sense only for private chains.
-* Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
-* Add chainspec option `core.fee_handling` that specifies how transaction fees are handled.
-* Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes
+- Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
+- Add chainspec option `core.fee_handling` that specifies how transaction fees are handled.
+- Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes
   sense only for private chains.
-* Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
+- Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
 
 ### Changed
 
-* `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
-* Tweak upgrade logic transforming withdraw purses to early exit if possible.
-* Lower the default gas costs of opcodes.
-    - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
-    - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
-* Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain
+- `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
+- Tweak upgrade logic transforming withdraw purses to early exit if possible.
+- Lower the default gas costs of opcodes.
+  - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
+  - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
+- Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain
   current seigniorage rate (per unit of time).
-* Refund ratio is changed from 0% to 99%.
+- Refund ratio is changed from 0% to 99%.
 
 ## 6.0.0
 
 ### Changed
 
-* Default value for `max_stack_height` is increased to 500.
-* Replace usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
+- Default value for `max_stack_height` is increased to 500.
+- Replace usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
 
 ### Fixed
 
-* Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
-* Fix issue with one-time code used for migrating data to support redelegations.
+- Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
+- Fix issue with one-time code used for migrating data to support redelegations.
 
 ### Security
 
-* Fix unbounded memory allocation issue while parsing Wasm.
+- Fix unbounded memory allocation issue while parsing Wasm.
 
 ## 5.0.0
 
 ### Added
 
-* Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another
+- Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another
   validator without having to unbond. The function signature for the entrypoint is:
   `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
-* Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the
+- Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the
   hashes for `accounts.toml` and `global_state.toml`.
-* Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and
+- Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and
   of the correct `CLType`.
 
 ### Changed
 
-* Fix some integer casts.
-* Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
-* Lift the temporary limit of the size of individual values stored in global state.
-* Providing incorrect Wasm for execution will cause the default 2.5 token to be charged.
-* Update the default `control_flow` opcode cost from `440` to `440_000`.
+- Fix some integer casts.
+- Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
+- Lift the temporary limit of the size of individual values stored in global state.
+- Providing incorrect Wasm for execution will cause the default 2.5 token to be charged.
+- Update the default `control_flow` opcode cost from `440` to `440_000`.
 
 ## 4.0.0
 
 ### Changed
 
-* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version
+- Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version
   bump here).
 
 ## 3.1.1
 
 ### Changed
 
-* Update the following constant values to match settings in production chainspec:
-    * `DEFAULT_RET_VALUE_SIZE_WEIGHT`
-    * `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
-    * `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
-    * `DEFAULT_GAS_PER_BYTE_COST`
-    * `DEFAULT_ADD_BID_COST`
-    * `DEFAULT_WITHDRAW_BID_COST`
-    * `DEFAULT_DELEGATE_COST`
-    * `DEFAULT_UNDELEGATE_COST`
-    * `DEFAULT_MAX_STACK_HEIGHT`
+- Update the following constant values to match settings in production chainspec:
+  - `DEFAULT_RET_VALUE_SIZE_WEIGHT`
+  - `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
+  - `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
+  - `DEFAULT_GAS_PER_BYTE_COST`
+  - `DEFAULT_ADD_BID_COST`
+  - `DEFAULT_WITHDRAW_BID_COST`
+  - `DEFAULT_DELEGATE_COST`
+  - `DEFAULT_UNDELEGATE_COST`
+  - `DEFAULT_MAX_STACK_HEIGHT`
 
 ## 3.1.0
 
 ### Added
 
-* Add `commit_prune` functionality to support pruning of entries in global storage.
+- Add `commit_prune` functionality to support pruning of entries in global storage.
 
 ### Changed
 
-* Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
+- Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
 
 ## 3.0.0
 
 ### Changed
 
-* Implement more precise control over opcode costs that lowers the gas cost.
-* Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5 token.
+- Implement more precise control over opcode costs that lowers the gas cost.
+- Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5 token.
 
 ## 2.0.1
 
 ### Security
 
-* Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
-* Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
-* Implement checks before preprocessing Wasm to avoid possibility to import internal host functions.
+- Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
+- Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
+- Implement checks before preprocessing Wasm to avoid possibility to import internal host functions.
 
 ## 2.0.0 - 2022-05-11
 
 ### Changed
 
-* Change contract runtime to allow caching global state changes during execution of a single block, also avoiding
+- Change contract runtime to allow caching global state changes during execution of a single block, also avoiding
   writing interstitial data to global state.
 
 ## 1.5.0 - 2022-04-05
 
 ### Changed
 
-* Temporarily limit the size of individual values stored in global state.
+- Temporarily limit the size of individual values stored in global state.
 
 ### Security
 
-* `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an
+- `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an
   upper limit on all tokens being transferred within the transaction.
-* Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on
+- Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on
   removing alternate execution paths where unintended escalation of privilege was possible.
-* Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime
+- Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime
   argument.
-* Fix a potential panic during Wasm preprocessing.
-* `get_era_validators` performs a query rather than execution.
+- Fix a potential panic during Wasm preprocessing.
+- `get_era_validators` performs a query rather than execution.
 
 ## 1.4.4 - 2021-12-29
 
 ### Changed
 
-* No longer checksum-hex encode hash digest and address types.
+- No longer checksum-hex encode hash digest and address types.
 
 ## 1.4.3 - 2021-12-06
 
 ### Changed
 
-* Auction contract now handles minting into an existing purse.
-* Default maximum stack size in `WasmConfig` changed to 188.
-* Default behavior of LMDB changed to use [
+- Auction contract now handles minting into an existing purse.
+- Default maximum stack size in `WasmConfig` changed to 188.
+- Default behavior of LMDB changed to use [
   `NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
 ### Fixed
 
-* Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for
+- Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for
   a non-genesis validator with higher stake.
 
 ## [1.4.2] - 2021-11-11
 
 ### Changed
 
-* Execution transforms are returned in their insertion order.
+- Execution transforms are returned in their insertion order.
 
 ### Removed
 
-* Removed `SystemContractCache` as it was not being used anymore
+- Removed `SystemContractCache` as it was not being used anymore
 
 ## [1.4.0] - 2021-10-04
 
 ### Added
 
-* Added genesis validation step to ensure there are more genesis validators than validator slots.
-* Added a support for passing a public key as a `target` argument in native transfers.
-* Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
+- Added genesis validation step to ensure there are more genesis validators than validator slots.
+- Added a support for passing a public key as a `target` argument in native transfers.
+- Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
 
 ### Changed
 
-* Documented `storage` module and children.
-* Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
-* Support building and testing using stable Rust.
-* Increase price of `create_purse` to 2.5 token.
-* Increase price of native transfer to 100 million motes (0.1 token).
-* Improve doc comments to clarify behavior of the bidding functionality.
-* Document `core` and `shared` modules and their children.
-* Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
+- Documented `storage` module and children.
+- Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
+- Support building and testing using stable Rust.
+- Increase price of `create_purse` to 2.5 token.
+- Increase price of native transfer to 100 million motes (0.1 token).
+- Improve doc comments to clarify behavior of the bidding functionality.
+- Document `core` and `shared` modules and their children.
+- Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
 
 ### Fixed
 
-* Fix a case where user could potentially supply a refund purse as a payment purse.
+- Fix a case where user could potentially supply a refund purse as a payment purse.
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
 
-* Update pinned version of Rust to `nightly-2021-06-17`.
+- Update pinned version of Rust to `nightly-2021-06-17`.
 
 ## [1.2.0] - 2021-05-27
 
 ### Added
 
-* Add validation that the delegated amount of each genesis account is non-zero.
-* Add `activate-bid` client contract.
-* Add a check in `Mint::transfer` that the source has `Read` permissions.
+- Add validation that the delegated amount of each genesis account is non-zero.
+- Add `activate-bid` client contract.
+- Add a check in `Mint::transfer` that the source has `Read` permissions.
 
 ### Changed
 
-* Change to Apache 2.0 license.
-* Remove the strict expectation that minor and patch protocol versions must always increase by 1.
+- Change to Apache 2.0 license.
+- Remove the strict expectation that minor and patch protocol versions must always increase by 1.
 
 ### Removed
 
-* Remove `RootNotFound` error struct.
+- Remove `RootNotFound` error struct.
 
 ## [1.1.1] - 2021-04-19
 
@@ -679,24 +680,15 @@ No changes.
 
 ### Added
 
-* Initial release of execution engine for Casper mainnet.
+- Initial release of execution engine for Casper mainnet.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-
 [unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev
-
 [1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.0...37d561634adf73dab40fffa7f1f1ee47e80bf8a1
-
 [1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
-
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
-
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
-
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
-
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
-
 [1.0.1]: https://github.com/casper-network/casper-node/compare/v1.0.0...v1.0.1
-
 [1.0.0]: https://github.com/casper-network/casper-node/releases/tag/v1.0.0
