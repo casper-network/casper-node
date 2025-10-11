@@ -1630,7 +1630,7 @@ where
 
     /// Queries for a contract package by `PackageAddr`.
     pub fn get_package(&self, package_addr: PackageAddr) -> Option<Package> {
-        let key = if self.chainspec.core_config.enable_addressable_entity {
+        let key = if self.chainspec.core_config.addressable_entity_enabled {
             Key::Package(package_addr)
         } else {
             Key::Hash(package_addr.value())

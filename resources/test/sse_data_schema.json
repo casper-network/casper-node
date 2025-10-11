@@ -4484,7 +4484,7 @@
           ],
           "properties": {
             "Package": {
-              "$ref": "#/definitions/PackageHash"
+              "$ref": "#/definitions/PackageAddr"
             }
           },
           "additionalProperties": false

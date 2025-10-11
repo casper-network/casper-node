@@ -50,8 +50,8 @@ use casper_types::{
     contract_messages::{Message, MessageChecksum, MessagePayload},
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
-    BlockHash, BlockTime, Digest, EntityAddr, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue,
-    Timestamp,
+    BlockHash, BlockTime, ByteCodeAddr, Digest, EntityAddr, Key, KeyTag, PublicKey, RuntimeArgs,
+    StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -1775,6 +1775,7 @@ fn supports_named_args_convention() {
 fn installing_contract_should_produce_system_messages() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
+    let is_addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
 
     let mut executor = make_executor(&chainspec_config);
 
@@ -1814,10 +1815,14 @@ fn installing_contract_should_produce_system_messages() {
         })
         .collect();
     assert_eq!(message_checksums.len(), 4);
-    let key_of_contract = Key::AddressableEntity(EntityAddr::SmartContract(
-        *create_result.smart_contract_addr(),
-    ));
-    let (key_of_package, key_of_wasm) =
+    let key_of_contract = if is_addressable_entity_enabled {
+        Key::AddressableEntity(EntityAddr::SmartContract(
+            *create_result.smart_contract_addr(),
+        ))
+    } else {
+        Key::Hash(*create_result.smart_contract_addr())
+    };
+    let (key_of_contract, key_of_package, key_of_wasm) =
         get_contract_package_and_wasms(post_state_root_hash, &global_state, key_of_contract);
 
     let system_account_hash = PublicKey::System.to_account_hash().value();
@@ -1864,6 +1869,7 @@ fn installing_contract_should_produce_system_messages() {
 fn installing_contract_should_produce_system_messages_after_upgrade() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
+    let is_addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
 
     let mut executor = make_executor(&chainspec_config);
     let upgradable_address;
@@ -1935,8 +1941,12 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
         .collect();
 
     assert_eq!(message_checksums.len(), 4);
-    let key_of_contract = Key::AddressableEntity(EntityAddr::SmartContract(upgradable_address));
-    let (key_of_package, key_of_wasm) = get_contract_package_and_wasms(
+    let key_of_contract = if is_addressable_entity_enabled {
+        Key::AddressableEntity(EntityAddr::SmartContract(upgradable_address))
+    } else {
+        Key::Hash(upgradable_address)
+    };
+    let (key_of_contract, key_of_package, key_of_wasm) = get_contract_package_and_wasms(
         state_root_hash_after_upgrade,
         &global_state,
         key_of_contract,
@@ -1986,18 +1996,36 @@ fn get_contract_package_and_wasms(
     state_hash: Digest,
     global_state: &LmdbGlobalState,
     key_of_contract: Key,
-) -> (Key, Key) {
+) -> (Key, Key, Key) {
     let mut tc = global_state.tracking_copy(state_hash).unwrap().unwrap();
     let z = tc.read(&key_of_contract).unwrap().unwrap();
     match z {
         StoredValue::AddressableEntity(ae) => (
-            Key::SmartContract(ae.package().value()),
+            key_of_contract,
+            Key::Package(ae.package()),
             Key::ByteCode(ae.byte_code_addr().unwrap()),
         ),
         StoredValue::Contract(ctr) => (
+            key_of_contract,
             Key::Hash(ctr.contract_package_hash().value()),
-            ctr.contract_wasm_key(),
+            //TODO this should probably be changed to ctr.contract_wasm_key() once the upgrade is
+            // fixed
+            Key::ByteCode(ByteCodeAddr::V2CasperWasm(ctr.contract_wasm_hash().value())),
         ),
+        StoredValue::ContractPackage(contract_package) => {
+            let real_contract_entry =
+                Key::Hash(contract_package.current_contract_hash().unwrap().value());
+            let z = tc.read(&real_contract_entry).unwrap().unwrap();
+            let wasm_key = match z {
+                StoredValue::Contract(ctr) => {
+                    //TODO this should probably be changed to ctr.contract_wasm_key() once the
+                    // upgrade is fixed
+                    Key::ByteCode(ByteCodeAddr::V2CasperWasm(ctr.contract_wasm_hash().value()))
+                }
+                _ => unreachable!(),
+            };
+            (real_contract_entry, key_of_contract, wasm_key)
+        }
         _ => unreachable!(),
     }
 }

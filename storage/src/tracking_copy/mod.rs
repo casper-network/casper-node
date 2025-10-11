@@ -889,21 +889,21 @@ where
     }
 
     /// Emits system messages for a new contract version by writing them to global state
-    pub fn emit_messages_for_new_contract_version(
+    pub fn emit_messages_for_new_installed_version(
         &mut self,
         key_of_package: Key,
         key_of_contract: Key,
         key_of_wasm: Key,
-        contract_major_version: u32,
-        contract_minor_version: u32,
+        version_major: u32,
+        version_minor: u32,
         current_blocktime: BlockTime,
     ) -> Result<(), MessageEmissionError> {
         let contract_emitter = NewContractMessagesEmitter::new(
             key_of_package,
             key_of_contract,
             key_of_wasm,
-            contract_major_version,
-            contract_minor_version,
+            version_major,
+            version_minor,
         );
         contract_emitter.emit_contract_creation_messages(self, current_blocktime)
     }

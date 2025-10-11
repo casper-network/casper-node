@@ -163,9 +163,9 @@ pub(crate) struct NewContractMessagesEmitter {
     /// disabled) or Key::Bytecode otherwise
     key_of_wasm: Key,
     /// Data which denotes what major version of the contract was installed
-    contract_major_version: u32,
+    version_major: u32,
     /// Data which denotes what minor version of the contract was installed
-    contract_minor_version: u32,
+    version_minor: u32,
 }
 
 impl NewContractMessagesEmitter {
@@ -173,15 +173,15 @@ impl NewContractMessagesEmitter {
         key_of_package: Key,
         key_of_contract: Key,
         key_of_wasm: Key,
-        contract_major_version: u32,
-        contract_minor_version: u32,
+        version_major: u32,
+        version_minor: u32,
     ) -> Self {
         Self {
             key_of_package,
             key_of_contract,
             key_of_wasm,
-            contract_major_version,
-            contract_minor_version,
+            version_major,
+            version_minor,
         }
     }
 
@@ -229,10 +229,8 @@ impl NewContractMessagesEmitter {
         )?;
 
         let topic_name = MESSAGING_CONTRACT_VERSION_TOPIC;
-        let message_payload = MessagePayload::String(format!(
-            "{}.{}",
-            self.contract_major_version, self.contract_minor_version
-        ));
+        let message_payload =
+            MessagePayload::String(format!("{}.{}", self.version_major, self.version_minor));
         emitter.emit_message_for_entity(
             tracking_copy,
             entity_addr,

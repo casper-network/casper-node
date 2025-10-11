@@ -193,7 +193,7 @@ where
             }
             EntityAddr::Package(addr) => {
                 let key = if enable_addressable_entity {
-                    Key::Package(addr)
+                    Key::Package(addr.into())
                 } else {
                     Key::Hash(addr)
                 };

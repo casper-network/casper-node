@@ -42,13 +42,20 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
-    bytesrepr, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    CLType, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
-    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, MintCosts, Package, PackageAddr, PackageStatus, Parameters, Phase,
-    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
-    WasmV2Config,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityEntryPoint, EntryPoints as EntityEntryPoints,
+    },
+    bytesrepr,
+    contracts::{
+        ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
+        EntryPoints as ContractEntryPoints,
+    },
+    AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
+    CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind,
+    EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, Gas,
+    Groups, InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package, PackageAddr,
+    PackageStatus, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
+    TransactionInvocationTarget, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -240,56 +247,67 @@ impl ExecutorV2 {
         let protocol_version = ProtocolVersion::V2_0_0;
         let protocol_version_major = protocol_version.value().major;
 
-        let smart_contract_addr = if addressable_entity_enabled {
-            let mut smart_contract_package = Package::new(
-                Default::default(),
-                Default::default(),
-                Groups::default(),
-                PackageStatus::Unlocked,
-            );
+        let (smart_contract_addr, key_of_package, version_major, version_minor) =
+            if addressable_entity_enabled {
+                let mut smart_contract_package = Package::new(
+                    Default::default(),
+                    Default::default(),
+                    Groups::default(),
+                    PackageStatus::Unlocked,
+                );
 
-            let next_version =
-                smart_contract_package.next_entity_version_for(protocol_version_major);
+                let next_version =
+                    smart_contract_package.next_entity_version_for(protocol_version_major);
 
-            let smart_contract_addr =
-                compute_next_contract_hash_version(package_addr, next_version);
+                let smart_contract_addr =
+                    compute_next_contract_hash_version(package_addr, next_version);
 
-            let entity_version_key = smart_contract_package.insert_entity_version(
-                protocol_version_major,
-                EntityAddr::SmartContract(smart_contract_addr),
-            );
-            debug_assert_eq!(entity_version_key.entity_version(), next_version);
+                let version_key = smart_contract_package.insert_entity_version(
+                    protocol_version_major,
+                    EntityAddr::SmartContract(smart_contract_addr),
+                );
+                debug_assert_eq!(version_key.entity_version(), next_version);
 
-            tracking_copy.write(
-                Key::Package(package_addr),
-                StoredValue::SmartContract(smart_contract_package),
-            );
-            smart_contract_addr
-        } else {
-            let mut contract_package = ContractPackage::new(
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Groups::default(),
-                ContractPackageStatus::Unlocked,
-            );
+                let package_key = Key::Package(package_addr.into());
+                tracking_copy.write(
+                    package_key,
+                    StoredValue::SmartContract(smart_contract_package),
+                );
+                (
+                    smart_contract_addr,
+                    package_key,
+                    version_key.protocol_version_major(),
+                    version_key.entity_version(),
+                )
+            } else {
+                let mut contract_package = ContractPackage::new(
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Groups::default(),
+                    ContractPackageStatus::Unlocked,
+                );
 
-            let next_version = contract_package.next_contract_version_for(protocol_version_major);
+                let next_version =
+                    contract_package.next_contract_version_for(protocol_version_major);
 
-            let smart_contract_addr =
-                compute_next_contract_hash_version(package_addr, next_version);
+                let smart_contract_addr =
+                    compute_next_contract_hash_version(package_addr, next_version);
 
-            contract_package.insert_contract_version(
-                protocol_version_major,
-                ContractHash::new(smart_contract_addr),
-            );
+                let version_key = contract_package.insert_contract_version(
+                    protocol_version_major,
+                    ContractHash::new(smart_contract_addr),
+                );
 
-            tracking_copy.write(
-                Key::Hash(package_addr),
-                StoredValue::ContractPackage(contract_package),
-            );
-            smart_contract_addr
-        };
+                let package_key = Key::Hash(package_addr);
+                tracking_copy.write(package_key, StoredValue::ContractPackage(contract_package));
+                (
+                    smart_contract_addr,
+                    package_key,
+                    version_key.protocol_version_major(),
+                    version_key.contract_version(),
+                )
+            };
 
         // 2. Store wasm
         let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, wasm_bytes.clone().into());
@@ -361,7 +379,7 @@ impl ExecutorV2 {
             entrypoints
         };
 
-        if addressable_entity_enabled {
+        let key_of_contract = if addressable_entity_enabled {
             // 3. Store addressable entity
             let addressable_entity_key =
                 Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
@@ -385,7 +403,7 @@ impl ExecutorV2 {
 
             // 3.1 Store entry points first
             let addressable_entity = AddressableEntity::new(
-                PackageHash::new(package_addr),
+                PackageAddr::new(package_addr),
                 ByteCodeHash::new(bytecode_hash),
                 ProtocolVersion::V2_0_0,
                 main_purse,
@@ -398,6 +416,7 @@ impl ExecutorV2 {
                 addressable_entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
             );
+            addressable_entity_key
         } else {
             let contract_entrypoints = ContractEntryPoints::from(entrypoints);
             let named_keys = {
@@ -417,11 +436,10 @@ impl ExecutorV2 {
                 protocol_version,
             );
 
-            tracking_copy.write(
-                Key::Hash(smart_contract_addr),
-                StoredValue::Contract(contract),
-            )
-        }
+            let contract_key = Key::Hash(smart_contract_addr);
+            tracking_copy.write(contract_key, StoredValue::Contract(contract));
+            contract_key
+        };
 
         let ctor_gas_usage = match entry_point {
             Some(entry_point_name) => {
@@ -450,12 +468,12 @@ impl ExecutorV2 {
 
                 let mut forked_tc = tracking_copy.fork2();
 
-                match forked_tc.emit_messages_for_new_contract_version(
-                    Key::SmartContract(smart_contract_addr.into()),
-                    addressable_entity_key,
-                    Key::ByteCode(bytecode_addr),
-                    entity_version_key.protocol_version_major(),
-                    entity_version_key.entity_version(),
+                match forked_tc.emit_messages_for_new_installed_version(
+                    key_of_package,
+                    key_of_contract,
+                    bytecode_key,
+                    version_major,
+                    version_minor,
                     block_time,
                 ) {
                     Ok(_) => (),
@@ -592,7 +610,7 @@ impl ExecutorV2 {
                 entry_point,
             } = &execution_kind
             {
-                let smart_contract_key = Key::Package(*contract_package_addr);
+                let smart_contract_key = Key::Package((*contract_package_addr).into());
                 let vm1_key = Key::Hash(*contract_package_addr);
 
                 let contract = match tracking_copy
@@ -908,7 +926,7 @@ impl ExecutorV2 {
                 ..
             } => {
                 if initial_tracking_copy.addressable_entity_enabled() {
-                    Key::Package(*smart_contract_package_addr)
+                    Key::Package((*smart_contract_package_addr).into())
                 } else {
                     Key::Hash(*smart_contract_package_addr)
                 }
@@ -1103,7 +1121,7 @@ impl ExecutorV2 {
         let initiator_addr = InitiatorAddr::AccountHash(initiator);
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
-                addr: entity_addr.value(),
+                addr: entity_addr.value().into(),
                 version: None,
                 protocol_version_major: None,
             });

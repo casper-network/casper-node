@@ -104,7 +104,8 @@ impl<'a> ExecutionKind<'a> {
                     .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(name.to_string())))?;
 
                 let package_hash = match package_key {
-                    Key::Hash(hash) | Key::Package(hash) => PackageAddr::new(*hash),
+                    Key::Package(hash) => PackageAddr::new(hash.value()),
+                    Key::Hash(hash) => PackageAddr::new(*hash),
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
                 return Ok(Self::VersionedCall {

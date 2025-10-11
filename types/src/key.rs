@@ -48,7 +48,7 @@ use crate::{
     contract_messages::{self, MessageAddr, TopicNameHash, TOPIC_NAME_HASH_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
-    package::PackageAddr,
+    package::{PackageAddr, TryFromSliceForPackageAddrError},
     system::{
         auction::{BidAddr, BidAddrTag},
         mint::BalanceHoldAddr,
@@ -886,8 +886,10 @@ impl Key {
         if let Some(package_addr) = input.strip_prefix(PACKAGE_PREFIX) {
             let package_addr_bytes = checksummed_hex::decode(package_addr)
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
-            let hash = HashAddr::try_from(package_addr_bytes.as_ref())
-                .map_err(|error| FromStrError::Package(error.to_string()))?;
+            let value: &Vec<u8> = package_addr_bytes.as_ref();
+            let addr = PackageAddr::try_from(value).map_err(
+                |error: TryFromSliceForPackageAddrError| FromStrError::Package(error.to_string()),
+            )?;
             return Ok(Key::Package(addr));
         }
 
@@ -1012,7 +1014,7 @@ impl Key {
     /// returns `None`.
     pub fn into_package_addr(self) -> Option<PackageAddr> {
         match self {
-            Key::Hash(hash) => Some(hash),
+            Key::Hash(hash) => Some(hash.into()),
             Key::Package(package_addr) => Some(package_addr),
             _ => None,
         }
@@ -2786,7 +2788,7 @@ mod tests {
     fn key_of_smart_contract_json_roundtrip() {
         let addr = [122_u8; 32];
         let hex_encoded_addr = hex::encode(addr);
-        let key = Key::SmartContract(PackageAddr::new(addr));
+        let key = Key::Package(PackageAddr::new(addr));
         let stringified_key = serde_json::to_string(&key).expect("successfull serialization");
         let json: Value =
             serde_json::from_str(&stringified_key).expect("successfull serialization");

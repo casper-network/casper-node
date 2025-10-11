@@ -593,7 +593,7 @@ pub enum EntityKind {
     Account(AccountHash),
     /// Packages associated with Wasm stored on chain.
     SmartContract(ContractRuntimeTag),
-    Package(PackageHash),
+    Package(PackageAddr),
 }
 
 impl EntityKind {
@@ -742,7 +742,7 @@ impl Distribution<EntityKind> for Standard {
             0 => EntityKind::System(rng.gen()),
             1 => EntityKind::Account(rng.gen()),
             2 => EntityKind::SmartContract(rng.gen()),
-            3 => EntityKind::Package(PackageHash::default()),
+            3 => EntityKind::Package(PackageAddr::default()),
             _ => unreachable!(),
         }
     }
@@ -1670,7 +1670,7 @@ impl AddressableEntity {
             EntityKind::SmartContract(_) => {
                 Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
             }
-            EntityKind::Package(_) => Key::Package(entity_hash.value()),
+            EntityKind::Package(_) => Key::Package(entity_hash.value().into()),
         }
     }
 
@@ -1707,6 +1707,7 @@ impl AddressableEntity {
                     Some(ByteCodeAddr::V2CasperWasm(self.byte_code.value()))
                 }
             },
+            EntityKind::Package(_) => None,
         }
     }
 }

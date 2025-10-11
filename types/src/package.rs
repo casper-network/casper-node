@@ -541,16 +541,6 @@ impl AsRef<[u8]> for PackageAddr {
     }
 }
 
-impl TryFrom<&[u8]> for PackageAddr {
-    type Error = TryFromSliceForPackageAddrError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForPackageAddrError> {
-        HashAddr::try_from(bytes)
-            .map(PackageAddr::new)
-            .map_err(|_| TryFromSliceForPackageAddrError(()))
-    }
-}
-
 impl TryFrom<&Vec<u8>> for PackageAddr {
     type Error = TryFromSliceForPackageAddrError;
 

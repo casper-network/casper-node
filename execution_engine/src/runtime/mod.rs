@@ -2792,7 +2792,7 @@ where
             .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         let current_blocktime = self.context.get_block_info().block_time();
 
-        match self.context.emit_messages_for_new_contract_version(
+        match self.context.emit_messages_for_new_installed_version(
             current_blocktime,
             contract_package_key,
             contract_key,
@@ -2965,7 +2965,7 @@ where
             }
         }
         let current_blocktime = self.context.get_block_info().block_time();
-        match self.context.emit_messages_for_new_contract_version(
+        match self.context.emit_messages_for_new_installed_version(
             current_blocktime,
             Key::Hash(package_hash.value()),
             entity_key,
@@ -3147,7 +3147,7 @@ where
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
-            let contract_package_key = Key::SmartContract(contract_package_hash.value());
+            let contract_package_key = Key::Package(contract_package_hash);
             self.context.validate_key(&contract_package_key)?;
 
             let mut contract_package: Package =

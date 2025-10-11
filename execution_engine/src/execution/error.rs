@@ -9,7 +9,8 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, StoredValueTypeMismatch, URef,
+    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, PackageAddr, StoredValueTypeMismatch,
+    URef,
 };
 use casper_wasm::elements;
 
