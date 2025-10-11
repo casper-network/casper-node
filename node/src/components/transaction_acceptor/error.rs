@@ -5,7 +5,7 @@ use thiserror::Error;
 use casper_binary_port::ErrorCode as BinaryPortErrorCode;
 use casper_types::{
     AddressableEntityHash, BlockHash, BlockHeader, Digest, EntityVersionKey, InitiatorAddr,
-    InvalidTransaction, PackageHash, Timestamp,
+    InvalidTransaction, PackageAddr, Timestamp,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -143,7 +143,7 @@ pub(crate) enum ParameterFailure {
     NoSuchEntryPoint { entry_point_name: String },
     /// No such package.
     #[error("package at {package_hash} does not exist")]
-    NoSuchPackageAtHash { package_hash: PackageHash },
+    NoSuchPackageAtHash { package_hash: PackageAddr },
     /// Invalid contract at given version.
     #[error("invalid entity at version key: {entity_version_key}")]
     InvalidEntityAtVersion {

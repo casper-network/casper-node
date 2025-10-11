@@ -9,8 +9,7 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch,
-    URef,
+    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, StoredValueTypeMismatch, URef,
 };
 use casper_wasm::elements;
 
@@ -114,7 +113,7 @@ pub enum Error {
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveEntityVersions(PackageHash),
+    NoActiveEntityVersions(PackageAddr),
     /// Invalid entity version supplied.
     #[error("Invalid entity version: {}", _0)]
     InvalidEntityVersion(EntityVersionKey),
@@ -138,7 +137,7 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedEntity(PackageHash),
+    LockedEntity(PackageAddr),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidEntity(AddressableEntityHash),

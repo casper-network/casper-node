@@ -9,7 +9,24 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
-## [UNRELEASED] casper-types 6.0.0
+## casper-types 7.0.0
+
+### Added 
+- In struct AddressableEntity:
+    - function `byte_code_addr`
+
+### Changed
+- renamed `package::PackageHash` to `package::PackageAddr`
+- renamed `package::TryFromSliceForPackageHashError` to `package::TryFromSliceForPackageAddrError`
+- In struct AddressableEntity:
+    - field `package_hash` renamed to `package`
+    - field `byte_code_hash` renamed to `byte_code`
+
+### Removed
+- type `key::PackageAddr`
+
+
+## casper-types 6.0.0
 
 ### Added 
 - TransactionInvocationTarget::ByPackageHash::protocol_version_major field

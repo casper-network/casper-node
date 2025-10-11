@@ -46,7 +46,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry,
     Digest, EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints,
-    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
+    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageAddr,
     PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, Tagged,
     URef, U512,
 };
@@ -691,7 +691,7 @@ where
             }
         };
 
-        let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let package_hash = PackageAddr::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
         let associated_keys = entity_kind.associated_keys();

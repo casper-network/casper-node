@@ -1991,8 +1991,8 @@ fn get_contract_package_and_wasms(
     let z = tc.read(&key_of_contract).unwrap().unwrap();
     match z {
         StoredValue::AddressableEntity(ae) => (
-            Key::SmartContract(ae.package_hash().value()),
-            Key::ByteCode(ByteCodeAddr::V2CasperWasm(ae.byte_code_addr())),
+            Key::SmartContract(ae.package().value()),
+            Key::ByteCode(ae.byte_code_addr().unwrap()),
         ),
         StoredValue::Contract(ctr) => (
             Key::Hash(ctr.contract_package_hash().value()),

@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
-    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
+    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageAddr,
     PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
     TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
 };
@@ -464,7 +464,7 @@ fn valid_versioned_call_txn(
     chain_name: &str,
     pricing_mode: PricingMode,
     entry_point: &str,
-    package_hash: PackageHash,
+    package_hash: PackageAddr,
     runtime_args: RuntimeArgs,
     version: Option<EntityVersion>,
     protocol_version_major: Option<ProtocolVersionMajor>,
@@ -667,7 +667,7 @@ async fn should_correctly_manage_entity_version_calls() {
 
     let package_hash = package_key
         .into_hash_addr()
-        .map(PackageHash::new)
+        .map(PackageAddr::new)
         .expect("must get package hash");
 
     let upgrader_transaction = valid_wasm_txn(

@@ -48,7 +48,7 @@ use crate::{
     contract_messages::{self, MessageAddr, TopicNameHash, TOPIC_NAME_HASH_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
-    package::PackageHash,
+    package::PackageAddr,
     system::{
         auction::{BidAddr, BidAddrTag},
         mint::BalanceHoldAddr,
@@ -92,8 +92,6 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
-/// The maximum length for an `Addr`.
-pub const ADDR_LENGTH: usize = 32;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const BLOCK_GLOBAL_PADDING_BYTES: [u8; 31] = [0u8; 31];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -127,9 +125,6 @@ const MAX_SERIALIZED_LENGTH: usize = KEY_MESSAGE_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
-
-/// An alias for [`Key`]s package variant.
-pub type PackageAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
@@ -891,7 +886,7 @@ impl Key {
         if let Some(package_addr) = input.strip_prefix(PACKAGE_PREFIX) {
             let package_addr_bytes = checksummed_hex::decode(package_addr)
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
-            let addr = PackageAddr::try_from(package_addr_bytes.as_ref())
+            let hash = HashAddr::try_from(package_addr_bytes.as_ref())
                 .map_err(|error| FromStrError::Package(error.to_string()))?;
             return Ok(Key::Package(addr));
         }
@@ -1030,11 +1025,11 @@ impl Key {
         Some(AddressableEntityHash::new(entity_addr))
     }
 
-    /// Returns [`PackageHash`] of `self` if `self` is of type [`Key::SmartContract`], otherwise
+    /// Returns [`PackageAddr`] of `self` if `self` is of type [`Key::SmartContract`], otherwise
     /// returns `None`.
-    pub fn into_package_hash(self) -> Option<PackageHash> {
+    pub fn into_package_hash(self) -> Option<PackageAddr> {
         let package_addr = self.into_package_addr()?;
-        Some(PackageHash::new(package_addr))
+        Some(package_addr)
     }
 
     /// Returns [`NamedKeyAddr`] of `self` if `self` is of type [`Key::NamedKey`], otherwise
@@ -1511,9 +1506,9 @@ impl From<AccountHash> for Key {
     }
 }
 
-impl From<PackageHash> for Key {
-    fn from(package_hash: PackageHash) -> Key {
-        Key::Package(package_hash.value())
+impl From<PackageAddr> for Key {
+    fn from(package_hash: PackageAddr) -> Key {
+        Key::Package(package_hash)
     }
 }
 
@@ -1814,7 +1809,10 @@ impl Distribution<Key> for Standard {
             13 => Key::ChainspecRegistry,
             14 => Key::ChecksumRegistry,
             15 => Key::BidAddr(rng.gen()),
-            16 => Key::Package(rng.gen()),
+            16 => {
+                let arr: [u8; 32] = rng.gen();
+                Key::Package(arr.into())
+            }
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
@@ -1992,6 +1990,8 @@ impl<'de> Deserialize<'de> for Key {
 mod tests {
     use std::string::ToString;
 
+    use serde_json::Value;
+
     use super::*;
     use crate::{
         account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
@@ -2026,7 +2026,7 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
-    const PACKAGE_KEY: Key = Key::Package([42; 32]);
+    const PACKAGE_KEY: Key = Key::Package(PackageAddr::new([42; 32]));
     const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
         Key::AddressableEntity(EntityAddr::new_system([42; 32]));
     const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
@@ -2351,9 +2351,9 @@ mod tests {
     #[test]
     fn check_package_key_getters() {
         let hash = [42; KEY_HASH_LENGTH];
-        let key1 = Key::Package(hash);
+        let key1 = Key::Package(hash.into());
         assert!(key1.into_account().is_none());
-        assert_eq!(key1.into_package_addr(), Some(hash));
+        assert_eq!(key1.into_package_addr(), Some(hash.into()));
         assert!(key1.as_uref().is_none());
     }
 
@@ -2706,7 +2706,7 @@ mod tests {
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
-        round_trip(&Key::Package(zeros));
+        round_trip(&Key::Package(zeros.into()));
         round_trip(&Key::AddressableEntity(EntityAddr::new_system(zeros)));
         round_trip(&Key::AddressableEntity(EntityAddr::new_account(zeros)));
         round_trip(&Key::AddressableEntity(EntityAddr::new_smart_contract(
@@ -2780,6 +2780,19 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
+    }
+
+    #[test]
+    fn key_of_smart_contract_json_roundtrip() {
+        let addr = [122_u8; 32];
+        let hex_encoded_addr = hex::encode(addr);
+        let key = Key::SmartContract(PackageAddr::new(addr));
+        let stringified_key = serde_json::to_string(&key).expect("successfull serialization");
+        let json: Value =
+            serde_json::from_str(&stringified_key).expect("successfull serialization");
+        assert_eq!(json, Value::String(format!("package-{hex_encoded_addr}")));
+        let got: Key = serde_json::from_str(&stringified_key).expect("expected deserialization");
+        assert_eq!(key, got);
     }
 
     fn round_trip(key: &Key) {

@@ -110,7 +110,7 @@ pub extern "C" fn withdraw_proxy_call_1() {
 fn forward_call_to_this<T: CLTyped + FromBytes>(entry_point: &str, runtime_args: RuntimeArgs) -> T {
     let this = runtime::get_key(PACKAGE_HASH_NAME)
         .and_then(Key::into_package_addr)
-        .map(ContractPackageHash::new)
+        .map(|package_addr| ContractPackageHash::new(package_addr.value()))
         .unwrap_or_revert();
     runtime::call_versioned_contract(this, None, entry_point, runtime_args)
 }

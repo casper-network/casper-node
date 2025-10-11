@@ -42,20 +42,13 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityEntryPoint, EntryPoints as EntityEntryPoints,
-    },
-    bytesrepr,
-    contracts::{
-        ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
-        EntryPoints as ContractEntryPoints,
-    },
-    AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
-    CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind,
-    EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, Gas,
-    Groups, InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package, PackageHash,
-    PackageStatus, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    addressable_entity::{ActionThresholds, AssociatedKeys, EntityEntryPoint},
+    bytesrepr, AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    CLType, ContractRuntimeTag, Digest, EntityAddr, EntityKind, EntryPointAccess, EntryPointAddr,
+    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
+    MessageLimits, MintCosts, Package, PackageAddr, PackageStatus, Parameters, Phase,
+    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef,
+    WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -458,7 +451,7 @@ impl ExecutorV2 {
                 let mut forked_tc = tracking_copy.fork2();
 
                 match forked_tc.emit_messages_for_new_contract_version(
-                    Key::SmartContract(smart_contract_addr),
+                    Key::SmartContract(smart_contract_addr.into()),
                     addressable_entity_key,
                     Key::ByteCode(bytecode_addr),
                     entity_version_key.protocol_version_major(),
@@ -690,9 +683,9 @@ impl ExecutorV2 {
                                 );
                             }
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2) => {
-                                Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-                                    addressable_entity.byte_code_addr(),
-                                ))
+                                //The unwrap here is safe because we know that we are in
+                                //SmartContract kind
+                                Key::ByteCode(addressable_entity.byte_code_addr().unwrap())
                             }
                         };
 

@@ -20,7 +20,7 @@ use casper_types::{
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockHash, BlockTime,
     ByteCodeHash, CLValue, ContextAccessRights, Digest, EntityAddr, EntityKind, EntryPointType,
-    Gas, HashAddr, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    Gas, HashAddr, Key, PackageAddr, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
     RuntimeFootprint, SecretKey, StoredValue, SystemHashRegistry, Tagged, Timestamp,
     TransactionHash, TransactionV1Hash, URef, KEY_HASH_LENGTH, U256, U512,
 };
@@ -59,7 +59,7 @@ fn new_addressable_entity_with_purse(
 ) -> (Key, Key, AddressableEntity) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let entity = AddressableEntity::new(
-        PackageHash::default(),
+        PackageAddr::default(),
         ByteCodeHash::default(),
         ProtocolVersion::V2_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),

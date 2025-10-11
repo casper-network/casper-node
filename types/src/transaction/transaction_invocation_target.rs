@@ -12,7 +12,7 @@ use crate::{
     contracts::ProtocolVersionMajor,
     serde_helpers,
     transaction::serialization::CalltableSerializationEnvelopeBuilder,
-    AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash, PackageIdentifier,
+    AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageIdentifier,
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -49,7 +49,7 @@ pub enum TransactionInvocationTarget {
     /// The address and optional version identifying the package.
     ByPackageHash {
         /// The package address.
-        #[serde(with = "serde_helpers::raw_32_byte_array")]
+        #[serde(with = "serde_helpers::package_addr_as_raw_32_byte_array")]
         #[cfg_attr(
             feature = "json-schema",
             schemars(with = "String", description = "Hex-encoded address of the package.")
@@ -94,9 +94,9 @@ impl TransactionInvocationTarget {
 
     /// Returns a new `TransactionInvocationTarget::Package`.
     #[deprecated(since = "5.0.1", note = "please use `new_package_with_major` instead")]
-    pub fn new_package(hash: PackageHash, version: Option<EntityVersion>) -> Self {
+    pub fn new_package(hash: PackageAddr, version: Option<EntityVersion>) -> Self {
         TransactionInvocationTarget::ByPackageHash {
-            addr: hash.value(),
+            addr: hash,
             version,
             protocol_version_major: None,
         }
@@ -104,12 +104,12 @@ impl TransactionInvocationTarget {
 
     /// Returns a new `TransactionInvocationTarget::Package`.
     pub fn new_package_with_major(
-        hash: PackageHash,
+        hash: PackageAddr,
         version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
     ) -> Self {
         TransactionInvocationTarget::ByPackageHash {
-            addr: hash.value(),
+            addr: hash,
             version,
             protocol_version_major,
         }
@@ -143,12 +143,12 @@ impl TransactionInvocationTarget {
 
     #[cfg(test)]
     pub fn new_package_alias_with_major_and_entity(
-        hash: PackageHash,
+        hash: PackageAddr,
         version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
     ) -> Self {
         TransactionInvocationTarget::ByPackageHash {
-            addr: hash.value(),
+            addr: hash,
             version,
             protocol_version_major,
         }
@@ -186,7 +186,7 @@ impl TransactionInvocationTarget {
                 version,
                 protocol_version_major,
             } => Some(PackageIdentifier::HashWithMajorVersion {
-                package_hash: PackageHash::new(*addr),
+                package_hash: *addr,
                 version: *version,
                 protocol_version_major: *protocol_version_major,
             }),
@@ -259,11 +259,14 @@ impl TransactionInvocationTarget {
         match rng.gen_range(0..4) {
             0 => TransactionInvocationTarget::ByHash(rng.gen()),
             1 => TransactionInvocationTarget::ByName(rng.random_string(1..21)),
-            2 => TransactionInvocationTarget::ByPackageHash {
-                addr: rng.gen(),
-                version: rng.gen(),
-                protocol_version_major: rng.gen(),
-            },
+            2 => {
+                let arr: [u8; 32] = rng.gen();
+                TransactionInvocationTarget::ByPackageHash {
+                    addr: arr.into(),
+                    version: rng.gen(),
+                    protocol_version_major: rng.gen(),
+                }
+            }
             3 => TransactionInvocationTarget::ByPackageName {
                 name: rng.random_string(1..21),
                 version: rng.gen(),
@@ -545,7 +548,7 @@ mod tests {
             .contains("\"protocol_version_major\":5"));
 
         let package = TransactionInvocationTarget::new_package_with_major(
-            PackageHash::from([1; 32]),
+            PackageAddr::from([1; 32]),
             Some(222),
             None,
         );
@@ -554,7 +557,7 @@ mod tests {
             .contains("\"protocol_version_major\""));
 
         let package = TransactionInvocationTarget::new_package_with_major(
-            PackageHash::from([1; 32]),
+            PackageAddr::from([1; 32]),
             Some(222),
             Some(5),
         );
@@ -574,7 +577,7 @@ mod tests {
     #[test]
     fn by_package_hash_variant_without_version_key_should_serialize_exactly_as_before_the_version_key_change(
     ) {
-        let addr = [1; 32];
+        let addr: PackageAddr = [1; 32].into();
         let version = Some(1200);
         let field_sizes = vec![
             crate::bytesrepr::U8_SERIALIZED_LENGTH,
@@ -640,7 +643,7 @@ mod tests {
     #[test]
     fn by_package_hash_variant_should_deserialize_bytes_that_have_both_version_and_key() {
         let target = TransactionInvocationTarget::ByPackageHash {
-            addr: [1; 32],
+            addr: [1; 32].into(),
             version: Some(11),
             protocol_version_major: Some(2),
         };
@@ -667,6 +670,25 @@ mod tests {
         let (got, remainder) = TransactionInvocationTarget::from_bytes(&bytes).unwrap();
         assert_eq!(target, got);
         assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn by_package_hash_should_json_serialize_address_as_hex() {
+        let target = TransactionInvocationTarget::ByPackageHash {
+            addr: [1; 32].into(),
+            version: Some(11),
+            protocol_version_major: Some(2),
+        };
+        let val: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&target).unwrap()).unwrap();
+        assert_eq!(
+            val.get("ByPackageHash")
+                .unwrap()
+                .get("addr")
+                .unwrap()
+                .clone(),
+            serde_json::Value::String(hex::encode([1; 32]))
+        )
     }
 
     proptest! {

@@ -368,7 +368,7 @@ impl TransactionAcceptor {
                 let maybe_protocol_version_major =
                     contract_package_identifier.protocol_version_major();
                 effect_builder
-                    .get_package(*block_header.state_root_hash(), package_hash.value())
+                    .get_package(*block_header.state_root_hash(), package_hash)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -490,7 +490,7 @@ impl TransactionAcceptor {
             ) => {
                 let maybe_package_version = package_identifier.version();
                 effect_builder
-                    .get_package(*block_header.state_root_hash(), package_hash.value())
+                    .get_package(*block_header.state_root_hash(), package_hash)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -592,7 +592,7 @@ impl TransactionAcceptor {
                     event_metadata,
                     block_header,
                     is_payment: false,
-                    package_hash: PackageHash::new(package_addr),
+                    package_hash: package_addr,
                     maybe_entity_version,
                     maybe_protocol_version_major,
                     maybe_package,
@@ -727,7 +727,7 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         maybe_contract_version: Option<EntityVersion>,
         maybe_protocol_version_major: Option<ProtocolVersionMajor>,
         maybe_package: Option<Box<Package>>,

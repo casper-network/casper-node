@@ -1421,6 +1421,7 @@ pub fn casper_env_balance<S: GlobalStateReader>(
             } else {
                 Key::Hash(hash_bytes)
             };
+
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
@@ -1853,7 +1854,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
             .with_caller_key(caller.context().callee)
             .with_gas_limit(gas_limit)
             .with_execution_kind(ExecutionKind::Stored {
-                address: smart_contract_addr,
+                address: smart_contract_addr.value(),
                 entry_point: entry_point_name.clone(),
             })
             .with_input(input_data.unwrap_or_default())

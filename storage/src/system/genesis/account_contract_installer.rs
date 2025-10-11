@@ -52,7 +52,7 @@ use casper_types::{
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue,
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
-    GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
+    GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageAddr, PackageStatus, Phase,
     ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 

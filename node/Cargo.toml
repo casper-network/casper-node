@@ -24,7 +24,7 @@ bincode = "1"
 bytes = "1.0.1"
 casper-binary-port = { version = "1.1.1", path = "../binary_port" }
 casper-storage = { version = "3.0.0", path = "../storage" }
-casper-types = { version = "6.0.1", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
+casper-types = { version = "7.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 casper-execution-engine = { version = "8.1.1", path = "../execution_engine" }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"

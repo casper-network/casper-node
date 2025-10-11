@@ -40,7 +40,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
     EntryPointValue, EntryPoints, Gas, GrantedAccess, HashAddr, Key, KeyTag, Motes, Package,
-    PackageHash, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue,
+    PackageAddr, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue,
     StoredValueTypeMismatch, SystemHashRegistry, TransactionHash, Transfer, URef, URefAddr,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
@@ -1415,12 +1415,12 @@ where
     /// Gets given contract package with its access_key validated against current context.
     pub(crate) fn get_validated_package(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
     ) -> Result<Package, ExecError> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package = if self.engine_config.enable_entity {
-            self.read_gs_typed::<Package>(&Key::Package(package_hash.value()))?
+            self.read_gs_typed::<Package>(&Key::Package(package_hash))?
         } else {
             let cp = self.read_gs_typed::<ContractPackage>(&Key::Hash(package_hash.value()))?;
             cp.into()
