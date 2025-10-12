@@ -1,9 +1,10 @@
 use borsh::BorshDeserialize;
-use casper_executor_wasm_common::{error::HostResult, flags::ReturnFlags};
+use casper_executor_wasm_common::flags::ReturnFlags;
 
 use crate::{
-    casper,
+    casper::{self, call_result_from_code, casper_ffi},
     compat::types::{CLValue, RuntimeArgs},
+    types::{CallError, EmitFunctionOption},
 };
 
 fn get_runtime_args() -> RuntimeArgs {
@@ -34,27 +35,27 @@ pub fn try_get_named_arg<T: BorshDeserialize>(name: &str) -> Option<T> {
 }
 
 pub fn get_caller() -> [u8; 32] {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     env_info.caller_addr
 }
 
 pub fn get_blocktime() -> u64 {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     env_info.block_time
 }
 
 pub fn get_block_height() -> u64 {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     env_info.block_height
 }
 
 pub fn get_parent_block_hash() -> [u8; 32] {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     env_info.parent_block_hash
 }
 
 pub fn get_protocol_version() -> (u32, u32, u32) {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     (
         env_info.protocol_version_major,
         env_info.protocol_version_minor,
@@ -64,16 +65,20 @@ pub fn get_protocol_version() -> (u32, u32, u32) {
 
 #[inline]
 pub fn get_immediate_caller() -> [u8; 32] {
-    let env_info = casper::get_env_info();
+    let env_info = casper::get_env_info().expect("expected get_env_info to yield data");
     env_info.caller_addr
 }
 
 #[inline]
-pub fn emit_message(topic_name: &str, message: &[u8]) -> Result<(), HostResult> {
-    casper::emit(topic_name, message)
+pub fn emit_message(topic_name: &str, message: &[u8]) -> Result<(), CallError> {
+    let args = (topic_name, message);
+    let arg_bytes = borsh::to_vec(&args).expect("Expected borsh to work");
+
+    let (_, result_code) = casper_ffi(EmitFunctionOption::Native.into(), &arg_bytes);
+    call_result_from_code(result_code)
 }
 
 #[inline]
 pub fn print(text: &str) {
-    casper::print(text);
+    let _ = casper::print(text);
 }

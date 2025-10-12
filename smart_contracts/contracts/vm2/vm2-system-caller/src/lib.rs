@@ -2,7 +2,7 @@
 
 pub mod exports {
     use casper_contract_sdk::{
-        casper::{casper_system, ret},
+        casper::{casper_ffi, ret},
         casper_executor_wasm_common::flags::ReturnFlags,
         prelude::*,
         types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption},
@@ -125,7 +125,7 @@ pub mod exports {
 
         match &input {
             Some(input) => {
-                let (_output, _result) = casper_system(option.into(), &input);
+                let (_output, _result) = casper_ffi(option.into(), &input);
             }
             None => ret(ReturnFlags::ROLLBACK, None),
         }

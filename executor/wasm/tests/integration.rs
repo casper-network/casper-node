@@ -25,8 +25,8 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind,
-    MintMethods, SystemMenu,
+    AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind, FFIMenu,
+    MintMethods,
 };
 
 use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY};
@@ -349,7 +349,7 @@ fn make_execution_request(
         .expect("should build")
 }
 
-fn exec_system_call(system_menu: SystemMenu, initiator: Option<AccountHash>) {
+fn exec_system_call(system_menu: FFIMenu, initiator: Option<AccountHash>) {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config")
         .with_vesting_schedule_period_millis(0);
@@ -462,43 +462,43 @@ fn should_revert_invalid_system_option() {
 
 #[test]
 fn should_call_system_transfer() {
-    exec_system_call(SystemMenu::Mint(MintMethods::Transfer), None);
+    exec_system_call(FFIMenu::Mint(MintMethods::Transfer), None);
 }
 
 #[test]
 fn should_call_system_transfer_purse() {
-    exec_system_call(SystemMenu::Mint(MintMethods::TransferPurse), None);
+    exec_system_call(FFIMenu::Mint(MintMethods::TransferPurse), None);
 }
 
 #[test]
 fn should_call_system_burn() {
-    exec_system_call(SystemMenu::Mint(MintMethods::Burn), None);
+    exec_system_call(FFIMenu::Mint(MintMethods::Burn), None);
 }
 
 #[test]
 fn should_call_system_activate_bid() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Activate), None);
+    exec_system_call(FFIMenu::Auction(AuctionMethods::Activate), None);
 }
 
 #[test]
 fn should_call_system_bid() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Bid), None);
+    exec_system_call(FFIMenu::Auction(AuctionMethods::Bid), None);
 }
 
 #[test]
 fn should_call_system_withdraw() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::Withdraw), None);
+    exec_system_call(FFIMenu::Auction(AuctionMethods::Withdraw), None);
 }
 
 #[test]
 fn should_call_system_change_public_key() {
-    exec_system_call(SystemMenu::Auction(AuctionMethods::ChangePublicKey), None);
+    exec_system_call(FFIMenu::Auction(AuctionMethods::ChangePublicKey), None);
 }
 
 #[test]
 fn should_call_system_delegate() {
     exec_system_call(
-        SystemMenu::Auction(AuctionMethods::Delegate),
+        FFIMenu::Auction(AuctionMethods::Delegate),
         Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
     );
 }
@@ -506,7 +506,7 @@ fn should_call_system_delegate() {
 #[test]
 fn should_call_system_undelegate() {
     exec_system_call(
-        SystemMenu::Auction(AuctionMethods::Undelegate),
+        FFIMenu::Auction(AuctionMethods::Undelegate),
         Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
     );
 }
@@ -514,7 +514,7 @@ fn should_call_system_undelegate() {
 #[test]
 fn should_call_system_redelegate() {
     exec_system_call(
-        SystemMenu::Auction(AuctionMethods::Redelegate),
+        FFIMenu::Auction(AuctionMethods::Redelegate),
         Some(DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY.to_account_hash()),
     );
 }
@@ -546,7 +546,7 @@ fn should_handle_reservations() {
 
     // need to bump the delegator reservation limit up to allow add_reservation to work
     let bid_request = {
-        let opt: u32 = SystemMenu::Auction(AuctionMethods::Bid).into();
+        let opt: u32 = FFIMenu::Auction(AuctionMethods::Bid).into();
         let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
@@ -584,7 +584,7 @@ fn should_handle_reservations() {
 
     // make a couple of reservations
     let add_res_pubk_request = {
-        let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
+        let opt: u32 = FFIMenu::Auction(AuctionMethods::AddReservation).into();
         let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
@@ -635,7 +635,7 @@ fn should_handle_reservations() {
 
     // cancel those reservations
     let cancel_pubk_request = {
-        let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
+        let opt: u32 = FFIMenu::Auction(AuctionMethods::CancelReservation).into();
         let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,

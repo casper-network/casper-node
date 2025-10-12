@@ -844,7 +844,7 @@ mod symbols {
     }
 
     #[no_mangle]
-    pub extern "C" fn casper_system(
+    pub extern "C" fn casper_ffi(
         _system_contract_opt: u32,
         _input_ptr: *const u8,
         _input_size: usize,
@@ -976,7 +976,7 @@ mod tests {
     #[test]
     fn foo() {
         dispatch(|| {
-            casper::print("Hello");
+            let _ = casper::print("Hello");
             casper::write(Keyspace::Context(b"test"), b"value 1").unwrap();
 
             let change_context_1 =

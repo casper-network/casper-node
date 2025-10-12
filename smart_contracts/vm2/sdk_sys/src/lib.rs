@@ -1,4 +1,20 @@
-pub mod for_each_host_function;
+use borsh::BorshDeserialize;
+
+#[derive(Debug, BorshDeserialize)]
+#[repr(C)]
+pub struct EnvInfo {
+    pub protocol_version_major: u32,
+    pub protocol_version_minor: u32,
+    pub protocol_version_patch: u32,
+    pub block_height: u64,
+    pub block_time: u64,
+    pub parent_block_hash: [u8; 32],
+    pub transferred_value: u64,
+    pub caller_addr: [u8; 32],
+    pub caller_kind: u32,
+    pub callee_addr: [u8; 32],
+    pub callee_kind: u32,
+}
 
 /// Signature of a function pointer that a host understands.
 pub type Fptr = extern "C" fn() -> ();
@@ -25,78 +41,13 @@ pub struct UpgradeResult {
     pub version: u32,
 }
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct EnvInfo {
-    pub block_time: u64,
-    pub transferred_value: u64,
-    pub caller_addr: [u8; 32],
-    pub caller_kind: u32,
-    pub callee_addr: [u8; 32],
-    pub callee_kind: u32,
-    pub protocol_version_major: u32,
-    pub protocol_version_minor: u32,
-    pub protocol_version_patch: u32,
-    pub parent_block_hash: [u8; 32],
-    pub block_height: u64,
-}
-
-macro_rules! visit_host_function {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
-        $(
-            $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)?;
-        )*
-    }
-}
-
 extern "C" {
-    for_each_host_function!(visit_host_function);
-}
-
-macro_rules! visit_host_function_name {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
-        &[
-            $(
-                stringify!($name),
-            )*
-        ]
-    }
-}
-
-pub const HOST_FUNCTIONS: &[&str] = for_each_host_function!(visit_host_function_name);
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use crate::HOST_FUNCTIONS;
-
-    mod separate_module {
-        use crate::for_each_host_function;
-
-        macro_rules! visit_host_function {
-            ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
-                $(
-                    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
-                    $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
-                        unreachable!("Called fn {}", stringify!($name));
-                    }
-                )*
-            }
-        }
-        for_each_host_function!(visit_host_function);
-    }
-
-    #[test]
-    #[should_panic(expected = "Called fn casper_print")]
-    fn different_module() {
-        const MSG: &str = "foobar";
-        separate_module::casper_print(MSG.as_ptr(), MSG.len());
-    }
-
-    #[test]
-    fn all_host_functions() {
-        let host_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
-        assert!(host_functions.contains(&"casper_call"));
-    }
+    pub fn casper_ffi(
+        ffi_opt: u32,
+        input_ptr: *const u8,
+        input_size: usize,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
+                                                                         * data */
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> u32;
 }

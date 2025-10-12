@@ -38,7 +38,7 @@ cfg_if::cfg_if! {
             SET_HOOK.call_once(|| {
                 std::panic::set_hook(Box::new(|panic_info| {
                     let msg = panic_info.to_string();
-                    casper::print(&msg);
+                    let _ = casper::print(&msg);
                 }));
             });
         }
@@ -100,7 +100,7 @@ pub enum Access {
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        $crate::prelude::casper::print(&$crate::prelude::format!($($arg)*));
+        let _ = $crate::prelude::casper::print(&$crate::prelude::format!($($arg)*));
     })
 }
 

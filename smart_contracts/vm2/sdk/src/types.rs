@@ -272,6 +272,8 @@ pub enum CryptoFunctionOption {
     AltBn128Add = 200,
     AltBn128Multiply = 201,
     AltBn128Pairing = 202,
+    GenericHash = 203,
+    RecoverSecp256K1 = 204,
 }
 
 impl From<CryptoFunctionOption> for u32 {
@@ -290,8 +292,126 @@ impl TryFrom<u32> for CryptoFunctionOption {
             Ok(CryptoFunctionOption::AltBn128Multiply)
         } else if value == 202 {
             Ok(CryptoFunctionOption::AltBn128Pairing)
+        } else if value == 203 {
+            Ok(CryptoFunctionOption::GenericHash)
+        } else if value == 204 {
+            Ok(CryptoFunctionOption::RecoverSecp256K1)
         } else {
             Err(())
         }
+    }
+}
+
+#[repr(u32)]
+pub enum EmitFunctionOption {
+    PrintStd = 300,
+    Native = 301,
+}
+
+impl From<EmitFunctionOption> for u32 {
+    fn from(value: EmitFunctionOption) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for EmitFunctionOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value == 300 {
+            Ok(EmitFunctionOption::PrintStd)
+        } else if value == 301 {
+            Ok(EmitFunctionOption::Native)
+        } else {
+            Err(())
+        }
+    }
+}
+
+#[repr(u32)]
+pub enum GlobalStateFunctionOption {
+    Read = 400,
+    Write = 401,
+    Remove = 402,
+    GetBalance = 403,
+    GetInfo = 404,
+    Create = 405,
+}
+
+impl From<GlobalStateFunctionOption> for u32 {
+    fn from(value: GlobalStateFunctionOption) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for GlobalStateFunctionOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value == 400 {
+            Ok(GlobalStateFunctionOption::Read)
+        } else if value == 401 {
+            Ok(GlobalStateFunctionOption::Write)
+        } else if value == 402 {
+            Ok(GlobalStateFunctionOption::Remove)
+        } else if value == 403 {
+            Ok(GlobalStateFunctionOption::GetBalance)
+        } else if value == 404 {
+            Ok(GlobalStateFunctionOption::GetInfo)
+        } else if value == 405 {
+            Ok(GlobalStateFunctionOption::Create)
+        } else {
+            Err(())
+        }
+    }
+}
+
+#[repr(u32)]
+pub enum ControlFunctionOption {
+    Create = 500,
+    Call = 501,
+    Upgrade = 502,
+}
+
+impl From<ControlFunctionOption> for u32 {
+    fn from(value: ControlFunctionOption) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for ControlFunctionOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            500 => ControlFunctionOption::Create,
+            501 => ControlFunctionOption::Call,
+            502 => ControlFunctionOption::Upgrade,
+            _ => return Err(()),
+        })
+    }
+}
+
+#[repr(u32)]
+pub enum IOFunctionOption {
+    Return = 600,
+    CopyInput = 601,
+}
+
+impl From<IOFunctionOption> for u32 {
+    fn from(value: IOFunctionOption) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for IOFunctionOption {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            600 => IOFunctionOption::Return,
+            601 => IOFunctionOption::CopyInput,
+            _ => return Err(()),
+        })
     }
 }

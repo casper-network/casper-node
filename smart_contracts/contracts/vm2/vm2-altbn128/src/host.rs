@@ -3,7 +3,7 @@ use casper_contract_sdk::{
     casper::{
         self,
         altbn128::{self, AltBn128Error as Error, Fq, Fr, Pair, G1},
-        casper_system,
+        casper_ffi,
     },
     casper_executor_wasm_common::flags::ReturnFlags,
     serializers::borsh::from_slice,
@@ -108,12 +108,14 @@ const ALL_ONES: [u8; 32] = [0x11; 32];
 
 pub(crate) fn alt_bn128_pairing_raw(input: &[u8]) -> altbn128::Result<bool> {
     let option = CryptoFunctionOption::AltBn128Pairing;
-    let (output, result) = casper_system(option.into(), &input);
-    let _ = result.unwrap();
+    let (output, result_code) = casper_ffi(option.into(), &input);
+    if result_code != 0 {
+        return Err(Error::from(result_code));
+    }
     match output {
         Some(raw) => {
-            let val: Result<bool, u32> = from_slice(&raw).unwrap();
-            val.map_err(|err_code| Error::from(err_code))
+            let val: bool = from_slice(&raw).unwrap();
+            Ok(val)
         }
         None => Err(Error::NoValueNorError),
     }
@@ -128,7 +130,7 @@ fn test_alt_bn128_add() {
     );
     let expected = Ok((Fq::from(ADD_EXPECTED_X_LE), Fq::from(ADD_EXPECTED_Y_LE)));
     if actual != expected {
-        casper::print(&format!("left {:?} right {:?}", actual, expected));
+        let _ = casper::print(&format!("left {:?} right {:?}", actual, expected));
         let error_code = line!().to_le_bytes();
         casper::ret(ReturnFlags::ROLLBACK, Some(&error_code));
     }
