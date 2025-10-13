@@ -12,7 +12,7 @@ use casper_types::{
         UnbondingPurse, ValidatorBid, WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EraId, Key, PackageHash,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EraId, Key, PackageAddr,
     ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
@@ -65,7 +65,7 @@ impl MockStateReader {
     ) -> Self {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
         let entity = AddressableEntity::new(
-            PackageHash::new(rng.gen()),
+            PackageAddr::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
             self.protocol_version,
             main_purse,

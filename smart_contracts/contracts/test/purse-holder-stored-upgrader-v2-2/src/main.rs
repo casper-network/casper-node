@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::NamedKeys, CLType, CLValue, EntityEntryPoint, EntryPointAccess, EntryPointPayment,
-    EntryPointType, EntryPoints, Key, PackageHash, Parameter, URef,
+    EntryPointType, EntryPoints, Key, PackageAddr, Parameter, URef,
 };
 
 pub const METHOD_DELEGATE: &str = "delegate";
@@ -50,7 +50,7 @@ pub extern "C" fn version() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_package: PackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let contract_package: PackageAddr = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
     let _access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
         .expect("should have access key")
         .into_uref()

@@ -11,8 +11,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate},
     AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, HoldBalanceHandling, Key,
-    PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
-    SystemHashRegistry, Timestamp, URef, U512,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemHashRegistry,
+    Timestamp, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -124,10 +124,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_package_addr().unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -318,10 +315,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_package_addr().unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -384,10 +378,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_package_addr().unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -450,10 +441,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_package_addr().unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -549,10 +537,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_package_addr().unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {

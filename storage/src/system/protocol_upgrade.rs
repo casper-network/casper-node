@@ -39,17 +39,15 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
     EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling,
-    Groups, HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
+    Groups, HashAddr, Key, KeyTag, Motes, Package, PackageAddr, PackageStatus, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator, MESSAGING_ADDR_ENTITY_ADDR_TOPIC, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
-    MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
-    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
-    MESSAGING_PACKAGE_ADDR_TOPIC,
+    AddressGenerator, MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC,
+    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 
 const NO_CARRY_FORWARD: bool = false;
@@ -328,15 +326,9 @@ where
         &mut self,
         block_time: BlockTime,
     ) -> Result<(), ProtocolUpgradeError> {
-        if self.config.addressable_entity_enabled() {
-            self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
-        } else {
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
-        }
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())
     }
@@ -403,8 +395,7 @@ where
                 }
             };
 
-        let mut package =
-            self.retrieve_system_package(entity.package_hash(), system_entity_type)?;
+        let mut package = self.retrieve_system_package(entity.package(), system_entity_type)?;
 
         let entity_hash = AddressableEntityHash::new(hash_addr);
         let entity_addr = EntityAddr::new_system(entity_hash.value());
@@ -415,7 +406,7 @@ where
         entity.set_protocol_version(self.config.new_protocol_version());
 
         let new_entity = AddressableEntity::new(
-            entity.package_hash(),
+            entity.package(),
             ByteCodeHash::default(),
             self.config.new_protocol_version(),
             URef::default(),
@@ -468,23 +459,23 @@ where
         );
 
         self.tracking_copy.write(
-            Key::Package(entity.package_hash().value()),
+            Key::Package(entity.package().value().into()),
             StoredValue::SmartContract(package),
         );
 
         if must_carry_forward {
             // carry forward
-            let package_key = Key::Package(entity.package_hash().value());
+            let package_key = Key::Package(entity.package().value().into());
             let uref = URef::default();
             let indirection = CLValue::from_t((package_key, uref))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
 
             self.tracking_copy.write(
-                Key::Hash(entity.package_hash().value()),
+                Key::Hash(entity.package().value()),
                 StoredValue::CLValue(indirection),
             );
 
-            let contract_wasm_key = Key::Hash(entity.byte_code_hash().value());
+            let contract_wasm_key = Key::Hash(entity.byte_code().value());
             let contract_wasm_indirection = CLValue::from_t(Key::ByteCode(ByteCodeAddr::Empty))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
             self.tracking_copy.write(
@@ -506,13 +497,13 @@ where
 
     fn retrieve_system_package(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         system_contract_type: SystemEntityType,
     ) -> Result<Package, ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system package");
         if let Some(StoredValue::SmartContract(system_entity)) = self
             .tracking_copy
-            .read(&Key::Package(package_hash.value()))
+            .read(&Key::Package(package_hash.value().into()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     system_contract_type.to_string(),
@@ -728,7 +719,7 @@ where
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
         let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
-        let package_hash = PackageHash::new(address_generator.new_hash_address());
+        let package_hash = PackageAddr::new(address_generator.new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 

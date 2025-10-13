@@ -8,7 +8,7 @@ use num_traits::FromPrimitive;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    package::PackageHash,
+    package::PackageAddr,
     CLType, CLTyped, CLValue, CLValueError, EntityAddr, HashAddr,
 };
 
@@ -89,7 +89,7 @@ impl TryFrom<Caller> for CallerInfo {
 
                 let mut ret = BTreeMap::new();
                 ret.insert(ACCOUNT, CLValue::from_t(Some(account_hash))?);
-                ret.insert(PACKAGE, CLValue::from_t(Option::<PackageHash>::None)?);
+                ret.insert(PACKAGE, CLValue::from_t(Option::<PackageAddr>::None)?);
                 ret.insert(
                     CONTRACT_PACKAGE,
                     CLValue::from_t(Option::<ContractPackageHash>::None)?,
@@ -123,7 +123,7 @@ impl TryFrom<Caller> for CallerInfo {
 
                 let mut ret = BTreeMap::new();
                 ret.insert(ACCOUNT, CLValue::from_t(Option::<AccountHash>::None)?);
-                ret.insert(PACKAGE, CLValue::from_t(Option::<PackageHash>::None)?);
+                ret.insert(PACKAGE, CLValue::from_t(Option::<PackageAddr>::None)?);
                 ret.insert(
                     CONTRACT_PACKAGE,
                     CLValue::from_t(Some(contract_package_hash))?,
@@ -148,7 +148,7 @@ pub enum Caller {
     /// Entity (smart contract / system contract)
     Entity {
         /// The package hash
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         /// The entity addr.
         entity_addr: EntityAddr,
     },
@@ -169,7 +169,7 @@ impl Caller {
 
     /// Creates a [`'Caller::Entity`]. This represents a call into a contract with
     /// `EntryPointType::Called`.
-    pub fn entity(package_hash: PackageHash, entity_addr: EntityAddr) -> Self {
+    pub fn entity(package_hash: PackageAddr, entity_addr: EntityAddr) -> Self {
         Caller::Entity {
             package_hash,
             entity_addr,
@@ -256,7 +256,7 @@ impl FromBytes for Caller {
                 Ok((Caller::Initiator { account_hash }, remainder))
             }
             CallerTag::Entity => {
-                let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
+                let (package_hash, remainder) = PackageAddr::from_bytes(remainder)?;
                 let (entity_addr, remainder) = EntityAddr::from_bytes(remainder)?;
                 Ok((
                     Caller::Entity {

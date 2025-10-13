@@ -14,10 +14,9 @@ use crate::{
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::blake2b,
     },
-    AddressGenerator, TrackingCopy, MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
-    MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC, MESSAGING_CONTRACT_ADDR_TOPIC,
-    MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
-    MESSAGING_CONTRACT_WASM_ADDR_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
+    AddressGenerator, TrackingCopy, MESSAGING_CONTRACT_ADDR_TOPIC,
+    MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
+    MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
     addressable_entity::{
@@ -47,7 +46,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry,
     Digest, EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints,
-    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
+    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageAddr,
     PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, Tagged,
     URef, U512,
 };
@@ -692,7 +691,7 @@ where
             }
         };
 
-        let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let package_hash = PackageAddr::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
         let associated_keys = entity_kind.associated_keys();
@@ -888,15 +887,9 @@ where
     }
 
     fn create_messaging_topics(&self, block_time: BlockTime) -> Result<(), Box<GenesisError>> {
-        if self.config.enable_entity() {
-            self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
-        } else {
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
-        }
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())
     }

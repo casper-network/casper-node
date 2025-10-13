@@ -649,7 +649,7 @@ fn get_entity_named_key(
 ) -> Option<Key> {
     if fixture.chainspec.core_config.addressable_entity_enabled {
         let key = if let EntityAddr::Package(hash) = entity_addr {
-            let key = Key::Package(hash);
+            let key = Key::Package(hash.into());
             match query_global_state(fixture, state_root_hash, key) {
                 Some(val) => match &*val {
                     StoredValue::SmartContract(package) => {

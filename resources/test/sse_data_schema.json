@@ -1102,7 +1102,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"
@@ -4405,10 +4405,10 @@
       "required": [
         "action_thresholds",
         "associated_keys",
-        "byte_code_hash",
+        "byte_code",
         "entity_kind",
         "main_purse",
-        "package_hash",
+        "package",
         "protocol_version"
       ],
       "properties": {
@@ -4418,10 +4418,10 @@
         "entity_kind": {
           "$ref": "#/definitions/EntityKind"
         },
-        "package_hash": {
-          "$ref": "#/definitions/PackageHash"
+        "package": {
+          "$ref": "#/definitions/PackageAddr"
         },
-        "byte_code_hash": {
+        "byte_code": {
           "$ref": "#/definitions/ByteCodeHash"
         },
         "main_purse": {
@@ -4484,7 +4484,7 @@
           ],
           "properties": {
             "Package": {
-              "$ref": "#/definitions/PackageHash"
+              "$ref": "#/definitions/PackageAddr"
             }
           },
           "additionalProperties": false
@@ -4532,7 +4532,7 @@
         "VmCasperV2"
       ]
     },
-    "PackageHash": {
+    "PackageAddr": {
       "description": "The hex-encoded address of the Package.",
       "type": "string"
     },

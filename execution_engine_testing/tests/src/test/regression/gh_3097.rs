@@ -2,9 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
-use casper_types::{
-    runtime_args, AddressableEntityHash, EntityVersionKey, PackageHash, RuntimeArgs,
-};
+use casper_types::{runtime_args, AddressableEntityHash, EntityVersionKey, RuntimeArgs};
 use gh_1470_regression::PACKAGE_HASH_NAME;
 
 const GH_3097_REGRESSION_WASM: &str = "gh_3097_regression.wasm";
@@ -61,7 +59,6 @@ fn should_run_regression() {
         .get(CONTRACT_PACKAGE_HASH_KEY)
         .unwrap()
         .into_package_addr()
-        .map(PackageHash::new)
         .unwrap();
 
     // Versioned contract calls by name

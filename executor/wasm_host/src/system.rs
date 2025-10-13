@@ -272,7 +272,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
         }
     } else if let Key::Package(package_addr) = caller_key {
-        match tracking_copy.get_package(package_addr) {
+        match tracking_copy.get_package(package_addr.value()) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
                 None => return Err(ExecuteError::NoActiveContract(caller_key)),

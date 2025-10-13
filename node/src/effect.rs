@@ -2083,7 +2083,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let key = Key::Hash(package_addr);
+        let key = Key::Hash(package_addr.value());
         let query_request = QueryRequest::new(state_root_hash, key, vec![]);
 
         match self.query_global_state(query_request).await {

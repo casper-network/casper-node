@@ -11,7 +11,7 @@ use casper_types::{
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLType, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr, Key, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue,
+    PackageAddr, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue,
     StoredValueTypeMismatch, URef, U512,
 };
 
@@ -193,7 +193,7 @@ where
             }
             EntityAddr::Package(addr) => {
                 let key = if enable_addressable_entity {
-                    Key::Package(addr)
+                    Key::Package(addr.into())
                 } else {
                     Key::Hash(addr)
                 };
@@ -711,7 +711,7 @@ where
 
         let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(account_hash.value());
-        let package_hash = PackageHash::new(generator.new_hash_address());
+        let package_hash = PackageAddr::new(generator.new_hash_address());
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
@@ -779,7 +779,7 @@ where
             let mut generator =
                 AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-            let package_hash = PackageHash::new(generator.new_hash_address());
+            let package_hash = PackageAddr::new(generator.new_hash_address());
 
             let mut package = Package::new(
                 EntityVersions::default(),
@@ -888,7 +888,7 @@ where
             let contract_wasm_hash = contract.contract_wasm_hash();
 
             let updated_entity = AddressableEntity::new(
-                PackageHash::new(contract.contract_package_hash().value()),
+                PackageAddr::new(contract.contract_package_hash().value()),
                 ByteCodeHash::new(contract_wasm_hash.value()),
                 protocol_version,
                 purse,
@@ -916,14 +916,14 @@ where
                 }
                 Some(contract_wasm) => {
                     let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                        updated_entity.byte_code_addr(),
+                        updated_entity.byte_code().value(),
                     ));
                     let byte_code_cl_value = match CLValue::from_t(byte_code_key) {
                         Ok(cl_value) => cl_value,
                         Err(err) => return Err(Self::Error::CLValue(err)),
                     };
                     self.write(
-                        Key::Hash(updated_entity.byte_code_addr()),
+                        Key::Hash(updated_entity.byte_code().value()),
                         StoredValue::CLValue(byte_code_cl_value),
                     );
 
@@ -949,6 +949,7 @@ where
         let package_key = Key::Package(
             legacy_package_key
                 .into_hash_addr()
+                .map(|el| el.into())
                 .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,
         );
 

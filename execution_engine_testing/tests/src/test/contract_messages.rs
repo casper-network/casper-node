@@ -1289,7 +1289,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(contract_package_addr)),
-        "contract_package_addr",
+        "package_key",
         system_account_entity,
         0,
         0,
@@ -1297,7 +1297,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(contract_hash.value())),
-        "contract_addr",
+        "contract_key",
         system_account_entity,
         1,
         0,
@@ -1305,7 +1305,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(wasm_addr)),
-        "contract_wasm_addr",
+        "bytecode_key",
         system_account_entity,
         2,
         0,

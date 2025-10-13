@@ -55,19 +55,19 @@ pub enum CLType {
     U32 = CL_TYPE_TAG_U32,
     /// `u64` primitive.
     U64 = CL_TYPE_TAG_U64,
-    /// [`U128`] large unsigned integer type.
+    /// `U128` large unsigned integer type.
     U128 = CL_TYPE_TAG_U128,
-    /// [`U256`] large unsigned integer type.
+    /// `U256` large unsigned integer type.
     U256 = CL_TYPE_TAG_U256,
-    /// [`U512`] large unsigned integer type.
+    /// `U512` large unsigned integer type.
     U512 = CL_TYPE_TAG_U512,
     /// `()` primitive.
     Unit = CL_TYPE_TAG_UNIT,
     /// `String` primitive.
     String = CL_TYPE_TAG_STRING,
-    /// [`Key`] system type.
+    /// `Key` system type.
     Key = CL_TYPE_TAG_KEY,
-    /// [`URef`] system type.
+    /// `URef` system type.
     URef = CL_TYPE_TAG_UREF,
     /// `Option` of a `CLType`.
     Option(Box<CLType>) = CL_TYPE_TAG_OPTION,
@@ -90,7 +90,7 @@ pub enum CLType {
     Tuple3([Box<CLType>; 3]) = CL_TYPE_TAG_TUPLE3,
     /// Unspecified type.
     Any = CL_TYPE_TAG_ANY,
-    /// [`PublicKey`](crate::PublicKey) system type.
+    /// [`PublicKey`](crate::types::PublicKey) system type.
     PublicKey = CL_TYPE_TAG_PUBLIC_KEY,
 }
 
