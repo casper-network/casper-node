@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use casper_storage::{
@@ -9,6 +12,7 @@ use casper_types::{
     TransactionHash, WasmV2Config,
 };
 use parking_lot::RwLock;
+use casper_executor_wasm_interface::executor::ExecutionKind;
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub struct Context<S: GlobalStateReader> {
@@ -47,4 +51,6 @@ pub struct Context<S: GlobalStateReader> {
     pub runtime_native_config: RuntimeNativeConfig,
     /// Authorization keys for this execution.
     pub authorization_keys: BTreeSet<AccountHash>,
+    /// Shared execution stack across nested calls
+    pub execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }

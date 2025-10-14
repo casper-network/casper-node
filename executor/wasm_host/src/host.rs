@@ -1018,6 +1018,7 @@ pub fn casper_create<S: GlobalStateReader + 'static>(
                 .with_input(input_data.unwrap_or_default())
                 .with_transferred_value(transferred_value)
                 .with_transaction_hash(caller.context().transaction_hash)
+                .with_execution_stack(Arc::clone(&caller.context().execution_stack))
                 // We're using shared address generator there as we need to preserve and advance the
                 // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
@@ -1170,6 +1171,7 @@ pub fn casper_system<S: GlobalStateReader + 'static>(
         .with_execution_kind(ExecutionKind::System(option))
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
+        .with_execution_stack(Arc::clone(&caller.context().execution_stack))
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .with_chain_name(caller.context().chain_name.clone())
         .with_block_time(caller.context().block_time)
@@ -1265,6 +1267,7 @@ pub fn casper_call<S: GlobalStateReader + 'static>(
         .with_transferred_value(transferred_value)
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
+        .with_execution_stack(Arc::clone(&caller.context().execution_stack))
         // We're using shared address generator there as we need to preserve and advance the state
         // of deterministic address generator across chain of calls.
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
@@ -1850,6 +1853,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
             // be able to transfer anything.
             .with_transferred_value(0)
             .with_transaction_hash(caller.context().transaction_hash)
+            .with_execution_stack(Arc::clone(&caller.context().execution_stack))
             // We're using shared address generator there as we need to preserve and advance the
             // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))

@@ -1,7 +1,7 @@
 pub mod install;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
 
@@ -58,7 +58,6 @@ use casper_types::{
     TransactionInvocationTarget, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
-use parking_lot::RwLock;
 use tracing::{debug, error, info, warn};
 
 #[cfg(any(feature = "testing", test))]
@@ -184,7 +183,6 @@ impl ExecutorConfigBuilder {
 pub struct ExecutorV2 {
     config: ExecutorConfig,
     compiled_wasm_engine: Arc<WasmerEngine>,
-    execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
     execution_engine_v1: ExecutionEngineV1,
 }
 
@@ -573,6 +571,7 @@ impl ExecutorV2 {
             sandboxed,
             runtime_native_config,
             authorization_keys,
+            execution_stack,
         } = execute_request;
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
@@ -935,6 +934,7 @@ impl ExecutorV2 {
             parent_block_hash: parent_block_hash.inner().value(),
             block_height,
             authorization_keys,
+            execution_stack: Arc::clone(&execution_stack),
         };
 
         // Check that the input argument size does not exceed the VM memory limit
@@ -960,10 +960,16 @@ impl ExecutorV2 {
             .instantiate(wasm_bytes, self.clone(), context, wasm_instance_config)
             .map_err(ExecuteError::WasmPreparation)?;
 
-        self.push_execution_stack(execution_kind.clone());
+        {
+            let mut stack = execution_stack.write();
+            stack.push_back(execution_kind.clone());
+        }
         let (vm_result, gas_usage) = instance.call_export(export_name);
-
-        let top_execution_kind = self.pop_execution_stack().ok_or({
+        let top_execution_kind = {
+            let mut stack = execution_stack.write();
+            stack.pop_back()
+        }
+        .ok_or({
             //This shouldn't happen since we just pushed
             ExecuteError::Fatal(FatalHostError::CorruptExecutionState(
                 "Unexpected empty execution stack".to_owned(),
@@ -1246,24 +1252,7 @@ impl ExecutorV2 {
         let wasm_engine = match config.executor_kind {
             ExecutorKind::Compiled => WasmerEngine::new(),
         };
-        ExecutorV2 {
-            config,
-            compiled_wasm_engine: Arc::new(wasm_engine),
-            execution_stack: Default::default(),
-            execution_engine_v1,
-        }
-    }
-
-    /// Push the execution stack.
-    pub(crate) fn push_execution_stack(&self, execution_kind: ExecutionKind) {
-        let mut execution_stack = self.execution_stack.write();
-        execution_stack.push_back(execution_kind);
-    }
-
-    /// Pop the execution stack.
-    pub(crate) fn pop_execution_stack(&self) -> Option<ExecutionKind> {
-        let mut execution_stack = self.execution_stack.write();
-        execution_stack.pop_back()
+        ExecutorV2 { config, compiled_wasm_engine: Arc::new(wasm_engine), execution_engine_v1 }
     }
 }
 

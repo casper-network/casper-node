@@ -529,6 +529,7 @@ where
             parent_block_hash: data.context.parent_block_hash,
             block_height: data.context.block_height,
             authorization_keys: data.context.authorization_keys.clone(),
+            execution_stack: Arc::clone(&data.context.execution_stack),
         }
     }
 }
