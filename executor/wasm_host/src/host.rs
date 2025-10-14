@@ -54,7 +54,7 @@ use blake2::{
 };
 use casper_executor_wasm_common::{
     chain_utils::{compute_next_contract_hash_version, compute_wasm_bytecode_hash},
-    error::{HOST_ERROR_CL_VALUE, HOST_LOCKED_PACKAGE, HOST_NO_ACTIVE_CONTRACT},
+    error::{CALLEE_LOCKED_PACKAGE, CALLEE_NO_ACTIVE_CONTRACT, HOST_ERROR_CL_VALUE},
 };
 use casper_executor_wasm_interface::executor::{
     AuctionMethods, ExecuteRequest, MintMethods, SystemMenu,
@@ -1765,7 +1765,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
             };
 
             if package.is_locked() {
-                return Ok(HOST_LOCKED_PACKAGE);
+                return Ok(CALLEE_LOCKED_PACKAGE);
             }
 
             match package.current_contract_hash() {
@@ -1833,7 +1833,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static>(
                         contract_version_key.contract_version(),
                     )
                 }
-                None => return Ok(HOST_NO_ACTIVE_CONTRACT),
+                None => return Ok(CALLEE_NO_ACTIVE_CONTRACT),
             }
         }
         Ok(Some(other_entity)) => {

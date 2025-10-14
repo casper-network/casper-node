@@ -20,6 +20,12 @@ pub enum SandboxedExecutionError {
     CodeNotFound,
     /// An internal host error occurred.
     InternalHostError,
+    /// No active contract in a package.
+    NoActiveContract,
+    /// Entity not found
+    EntityNotFound,
+    /// Tried to upgrade a contract in a locked package.
+    LockedPackage,
     /// Api error occurred.
     Api(String),
 }
@@ -33,6 +39,9 @@ impl core::fmt::Display for SandboxedExecutionError {
             SandboxedExecutionError::NotCallable => write!(f, "contract not callable"),
             SandboxedExecutionError::CodeNotFound => write!(f, "contract code not found"),
             SandboxedExecutionError::InternalHostError => write!(f, "internal host error"),
+            SandboxedExecutionError::NoActiveContract => write!(f, "no active contract"),
+            SandboxedExecutionError::EntityNotFound => write!(f, "entity not found"),
+            SandboxedExecutionError::LockedPackage => write!(f, "locked package"),
             SandboxedExecutionError::Api(api_error) => write!(f, "{}", api_error),
         }
     }

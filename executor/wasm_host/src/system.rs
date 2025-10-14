@@ -267,7 +267,16 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
         match tracking_copy.get_package(contract_hash_addr) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
-                None => return Err(ExecuteError::NoActiveContract(caller_key)),
+                None => {
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::NoActiveContract),
+                        output: None,
+                        gas_usage,
+                        effects: tracking_copy.effects(),
+                        cache: tracking_copy.cache(),
+                        messages: tracking_copy.messages(),
+                    })
+                }
             },
             Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
         }
@@ -275,7 +284,16 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
         match tracking_copy.get_package(package_addr.value()) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
-                None => return Err(ExecuteError::NoActiveContract(caller_key)),
+                None => {
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::NoActiveContract),
+                        output: None,
+                        gas_usage,
+                        effects: tracking_copy.effects(),
+                        cache: tracking_copy.cache(),
+                        messages: tracking_copy.messages(),
+                    })
+                }
             },
             Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
         }
