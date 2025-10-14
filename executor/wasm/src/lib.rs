@@ -1252,7 +1252,11 @@ impl ExecutorV2 {
         let wasm_engine = match config.executor_kind {
             ExecutorKind::Compiled => WasmerEngine::new(),
         };
-        ExecutorV2 { config, compiled_wasm_engine: Arc::new(wasm_engine), execution_engine_v1 }
+        ExecutorV2 {
+            config,
+            compiled_wasm_engine: Arc::new(wasm_engine),
+            execution_engine_v1,
+        }
     }
 }
 

@@ -4,6 +4,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use casper_executor_wasm_interface::executor::ExecutionKind;
 use casper_storage::{
     global_state::GlobalStateReader, AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
@@ -12,7 +13,6 @@ use casper_types::{
     TransactionHash, WasmV2Config,
 };
 use parking_lot::RwLock;
-use casper_executor_wasm_interface::executor::ExecutionKind;
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub struct Context<S: GlobalStateReader> {
