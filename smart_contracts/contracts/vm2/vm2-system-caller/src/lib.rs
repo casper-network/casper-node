@@ -9,7 +9,7 @@ pub mod exports {
     };
 
     #[casper(export)]
-    pub fn call(opt: u32) {
+    pub fn call(opt: u32, purse_delegation: bool) {
         use borsh;
 
         let option = match SystemContractOption::try_from(opt) {
@@ -92,23 +92,27 @@ pub mod exports {
             }
             SystemContractOption::AddReservation => {
                 let pub_k = PublicKey::Ed25519([1; 32]);
-                let res_pu = Reservation::new(DelegatorKind::Purse([254; 32]), pub_k, 1);
-                let res_pk = Reservation::new(
-                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
-                    pub_k,
-                    1,
-                );
-                let reservations = vec![res_pu, res_pk];
-                let args = (reservations,);
+                let reservation = if purse_delegation {
+                    Reservation::new(DelegatorKind::Purse([254; 32]), pub_k, 1)
+                } else {
+                    Reservation::new(
+                        DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
+                        pub_k,
+                        1,
+                    )
+                };
+
+                let args = (reservation,);
                 let input = borsh::to_vec(&args).expect("Serialization to succeed");
                 Some(input)
             }
             SystemContractOption::CancelReservation => {
-                let reservations = vec![
-                    DelegatorKind::Purse([254; 32]),
-                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
-                ];
-                let args = (PublicKey::Ed25519([1; 32]), reservations);
+                let delegator_kind = if purse_delegation {
+                    DelegatorKind::Purse([254; 32])
+                } else {
+                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32]))
+                };
+                let args = (PublicKey::Ed25519([1; 32]), delegator_kind);
                 let input = borsh::to_vec(&args).expect("Serialization to succeed");
                 Some(input)
             }

@@ -9,9 +9,31 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
-## [UNRELEASED] casper-types 6.0.0
+## casper-types 7.0.0
 
-### Added 
+### Added
+
+- In struct AddressableEntity:
+  - function `byte_code_addr`
+
+### Changed
+
+- functions `Block::block_utilization` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
+- functions `Block::has_hit_slot_capacity` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
+- renamed `package::PackageHash` to `package::PackageAddr`
+- renamed `package::TryFromSliceForPackageHashError` to `package::TryFromSliceForPackageAddrError`
+- In struct AddressableEntity:
+  - field `package_hash` renamed to `package`
+  - field `byte_code_hash` renamed to `byte_code`
+
+### Removed
+
+- type `key::PackageAddr`. It's usages will be replaced with `package::PackageAddr`
+
+## casper-types 6.0.0
+
+### Added
+
 - TransactionInvocationTarget::ByPackageHash::protocol_version_major field
 - TransactionInvocationTarget::ByPackageName::protocol_version_major field
 - New variant PackageIdentifier::HashWithVersion

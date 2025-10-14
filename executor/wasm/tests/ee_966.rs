@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::ExecutionEngineV1;

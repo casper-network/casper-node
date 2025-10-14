@@ -19,7 +19,7 @@ use crate::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractHash, ContractPackageHash, ContractVersion},
-    package::PackageHash,
+    package::PackageAddr,
     runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
     transaction::{RuntimeArgs, TransferTarget},
@@ -101,7 +101,7 @@ pub enum ExecutableDeployItem {
         /// Runtime arguments.
         args: RuntimeArgs,
     },
-    /// Stored versioned contract referenced by its [`PackageHash`], entry point and an
+    /// Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
@@ -280,7 +280,7 @@ impl ExecutableDeployItem {
             }
             ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
                 ExecutableDeployItemIdentifier::Package(PackageIdentifier::Hash {
-                    package_hash: PackageHash::new(hash.value()),
+                    package_hash: PackageAddr::new(hash.value()),
                     version: *version,
                 })
             }
@@ -320,7 +320,7 @@ impl ExecutableDeployItem {
 
             ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
                 Some(PackageIdentifier::HashWithMajorVersion {
-                    package_hash: PackageHash::new(hash.value()),
+                    package_hash: PackageAddr::new(hash.value()),
                     version: *version,
                     protocol_version_major: None,
                 })

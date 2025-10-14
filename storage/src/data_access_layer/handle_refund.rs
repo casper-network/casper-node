@@ -24,6 +24,8 @@ pub enum HandleRefundMode {
         source: Box<BalanceIdentifier>,
         /// Refund ratio.
         ratio: Ratio<u64>,
+        /// Available.
+        available: U512,
     },
     /// This variant will cause the refund amount to be calculated and the refund to be executed.
     Refund {
@@ -43,6 +45,8 @@ pub enum HandleRefundMode {
         source: Box<BalanceIdentifier>,
         /// Target for refund.
         target: Box<BalanceIdentifier>,
+        /// Available.
+        available: U512,
     },
     /// This variant handles the edge case of custom payment plus no fee plus no refund.
     /// This ultimately turns into a hold on the initiator, but it takes extra steps to get there
@@ -70,8 +74,8 @@ pub enum HandleRefundMode {
         gas_price: u8,
         /// Refund ratio.
         ratio: Ratio<u64>,
-        /// Refund source.
-        source: Box<BalanceIdentifier>,
+        /// Available.
+        available: U512,
     },
     /// This variant will cause the refund purse tracked by handle_payment to be set.
     SetRefundPurse {

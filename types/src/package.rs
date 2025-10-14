@@ -36,9 +36,9 @@ const PACKAGE_STRING_PREFIX: &str = "package-";
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
 #[derive(Debug)]
-pub struct TryFromSliceForPackageHashError(());
+pub struct TryFromSliceForPackageAddrError(());
 
-impl Display for TryFromSliceForPackageHashError {
+impl Display for TryFromSliceForPackageAddrError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "failed to retrieve from slice")
     }
@@ -239,6 +239,12 @@ impl EntityVersions {
         Some(value)
     }
 
+    /// Returns the latest entity version key if it exists.
+    pub fn latest_with_key(&self) -> Option<(&EntityVersionKey, &EntityAddr)> {
+        let (key, value) = self.0.last_key_value()?;
+        Some((key, value))
+    }
+
     /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
     pub fn iter_entries(&self) -> impl Iterator<Item = (&EntityVersionKey, &EntityAddr)> {
         self.0.iter()
@@ -392,14 +398,14 @@ impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
     derive(JsonSchema),
     schemars(description = "The hex-encoded address of the Package.")
 )]
-pub struct PackageHash(
+pub struct PackageAddr(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-impl PackageHash {
-    /// Constructs a new `PackageHash` from the raw bytes of the package hash.
-    pub const fn new(value: HashAddr) -> PackageHash {
-        PackageHash(value)
+impl PackageAddr {
+    /// Constructs a new `PackageAddr` from the raw bytes of the package hash.
+    pub const fn new(value: HashAddr) -> PackageAddr {
+        PackageAddr(value)
     }
 
     /// Returns the raw bytes of the entity hash as an array.
@@ -412,20 +418,20 @@ impl PackageHash {
         &self.0
     }
 
-    /// Formats the `PackageHash` for users getting and putting.
+    /// Formats the `PackageAddr` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
         format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
-    /// `PackageHash`.
+    /// `PackageAddr`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let hex_addr = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
-        Ok(PackageHash(bytes))
+        Ok(PackageAddr(bytes))
     }
 
     /// Parses a `PublicKey` and outputs the corresponding account hash.
@@ -458,25 +464,25 @@ impl PackageHash {
     }
 }
 
-impl Display for PackageHash {
+impl Display for PackageAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for PackageHash {
+impl Debug for PackageAddr {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "PackageHash({})", base16::encode_lower(&self.0))
+        write!(f, "PackageAddr({})", base16::encode_lower(&self.0))
     }
 }
 
-impl CLTyped for PackageHash {
+impl CLTyped for PackageAddr {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for PackageHash {
+impl ToBytes for PackageAddr {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -494,20 +500,20 @@ impl ToBytes for PackageHash {
     }
 }
 
-impl FromBytes for PackageHash {
+impl FromBytes for PackageAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((PackageHash::new(bytes), rem))
+        Ok((PackageAddr::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for PackageHash {
+impl From<[u8; 32]> for PackageAddr {
     fn from(bytes: [u8; 32]) -> Self {
-        PackageHash(bytes)
+        PackageAddr(bytes)
     }
 }
 
-impl Serialize for PackageHash {
+impl Serialize for PackageAddr {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -517,47 +523,37 @@ impl Serialize for PackageHash {
     }
 }
 
-impl<'de> Deserialize<'de> for PackageHash {
+impl<'de> Deserialize<'de> for PackageAddr {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            PackageHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            PackageAddr::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(PackageHash(bytes))
+            Ok(PackageAddr(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for PackageHash {
+impl AsRef<[u8]> for PackageAddr {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for PackageHash {
-    type Error = TryFromSliceForPackageHashError;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForPackageHashError> {
-        HashAddr::try_from(bytes)
-            .map(PackageHash::new)
-            .map_err(|_| TryFromSliceForPackageHashError(()))
-    }
-}
-
-impl TryFrom<&Vec<u8>> for PackageHash {
-    type Error = TryFromSliceForPackageHashError;
+impl TryFrom<&Vec<u8>> for PackageAddr {
+    type Error = TryFromSliceForPackageAddrError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(PackageHash::new)
-            .map_err(|_| TryFromSliceForPackageHashError(()))
+            .map(PackageAddr::new)
+            .map_err(|_| TryFromSliceForPackageAddrError(()))
     }
 }
 
-impl From<&PublicKey> for PackageHash {
+impl From<&PublicKey> for PackageAddr {
     fn from(public_key: &PublicKey) -> Self {
-        PackageHash::from_public_key(public_key, crypto::blake2b)
+        PackageAddr::from_public_key(public_key, crypto::blake2b)
     }
 }
 
@@ -1211,41 +1207,41 @@ mod tests {
     fn package_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
         let package_hash = HashAddr::try_from(&bytes[..]).expect("should create package hash");
-        let package_hash = PackageHash::new(package_hash);
+        let package_hash = PackageAddr::new(package_hash);
         assert_eq!(&bytes, &package_hash.as_bytes());
     }
 
     #[test]
     fn package_hash_from_str() {
-        let package_hash = PackageHash::new([3; 32]);
+        let package_hash = PackageAddr::new([3; 32]);
         let encoded = package_hash.to_formatted_string();
-        let decoded = PackageHash::from_formatted_str(&encoded).unwrap();
+        let decoded = PackageAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(package_hash, decoded);
 
         let invalid_prefix =
             "package0000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            PackageAddr::from_formatted_str(invalid_prefix).unwrap_err(),
             FromStrError::InvalidPrefix
         ));
 
         let short_addr = "package-00000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            PackageHash::from_formatted_str(short_addr).unwrap_err(),
+            PackageAddr::from_formatted_str(short_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let long_addr =
             "package-000000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            PackageHash::from_formatted_str(long_addr).unwrap_err(),
+            PackageAddr::from_formatted_str(long_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let invalid_hex =
             "package-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(matches!(
-            PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            PackageAddr::from_formatted_str(invalid_hex).unwrap_err(),
             FromStrError::Hex(_)
         ));
     }

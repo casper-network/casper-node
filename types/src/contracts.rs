@@ -39,7 +39,7 @@ use crate::{
     uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityAddr, EntityEntryPoint, EntityVersionKey,
     EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Group,
-    Groups, HashAddr, Key, Package, PackageHash, Parameter, Parameters, ProtocolVersion,
+    Groups, HashAddr, Key, Package, PackageAddr, Parameter, Parameters, ProtocolVersion,
     KEY_HASH_LENGTH,
 };
 
@@ -497,8 +497,8 @@ impl ContractPackageHash {
     }
 }
 
-impl From<PackageHash> for ContractPackageHash {
-    fn from(value: PackageHash) -> Self {
+impl From<PackageAddr> for ContractPackageHash {
+    fn from(value: PackageAddr) -> Self {
         ContractPackageHash::new(value.value())
     }
 }

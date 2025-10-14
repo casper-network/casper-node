@@ -163,6 +163,12 @@ pub enum FatalStorageError {
     /// BlockStoreError
     #[error("unexpected record id {0}")]
     UnexpectedRecordId(RecordId),
+    /// Block not found
+    #[error("Couldn't find block at height {0}")]
+    BlockNotFound(u64),
+    /// Execution results missing
+    #[error("Couldn't find all execution results for block at height: {0}")]
+    MissingExecutionResults(u64),
 }
 
 impl From<Box<BlockValidationError>> for FatalStorageError {

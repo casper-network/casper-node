@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    runtime_args, system::standard_payment::ARG_AMOUNT, AddressableEntityHash, PackageHash,
+    runtime_args, system::standard_payment::ARG_AMOUNT, AddressableEntityHash, PackageAddr,
     RuntimeArgs,
 };
 
@@ -14,7 +14,7 @@ const NEW_KEY_NAME: &str = "Hello";
 const PACKAGE_KEY: &str = "contract_package";
 const CONTRACT_HASH_KEY: &str = "contract_hash";
 
-fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
+fn setup() -> (LmdbWasmTestBuilder, PackageAddr, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -46,7 +46,7 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
 
     let contract_package_hash = package_hash_key
         .into_hash_addr()
-        .map(PackageHash::new)
+        .map(PackageAddr::new)
         .expect("should be hash");
 
     let entity_hash = entity_hash_key
@@ -57,7 +57,7 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
     (builder, contract_package_hash, entity_hash)
 }
 
-fn test(deploy_item_builder: impl FnOnce(PackageHash, AddressableEntityHash) -> DeployItem) {
+fn test(deploy_item_builder: impl FnOnce(PackageAddr, AddressableEntityHash) -> DeployItem) {
     let (mut builder, contract_package_hash, contract_hash) = setup();
 
     let deploy_item = deploy_item_builder(contract_package_hash, contract_hash);

@@ -167,6 +167,15 @@ impl BlockExecutionResultsOrChunk {
     }
 
     #[cfg(test)]
+    pub(crate) fn new_empty_value(block_hash: BlockHash) -> Self {
+        Self {
+            block_hash,
+            value: ValueOrChunk::new(vec![], 0).unwrap(),
+            is_valid: OnceCell::with_value(Ok(true)),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn new_mock_value(rng: &mut TestRng, block_hash: BlockHash) -> Self {
         Self::new_mock_value_with_multiple_random_results(rng, block_hash, 1)
     }

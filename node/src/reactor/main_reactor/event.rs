@@ -23,8 +23,9 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
-            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            NonExecutableBlockAnnouncement, PeerBehaviorAnnouncement,
+            TransactionAcceptorAnnouncement, TransactionBufferAnnouncement,
+            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -242,8 +243,10 @@ pub(crate) enum MainEvent {
     MetaBlockAnnouncement(MetaBlockAnnouncement),
     #[from]
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
-
+    #[from]
+    NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement),
     // Event related to figuring out validators for blocks after upgrades.
+    #[from]
     GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
 }
 
@@ -360,6 +363,7 @@ impl ReactorEvent for MainEvent {
                 "GotImmediateSwitchBlockEraValidators"
             }
             MainEvent::BinaryPort(_) => "BinaryPort",
+            MainEvent::NonExecutableBlockAnnouncement(_) => "NonExecutableBlockAnnouncement",
         }
     }
 }
@@ -544,6 +548,7 @@ impl Display for MainEvent {
                 )
             }
             MainEvent::BinaryPort(inner) => Display::fmt(inner, f),
+            MainEvent::NonExecutableBlockAnnouncement(inner) => Display::fmt(inner, f),
         }
     }
 }

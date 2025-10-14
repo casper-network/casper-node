@@ -756,7 +756,7 @@ fn build_session_info_for_executable_item(
             args,
         } => {
             session = ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
-                addr: hash.value(),
+                addr: hash.value().into(),
                 version: *version,
                 protocol_version_major: None,
             });
@@ -922,7 +922,7 @@ fn build_payment_info_for_executable_item(
             entry_point,
         } => Ok(PaymentInfo(ExecutableInfo {
             item: ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
-                addr: hash.value(),
+                addr: hash.value().into(),
                 version: *version,
                 protocol_version_major: None,
             }),

@@ -717,7 +717,10 @@ impl PackageIdentifier {
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..2) {
             0 => PackageIdentifier::ContractPackageHash(ContractPackageHash::new(rng.gen())),
-            1 => PackageIdentifier::PackageAddr(rng.gen()),
+            1 => {
+                let addr: [u8; 32] = rng.gen();
+                PackageIdentifier::PackageAddr(addr.into())
+            }
             _ => unreachable!(),
         }
     }

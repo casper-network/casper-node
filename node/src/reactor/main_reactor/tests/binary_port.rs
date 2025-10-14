@@ -43,9 +43,8 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
     ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
     EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef,
-    U512,
+    PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction,
+    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -206,7 +205,10 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     let post_migration_contract_hash = ContractHash::new(rng.gen());
     let wasm_hash = ContractWasmHash::new(rng.gen());
 
-    let package_addr: PackageAddr = rng.gen();
+    let package_addr: PackageAddr = {
+        let addr: [u8; 32] = rng.gen();
+        PackageAddr::new(addr)
+    };
     let package_access_key: URef = rng.gen();
     let entity_addr: EntityAddr = rng.gen();
     let entity_bytecode_hash: ByteCodeHash = ByteCodeHash::new(rng.gen());
@@ -317,7 +319,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     effects.push(TransformV2::new(
         Key::AddressableEntity(entity_addr),
         TransformKindV2::Write(StoredValue::AddressableEntity(AddressableEntity::new(
-            PackageHash::new(package_addr),
+            package_addr,
             entity_bytecode_hash,
             ProtocolVersion::V2_0_0,
             main_purse,
@@ -1374,8 +1376,14 @@ async fn binary_port_sandboxed_execution_request() {
     let bob_public_key = PublicKey::from(&*bob_secret_key);
 
     let stakes = vec![
-        (alice_public_key.clone(), U512::from(u128::MAX)),
-        (bob_public_key.clone(), U512::from(1)),
+        (
+            alice_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(u128::MAX)),
+        ),
+        (
+            bob_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(1)),
+        ),
     ]
     .into_iter()
     .collect();

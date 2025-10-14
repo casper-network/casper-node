@@ -15,7 +15,7 @@ use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ProtocolVersionMajor,
-    EntityVersion, PackageHash,
+    EntityVersion, PackageAddr,
 };
 #[cfg(doc)]
 use crate::{ExecutableDeployItem, TransactionTarget};
@@ -41,7 +41,7 @@ pub enum PackageIdentifier {
     /// The hash and optional version identifying the contract package.
     Hash {
         /// The hash of the contract package.
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         /// The version of the contract package.
         ///
         /// `None` implies latest version.
@@ -59,7 +59,7 @@ pub enum PackageIdentifier {
     /// The hash and optional version key identifying the contract package.
     HashWithMajorVersion {
         /// The hash of the contract package.
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         /// The major protocol version of the contract package.
         ///
         /// `None` implies latest major protocol version.
@@ -119,7 +119,7 @@ impl PackageIdentifier {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..4) {
             0 => PackageIdentifier::Hash {
-                package_hash: PackageHash::new(rng.gen()),
+                package_hash: PackageAddr::new(rng.gen()),
                 version: rng.gen(),
             },
             1 => PackageIdentifier::Name {
@@ -127,7 +127,7 @@ impl PackageIdentifier {
                 version: rng.gen(),
             },
             2 => PackageIdentifier::HashWithMajorVersion {
-                package_hash: PackageHash::new(rng.gen()),
+                package_hash: PackageAddr::new(rng.gen()),
                 protocol_version_major: rng.gen(),
                 version: rng.gen(),
             },
@@ -278,7 +278,7 @@ impl FromBytes for PackageIdentifier {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             HASH_TAG => {
-                let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
+                let (package_hash, remainder) = PackageAddr::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
                 let id = PackageIdentifier::Hash {
                     package_hash,
@@ -293,7 +293,7 @@ impl FromBytes for PackageIdentifier {
                 Ok((id, remainder))
             }
             HASH_WITH_VERSION_TAG => {
-                let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
+                let (package_hash, remainder) = PackageAddr::from_bytes(remainder)?;
                 let (protocol_version_major, remainder) = Option::from_bytes(remainder)?;
                 let (version, remainder) = Option::from_bytes(remainder)?;
                 let id = PackageIdentifier::HashWithMajorVersion {

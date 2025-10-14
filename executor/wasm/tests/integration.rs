@@ -6,6 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use casper_execution_engine::runtime::cryptography;
 use casper_executor_wasm::{
     install::{InstallContractError, InstallContractRequest},
     testing::{
@@ -32,6 +33,7 @@ use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR
 use casper_storage::{
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         MessageTopicsRequest, MessageTopicsResult, QueryRequest, QueryResult,
     },
     global_state::{
@@ -45,9 +47,11 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::ToBytes,
+    contract_messages::{Message, MessageChecksum, MessagePayload},
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
-    BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
+    BlockHash, BlockTime, ByteCodeAddr, Digest, EntityAddr, Key, KeyTag, PublicKey, RuntimeArgs,
+    StoredValue, Timestamp,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -356,7 +360,7 @@ fn exec_system_call(system_menu: SystemMenu, initiator: Option<AccountHash>) {
     let initiator = initiator.unwrap_or(DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash());
 
     let system_function_option: u32 = system_menu.into();
-    let input_data = borsh::to_vec(&(system_function_option,))
+    let input_data = borsh::to_vec(&(system_function_option, false))
         .map(Bytes::from)
         .unwrap();
     let execute_request = make_execution_request(
@@ -423,7 +427,7 @@ fn should_revert_invalid_system_option() {
     let block_time = Timestamp::now().into();
 
     let account_hash = DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY.to_account_hash();
-    let input_data = borsh::to_vec(&(9999,)).map(Bytes::from).unwrap();
+    let input_data = borsh::to_vec(&(9999, false)).map(Bytes::from).unwrap();
 
     let execute_request = make_execution_request(
         &chainspec_config,
@@ -543,7 +547,7 @@ fn should_handle_reservations() {
     // need to bump the delegator reservation limit up to allow add_reservation to work
     let bid_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::Bid).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -579,9 +583,9 @@ fn should_handle_reservations() {
     }
 
     // make a couple of reservations
-    let add_res_request = {
+    let add_res_pubk_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -594,16 +598,45 @@ fn should_handle_reservations() {
         )
     };
 
-    state_root_hash =
-        match exec_and_commit(&executor, &global_state, &state_root_hash, add_res_request) {
-            Ok(post_state) => post_state,
-            Err(err_str) => panic!("{err_str}"),
-        };
+    state_root_hash = match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        add_res_pubk_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
+
+    let add_res_purse_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
+        let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    state_root_hash = match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        add_res_purse_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
 
     // cancel those reservations
-    let cancel_request = {
+    let cancel_pubk_request = {
         let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
-        let input_data = borsh::to_vec(&(opt,)).map(Bytes::from).unwrap();
+        let input_data = borsh::to_vec(&(opt, false)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
@@ -616,7 +649,37 @@ fn should_handle_reservations() {
         )
     };
 
-    match exec_and_commit(&executor, &global_state, &state_root_hash, cancel_request) {
+    match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        cancel_pubk_request,
+    ) {
+        Ok(post_state) => post_state,
+        Err(err_str) => panic!("{err_str}"),
+    };
+
+    let cancel_purse_request = {
+        let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
+        let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
+        make_execution_request(
+            &chainspec_config,
+            Arc::clone(&address_generator),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            input_data,
+            0,
+            Some(account_hash),
+            None,
+            Some(block_time),
+        )
+    };
+
+    match exec_and_commit(
+        &executor,
+        &global_state,
+        &state_root_hash,
+        cancel_purse_request,
+    ) {
         Ok(post_state) => post_state,
         Err(err_str) => panic!("{err_str}"),
     };
@@ -1706,4 +1769,301 @@ fn supports_named_args_convention() {
         .expect("Should commit");
 
     assert_ne!(post_state_root_hash, state_root_hash);
+}
+
+#[test]
+fn installing_contract_should_produce_system_messages() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let is_addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
+
+    let mut executor = make_executor(&chainspec_config);
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+    let post_state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+    let request = TaggedValuesRequest::new(
+        post_state_root_hash,
+        TaggedValuesSelection::All(KeyTag::Message),
+    );
+    let message_checksums: Vec<MessageChecksum> = as_values(global_state.tagged_values(request))
+        .unwrap()
+        .into_iter()
+        .filter_map(|stored_value| match stored_value {
+            StoredValue::Message(message_checksum) => Some(message_checksum),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(message_checksums.len(), 4);
+    let key_of_contract = if is_addressable_entity_enabled {
+        Key::AddressableEntity(EntityAddr::SmartContract(
+            *create_result.smart_contract_addr(),
+        ))
+    } else {
+        Key::Hash(*create_result.smart_contract_addr())
+    };
+    let (key_of_contract, key_of_package, key_of_wasm) =
+        get_contract_package_and_wasms(post_state_root_hash, &global_state, key_of_contract);
+
+    let system_account_hash = PublicKey::System.to_account_hash().value();
+    let entity_addr = EntityAddr::Account(system_account_hash);
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_package.to_formatted_string(),
+        "package_key",
+        entity_addr,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_contract.to_formatted_string(),
+        "contract_key",
+        entity_addr,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &key_of_wasm.to_formatted_string(),
+        "bytecode_key",
+        entity_addr,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        post_state_root_hash,
+        &global_state,
+        &format!("{}.{}", 2, 1),
+        "contract_version",
+        entity_addr,
+        3,
+        0,
+    );
+}
+
+#[test]
+fn installing_contract_should_produce_system_messages_after_upgrade() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+    let is_addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
+
+    let mut executor = make_executor(&chainspec_config);
+    let upgradable_address;
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    state_root_hash = {
+        let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
+
+        let create_request = base_install_request_builder(&chainspec_config)
+            .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+            .with_shared_address_generator(Arc::clone(&address_generator))
+            .with_gas_limit(DEFAULT_GAS_LIMIT)
+            .with_transferred_value(0)
+            .with_entry_point("new".to_string())
+            .with_input(input_data)
+            .build()
+            .expect("should build");
+
+        let create_result = run_create_contract(
+            &mut executor,
+            &global_state,
+            state_root_hash,
+            create_request,
+        );
+
+        upgradable_address = *create_result.smart_contract_addr();
+
+        global_state
+            .commit_effects(state_root_hash, create_result.effects().clone())
+            .expect("Should commit")
+    };
+    let binding = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = binding.as_ref();
+
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_transferred_value(0)
+        .with_execution_kind(ExecutionKind::Stored {
+            address: upgradable_address,
+            entry_point: "perform_upgrade".to_string(),
+        })
+        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_serialized_input((new_code,))
+        .expect("expected serialized input to be correct")
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+    let res = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+    let state_root_hash_after_upgrade = global_state
+        .commit_effects(state_root_hash, res.effects().clone())
+        .expect("Should commit");
+
+    let request = TaggedValuesRequest::new(
+        state_root_hash_after_upgrade,
+        TaggedValuesSelection::All(KeyTag::Message),
+    );
+    let message_checksums: Vec<MessageChecksum> = as_values(global_state.tagged_values(request))
+        .unwrap()
+        .into_iter()
+        .filter_map(|stored_value| match stored_value {
+            StoredValue::Message(message_checksum) => Some(message_checksum),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(message_checksums.len(), 4);
+    let key_of_contract = if is_addressable_entity_enabled {
+        Key::AddressableEntity(EntityAddr::SmartContract(upgradable_address))
+    } else {
+        Key::Hash(upgradable_address)
+    };
+    let (key_of_contract, key_of_package, key_of_wasm) = get_contract_package_and_wasms(
+        state_root_hash_after_upgrade,
+        &global_state,
+        key_of_contract,
+    );
+
+    let system_account_hash = PublicKey::System.to_account_hash().value();
+    let entity_addr = EntityAddr::Account(system_account_hash);
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_package.to_formatted_string(),
+        "package_key",
+        entity_addr,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_contract.to_formatted_string(),
+        "contract_key",
+        entity_addr,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &key_of_wasm.to_formatted_string(),
+        "bytecode_key",
+        entity_addr,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        state_root_hash_after_upgrade,
+        &global_state,
+        &format!("{}.{}", 2, 2),
+        "contract_version",
+        entity_addr,
+        3,
+        0,
+    );
+}
+
+fn get_contract_package_and_wasms(
+    state_hash: Digest,
+    global_state: &LmdbGlobalState,
+    key_of_contract: Key,
+) -> (Key, Key, Key) {
+    let mut tc = global_state.tracking_copy(state_hash).unwrap().unwrap();
+    let z = tc.read(&key_of_contract).unwrap().unwrap();
+    match z {
+        StoredValue::AddressableEntity(ae) => (
+            key_of_contract,
+            Key::Package(ae.package()),
+            Key::ByteCode(ae.byte_code_addr().unwrap()),
+        ),
+        StoredValue::Contract(ctr) => (
+            key_of_contract,
+            Key::Hash(ctr.contract_package_hash().value()),
+            //TODO this should probably be changed to ctr.contract_wasm_key() once the upgrade is
+            // fixed
+            Key::ByteCode(ByteCodeAddr::V2CasperWasm(ctr.contract_wasm_hash().value())),
+        ),
+        StoredValue::ContractPackage(contract_package) => {
+            let real_contract_entry =
+                Key::Hash(contract_package.current_contract_hash().unwrap().value());
+            let z = tc.read(&real_contract_entry).unwrap().unwrap();
+            let wasm_key = match z {
+                StoredValue::Contract(ctr) => {
+                    //TODO this should probably be changed to ctr.contract_wasm_key() once the
+                    // upgrade is fixed
+                    Key::ByteCode(ByteCodeAddr::V2CasperWasm(ctr.contract_wasm_hash().value()))
+                }
+                _ => unreachable!(),
+            };
+            (real_contract_entry, key_of_contract, wasm_key)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn as_values(res: TaggedValuesResult) -> Option<Vec<StoredValue>> {
+    match res {
+        TaggedValuesResult::Success {
+            selection: _,
+            values,
+        } => Some(values),
+        _ => None,
+    }
+}
+
+fn expect_message_on_topic_and_index(
+    state_hash: Digest,
+    global_state: &LmdbGlobalState,
+    message: &str,
+    topic_name: &str,
+    entity_addr: EntityAddr,
+    index_in_block: u64,
+    index_in_topic: u32,
+) {
+    let topic_name_hash = cryptography::blake2b(topic_name);
+    let key = Key::message(entity_addr, topic_name_hash.into(), index_in_topic);
+    let res = global_state.query(QueryRequest::new(state_hash, key, vec![]));
+    let got_message_checksum = match res {
+        QueryResult::Success { value, proofs: _ } => value.as_message_checksum().unwrap().clone(),
+        _ => unreachable!(),
+    };
+    let message = Message::new(
+        entity_addr,
+        MessagePayload::String(message.to_string()),
+        topic_name.to_string(),
+        topic_name_hash.into(),
+        index_in_topic,
+        index_in_block,
+    );
+    let message_checksum = message.checksum().unwrap();
+    assert_eq!(got_message_checksum, message_checksum);
 }

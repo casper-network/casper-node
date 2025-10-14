@@ -272,7 +272,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
         }
     } else if let Key::Package(package_addr) = caller_key {
-        match tracking_copy.get_package(package_addr) {
+        match tracking_copy.get_package(package_addr.value()) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
                 None => return Err(ExecuteError::NoActiveContract(caller_key)),
@@ -534,34 +534,31 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::AddReservation => {
-                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Vec<Reservation>,)>(&input);
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Reservation,)>(&input);
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec AddReservation");
                 }
                 let unpacked =
                     ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
-                let reservations = unpacked.0;
-                for reservation in &reservations {
-                    if reservation.validator_public_key().is_system() {
+                let reservation = unpacked.0;
+                if reservation.validator_public_key().is_system() {
+                    debug!(
+                        ?method,
+                        "attempt to pass system public key from userland AddReservation validator"
+                    );
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
+                }
+                if let DelegatorKind::PublicKey(delegator_public_key) = reservation.delegator_kind()
+                {
+                    if delegator_public_key.is_system() {
                         debug!(
-                            ?method,
-                            "attempt to pass system public key from userland AddReservation validator"
-                        );
-                        return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
-                    }
-                    if let DelegatorKind::PublicKey(delegator_public_key) =
-                        reservation.delegator_kind()
-                    {
-                        if delegator_public_key.is_system() {
-                            debug!(
                             ?method,
                             "attempt to pass system public key from userland AddReservation delegator"
                         );
-                            return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
-                        }
+                        return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                     }
                 }
-                let add_reservations_args = AddReservationsArgs::new(reservations);
+                let add_reservations_args = AddReservationsArgs::new(vec![reservation]);
                 system::add_reservations(
                     &mut tracking_copy,
                     runtime_native_config,
@@ -572,7 +569,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             AuctionMethods::CancelReservation => {
-                let unpacked: (PublicKey, Vec<DelegatorKind>) =
+                let unpacked: (PublicKey, DelegatorKind) =
                     bytesrepr::deserialize_from_slice(&input)
                         .map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if unpacked.0.is_system() {
@@ -582,11 +579,12 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                     );
                     return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
+                let reservations = vec![unpacked.1];
                 let cancel_reservations_args = CancelReservationsArgs::new(
                     // validator
                     unpacked.0,
-                    // delegators
-                    unpacked.1,
+                    // delegator
+                    reservations,
                     runtime_native_config.max_delegators_per_validator(),
                 );
                 system::cancel_reservations(

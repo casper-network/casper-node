@@ -59,7 +59,7 @@ use crate::{
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
-            UnexecutedBlockAnnouncement,
+            NonExecutableBlockAnnouncement, UnexecutedBlockAnnouncement,
         },
         incoming::{TrieDemand, TrieRequest as TrieRequestMessage, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
@@ -207,7 +207,7 @@ impl ContractRuntime {
         })
     }
 
-    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+    pub(crate) fn set_execution_pre_state(&mut self, sequential_block_state: ExecutionPreState) {
         let next_block_height = sequential_block_state.next_block_height();
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
@@ -261,6 +261,12 @@ impl ContractRuntime {
     /// How many blocks are backed up in the queue
     pub(crate) fn queue_depth(&self) -> usize {
         self.exec_queue.len()
+    }
+
+    /// Returns the current execution prestate.
+    pub(crate) fn execution_pre_state(&self) -> ExecutionPreState {
+        let execution_pre_state = self.execution_pre_state.lock().unwrap();
+        execution_pre_state.clone()
     }
 
     /// Commits a genesis request.
@@ -325,6 +331,7 @@ impl ContractRuntime {
             + From<MetaBlockAnnouncement>
             + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
+            + From<NonExecutableBlockAnnouncement>
             + Send,
     {
         match request {
@@ -480,7 +487,7 @@ impl ContractRuntime {
                     let entity_key = match entity_addr {
                         EntityAddr::Package(hash) => {
                             if data_access_layer.addressable_entity_enabled {
-                                Key::Package(hash)
+                                Key::Package(hash.into())
                             } else {
                                 Key::Hash(hash)
                             }
@@ -595,7 +602,7 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 let next_block_height = new_pre_state.next_block_height();
-                self.set_initial_state(new_pre_state);
+                self.set_execution_pre_state(new_pre_state);
                 let current_price = self.current_gas_price.gas_price();
                 async move {
                     let block_header = match effect_builder
@@ -925,6 +932,7 @@ where
         + From<MetaBlockAnnouncement>
         + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
+        + From<NonExecutableBlockAnnouncement>
         + Send,
 {
     type Event = Event;

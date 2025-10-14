@@ -35,9 +35,24 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
+        if self.force_catchup {
+            self.force_catchup = false;
+            return ValidateInstruction::CatchUp;
+        }
         let last_progress = self.consensus.last_progress();
         if last_progress > self.last_progress {
             self.last_progress = last_progress;
+        }
+
+        let execution_pre_state = self.contract_runtime.execution_pre_state();
+        let next_consensus_height = self.consensus.next_executed_height();
+        if next_consensus_height != 0
+            && next_consensus_height != execution_pre_state.next_block_height()
+        {
+            warn!(
+                "Validate: misalignment of expected block height between consensus and contract runtime"
+            );
+            return ValidateInstruction::CatchUp;
         }
 
         let queue_depth = self.contract_runtime.queue_depth();
@@ -153,6 +168,24 @@ impl MainReactor {
                 "{}: this is not a validating node in this era", self.state
             );
             return Ok(None);
+        }
+
+        // If the node was validating in the previous era there is a cvhance that it didn't get a
+        // chance to apply it's finality signature to the last (or some of the last) blocks of that
+        // era. If that's true - it it might try to do that and for that it needs to have the
+        // validator matrix updated with appropriate era data.
+        let number_of_switch_blocks = recent_switch_block_headers.len();
+        if number_of_switch_blocks > 1 {
+            for i in 0..(number_of_switch_blocks - 1) {
+                if let Some(block) = recent_switch_block_headers.get(i) {
+                    if let Some(validator_weights) = block.next_era_validator_weights() {
+                        self.validator_matrix.register_validator_weights(
+                            block.era_id().successor(),
+                            validator_weights.clone(),
+                        );
+                    }
+                }
+            }
         }
 
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =

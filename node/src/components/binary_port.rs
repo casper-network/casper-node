@@ -994,11 +994,10 @@ where
     };
     match result.into_inner() {
         (StoredValue::AddressableEntity(entity), proof)
-            if include_bytecode && entity.byte_code_hash() != ByteCodeHash::default() =>
+            if include_bytecode && entity.byte_code() != ByteCodeHash::default() =>
         {
             let Some(bytecode) =
-                get_contract_bytecode(effect_builder, state_root_hash, entity.byte_code_hash())
-                    .await?
+                get_contract_bytecode(effect_builder, state_root_hash, entity.byte_code()).await?
             else {
                 return Ok(None);
             };
