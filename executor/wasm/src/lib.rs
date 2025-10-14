@@ -229,6 +229,7 @@ impl ExecutorV2 {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            bundle_data,
         } = install_request;
 
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);

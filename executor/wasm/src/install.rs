@@ -47,6 +47,8 @@ pub struct InstallContractRequest {
     pub(crate) seed: Option<[u8; 32]>,
     /// Runtime native config.
     pub(crate) runtime_native_config: RuntimeNativeConfig,
+    /// Optional bundle data used to allow discoverability of installed smart contracts.
+    pub(crate) bundle_data: Option<Bytes>,
 }
 
 #[derive(Default)]
@@ -66,6 +68,7 @@ pub struct InstallContractRequestBuilder {
     block_height: Option<u64>,
     runtime_native_config: Option<RuntimeNativeConfig>,
     seed: Option<[u8; 32]>,
+    bundle_data: Option<Bytes>,
 }
 
 impl InstallContractRequestBuilder {
@@ -155,6 +158,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_bundle_data(mut self, bundle_data: Bytes) -> Self {
+        self.bundle_data = Some(bundle_data);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -173,6 +181,7 @@ impl InstallContractRequestBuilder {
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
+        let bundle_data = self.bundle_data; // Optional
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -189,6 +198,7 @@ impl InstallContractRequestBuilder {
             parent_block_hash,
             block_height,
             runtime_native_config,
+            bundle_data,
         })
     }
 }
