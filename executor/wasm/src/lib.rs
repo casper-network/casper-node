@@ -946,7 +946,14 @@ impl ExecutorV2 {
                             ?execution_kind,
                             "No contract code found",
                         );
-                        return Err(ExecuteError::CodeNotFound(*contract_package_addr));
+                        return Ok(ExecuteResult {
+                            host_error: Some(CallError::CodeNotFound),
+                            output: None,
+                            gas_usage: GasUsage::new(gas_limit, gas_limit),
+                            effects: tracking_copy.effects(),
+                            cache: tracking_copy.cache(),
+                            messages: tracking_copy.messages(),
+                        });
                     }
                 }
             } else {
