@@ -300,7 +300,14 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     } else if let Key::AddressableEntity(entity_addr) = caller_key {
         (caller_key, entity_addr)
     } else {
-        return Err(ExecuteError::EntityNotFound(caller_key));
+        return Ok(ExecuteResult {
+            host_error: Some(CallError::EntityNotFound),
+            output: None,
+            gas_usage,
+            effects: tracking_copy.effects(),
+            cache: tracking_copy.cache(),
+            messages: tracking_copy.messages(),
+        });
     };
 
     let runtime_footprint = match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
@@ -311,7 +318,14 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 ?entity_addr,
                 "native_exec failed attempt to runtime_footprint_by_entity_addr"
             );
-            return Err(ExecuteError::EntityNotFound(caller_key));
+            return Ok(ExecuteResult {
+                host_error: Some(CallError::EntityNotFound),
+                output: None,
+                gas_usage,
+                effects: tracking_copy.effects(),
+                cache: tracking_copy.cache(),
+                messages: tracking_copy.messages(),
+            });
         }
     };
 

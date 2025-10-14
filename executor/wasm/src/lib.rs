@@ -724,15 +724,27 @@ impl ExecutorV2 {
                         // Note: Bytecode stored in the GlobalStateReader has a "kind" option -
                         // currently we know we have a v2 bytecode as the stored contract is of "V2"
                         // variant.
-                        let wasm_bytes = tracking_copy
-                            .read(&wasm_key)
-                            .map_err(|read_err| {
+                        let stored_value =
+                            match tracking_copy.read(&wasm_key).map_err(|read_err| {
                                 error!(
                                     "Error when fetching wasm_bytes {wasm_key}. Details {read_err}"
                                 );
                                 ExecuteError::Fatal(FatalHostError::TrackingCopy)
-                            })?
-                            .ok_or(ExecuteError::EntityNotFound(wasm_key))?
+                            })? {
+                                None => {
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(CallError::CodeNotFound),
+                                        output: None,
+                                        gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                        effects: tracking_copy.effects(),
+                                        cache: tracking_copy.cache(),
+                                        messages: tracking_copy.messages(),
+                                    });
+                                }
+                                Some(stored_value) => stored_value,
+                            };
+
+                        let wasm_bytes = stored_value
                             .into_byte_code()
                             .ok_or({
                                 error!("Couldn't wasm stored value into ByteCode");
@@ -748,7 +760,14 @@ impl ExecutorV2 {
                                 match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
                                     Ok(footprint) => footprint,
                                     Err(_) => {
-                                        return Err(ExecuteError::EntityNotFound(caller_key));
+                                        return Ok(ExecuteResult {
+                                            host_error: Some(CallError::EntityNotFound),
+                                            output: None,
+                                            gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                            effects: tracking_copy.effects(),
+                                            cache: tracking_copy.cache(),
+                                            messages: tracking_copy.messages(),
+                                        });
                                     }
                                 };
                             match system::transfer(
@@ -821,7 +840,14 @@ impl ExecutorV2 {
                                     {
                                         Ok(footprint) => footprint,
                                         Err(_) => {
-                                            return Err(ExecuteError::EntityNotFound(caller_key));
+                                            return Ok(ExecuteResult {
+                                                host_error: Some(CallError::CodeNotFound),
+                                                output: None,
+                                                gas_usage,
+                                                effects: tracking_copy.effects(),
+                                                cache: tracking_copy.cache(),
+                                                messages: tracking_copy.messages(),
+                                            });
                                         }
                                     };
 
@@ -1388,7 +1414,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
     let stored_value = tracking_copy
         .read(&caller_key)
         .map_err(|_error| ExecuteError::Fatal(FatalHostError::TrackingCopy))?
-        .ok_or(ExecuteError::EntityNotFound(caller_key))?;
+        .ok_or(ExecuteError::MainPurseNotFound(caller_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key.into_t::<Key>().map_err(|cl_error| {
@@ -1397,7 +1423,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             })?;
             let hash = match key.into_entity_hash() {
                 Some(hash) => hash,
-                None => return Err(ExecuteError::EntityNotFound(key)),
+                None => return Err(ExecuteError::MainPurseNotFound(key)),
             };
             let stored_value = tracking_copy
                 .read(&key)
@@ -1440,7 +1466,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                     ExecuteError::Fatal(FatalHostError::TrackingCopy)
                 })?;
             let addressable_entity = stored_value
-                .ok_or(ExecuteError::EntityNotFound(latest_version_key))?
+                .ok_or(ExecuteError::MainPurseNotFound(latest_version_key))?
                 .into_addressable_entity()
                 .ok_or(ExecuteError::Fatal(FatalHostError::TypeConversion))?;
 
@@ -1455,7 +1481,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let named_keys = tracking_copy
                 .read(&contract_hash)
                 .map_err(|_error| ExecuteError::Fatal(FatalHostError::TrackingCopy))?
-                .ok_or(ExecuteError::EntityNotFound(contract_hash))?
+                .ok_or(ExecuteError::MainPurseNotFound(contract_hash))?
                 .into_contract()
                 .map(|contract| contract.take_named_keys())
                 .ok_or(ExecuteError::InvalidKeyForPurse(contract_hash))?;
@@ -1468,7 +1494,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
 
             let hash_addr = contract_hash
                 .into_entity_hash_addr()
-                .ok_or(ExecuteError::EntityNotFound(contract_hash))?;
+                .ok_or(ExecuteError::MainPurseNotFound(contract_hash))?;
 
             Ok((EntityAddr::SmartContract(hash_addr), uref))
         }

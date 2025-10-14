@@ -502,8 +502,6 @@ pub enum ExecuteError {
     /// Error while executing Wasm: traps, memory access errors, etc.
     #[error("Internal host error: {0}")]
     Fatal(#[from] FatalHostError),
-    #[error("Code not found: {0:?}")]
-    CodeNotFound(HashAddr),
     #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]
     ArgumentSizeExceedsMemory {
         argument_size: usize,
@@ -512,8 +510,6 @@ pub enum ExecuteError {
     // Wasm attempted to return flags that are not supported
     #[error("Return flags are not supported: {0}")]
     ReturnFlagsNotSupported(u32),
-    #[error("Entity not found: {0}")]
-    EntityNotFound(Key),
     #[error("Api error: {0}")]
     Api(String),
     #[error("sandboxed system contract call")]
