@@ -221,7 +221,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             }
         },
         FFIMenu::IO(io_methods) => match io_methods {
-            IOMethods::Return => host_return(&mut caller, input_data).map(|code| (None, code)),
+            IOMethods::Return => host_return(input_data).map(|code| (None, code)),
             IOMethods::CopyInput => host_copy_input(&mut caller),
         },
     }?;

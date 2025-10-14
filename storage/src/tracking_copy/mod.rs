@@ -40,7 +40,7 @@ use casper_types::{
     },
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, BlockGlobalAddr, BlockTime, CLType, CLValue, CLValueError,
-    Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
+    Digest, HashAddr, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -596,6 +596,20 @@ where
         self.effects.push(TransformV2::new(
             normalized_key,
             TransformKindV2::Ret(value),
+        ));
+    }
+
+    /// Registers a contract entry point call
+    pub fn entry_point_called(
+        &mut self,
+        key: Key,
+        key_value: Option<HashAddr>,
+        entrypoint_name: String,
+    ) {
+        let normalized_key = key.normalize();
+        self.effects.push(TransformV2::new(
+            normalized_key,
+            TransformKindV2::EntryPointCalled(key_value, entrypoint_name),
         ));
     }
 

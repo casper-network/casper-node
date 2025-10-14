@@ -52,6 +52,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         EntryPoints as ContractEntryPoints,
     },
+    execution::RetValue,
     AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
     CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, Gas,
@@ -68,6 +69,9 @@ pub mod chainspec_config;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
+// If calculating the wasm entry point for session bytecode ever changes we need
+// to revisit the code that produces EntyPointCalled journal entries for session
+// code (both for VM1 and VM2)
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 #[derive(Copy, Clone, Debug)]
@@ -450,7 +454,7 @@ impl ExecutorV2 {
                     .with_caller_key(caller_key)
                     .with_execution_kind(ExecutionKind::Stored {
                         address: package_addr,
-                        entry_point: entry_point_name,
+                        entry_point: entry_point_name.clone(),
                     })
                     .with_gas_limit(gas_limit)
                     .with_input(input)
@@ -468,7 +472,6 @@ impl ExecutorV2 {
                     .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
                 let mut forked_tc = tracking_copy.fork2();
-
                 match forked_tc.emit_messages_for_new_installed_version(
                     key_of_package,
                     key_of_contract,
@@ -567,8 +570,13 @@ impl ExecutorV2 {
         mut tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
-        if let Some(ffi_menu_selection) = execute_request.execution_kind.ffi_selection() {
-            return self.execute_ffi(ffi_menu_selection, tracking_copy, execute_request);
+        if let Some(system_contract_menu_selection) = execute_request.execution_kind.ffi_selection()
+        {
+            return self.execute_ffi(
+                system_contract_menu_selection,
+                tracking_copy,
+                execute_request,
+            );
         }
 
         let ExecuteRequest {
@@ -958,23 +966,30 @@ impl ExecutorV2 {
         let mut initial_tracking_copy = tracking_copy.fork2();
 
         // Derive callee key from the execution target.
-        let callee_key = match &execution_kind {
+        let (callee_key, entry_point_name, contract_addr) = match &execution_kind {
             ExecutionKind::Stored {
                 address: smart_contract_package_addr,
+                entry_point,
                 ..
             } => {
-                if initial_tracking_copy.addressable_entity_enabled() {
+                let key = if tracking_copy.addressable_entity_enabled() {
                     Key::Package((*smart_contract_package_addr).into())
                 } else {
                     Key::Hash(*smart_contract_package_addr)
-                }
+                };
+                (key, entry_point.clone(), Some(*smart_contract_package_addr))
             }
-            ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
+            ExecutionKind::SessionBytes(_wasm_bytes) => (
+                Key::Account(initiator),
+                DEFAULT_WASM_ENTRY_POINT.to_string(),
+                None,
+            ),
             ExecutionKind::System(_) => {
                 error!("System executions are not called in this way. This should be unreachable.");
                 return Err(ExecuteError::Fatal(FatalHostError::DispatchSystemContract));
             }
         };
+        tracking_copy.entry_point_called(caller_key, contract_addr, entry_point_name);
         let ffi_call_costs = self.build_ffi_call_costs(&self.config);
         let context = Context {
             initiator,
@@ -1043,19 +1058,23 @@ impl ExecutorV2 {
         let context = instance.teardown();
 
         let Context {
-            tracking_copy: final_tracking_copy,
+            tracking_copy: mut final_tracking_copy,
             ..
         } = context;
 
         match vm_result {
-            Ok(()) => Ok(ExecuteResult {
-                host_error: None,
-                output: None,
-                gas_usage,
-                effects: final_tracking_copy.effects(),
-                cache: final_tracking_copy.cache(),
-                messages: final_tracking_copy.messages(),
-            }),
+            Ok(()) => {
+                // We put a Ret in if the function ended successfully
+                final_tracking_copy.ret(caller_key, RetValue::Unit);
+                Ok(ExecuteResult {
+                    host_error: None,
+                    output: None,
+                    gas_usage,
+                    effects: final_tracking_copy.effects(),
+                    cache: final_tracking_copy.cache(),
+                    messages: final_tracking_copy.messages(),
+                })
+            }
             Err(VMError::Return { flags, data }) => {
                 if flags.contains(ReturnFlags::REVERT) {
                     let message = data
@@ -1082,6 +1101,11 @@ impl ExecutorV2 {
                         final_tracking_copy.cache(),
                         final_tracking_copy.messages(),
                     );
+                    let ret_val = match &data {
+                        None => RetValue::Unit,
+                        Some(data) => RetValue::Bytes(data.to_vec().into()),
+                    };
+                    initial_tracking_copy.ret(caller_key, ret_val);
 
                     None
                 };

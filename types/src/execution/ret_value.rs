@@ -21,6 +21,7 @@ pub enum RetValue {
     CLValue(CLValue),
     /// The returned data is serialized bytes.
     Bytes(Bytes),
+    Unit,
 }
 
 impl ToBytes for RetValue {
@@ -34,6 +35,7 @@ impl ToBytes for RetValue {
                 (RetValueTag::Bytes as u8).write_bytes(writer)?;
                 bytes.write_bytes(writer)
             }
+            RetValue::Unit => (RetValueTag::Unit as u8).write_bytes(writer),
         }
     }
 
@@ -48,6 +50,7 @@ impl ToBytes for RetValue {
             + match self {
                 RetValue::CLValue(bytes) => bytes.serialized_length(),
                 RetValue::Bytes(bytes) => bytes.serialized_length(),
+                RetValue::Unit => 0,
             }
     }
 }
@@ -64,6 +67,7 @@ impl FromBytes for RetValue {
                 let (bytes, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((RetValue::Bytes(bytes), remainder))
             }
+            tag if tag == RetValueTag::Unit as u8 => Ok((RetValue::Unit, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -73,4 +77,5 @@ impl FromBytes for RetValue {
 enum RetValueTag {
     CLValue = 0,
     Bytes = 1,
+    Unit = 2,
 }

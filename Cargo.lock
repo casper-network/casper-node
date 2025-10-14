@@ -2149,6 +2149,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "do-nothing-stored-caller-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "do-nothing-stored-upgrader"
 version = "0.1.0"
 dependencies = [
@@ -7311,6 +7319,24 @@ name = "vm2-counter"
 version = "0.1.0"
 dependencies = [
  "casper-contract-sdk",
+]
+
+[[package]]
+name = "vm2-counter-caller"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
+ "vm2-counter",
+]
+
+[[package]]
+name = "vm2-do-nothing-session"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
 ]
 
 [[package]]
