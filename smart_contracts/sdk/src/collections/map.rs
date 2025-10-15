@@ -7,11 +7,9 @@ use crate::{
     prelude::{Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-#[cfg(not(target_arch = "wasm32"))]
-use casper_executor_wasm_common::type_uid;
 use casper_executor_wasm_common::{
     keyspace::Keyspace,
-    type_uid::{TypeUid, Uid},
+    type_uid::{self, TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 

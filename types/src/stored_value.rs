@@ -27,6 +27,7 @@ use crate::{
         auction::{Bid, BidKind, EraInfo, Unbond, UnbondingPurse, WithdrawPurse},
         prepayment::PrepaymentKind,
     },
+    type_definitions::TypeDefinitions,
     AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
@@ -76,6 +77,8 @@ pub enum StoredValueTag {
     Prepayment = 18,
     /// An entrypoint record.
     EntryPoint = 19,
+    /// A collection of type definitions.
+    TypeDefinitions = 20,
 }
 
 /// A value stored in Global State.
@@ -128,6 +131,8 @@ pub enum StoredValue {
     Prepayment(PrepaymentKind),
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
+    /// A bundle of type definitions.
+    TypeDef(TypeDefinitions),
 }
 
 impl StoredValue {
@@ -287,6 +292,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns a reference to the wrapped `TypeDefinitions` if this is a `TypeDef` variant.
+    pub fn as_type_definitions(&self) -> Option<&TypeDefinitions> {
+        match self {
+            StoredValue::TypeDef(definitions) => Some(definitions),
+            _ => None,
+        }
+    }
+
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
@@ -407,6 +420,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns the `TypeDefinitions` if this is a `TypeDef` variant.
+    pub fn into_type_definitions(self) -> Option<TypeDefinitions> {
+        match self {
+            StoredValue::TypeDef(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
@@ -432,6 +453,7 @@ impl StoredValue {
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
             StoredValue::Prepayment(_) => "Prepayment".to_string(),
             StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
+            StoredValue::TypeDef(_) => "TypeDefinitions".to_string(),
         }
     }
 
@@ -458,6 +480,7 @@ impl StoredValue {
             StoredValue::NamedKey(_) => StoredValueTag::NamedKey,
             StoredValue::Prepayment(_) => StoredValueTag::Prepayment,
             StoredValue::EntryPoint(_) => StoredValueTag::EntryPoint,
+            StoredValue::TypeDef(_) => StoredValueTag::TypeDefinitions,
         }
     }
 
@@ -541,6 +564,12 @@ impl From<ByteCode> for StoredValue {
 impl From<EntryPointValue> for StoredValue {
     fn from(value: EntryPointValue) -> Self {
         StoredValue::EntryPoint(value)
+    }
+}
+
+impl From<TypeDefinitions> for StoredValue {
+    fn from(value: TypeDefinitions) -> Self {
+        StoredValue::TypeDef(value)
     }
 }
 
@@ -731,6 +760,20 @@ impl TryFrom<StoredValue> for NamedKeyValue {
     }
 }
 
+impl TryFrom<StoredValue> for TypeDefinitions {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::TypeDef(definitions) => Ok(definitions),
+            _ => Err(TypeMismatch::new(
+                "TypeDefinitions".to_string(),
+                value.type_name(),
+            )),
+        }
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -765,6 +808,7 @@ impl ToBytes for StoredValue {
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
                 StoredValue::Prepayment(prepayment_kind) => prepayment_kind.serialized_length(),
                 StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
+                StoredValue::TypeDef(type_definitions) => type_definitions.serialized_length(),
             }
     }
 
@@ -793,6 +837,7 @@ impl ToBytes for StoredValue {
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
             StoredValue::Prepayment(prepayment_kind) => prepayment_kind.write_bytes(writer),
             StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
+            StoredValue::TypeDef(type_definitions) => type_definitions.write_bytes(writer),
         }
     }
 }
@@ -859,6 +904,10 @@ impl FromBytes for StoredValue {
                 EntryPointValue::from_bytes(remainder).map(|(entry_point, remainder)| {
                     (StoredValue::EntryPoint(entry_point), remainder)
                 })
+            }
+            tag if tag == StoredValueTag::TypeDefinitions as u8 => {
+                TypeDefinitions::from_bytes(remainder)
+                    .map(|(definitions, remainder)| (StoredValue::TypeDef(definitions), remainder))
             }
             _ => Err(Error::Formatting),
         }
@@ -955,6 +1004,8 @@ pub mod serde_helpers {
         EntryPoint(EntryPointValue),
         /// An entrypoint record.
         Prepayment(PrepaymentKind),
+        /// Type definitions.
+        TypeDef(TypeDefinitions),
     }
 
     impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
@@ -990,6 +1041,7 @@ pub mod serde_helpers {
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
                 StoredValue::Prepayment(payload) => HumanReadableSerHelper::Prepayment(payload),
                 StoredValue::EntryPoint(payload) => HumanReadableSerHelper::EntryPoint(payload),
+                StoredValue::TypeDef(_) => todo!(),
             }
         }
     }
@@ -1056,6 +1108,7 @@ pub mod serde_helpers {
                 HumanReadableDeserHelper::Prepayment(prepayment_kind) => {
                     StoredValue::Prepayment(prepayment_kind)
                 }
+                HumanReadableDeserHelper::TypeDef(definitions) => StoredValue::TypeDef(definitions),
             })
         }
     }
@@ -1089,7 +1142,7 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, gens, StoredValue};
+    use crate::{bytesrepr, gens, StoredValue, TypeDefinitions, TypeDefinitionsV1};
     use proptest::proptest;
     use serde_json::Value;
 
@@ -1125,7 +1178,7 @@ mod tests {
                     "access": "Public",
                     "entry_point_type": "Factory"
                 }
-                
+
             ],
             "protocol_version": "2.0.0"
         }
@@ -1263,5 +1316,23 @@ mod tests {
         fn serialization_roundtrip(v in gens::stored_value_arb()) {
             bytesrepr::test_serialization_roundtrip(&v);
         }
+    }
+
+    #[test]
+    fn type_definitions_roundtrip() {
+        let type_definitions = TypeDefinitions::v1(TypeDefinitionsV1::new(
+            Default::default(),
+            Vec::new(),
+            Vec::new(),
+        ));
+        let stored_value = StoredValue::TypeDef(type_definitions.clone());
+
+        bytesrepr::test_serialization_roundtrip(&stored_value);
+
+        let json = serde_json::to_string(&stored_value).unwrap();
+        let decoded: StoredValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, stored_value);
+
+        assert_eq!(stored_value.as_type_definitions(), Some(&type_definitions));
     }
 }

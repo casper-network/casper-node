@@ -89,8 +89,13 @@ pub static RUST_TOOL_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
         .join("wasm")
 });
 
+pub struct SmartContract {
+    pub wasm: Bytes,
+    pub bundle: Option<Bytes>,
+}
+
 #[track_caller]
-pub fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
+pub fn read_wasm<P: AsRef<Path>>(filename: P) -> SmartContract {
     let paths = vec![
         RUST_WORKSPACE_WASM_PATH.clone(),
         RUST_TOOL_WASM_PATH.clone(),
@@ -98,8 +103,18 @@ pub fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
 
     for path in &paths {
         let wasm_path = path.join(&filename);
+
+        let bundle_path = wasm_path.with_extension("bundle");
+
+        let bundle = fs::read(bundle_path).map(Bytes::from).ok();
+
         match fs::read(wasm_path) {
-            Ok(bytes) => return Bytes::from(bytes),
+            Ok(bytes) => {
+                return SmartContract {
+                    wasm: Bytes::from(bytes),
+                    bundle,
+                }
+            }
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::NotFound {
                     continue;
@@ -395,11 +410,13 @@ pub fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .expect("Expected borsh to work");
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let create_request = base_install_request_builder(chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_wasm_bytes(vm2_host.wasm)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

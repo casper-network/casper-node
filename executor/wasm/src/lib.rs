@@ -6,6 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use casper_contract_sdk::bundle::{Bundle, BundleV1};
 use casper_execution_engine::{
     engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
@@ -51,15 +52,18 @@ use casper_types::{
         EntryPoints as ContractEntryPoints,
     },
     AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
-    CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind,
-    EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, Gas,
-    Groups, InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package, PackageHash,
-    PackageStatus, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
+    EntityEntryPointV2, EntityEntryPointV2Flags, EntityKind, EntryPointAccess, EntryPointAddr,
+    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
+    MessageLimits, MintCosts, NamedKeys, Package, PackageHash, PackageStatus, Parameter,
+    Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
+    TransactionInvocationTarget, TypeUid, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
 use tracing::{error, info, warn};
+
+use crate::install::BundleError;
 
 #[cfg(any(feature = "testing", test))]
 pub mod chainspec_config;
@@ -336,6 +340,10 @@ impl ExecutorV2 {
             }
         };
 
+        let Bundle::V1(bundle) = borsh::from_slice(&bundle_data).map_err(|_| {
+            BundleError::InvalidBundleData("Failed to parse bundle data".to_string())
+        })?;
+
         // 3. Gather entrypoints first.
         let entrypoints = {
             let config = ConfigBuilder::new()
@@ -348,29 +356,112 @@ impl ExecutorV2 {
                     ))
                 })?;
 
-            let entry_point_names = casper_executor_wasmer_backend::entry_point_names(
+            let mut entry_point_names = casper_executor_wasmer_backend::entry_point_names(
                 wasm_bytes, config,
             )
             .map_err(|wasm_prep_error| {
                 InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
             })?;
 
-            let mut entrypoints = EntityEntryPoints::new();
+            let mut entity_entrypoints = EntityEntryPoints::new();
 
-            for name in entry_point_names {
+            for bundle_entry_point in bundle.entry_points() {
+                if !entry_point_names.remove(&bundle_entry_point.export_name) {
+                    return Err(InstallContractError::Bundle(
+                        BundleError::InvalidBundleData(
+                            "Entry point not found in Wasm exports".to_string(),
+                        ),
+                    ));
+                }
+
+                let mut entity_entry_point_parameters = Parameters::new();
+                let parameters = {
+                    let mut type_args = Vec::new();
+
+                    for bundle_arg in &bundle_entry_point.arguments {
+                        let bundle_arg_def = bundle.definitions().get(&bundle_arg.decl).ok_or(
+                            BundleError::InvalidBundleData(
+                                "Argument type definition not found".to_string(),
+                            ),
+                        )?;
+
+                        let cl_type_bytes =
+                            borsh::to_vec(&bundle_arg_def.cl_type).map_err(|_| {
+                                BundleError::InvalidBundleData(
+                                    "Failed to serialize argument CLType".to_string(),
+                                )
+                            })?;
+                        let cl_type: CLType = bytesrepr::deserialize_from_slice(&cl_type_bytes)
+                            .map_err(|error| {
+                                BundleError::InvalidBundleData(format!(
+                                    "Failed to deserialize argument CLType {:?} ({error:?})",
+                                    bundle_arg_def
+                                ))
+                            })?;
+
+                        entity_entry_point_parameters.push(Parameter::new("_", cl_type.clone()));
+
+                        type_args.push(TypeUid::from(bundle_arg.decl.as_uid().into_raw()))
+                    }
+
+                    type_args
+                };
+
+                let bundle_ret_def = bundle.definitions().get(&bundle_entry_point.result).ok_or(
+                    BundleError::InvalidBundleData("Result type definition not found".to_string()),
+                )?;
+                let ret_cl_type_bytes = borsh::to_vec(&bundle_ret_def.cl_type).map_err(|_| {
+                    BundleError::InvalidBundleData(
+                        "Failed to serialize argument CLType".to_string(),
+                    )
+                })?;
+                let ret_cl_type: CLType = bytesrepr::deserialize_from_slice(&ret_cl_type_bytes[..])
+                    .map_err(|_| {
+                        BundleError::InvalidBundleData(format!(
+                            "Failed to deserialize return CLType {:?} for entry point {}",
+                            bundle_ret_def, bundle_entry_point.export_name
+                        ))
+                    })?;
+
                 let entry_point = EntityEntryPoint::new(
-                    name.clone(),
-                    Parameters::new(),
-                    CLType::Unit,
+                    bundle_entry_point.export_name.clone(),
+                    entity_entry_point_parameters,
+                    ret_cl_type,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
                     EntryPointPayment::Caller,
                 );
 
-                entrypoints.add_entry_point(entry_point);
+                entity_entrypoints.add_entry_point(entry_point);
+
+                let entry_point_addr = EntryPointAddr::new_v2_entry_point_addr(
+                    EntityAddr::SmartContract(smart_contract_addr),
+                    &bundle_entry_point.export_name,
+                )
+                .map_err(|err| {
+                    InstallContractError::GlobalState(GlobalStateError::BytesRepr(err))
+                })?;
+
+                let payment = EntryPointPayment::Caller;
+
+                let flags =
+                    EntityEntryPointV2Flags::from_bits_truncate(bundle_entry_point.flags.bits());
+
+                let entry_point_v2 = EntityEntryPointV2::new(
+                    bundle_entry_point.export_name.clone(),
+                    parameters,
+                    TypeUid::new(bundle_entry_point.result.as_uid().into_raw()),
+                    payment,
+                    flags,
+                );
+
+                tracking_copy.write(
+                    Key::EntryPoint(entry_point_addr),
+                    StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point_v2)),
+                );
             }
 
-            entrypoints
+            entity_entrypoints
         };
 
         if enable_addressable_entity {

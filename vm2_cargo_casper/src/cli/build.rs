@@ -19,11 +19,15 @@ pub fn build_impl(
         // Build the schema first
         let mut schema_buffer = Cursor::new(Vec::new());
         let mut bundle_buffer = Cursor::new(Vec::new());
-        super::build_schema::build_schema_impl(package_name, &mut schema_buffer, &mut bundle_buffer)
-            .context("Failed to build contract schema")?;
+        super::build_schema::build_schema_impl(
+            package_name,
+            &mut schema_buffer,
+            &mut bundle_buffer,
+        )
+        .context("Failed to build contract schema")?;
 
-        let contract_schema =
-            String::from_utf8(schema_buffer.into_inner()).context("Failed to read contract schema")?;
+        let contract_schema = String::from_utf8(schema_buffer.into_inner())
+            .context("Failed to read contract schema")?;
 
         // Build the contract with above schema injected
         eprintln!("🔨 Step 2: Building contract with schema injected...");

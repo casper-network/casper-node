@@ -149,8 +149,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         match func_meta {
             ItemFnMeta::Export => generate_export_function(&func),
         }
-    } else if let Ok(constant) = syn::parse::<ItemConst>(item.clone()) {
-        process_casper_stable_key_constant(&constant)
     } else {
         let err = syn::Error::new(
             Span::call_site(),
@@ -189,10 +187,8 @@ fn process_casper_message_for_struct(
             quote! { #topic }
         }
         None => {
-            let err = syn::Error::new_spanned(
-                &item_struct.ident,
-                "Message attribute requires a topic",
-            );
+            let err =
+                syn::Error::new_spanned(&item_struct.ident, "Message attribute requires a topic");
             return TokenStream::from(err.to_compile_error());
         }
     };
@@ -1755,48 +1751,6 @@ fn process_casper_contract_state_for_struct(
     .into()
 }
 
-fn process_casper_stable_key_constant(constant: &ItemConst) -> TokenStream {
-    let _const_ident = &constant.ident;
-
-    let maybe_stable_key_collector;
-    let maybe_stable_key_def;
-
-    #[cfg(feature = "__abi_generator")]
-    {
-        let crate_path = quote! { casper_contract_sdk };
-
-        maybe_stable_key_collector = quote! {
-            const _: () = {
-            };
-        };
-
-        maybe_stable_key_def = quote! {
-            const _: () = {
-                #[#crate_path::linkme::distributed_slice(#crate_path::abi::collector::NAMED_KEYS)]
-                #[linkme(crate = #crate_path::linkme)]
-                static NAMED_KEY: #crate_path::abi::collector::NamedKey = #crate_path::abi::collector::NamedKey {
-                    name: #_const_ident.name(),
-                    decl: || #_const_ident.declaration(),
-                };
-            };
-        };
-    }
-
-    #[cfg(not(feature = "__abi_generator"))]
-    {
-        maybe_stable_key_collector = quote! {};
-        maybe_stable_key_def = quote! {};
-    }
-
-    quote! {
-        #constant
-
-        #maybe_stable_key_collector
-        #maybe_stable_key_def
-    }
-    .into()
-}
-
 #[proc_macro_attribute]
 pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let func = parse_macro_input!(item as ItemFn);
@@ -2059,7 +2013,8 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                     }
 
                     quote! {
-                        stringify!(#variant_name).into()
+                        // TODO: Deal with newtypes
+                        None
                     }
                 }
             };

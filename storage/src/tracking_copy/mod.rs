@@ -881,6 +881,9 @@ where
                 StoredValue::Prepayment(_) => {
                     return Ok(query.into_not_found_result("Prepayment value found."))
                 }
+                StoredValue::TypeDef(_) => {
+                    return Ok(query.into_not_found_result("TypeDef value found."));
+                }
             }
         }
     }

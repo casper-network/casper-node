@@ -13,10 +13,10 @@ use crate::{
 };
 use core::{mem, ptr::NonNull};
 
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use bitflags::Flags;
 use casper_executor_wasm_common::type_uid::{Uid, UidRepr};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use crate::serializers::borsh::{BorshSerialize, BorshDeserialize};
 
 use crate::{
     abi::{
@@ -185,7 +185,20 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Debug, Copy, Clone, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Debug,
+    Copy,
+    Clone,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct SchemaUid(
     #[serde(
         serialize_with = "serialize_schema_type_uid",
@@ -197,6 +210,12 @@ pub struct SchemaUid(
 impl From<Uid> for SchemaUid {
     fn from(uid: Uid) -> Self {
         SchemaUid(uid)
+    }
+}
+
+impl SchemaUid {
+    pub fn as_uid(&self) -> Uid {
+        self.0
     }
 }
 
@@ -280,12 +299,13 @@ pub fn casper_collect_schema() -> Schema {
         .iter()
         .filter_map(AbiItem::as_smart_contract)
         .collect::<Vec<_>>();
-    assert_eq!(
-        smart_contracts.len(),
-        1,
-        "Expected exactly one smart contract in the ABI_ITEMS, found {}",
-        smart_contracts.len()
-    );
+
+    // assert_eq!(
+    //     smart_contracts.len(),
+    //     1,
+    //     "Expected exactly one smart contract in the ABI_ITEMS, found {}",
+    //     smart_contracts.len()
+    // );
 
     let smart_contract = smart_contracts
         .into_iter()

@@ -1,6 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
-use casper_executor_wasm_common::type_uid;
-use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
+use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
 
 use crate::{
     compat::types::CLTyped,

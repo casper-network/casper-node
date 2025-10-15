@@ -857,6 +857,7 @@ dependencies = [
  "blake2 0.10.6",
  "borsh",
  "bytes",
+ "casper-contract-sdk",
  "casper-execution-engine",
  "casper-executor-wasm",
  "casper-executor-wasm-common",

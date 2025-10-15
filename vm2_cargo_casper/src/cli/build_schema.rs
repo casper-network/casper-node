@@ -5,7 +5,11 @@ use std::{env::consts::DLL_EXTENSION, ffi::OsStr, fs, io::Write, path::PathBuf};
 use anyhow::Context;
 use artifact::Artifact;
 use cargo_metadata::MetadataCommand;
-use casper_contract_sdk::{bundle::{self, Bundle, BundleV1}, schema::Schema, serializers::borsh};
+use casper_contract_sdk::{
+    bundle::{self, Bundle, BundleV1},
+    schema::Schema,
+    serializers::borsh,
+};
 
 use crate::compilation::CompileJob;
 
@@ -90,7 +94,6 @@ pub fn build_schema_impl<W: Write>(
 
     serde_json::to_writer(schema_writer, &collected).context("Serialize collected schema")?;
     // bundle_writer borsh::to_vec(&bundle).context("Serialize bundle")?)
-    borsh::to_writer(bundle_writer, &bundle)
-        .context("Write bundle")?;
+    borsh::to_writer(bundle_writer, &bundle).context("Write bundle")?;
     Ok(())
 }

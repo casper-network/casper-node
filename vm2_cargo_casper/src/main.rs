@@ -18,7 +18,8 @@ fn main() -> anyhow::Result<()> {
                 None => Box::new(std::io::stdout()),
             };
 
-            let mut bundle_writer: Box<dyn Write> = match output.map(|p| p.with_extension("bundle")) {
+            let mut bundle_writer: Box<dyn Write> = match output.map(|p| p.with_extension("bundle"))
+            {
                 Some(path) => Box::new(File::create(path)?),
                 None => Box::new(std::io::empty()),
             };
@@ -26,7 +27,11 @@ fn main() -> anyhow::Result<()> {
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build_schema::build_schema_impl(package_name, &mut schema_writer, &mut bundle_writer)?
+            cli::build_schema::build_schema_impl(
+                package_name,
+                &mut schema_writer,
+                &mut bundle_writer,
+            )?
         }
         Command::Build {
             output,

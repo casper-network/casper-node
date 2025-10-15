@@ -1,10 +1,12 @@
-use crate::serializers::borsh::{BorshSerialize, BorshDeserialize};
-use crate::{prelude::collections::BTreeMap, schema::Schema};
+use crate::{
+    prelude::collections::BTreeMap,
+    schema::Schema,
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{abi::Definition, compat::types::CLType, schema::SchemaUid};
-
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleDefinition {
@@ -34,7 +36,7 @@ bitflags::bitflags! {
 
 impl BorshSerialize for BundleEntryPointFlags {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-      BorshSerialize::serialize(&self.bits(), writer)
+        BorshSerialize::serialize(&self.bits(), writer)
     }
 }
 
@@ -70,9 +72,22 @@ pub struct BundleV1 {
     messages: Vec<BundleMessage>,
 }
 
+impl BundleV1 {
+    pub fn entry_points(&self) -> &[BundleEntryPoint] {
+        &self.entry_points
+    }
+
+    pub fn messages(&self) -> &[BundleMessage] {
+        &self.messages
+    }
+
+    pub fn definitions(&self) -> &BTreeMap<SchemaUid, BundleDefinition> {
+        &self.definitions
+    }
+}
+
 impl From<Schema> for BundleV1 {
     fn from(schema: Schema) -> Self {
-
         let Schema {
             definitions,
             metadata: _,
@@ -85,52 +100,59 @@ impl From<Schema> for BundleV1 {
         let bundle_definitions = definitions
             .0
             .into_iter()
-            .map(|(k, v)| (k, BundleDefinition { definition: v.definition, cl_type: v.cl_type }))
+            .map(|(k, v)| {
+                (
+                    k,
+                    BundleDefinition {
+                        definition: v.definition,
+                        cl_type: v.cl_type,
+                    },
+                )
+            })
             .collect();
 
         let bundle_messages = messages
             .into_iter()
-            .map(|msg| {
-                BundleMessage {
-                    topic: msg.topic,
-                    decl: SchemaUid::from(msg.decl),
-                }
+            .map(|msg| BundleMessage {
+                topic: msg.topic,
+                decl: SchemaUid::from(msg.decl),
             })
             .collect::<Vec<_>>();
 
         let bundle_entry_points = entry_points
             .into_iter()
             .map(|ep| {
+                let mut flags = BundleEntryPointFlags::empty();
 
-                    let mut flags = BundleEntryPointFlags::empty();
+                if ep.is_constructor {
+                    flags |= BundleEntryPointFlags::IS_CONSTRUCTOR;
+                }
+                if ep.is_payable {
+                    flags |= BundleEntryPointFlags::IS_PAYABLE;
+                }
+                match ep.receiver {
+                    Some(crate::schema::SchemaReceiver::Immutable) => {
+                        flags |= BundleEntryPointFlags::IS_IMMUTABLE;
+                    }
+                    Some(crate::schema::SchemaReceiver::Mutable) => {
+                        // This is the default behavior
+                    }
+                    None => {
+                        // Although the macro does not perform read/write state operations (there's
+                        // no self that we can dispatch entry points onto),
+                        // we consider entry points without a receiver as mutable to allow state
+                        // modifications via runtime functions.
+                    }
+                }
 
-                    if ep.is_constructor {
-                        flags |= BundleEntryPointFlags::IS_CONSTRUCTOR;
+                match ep.abi_convention {
+                    crate::schema::SchemaAbiConvention::Named => {
+                        flags |= BundleEntryPointFlags::USES_NAMED_CONVENTION;
                     }
-                    if ep.is_payable {
-                        flags |= BundleEntryPointFlags::IS_PAYABLE;
+                    crate::schema::SchemaAbiConvention::Positional => {
+                        // Default behavior
                     }
-                    match ep.receiver {
-                        Some(crate::schema::SchemaReceiver::Immutable) => {
-                            flags |= BundleEntryPointFlags::IS_IMMUTABLE;
-                        }
-                        Some(crate::schema::SchemaReceiver::Mutable) => {
-                            // This is the default behavior
-                        }
-                        None => {
-                            // Although the macro does not perform read/write state operations (there's no self that we can dispatch entry points onto),
-                            // we consider entry points without a receiver as mutable to allow state modifications via runtime functions.
-                        }
-                    }
-
-                    match ep.abi_convention {
-                        crate::schema::SchemaAbiConvention::Named => {
-                            flags |= BundleEntryPointFlags::USES_NAMED_CONVENTION;
-                        }
-                        crate::schema::SchemaAbiConvention::Positional => {
-                            // Default behavior
-                        }
-                    }
+                }
 
                 BundleEntryPoint {
                     name: ep.name,
@@ -138,7 +160,9 @@ impl From<Schema> for BundleV1 {
                     arguments: ep
                         .arguments
                         .into_iter()
-                        .map(|arg| BundleArgument { decl: SchemaUid::from(arg.decl) })
+                        .map(|arg| BundleArgument {
+                            decl: SchemaUid::from(arg.decl),
+                        })
                         .collect(),
                     result: SchemaUid::from(ep.result),
                     flags,
@@ -153,7 +177,6 @@ impl From<Schema> for BundleV1 {
         }
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub enum Bundle {

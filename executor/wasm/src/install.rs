@@ -48,7 +48,7 @@ pub struct InstallContractRequest {
     /// Runtime native config.
     pub(crate) runtime_native_config: RuntimeNativeConfig,
     /// Optional bundle data used to allow discoverability of installed smart contracts.
-    pub(crate) bundle_data: Option<Bytes>,
+    pub(crate) bundle_data: Bytes,
 }
 
 #[derive(Default)]
@@ -163,6 +163,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_optional_bundle_data(mut self, bundle_data: Option<Bytes>) -> Self {
+        self.bundle_data = bundle_data;
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -181,7 +186,7 @@ impl InstallContractRequestBuilder {
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
-        let bundle_data = self.bundle_data; // Optional
+        let bundle_data = self.bundle_data.ok_or("Bundle data not set")?;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -235,6 +240,12 @@ impl InstallContractResult {
 }
 
 #[derive(Debug, Error)]
+pub enum BundleError {
+    #[error("invalid bundle data: {0}")]
+    InvalidBundleData(String),
+}
+
+#[derive(Debug, Error)]
 pub enum InstallContractError {
     #[error("system contract error: {0}")]
     SystemContract(CallError),
@@ -253,4 +264,7 @@ pub enum InstallContractError {
 
     #[error("CLValue error: {0}")]
     CLValueError(CLValueError),
+
+    #[error("Bundle install error: {0}")]
+    Bundle(#[from] BundleError),
 }

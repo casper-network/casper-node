@@ -1,9 +1,9 @@
 //! A module for computing unique type identifiers (UIDs) via compile-time hashing.
+use borsh::{BorshDeserialize, BorshSerialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
     fmt::{LowerHex, UpperHex},
 };
-use borsh::{BorshSerialize, BorshDeserialize};
 
 use xxhash_rust::const_xxh32::xxh32;
 
@@ -18,7 +18,9 @@ const fn hash_bytes(bytes: &[u8]) -> u32 {
 }
 
 /// A unique identifier for a type, represented as a 64-bit unsigned integer.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize,
+)]
 pub struct Uid(UidRepr);
 
 impl From<UidRepr> for Uid {

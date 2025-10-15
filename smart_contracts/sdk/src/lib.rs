@@ -6,11 +6,11 @@ extern crate alloc;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod abi;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod bundle;
 pub mod compat;
 pub mod prelude;
 pub mod serializers;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod bundle;
 #[cfg(not(target_arch = "wasm32"))]
 pub use linkme;
 pub mod build;

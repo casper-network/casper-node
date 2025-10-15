@@ -72,6 +72,7 @@ mod timestamp;
 mod transaction;
 mod transfer;
 mod transfer_result;
+pub mod type_definitions;
 mod uint;
 mod uref;
 mod validator_change;
@@ -90,8 +91,9 @@ pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, ContractRuntimeTag, EntityAddr, EntityEntryPoint,
-    EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-    EntryPointValue, EntryPoints, Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME,
+    EntityEntryPointV2, EntityEntryPointV2Flags, EntityKind, EntryPointAccess, EntryPointAddr,
+    EntryPointPayment, EntryPointType, EntryPointValue, EntryPoints, Parameter, Parameters,
+    DEFAULT_ENTRY_POINT_NAME,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -209,6 +211,10 @@ pub use transfer::{
     Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV2, TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
+pub use type_definitions::{
+    Definition as TypeDefinitionKind, EnumVariant as TypeEnumVariant, Primitive as TypePrimitive,
+    StructField as TypeStructField, TypeDefinition, TypeMessage, TypeUid,
+};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
