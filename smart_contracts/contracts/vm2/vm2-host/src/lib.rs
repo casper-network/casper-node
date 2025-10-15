@@ -4,7 +4,7 @@ use casper_contract_sdk::{
     casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     sys::casper_return,
-    types::HashAlgorithm,
+    types::{EntityAddr, HashAlgorithm},
 };
 
 const CURRENT_VERSION: &str = "v1";
@@ -147,7 +147,7 @@ impl MinimalHostWrapper {
     }
 
     pub fn transfer(&self) {
-        casper::transfer(&[0; 32], 0).ok();
+        casper::transfer(&EntityAddr::SmartContract([0; 32]), 0).ok();
     }
 
     pub fn upgrade(&self) {

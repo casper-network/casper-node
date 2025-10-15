@@ -1,4 +1,4 @@
-use casper_contract_sdk::{macros::blake2b256, prelude::*};
+use casper_contract_sdk::{macros::blake2b256, prelude::*, types::EntityAddr};
 use casper_contract_sdk_contrib::access_control::{
     AccessControl, AccessControlExt, AccessControlState, Role,
 };
@@ -300,7 +300,8 @@ impl FaucetContract {
     fn transfer_tokens(&self, target: Entity, amount: u64) -> Result<(), FaucetError> {
         match target {
             Entity::Account(account_hash) => {
-                casper::transfer(&account_hash, amount).map_err(|_| FaucetError::TransferFailed)?;
+                casper::transfer(&EntityAddr::Account(*account_hash), amount)
+                    .map_err(|_| FaucetError::TransferFailed)?;
             }
             Entity::Contract(_) => {
                 return Err(FaucetError::TransferFailed);
