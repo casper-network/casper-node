@@ -609,7 +609,7 @@ fn should_handle_reservations() {
     };
 
     let add_res_purse_request = {
-        let opt: u32 = SystemMenu::Auction(AuctionMethods::AddReservation).into();
+        let opt: u32 = FFIMenu::Auction(AuctionMethods::AddReservation).into();
         let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,
@@ -660,7 +660,7 @@ fn should_handle_reservations() {
     };
 
     let cancel_purse_request = {
-        let opt: u32 = SystemMenu::Auction(AuctionMethods::CancelReservation).into();
+        let opt: u32 = FFIMenu::Auction(AuctionMethods::CancelReservation).into();
         let input_data = borsh::to_vec(&(opt, true)).map(Bytes::from).unwrap();
         make_execution_request(
             &chainspec_config,

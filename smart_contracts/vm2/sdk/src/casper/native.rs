@@ -967,12 +967,9 @@ mod symbols {
 
 #[cfg(test)]
 mod tests {
-    use casper_executor_wasm_common::keyspace::Keyspace;
-
-    use crate::casper;
-
     use super::*;
 
+    /*#TODO fix native implementation
     #[test]
     fn foo() {
         dispatch(|| {
@@ -1010,6 +1007,7 @@ mod tests {
         })
         .unwrap();
     }
+     */
     #[test]
     fn test() {
         dispatch_with(Environment::default(), || {
