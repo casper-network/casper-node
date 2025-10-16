@@ -8,7 +8,7 @@ use crate::abi::{CasperABI, EnumVariant};
 use crate::{
     compat::types::{CLType, CLTyped},
     log,
-    prelude::{ffi::c_void, marker::PhantomData, mem::MaybeUninit, ptr, *},
+    prelude::{ffi::c_void, marker::PhantomData, ptr, *},
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
     types::{
@@ -192,23 +192,12 @@ pub fn create(
 ) -> Result<CreateResult, CallError> {
     let input_data = borsh::to_vec(&(transferred_value, code, seed, constructor, constructor_data))
         .expect("Expected borsh to work");
-    extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
-        // Create should use the `alloc_ctx` mechanism to get the output data
-        ptr::null_mut()
-    }
-    let result = MaybeUninit::<CreateResult>::zeroed();
-    let ret = unsafe {
-        casper_contract_sdk_sys::casper_ffi(
-            ControlFunctionOption::Create.into(),
-            input_data.as_ptr(),
-            input_data.len(),
-            alloc_cb,
-            result.as_ptr() as *const _ as *mut _,
-        )
-    };
-
-    match ret {
-        HOST_ERROR_SUCCESS => Ok(unsafe { result.assume_init() }),
+    let (output, exit_code) = casper_ffi(GlobalStateFunctionOption::Create.into(), &input_data);
+    match exit_code {
+        HOST_ERROR_SUCCESS => match output {
+            Some(output) => borsh::from_slice(&output).map_err(|_| CallError::InvalidOutput),
+            None => Err(CallError::InvalidOutput),
+        },
         other_status => {
             // #TODO! fix this wrap
             Err(CallError::try_from(other_status).expect("Couldn't interpret error from host"))

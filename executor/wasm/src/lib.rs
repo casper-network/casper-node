@@ -1426,6 +1426,7 @@ impl Executor for ExecutorV2 {
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,
                     CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
+                    CallError::InputInvalid => SandboxedExecutionError::InputInvalid,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),

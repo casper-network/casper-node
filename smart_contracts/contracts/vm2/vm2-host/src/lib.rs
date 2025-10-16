@@ -173,8 +173,8 @@ impl MinimalHostWrapper {
             // "faulty_flags value"
             casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
         }
-        let data = [1, 2, 3];
-        let args = (faulty_flags, data);
+        let data: [u8; 3] = [1, 2, 3];
+        let args = (faulty_flags, Some(Vec::from(data)));
         let arg_bytes = borsh::to_vec(&args).expect("Expected borsh to work");
         let _ = casper_ffi(IOFunctionOption::Return.into(), &arg_bytes);
     }

@@ -32,7 +32,7 @@ use crate::{
         global_state::{
             host_create, host_env_balance, host_env_info, host_read, host_remove, host_write,
         },
-        io::{host_copy_input, host_ret},
+        io::{host_copy_input, host_return},
     },
 };
 use casper_executor_wasm_interface::executor::{ExecuteRequest, FFIMenu};
@@ -170,7 +170,6 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
     } else {
         caller.memory_read(input_ptr, input_len as _)?.into()
     };
-
     let (output_bytes, exit_code) = match option {
         FFIMenu::Mint(mint_method) => {
             let system_contract_call_opt = SystemContractMenu::Mint(mint_method);
@@ -222,7 +221,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             }
         },
         FFIMenu::IO(io_methods) => match io_methods {
-            IOMethods::Return => host_ret(input_data).map(|code| (None, code)),
+            IOMethods::Return => host_return(&mut caller, input_data).map(|code| (None, code)),
             IOMethods::CopyInput => host_copy_input(&mut caller),
         },
     }?;

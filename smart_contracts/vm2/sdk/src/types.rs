@@ -1,7 +1,10 @@
 use core::marker::PhantomData;
 
 use casper_executor_wasm_common::{
-    error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_ROLLED_BACK, CALLEE_TRAPPED},
+    error::{
+        CALLEE_API_ERROR, CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE,
+        CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
+    },
     keyspace::Keyspace,
 };
 
@@ -198,12 +201,15 @@ pub enum HashAlgorithm {
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "crate::serializers::borsh")]
+#[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
 pub enum CallError {
-    CalleeRolledBack,
-    CalleeTrapped,
-    CalleeGasDepleted,
-    NotCallable,
+    CalleeRolledBack = 1,
+    CalleeTrapped = 2,
+    InputInvalid = 3,
+    CalleeGasDepleted = 4,
+    NotCallable = 5,
+    Api = 6,
+    InvalidOutput = 7,
 }
 
 impl fmt::Display for CallError {
@@ -213,6 +219,9 @@ impl fmt::Display for CallError {
             CallError::CalleeTrapped => write!(f, "callee trapped"),
             CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
             CallError::NotCallable => write!(f, "not callable"),
+            CallError::InputInvalid => write!(f, "input invalid"),
+            CallError::Api => write!(f, "api"),
+            CallError::InvalidOutput => write!(f, "invalid output"),
         }
     }
 }
@@ -226,6 +235,8 @@ impl TryFrom<u32> for CallError {
             CALLEE_TRAPPED => Ok(Self::CalleeTrapped),
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
+            CALLEE_INPUT_INVALID => Ok(Self::InputInvalid),
+            CALLEE_API_ERROR => Ok(Self::Api),
             _ => Err(()),
         }
     }
@@ -238,28 +249,42 @@ impl CasperABI for CallError {
     fn declaration() -> Declaration {
         "CallError".into()
     }
-
     fn definition() -> Definition {
         Definition::Enum {
             items: vec![
                 EnumVariant {
                     name: "CalleeRolledBack".into(),
-                    discriminant: 0,
-                    decl: <()>::declaration(),
-                },
-                EnumVariant {
-                    name: "CalleeTrapped".into(),
                     discriminant: 1,
                     decl: <()>::declaration(),
                 },
                 EnumVariant {
-                    name: "CalleeGasDepleted".into(),
+                    name: "CalleeTrapped".into(),
                     discriminant: 2,
                     decl: <()>::declaration(),
                 },
                 EnumVariant {
-                    name: "CodeNotFound".into(),
+                    name: "InputInvalid".into(),
                     discriminant: 3,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "CalleeGasDepleted".into(),
+                    discriminant: 4,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "NotCallable".into(),
+                    discriminant: 5,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "Api".into(),
+                    discriminant: 6,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "InvalidOutput".into(),
+                    discriminant: 7,
                     decl: <()>::declaration(),
                 },
             ],
@@ -368,9 +393,8 @@ impl TryFrom<u32> for GlobalStateFunctionOption {
 
 #[repr(u32)]
 pub enum ControlFunctionOption {
-    Create = 500,
-    Call = 501,
-    Upgrade = 502,
+    Call = 500,
+    Upgrade = 501,
 }
 
 impl From<ControlFunctionOption> for u32 {
@@ -384,9 +408,8 @@ impl TryFrom<u32> for ControlFunctionOption {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         Ok(match value {
-            500 => ControlFunctionOption::Create,
-            501 => ControlFunctionOption::Call,
-            502 => ControlFunctionOption::Upgrade,
+            500 => ControlFunctionOption::Call,
+            501 => ControlFunctionOption::Upgrade,
             _ => return Err(()),
         })
     }

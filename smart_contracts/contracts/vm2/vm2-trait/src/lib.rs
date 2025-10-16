@@ -154,12 +154,10 @@ fn perform_test() {
     let contract_handle = ContractBuilder::<HasTraitsRef>::new()
         .default_create()
         .expect("should create contract");
-
     let trait1_handle =
         ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
     let counter_handle =
         ContractHandle::<CounterRef>::from_address(contract_handle.contract_address());
-
     {
         let greet_result: u64 = contract_handle
             .build_call()
@@ -167,13 +165,11 @@ fn perform_test() {
             .expect("Call as Trait1Ref");
         assert_eq!(greet_result, GREET_RETURN_VALUE);
     }
-
     {
         let () = trait1_handle
             .call(|trait1ref| trait1ref.abstract_greet())
             .expect("Call as Trait1Ref");
     }
-
     {
         let result: u64 = contract_handle
             .build_call()
@@ -181,7 +177,6 @@ fn perform_test() {
             .expect("Call as Trait1Ref");
         assert_eq!(result, 1111 + 2222);
     }
-
     //
     // Counter trait
     //

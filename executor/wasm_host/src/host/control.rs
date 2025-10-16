@@ -4,12 +4,12 @@ use bytes::Bytes;
 use casper_executor_wasm_common::{
     chain_utils::{compute_next_contract_hash_version, compute_wasm_bytecode_hash},
     error::{
-        CALLEE_NOT_CALLABLE, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT,
-        HOST_LOCKED_PACKAGE, HOST_NO_ACTIVE_CONTRACT,
+        CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA,
+        HOST_ERROR_INVALID_INPUT, HOST_LOCKED_PACKAGE, HOST_NO_ACTIVE_CONTRACT,
     },
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
     Caller, FatalHostError, VMError, VMResult,
 };
 use casper_storage::global_state::GlobalStateReader;
@@ -37,7 +37,7 @@ pub(crate) fn host_call<S: GlobalStateReader + 'static>(
         ) {
             Ok(res) => res,
             Err(_) => {
-                return Ok((None, HOST_ERROR_INVALID_INPUT));
+                return Ok((None, CALLEE_INPUT_INVALID));
             }
         };
     // 1. Look up address in the storage
@@ -188,7 +188,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
         }
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
-    match caller
+    let (contract_key, package_key, wasm_key, version_major, version_minor) = match caller
         .context_mut()
         .tracking_copy
         .read(&callee_addressable_entity_key)
@@ -225,7 +225,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
                     let next_version = package.next_entity_version_for(protocol_version.major);
                     let new_version_hash_addr =
                         compute_next_contract_hash_version(previous_hash.value(), next_version);
-                    package.insert_entity_version(
+                    let entity_version_key = package.insert_entity_version(
                         protocol_version.major,
                         EntityAddr::SmartContract(new_version_hash_addr),
                     );
@@ -261,6 +261,13 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
                         Key::AddressableEntity(EntityAddr::SmartContract(new_version_hash_addr));
 
                     metered_write(caller, entity_key, StoredValue::AddressableEntity(entity))?;
+                    (
+                        entity_key,
+                        package_key,
+                        bytecode_key,
+                        entity_version_key.protocol_version_major(),
+                        entity_version_key.entity_version(),
+                    )
                 }
                 None => return Ok(CALLEE_NOT_CALLABLE),
             }
@@ -297,7 +304,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
                     let next_version = package.next_contract_version_for(protocol_version.major);
                     let new_version_hash_addr =
                         compute_next_contract_hash_version(previous_hash.value(), next_version);
-                    package.insert_contract_version(
+                    let contract_version_key = package.insert_contract_version(
                         protocol_version.major,
                         ContractHash::new(new_version_hash_addr),
                     );
@@ -330,6 +337,13 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
                     let smart_contract = Key::Hash(new_version_hash_addr);
 
                     metered_write(caller, smart_contract, StoredValue::Contract(entity))?;
+                    (
+                        smart_contract,
+                        package_key,
+                        bytecode_key,
+                        contract_version_key.protocol_version_major(),
+                        contract_version_key.contract_version(),
+                    )
                 }
                 None => return Ok(HOST_NO_ACTIVE_CONTRACT),
             }
@@ -359,6 +373,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
             .get_remaining_points()?
             .try_into_remaining()
             .map_err(|_| FatalHostError::TypeConversion)?;
+        let block_time = caller.context().block_time;
 
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(caller.context().initiator)
@@ -377,7 +392,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
             // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
             .with_chain_name(caller.context().chain_name.clone())
-            .with_block_time(caller.context().block_time)
+            .with_block_time(block_time)
             .with_state_hash(Digest::from_raw([0; 32]))
             .with_block_height(1)
             .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
@@ -386,8 +401,22 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
             .build()
             .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
-        let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
-
+        let mut tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+        match tracking_copy_for_ctor.emit_messages_for_new_installed_version(
+            package_key,
+            contract_key,
+            wasm_key,
+            version_major,
+            version_minor,
+            block_time,
+        ) {
+            Ok(_) => (),
+            Err(message_emission_error) => {
+                return Err(VMError::Execute(ExecuteError::Api(
+                    message_emission_error.to_string(),
+                )))
+            }
+        }
         match caller
             .executor()
             .execute(tracking_copy_for_ctor, execute_request)

@@ -28,7 +28,7 @@ pub struct ReadInfo {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, BorshDeserialize)]
 pub struct CreateResult {
     pub contract_address: [u8; 32],
 }

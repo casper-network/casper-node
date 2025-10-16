@@ -11,9 +11,7 @@ pub mod exports {
 
     #[casper(export)]
     pub fn call(address: Address) -> String {
-        log!("Hello {address:?}");
         let handle = ContractHandle::<TokenContractRef>::from_address(address);
-
         // Mint tokens, then check the balance of the account that called this contract
         handle
             .call(|contract| contract.mint(Entity::Account([99; 32]), U256::from(100u64)))
