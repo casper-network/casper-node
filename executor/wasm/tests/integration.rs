@@ -844,11 +844,14 @@ fn upgradable() {
 
     let upgradable_address;
 
+    let upgradable = read_wasm("vm2_upgradable.wasm");
+
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
         let create_request = base_install_request_builder(&chainspec_config)
-            .with_wasm_bytes(read_wasm("vm2_upgradable.wasm").wasm)
+            .with_wasm_bytes(upgradable.wasm)
+            .with_bundle_data(upgradable.bundle.expect("should have bundle"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
             .with_transferred_value(0)
@@ -919,8 +922,8 @@ fn upgradable() {
             .expect("Should commit");
     };
 
-    let binding = read_wasm("vm2_upgradable_v2.wasm");
-    let new_code = binding.wasm.as_ref();
+    let vm2_upgrdable_v2 = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = vm2_upgrdable_v2.wasm.as_ref();
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
@@ -1209,8 +1212,11 @@ fn casper_return_writes_to_execution_journal() {
         .map(Bytes::from)
         .unwrap();
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm").wasm)
+        .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1303,8 +1309,11 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         .map(Bytes::from)
         .unwrap();
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm").wasm)
+        .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1357,10 +1366,13 @@ fn escrow() {
     let input_data = Bytes::new();
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_escrow = read_wasm("vm2_escrow.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").wasm.clone())
+        .with_wasm_bytes(vm2_escrow.wasm)
+        .with_bundle_data(vm2_escrow.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1433,10 +1445,13 @@ fn should_not_fail_without_account() {
     let input_data = Bytes::new();
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_escrow = read_wasm("vm2_escrow.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(AccountHash::new([0xF0; 32]))
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").wasm.clone())
+        .with_wasm_bytes(vm2_escrow.wasm)
+        .with_bundle_data(vm2_escrow.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1474,10 +1489,13 @@ fn supports_named_args_convention() {
 
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_named_args = read_wasm("vm2_named_args.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_named_args.wasm").wasm.clone())
+        .with_wasm_bytes(vm2_named_args.wasm)
+        .with_bundle_data(vm2_named_args.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

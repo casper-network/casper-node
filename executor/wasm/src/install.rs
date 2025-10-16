@@ -4,7 +4,8 @@ use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{executor::ExecuteError, GasUsage};
 use casper_storage::{
-    global_state::error::Error as GlobalStateError, AddressGenerator, RuntimeNativeConfig,
+    global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
+    AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, execution::Effects, BlockHash, BlockTime, CLValueError, Digest,
@@ -255,6 +256,9 @@ pub enum InstallContractError {
 
     #[error("Global state error: {0}")]
     GlobalState(#[from] GlobalStateError),
+
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
 
     #[error("constructor error: {host_error}")]
     Constructor { host_error: CallError },

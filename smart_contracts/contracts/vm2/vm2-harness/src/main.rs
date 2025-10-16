@@ -16,10 +16,6 @@ use casper_contract_sdk::{
 
 use contracts::token_owner::TokenOwnerContractRef;
 
-#[casper]
-#[allow(dead_code)]
-const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
-
 #[casper(message(topic = "TestMessage"))]
 pub struct TestMessage {
     pub message: String,

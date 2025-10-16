@@ -555,8 +555,11 @@ pub fn entry_point_names(
 
     let entry_point_names = module
         .exports()
-        .map(|export| export.name().to_string())
-        .collect();
+        .filter_map(|export| match export.ty() {
+            wasmer::ExternType::Function(_) => Some(export.name().to_string()),
+            _ => None,
+        })
+        .collect::<BTreeSet<String>>();
 
     Ok(entry_point_names)
 }

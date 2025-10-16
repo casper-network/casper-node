@@ -27,8 +27,7 @@ use crate::{
         auction::{Bid, BidKind, EraInfo, Unbond, UnbondingPurse, WithdrawPurse},
         prepayment::PrepaymentKind,
     },
-    type_definitions::TypeDefinitions,
-    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1, TypeDefinition,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -78,7 +77,7 @@ pub enum StoredValueTag {
     /// An entrypoint record.
     EntryPoint = 19,
     /// A collection of type definitions.
-    TypeDefinitions = 20,
+    TypeDefinition = 20,
 }
 
 /// A value stored in Global State.
@@ -132,7 +131,7 @@ pub enum StoredValue {
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
     /// A bundle of type definitions.
-    TypeDef(TypeDefinitions),
+    TypeDef(TypeDefinition),
 }
 
 impl StoredValue {
@@ -293,7 +292,7 @@ impl StoredValue {
     }
 
     /// Returns a reference to the wrapped `TypeDefinitions` if this is a `TypeDef` variant.
-    pub fn as_type_definitions(&self) -> Option<&TypeDefinitions> {
+    pub fn as_type_definitions(&self) -> Option<&TypeDefinition> {
         match self {
             StoredValue::TypeDef(definitions) => Some(definitions),
             _ => None,
@@ -420,8 +419,8 @@ impl StoredValue {
         }
     }
 
-    /// Returns the `TypeDefinitions` if this is a `TypeDef` variant.
-    pub fn into_type_definitions(self) -> Option<TypeDefinitions> {
+    /// Returns the `TypeDefinition` if this is a `TypeDef` variant.
+    pub fn into_type_definition(self) -> Option<TypeDefinition> {
         match self {
             StoredValue::TypeDef(value) => Some(value),
             _ => None,
@@ -480,7 +479,7 @@ impl StoredValue {
             StoredValue::NamedKey(_) => StoredValueTag::NamedKey,
             StoredValue::Prepayment(_) => StoredValueTag::Prepayment,
             StoredValue::EntryPoint(_) => StoredValueTag::EntryPoint,
-            StoredValue::TypeDef(_) => StoredValueTag::TypeDefinitions,
+            StoredValue::TypeDef(_) => StoredValueTag::TypeDefinition,
         }
     }
 
@@ -564,12 +563,6 @@ impl From<ByteCode> for StoredValue {
 impl From<EntryPointValue> for StoredValue {
     fn from(value: EntryPointValue) -> Self {
         StoredValue::EntryPoint(value)
-    }
-}
-
-impl From<TypeDefinitions> for StoredValue {
-    fn from(value: TypeDefinitions) -> Self {
-        StoredValue::TypeDef(value)
     }
 }
 
@@ -760,14 +753,14 @@ impl TryFrom<StoredValue> for NamedKeyValue {
     }
 }
 
-impl TryFrom<StoredValue> for TypeDefinitions {
+impl TryFrom<StoredValue> for TypeDefinition {
     type Error = TypeMismatch;
 
     fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
         match value {
             StoredValue::TypeDef(definitions) => Ok(definitions),
             _ => Err(TypeMismatch::new(
-                "TypeDefinitions".to_string(),
+                "TypeDefinition".to_string(),
                 value.type_name(),
             )),
         }
@@ -905,8 +898,8 @@ impl FromBytes for StoredValue {
                     (StoredValue::EntryPoint(entry_point), remainder)
                 })
             }
-            tag if tag == StoredValueTag::TypeDefinitions as u8 => {
-                TypeDefinitions::from_bytes(remainder)
+            tag if tag == StoredValueTag::TypeDefinition as u8 => {
+                TypeDefinition::from_bytes(remainder)
                     .map(|(definitions, remainder)| (StoredValue::TypeDef(definitions), remainder))
             }
             _ => Err(Error::Formatting),
@@ -1005,7 +998,7 @@ pub mod serde_helpers {
         /// An entrypoint record.
         Prepayment(PrepaymentKind),
         /// Type definitions.
-        TypeDef(TypeDefinitions),
+        TypeDef(TypeDefinition),
     }
 
     impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {

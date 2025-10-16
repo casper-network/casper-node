@@ -1,12 +1,12 @@
 pub mod install;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     sync::Arc,
 };
 
 use bytes::Bytes;
-use casper_contract_sdk::bundle::{Bundle, BundleV1};
+use casper_contract_sdk::bundle::{Bundle, BundlePrimitive, BundleTypeDefinition, BundleV1};
 use casper_execution_engine::{
     engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
@@ -57,11 +57,12 @@ use casper_types::{
     EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, InitiatorAddr, Key,
     MessageLimits, MintCosts, NamedKeys, Package, PackageHash, PackageStatus, Parameter,
     Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, TypeUid, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    TransactionInvocationTarget, TypeDefinition, TypeDefinitionKind, TypeEnumVariant,
+    TypePrimitive, TypeStructField, TypeUid, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::install::BundleError;
 
@@ -344,26 +345,148 @@ impl ExecutorV2 {
             BundleError::InvalidBundleData("Failed to parse bundle data".to_string())
         })?;
 
+        let config = ConfigBuilder::new()
+            .with_gas_limit(gas_limit)
+            .with_memory_limit(self.config.memory_limit)
+            .build()
+            .map_err(|config_builder_error| {
+                InstallContractError::Execute(ExecuteError::InternalHost(
+                    InternalHostError::ConfigBuilderError(config_builder_error.to_string()),
+                ))
+            })?;
+        let mut entry_point_names = casper_executor_wasmer_backend::entry_point_names(
+            wasm_bytes, config,
+        )
+        .map_err(|wasm_prep_error| {
+            InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
+        })?;
+
         // 3. Gather entrypoints first.
         let entrypoints = {
-            let config = ConfigBuilder::new()
-                .with_gas_limit(gas_limit)
-                .with_memory_limit(self.config.memory_limit)
-                .build()
-                .map_err(|config_builder_error| {
-                    InstallContractError::Execute(ExecuteError::InternalHost(
-                        InternalHostError::ConfigBuilderError(config_builder_error.to_string()),
-                    ))
-                })?;
-
-            let mut entry_point_names = casper_executor_wasmer_backend::entry_point_names(
-                wasm_bytes, config,
-            )
-            .map_err(|wasm_prep_error| {
-                InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
-            })?;
-
             let mut entity_entrypoints = EntityEntryPoints::new();
+
+            let mut uid_to_cl_type = HashMap::new();
+
+            // Load up all type definitions from the bundle blob
+            for (uid, bundle_def) in bundle.definitions() {
+                let type_uid = TypeUid::from(uid.into_raw());
+
+                let cl_type_bytes = borsh::to_vec(&bundle_def.cl_type.clone()).map_err(|_| {
+                    BundleError::InvalidBundleData(
+                        "Failed to serialize argument CLType".to_string(),
+                    )
+                })?;
+                let cl_type: CLType =
+                    bytesrepr::deserialize_from_slice(&cl_type_bytes).map_err(|error| {
+                        BundleError::InvalidBundleData(format!(
+                            "Failed to deserialize argument CLType {:?} ({error:?})",
+                            bundle_def
+                        ))
+                    })?;
+
+                if type_uid == TypeUid::UNTYPED {
+                    trace!("Skipping untyped definition");
+                    continue;
+                }
+
+                let type_def = match &bundle_def.definition {
+                    BundleTypeDefinition::Primitive(bundle_primitive) => {
+                        TypeDefinitionKind::Primitive(match bundle_primitive {
+                            BundlePrimitive::Char => TypePrimitive::Char,
+                            BundlePrimitive::U8 => TypePrimitive::U8,
+                            BundlePrimitive::I8 => TypePrimitive::I8,
+                            BundlePrimitive::U16 => TypePrimitive::U16,
+                            BundlePrimitive::I16 => TypePrimitive::I16,
+                            BundlePrimitive::U32 => TypePrimitive::U32,
+                            BundlePrimitive::I32 => TypePrimitive::I32,
+                            BundlePrimitive::U64 => TypePrimitive::U64,
+                            BundlePrimitive::I64 => TypePrimitive::I64,
+                            BundlePrimitive::U128 => TypePrimitive::U128,
+                            BundlePrimitive::I128 => TypePrimitive::I128,
+                            BundlePrimitive::F32 => TypePrimitive::F32,
+                            BundlePrimitive::F64 => TypePrimitive::F64,
+                            BundlePrimitive::Bool => TypePrimitive::Bool,
+                        })
+                    }
+                    BundleTypeDefinition::Mapping { key, value } => TypeDefinitionKind::Mapping {
+                        key: TypeUid::from(key.into_raw()),
+                        value: TypeUid::from(value.into_raw()),
+                    },
+                    BundleTypeDefinition::Sequence { decl } => TypeDefinitionKind::Sequence {
+                        decl: TypeUid::from(decl.into_raw()),
+                    },
+                    BundleTypeDefinition::FixedSequence { length, decl } => {
+                        TypeDefinitionKind::FixedSequence {
+                            length: *length,
+                            decl: TypeUid::from(decl.into_raw()),
+                        }
+                    }
+                    BundleTypeDefinition::Tuple { items } => TypeDefinitionKind::Tuple {
+                        items: items
+                            .iter()
+                            .map(|item| TypeUid::from(item.into_raw()))
+                            .collect(),
+                    },
+                    BundleTypeDefinition::Enum { items } => {
+                        let items: Vec<TypeEnumVariant> = items
+                            .iter()
+                            .map(|variant| TypeEnumVariant {
+                                discriminant: variant.discriminant,
+                                decl: variant.decl.map(|uid| TypeUid::from(uid.into_raw())),
+                            })
+                            .collect();
+                        TypeDefinitionKind::Enum { items }
+                    }
+                    BundleTypeDefinition::Struct { items } => {
+                        let items: Vec<TypeStructField> = items
+                            .iter()
+                            .map(|field| TypeStructField {
+                                decl: TypeUid::from(field.decl.into_raw()),
+                            })
+                            .collect();
+                        TypeDefinitionKind::Struct { items }
+                    }
+                };
+
+                uid_to_cl_type.insert(type_uid, (cl_type.clone(), type_def.clone()));
+
+                let type_uid = TypeUid::from(uid.into_raw());
+                let pending_type_definition = StoredValue::TypeDef(TypeDefinition {
+                    definition: type_def,
+                    cl_type: cl_type,
+                });
+
+                match tracking_copy
+                    .read(&Key::TypeDef(type_uid))
+                    .map_err(|read_err| {
+                        error!(
+                            "Error when fetching type definition {type_uid:?}. Details {read_err}"
+                        );
+                        InstallContractError::TrackingCopy(read_err)
+                    })? {
+                    Some(existing_type_definition) => {
+                        if existing_type_definition != pending_type_definition {
+                            // Type definition already exists and is different.
+                            // Ideally, this shouldn't happen as the type UIDs should be unique.
+                            // Otherwise, if both already stored and a pending type definition are
+                            // the same, then we don't need to do
+                            // anything.
+
+                            return Err(InstallContractError::Bundle(
+                                BundleError::InvalidBundleData(format!(
+                                    "Type definition collision for UID {type_uid:?}"
+                                )),
+                            ));
+                        }
+                    }
+                    None => {
+                        // Type definition doesn't exist yet, we can proceed to store it.
+                        tracking_copy.write(Key::TypeDef(type_uid), pending_type_definition);
+                    }
+                }
+            }
+
+            // Load up all entry point information from the bundle blob
 
             for bundle_entry_point in bundle.entry_points() {
                 if !entry_point_names.remove(&bundle_entry_point.export_name) {
@@ -401,7 +524,7 @@ impl ExecutorV2 {
 
                         entity_entry_point_parameters.push(Parameter::new("_", cl_type.clone()));
 
-                        type_args.push(TypeUid::from(bundle_arg.decl.as_uid().into_raw()))
+                        type_args.push(TypeUid::from(bundle_arg.decl.into_raw()))
                     }
 
                     type_args
@@ -450,7 +573,7 @@ impl ExecutorV2 {
                 let entry_point_v2 = EntityEntryPointV2::new(
                     bundle_entry_point.export_name.clone(),
                     parameters,
-                    TypeUid::new(bundle_entry_point.result.as_uid().into_raw()),
+                    TypeUid::new(bundle_entry_point.result.into_raw()),
                     payment,
                     flags,
                 );
@@ -464,27 +587,20 @@ impl ExecutorV2 {
             entity_entrypoints
         };
 
+        if !entry_point_names.is_empty() {
+            // Some exports were not described in the bundle blob
+            // This is an error - build tool must describe all function exports.
+            return Err(InstallContractError::Bundle(
+                BundleError::InvalidBundleData(format!(
+                    "Not all Wasm exports are described in the bundle blob: {entry_point_names:?}"
+                )),
+            ));
+        }
+
         if enable_addressable_entity {
             // 3. Store addressable entity
             let addressable_entity_key =
                 Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
-
-            for entrypoint in entrypoints.take_entry_points() {
-                let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(
-                    EntityAddr::SmartContract(smart_contract_addr),
-                    entrypoint.name(),
-                )
-                .map_err(|err| {
-                    InstallContractError::GlobalState(GlobalStateError::BytesRepr(err))
-                })?;
-
-                let entry_point_key = Key::EntryPoint(entry_point_addr);
-
-                tracking_copy.write(
-                    entry_point_key,
-                    StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entrypoint)),
-                )
-            }
 
             // 3.1 Store entry points first
             let addressable_entity = AddressableEntity::new(

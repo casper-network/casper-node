@@ -417,6 +417,7 @@ pub fn call_dummy_host_fn_by_name(
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

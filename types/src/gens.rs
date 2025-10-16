@@ -993,17 +993,12 @@ pub fn type_primitive_arb() -> impl Strategy<Value = TypePrimitive> {
 }
 
 pub fn type_enum_variant_arb() -> impl Strategy<Value = TypeEnumVariant> {
-    ("\\PC*", any::<u64>(), option::of(type_uid_arb())).prop_map(|(name, discriminant, decl)| {
-        TypeEnumVariant {
-            name,
-            discriminant,
-            decl,
-        }
-    })
+    (any::<u64>(), option::of(type_uid_arb()))
+        .prop_map(|(discriminant, decl)| TypeEnumVariant { discriminant, decl })
 }
 
 pub fn type_struct_field_arb() -> impl Strategy<Value = TypeStructField> {
-    ("\\PC*", type_uid_arb()).prop_map(|(name, decl)| TypeStructField { name, decl })
+    (type_uid_arb(),).prop_map(|(decl,)| TypeStructField { decl })
 }
 
 pub fn type_definition_kind_arb() -> impl Strategy<Value = TypeDefinitionKind> {

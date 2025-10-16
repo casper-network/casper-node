@@ -31,6 +31,10 @@ use crate::{
 pub struct TypeUid(u32);
 
 impl TypeUid {
+    /// A `TypeUid` representing an untyped value.
+    /// This is used for values that do not have a specific type, such as `()`.
+    pub const UNTYPED: Self = TypeUid(0);
+
     /// Creates a new [`TypeUid`] from a raw `u32` value.
     pub const fn new(raw: u32) -> Self {
         Self(raw)
@@ -129,8 +133,6 @@ impl FromBytes for TypeDefinition {
     }
 }
 
-pub type TypeDefinitions = BTreeMap<TypeUid, TypeDefinition>;
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -168,7 +170,6 @@ impl FromBytes for TypeMessage {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EnumVariant {
-    pub name: String,
     pub discriminant: u64,
     pub decl: Option<TypeUid>,
 }
@@ -181,11 +182,10 @@ impl ToBytes for EnumVariant {
     }
 
     fn serialized_length(&self) -> usize {
-        self.name.serialized_length() + U64_SERIALIZED_LENGTH + self.decl.serialized_length()
+        U64_SERIALIZED_LENGTH + self.decl.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.name.write_bytes(writer)?;
         self.discriminant.write_bytes(writer)?;
         self.decl.write_bytes(writer)
     }
@@ -193,17 +193,9 @@ impl ToBytes for EnumVariant {
 
 impl FromBytes for EnumVariant {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (name, rem) = String::from_bytes(bytes)?;
-        let (discriminant, rem) = u64::from_bytes(rem)?;
+        let (discriminant, rem) = u64::from_bytes(bytes)?;
         let (decl, rem) = Option::<TypeUid>::from_bytes(rem)?;
-        Ok((
-            EnumVariant {
-                name,
-                discriminant,
-                decl,
-            },
-            rem,
-        ))
+        Ok((EnumVariant { discriminant, decl }, rem))
     }
 }
 
@@ -211,7 +203,6 @@ impl FromBytes for EnumVariant {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct StructField {
-    pub name: String,
     pub decl: TypeUid,
 }
 
@@ -223,20 +214,18 @@ impl ToBytes for StructField {
     }
 
     fn serialized_length(&self) -> usize {
-        self.name.serialized_length() + self.decl.serialized_length()
+        self.decl.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.name.write_bytes(writer)?;
         self.decl.write_bytes(writer)
     }
 }
 
 impl FromBytes for StructField {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (name, rem) = String::from_bytes(bytes)?;
-        let (decl, rem) = TypeUid::from_bytes(rem)?;
-        Ok((StructField { name, decl }, rem))
+        let (decl, rem) = TypeUid::from_bytes(bytes)?;
+        Ok((StructField { decl }, rem))
     }
 }
 

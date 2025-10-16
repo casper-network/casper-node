@@ -4,19 +4,157 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
+use bnum::cast::As;
+use casper_executor_wasm_common::type_uid::Uid;
 use serde::{Deserialize, Serialize};
 
-use crate::{abi::Definition, compat::types::CLType, schema::SchemaUid};
+use crate::{abi::Definition, compat::types::CLType};
+
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub enum BundlePrimitive {
+    Char,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    U128,
+    I128,
+    F32,
+    F64,
+    Bool,
+}
+
+impl From<crate::abi::Primitive> for BundlePrimitive {
+    fn from(value: crate::abi::Primitive) -> Self {
+        match value {
+            crate::abi::Primitive::Char => BundlePrimitive::Char,
+            crate::abi::Primitive::U8 => BundlePrimitive::U8,
+            crate::abi::Primitive::I8 => BundlePrimitive::I8,
+            crate::abi::Primitive::U16 => BundlePrimitive::U16,
+            crate::abi::Primitive::I16 => BundlePrimitive::I16,
+            crate::abi::Primitive::U32 => BundlePrimitive::U32,
+            crate::abi::Primitive::I32 => BundlePrimitive::I32,
+            crate::abi::Primitive::U64 => BundlePrimitive::U64,
+            crate::abi::Primitive::I64 => BundlePrimitive::I64,
+            crate::abi::Primitive::U128 => BundlePrimitive::U128,
+            crate::abi::Primitive::I128 => BundlePrimitive::I128,
+            crate::abi::Primitive::F32 => BundlePrimitive::F32,
+            crate::abi::Primitive::F64 => BundlePrimitive::F64,
+            crate::abi::Primitive::Bool => BundlePrimitive::Bool,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub struct BundleEnumVariant {
+    pub discriminant: u64,
+    /// Optional declaration for the variant.
+    ///
+    /// Plain enum variants (i.e. those without any type, only discriminants) don't require a type
+    /// declaration.
+    pub decl: Option<Uid>,
+}
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub struct BundleStructField {
+    pub decl: Uid,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
+pub enum BundleTypeDefinition {
+    /// Primitive type.
+    ///
+    /// Examples: u64, i32, f32, bool, etc
+    Primitive(BundlePrimitive),
+    /// A mapping.
+    ///
+    /// Example Rust types: BTreeMap<K, V>.
+    Mapping {
+        key: Uid,
+        value: Uid,
+    },
+    /// Arbitrary sequence of values.
+    ///
+    /// Example Rust types: `Vec<T>`, `&[T]`, `[T; N]`, `Box<[T]>`
+    Sequence {
+        /// If length is known, then it specifies that this definition should be be represented as
+        /// an array of a fixed size.
+        decl: Uid,
+    },
+    FixedSequence {
+        /// If length is known, then it specifies that this definition should be be represented as
+        /// an array of a fixed size.
+        length: u32, // None -> Vec<T> Some(N) [T; N]
+        decl: Uid,
+    },
+    /// A tuple of multiple values of various types.
+    ///
+    /// Can be also used to represent a heterogeneous list.
+    Tuple {
+        items: Vec<Uid>,
+    },
+    Enum {
+        items: Vec<BundleEnumVariant>,
+    },
+    Struct {
+        items: Vec<BundleStructField>,
+    },
+}
+
+impl From<Definition> for BundleTypeDefinition {
+    fn from(value: Definition) -> Self {
+        match value {
+            Definition::Primitive(p) => BundleTypeDefinition::Primitive(p.into()),
+            Definition::Mapping { key, value } => BundleTypeDefinition::Mapping {
+                key: key.as_uid(),
+                value: value.as_uid(),
+            },
+            Definition::Sequence { decl } => BundleTypeDefinition::Sequence {
+                decl: decl.as_uid(),
+            },
+            Definition::FixedSequence { length, decl } => BundleTypeDefinition::FixedSequence {
+                length,
+                decl: decl.as_uid(),
+            },
+            Definition::Tuple { items } => BundleTypeDefinition::Tuple {
+                items: items
+                    .into_iter()
+                    .map(|schema_uid| schema_uid.as_uid())
+                    .collect(),
+            },
+            Definition::Enum { items } => BundleTypeDefinition::Enum {
+                items: items
+                    .into_iter()
+                    .map(|v| BundleEnumVariant {
+                        discriminant: v.discriminant,
+                        decl: v.decl.map(|schema_uid| schema_uid.as_uid()),
+                    })
+                    .collect(),
+            },
+            Definition::Struct { items } => BundleTypeDefinition::Struct {
+                items: items
+                    .into_iter()
+                    .map(|f| BundleStructField {
+                        decl: f.decl.as_uid(),
+                    })
+                    .collect(),
+            },
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleDefinition {
-    pub definition: Definition,
+    pub definition: BundleTypeDefinition,
     pub cl_type: CLType,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleArgument {
-    pub decl: SchemaUid,
+    pub decl: Uid,
 }
 
 bitflags::bitflags! {
@@ -52,7 +190,7 @@ pub struct BundleEntryPoint {
     pub name: String,
     pub export_name: String,
     pub arguments: Vec<BundleArgument>,
-    pub result: SchemaUid,
+    pub result: Uid,
     pub flags: BundleEntryPointFlags,
 }
 
@@ -62,12 +200,12 @@ pub struct BundleMessage {
     ///
     /// This, unlike the type names etc, is crucial for discovering messages.
     pub topic: String,
-    pub decl: SchemaUid,
+    pub decl: Uid,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BundleV1 {
-    definitions: BTreeMap<SchemaUid, BundleDefinition>,
+    definitions: BTreeMap<Uid, BundleDefinition>,
     entry_points: Vec<BundleEntryPoint>,
     messages: Vec<BundleMessage>,
 }
@@ -81,7 +219,7 @@ impl BundleV1 {
         &self.messages
     }
 
-    pub fn definitions(&self) -> &BTreeMap<SchemaUid, BundleDefinition> {
+    pub fn definitions(&self) -> &BTreeMap<Uid, BundleDefinition> {
         &self.definitions
     }
 }
@@ -102,9 +240,9 @@ impl From<Schema> for BundleV1 {
             .into_iter()
             .map(|(k, v)| {
                 (
-                    k,
+                    k.as_uid(),
                     BundleDefinition {
-                        definition: v.definition,
+                        definition: BundleTypeDefinition::from(v.definition),
                         cl_type: v.cl_type,
                     },
                 )
@@ -115,7 +253,7 @@ impl From<Schema> for BundleV1 {
             .into_iter()
             .map(|msg| BundleMessage {
                 topic: msg.topic,
-                decl: SchemaUid::from(msg.decl),
+                decl: msg.decl,
             })
             .collect::<Vec<_>>();
 
@@ -161,10 +299,10 @@ impl From<Schema> for BundleV1 {
                         .arguments
                         .into_iter()
                         .map(|arg| BundleArgument {
-                            decl: SchemaUid::from(arg.decl),
+                            decl: Uid::from(arg.decl),
                         })
                         .collect(),
-                    result: SchemaUid::from(ep.result),
+                    result: Uid::from(ep.result),
                     flags,
                 }
             })
