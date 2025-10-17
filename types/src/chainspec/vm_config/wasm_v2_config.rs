@@ -11,7 +11,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::HostFunctionCostsV2;
+use super::HostFFIFunctionCosts;
 
 /// Default maximum number of pages of the Wasm memory.
 pub const DEFAULT_V2_WASM_MAX_MEMORY: u32 = 64;
@@ -29,7 +29,7 @@ pub struct WasmV2Config {
     /// Wasm opcode costs table.
     opcode_costs: OpcodeCosts,
     /// Host function costs table.
-    host_function_costs: HostFunctionCostsV2,
+    host_ffi_opt_costs: HostFFIFunctionCosts,
 }
 
 impl WasmV2Config {
@@ -37,12 +37,12 @@ impl WasmV2Config {
     pub fn new(
         max_memory: u32,
         opcode_costs: OpcodeCosts,
-        host_function_costs: HostFunctionCostsV2,
+        host_ffi_opt_costs: HostFFIFunctionCosts,
     ) -> Self {
         WasmV2Config {
             max_memory,
             opcode_costs,
-            host_function_costs,
+            host_ffi_opt_costs,
         }
     }
 
@@ -52,13 +52,13 @@ impl WasmV2Config {
     }
 
     /// Returns a reference to host function costs
-    pub fn host_function_costs(&self) -> &HostFunctionCostsV2 {
-        &self.host_function_costs
+    pub fn host_ffi_opt_costs(&self) -> &HostFFIFunctionCosts {
+        &self.host_ffi_opt_costs
     }
 
     /// Returns host function costs and consumes this object.
-    pub fn take_host_function_costs(self) -> HostFunctionCostsV2 {
-        self.host_function_costs
+    pub fn take_host_ffi_opt_costs(self) -> HostFFIFunctionCosts {
+        self.host_ffi_opt_costs
     }
 
     /// Returns max_memory.
@@ -78,7 +78,7 @@ impl Default for WasmV2Config {
         Self {
             max_memory: DEFAULT_V2_WASM_MAX_MEMORY,
             opcode_costs: OpcodeCosts::default(),
-            host_function_costs: HostFunctionCostsV2::default(),
+            host_ffi_opt_costs: HostFFIFunctionCosts::default(),
         }
     }
 }
@@ -88,14 +88,14 @@ impl ToBytes for WasmV2Config {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.max_memory.to_bytes()?);
         ret.append(&mut self.opcode_costs.to_bytes()?);
-        ret.append(&mut self.host_function_costs.to_bytes()?);
+        ret.append(&mut self.host_ffi_opt_costs.to_bytes()?);
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         self.max_memory.serialized_length()
             + self.opcode_costs.serialized_length()
-            + self.host_function_costs.serialized_length()
+            + self.host_ffi_opt_costs.serialized_length()
     }
 }
 
@@ -103,12 +103,12 @@ impl FromBytes for WasmV2Config {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_memory, rem) = FromBytes::from_bytes(bytes)?;
         let (opcode_costs, rem) = FromBytes::from_bytes(rem)?;
-        let (host_function_costs, rem) = FromBytes::from_bytes(rem)?;
+        let (host_ffi_opt_costs, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             WasmV2Config {
                 max_memory,
                 opcode_costs,
-                host_function_costs,
+                host_ffi_opt_costs,
             },
             rem,
         ))
@@ -121,7 +121,7 @@ impl Distribution<WasmV2Config> for Standard {
         WasmV2Config {
             max_memory: rng.gen(),
             opcode_costs: rng.gen(),
-            host_function_costs: rng.gen(),
+            host_ffi_opt_costs: rng.gen(),
         }
     }
 }
@@ -131,7 +131,7 @@ impl Distribution<WasmV2Config> for Standard {
 pub mod gens {
     use crate::{
         chainspec::vm_config::{
-            host_function_costs_v2::gens::host_function_costs_v2_arb,
+            host_ffi_function_costs::gens::host_ffi_opt_costs_arb,
             opcode_costs::gens::opcode_costs_arb,
         },
         gens::example_u32_arb,
@@ -144,12 +144,12 @@ pub mod gens {
         pub fn wasm_v2_config_arb() (
             max_memory in example_u32_arb(),
             opcode_costs in opcode_costs_arb(),
-            host_function_costs in host_function_costs_v2_arb(),
+            host_ffi_opt_costs in host_ffi_opt_costs_arb(),
         ) -> WasmV2Config {
             WasmV2Config {
                 max_memory,
                 opcode_costs,
-                host_function_costs,
+                host_ffi_opt_costs,
             }
         }
     }

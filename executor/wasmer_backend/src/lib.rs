@@ -118,10 +118,10 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
     }
 
     fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> VMResult<Ret> {
-        let instance = self.env.data().instance.upgrade().ok_or({
-            error!("Failed to upgrade instance");
-            VMError::Fatal(FatalHostError::TypeConversion)
-        })?;
+        let instance = match self.env.data().instance.upgrade() {
+            Some(instance) => instance,
+            None => unreachable!("No env instance when running ffi!"),
+        };
         Ok(f(&instance))
     }
 
@@ -130,10 +130,10 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
         f: impl FnOnce(StoreMut, &Instance) -> Ret,
     ) -> VMResult<Ret> {
         let (data, store) = self.env.data_and_store_mut();
-        let instance = data.instance.upgrade().ok_or({
-            error!("Failed to upgrade instance");
-            VMError::Fatal(FatalHostError::TypeConversion)
-        })?;
+        let instance = match data.instance.upgrade() {
+            Some(instance) => instance,
+            None => unreachable!("No env instance when running ffi!"),
+        };
         Ok(f(store, &instance))
     }
 
@@ -513,8 +513,6 @@ where
             callee: data.context.callee,
             config: data.context.config,
             storage_costs: data.context.storage_costs,
-            mint_costs: data.context.mint_costs,
-            auction_costs: data.context.auction_costs,
             baseline_motes_amount: data.context.baseline_motes_amount,
             transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
@@ -529,6 +527,7 @@ where
             parent_block_hash: data.context.parent_block_hash,
             block_height: data.context.block_height,
             authorization_keys: data.context.authorization_keys.clone(),
+            ffi_call_costs: data.context.ffi_call_costs.clone(),
             execution_stack: Arc::clone(&data.context.execution_stack),
         }
     }

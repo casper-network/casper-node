@@ -22,8 +22,10 @@ use casper_executor_wasm_host::{
 };
 use casper_executor_wasm_interface::{
     executor::{
-        ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, SystemMenu,
+        AuctionMethods, ControlMethods, CryptoMethods, EmitMethods, ExecuteError, ExecuteRequest,
+        ExecuteRequestBuilder, ExecuteResult, ExecuteWithProviderError, ExecuteWithProviderResult,
+        ExecutionKind, Executor, FFIMenu, GlobalStateMethods, IOMethods, MintMethods,
+        SystemContractMenu,
     },
     sandboxed_execution::{
         SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
@@ -53,11 +55,13 @@ use casper_types::{
     AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
     CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, Gas,
-    Groups, InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package, PackageAddr,
-    PackageStatus, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    Groups, HostFFIFunctionCost, InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package,
+    PackageAddr, PackageStatus, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue,
+    TransactionHash, TransactionInvocationTarget, URef, WasmV2Config,
+    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
+use parking_lot::RwLock;
 use tracing::{debug, error, info, warn};
 
 #[cfg(any(feature = "testing", test))]
@@ -527,9 +531,9 @@ impl ExecutorV2 {
         }
     }
 
-    fn execute_system_contract<R: GlobalStateReader + 'static>(
+    fn execute_ffi<R: GlobalStateReader + 'static>(
         &self,
-        menu_selection: SystemMenu,
+        menu_selection: SystemContractMenu,
         tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
@@ -540,15 +544,9 @@ impl ExecutorV2 {
             input,
             transaction_hash,
             address_generator,
-            sandboxed,
             runtime_native_config,
             ..
         } = execute_request;
-
-        if sandboxed {
-            info!("attempt to call system contract while sandboxed");
-            return Err(ExecuteError::SandboxedSystemContractCall);
-        }
 
         let gas_usage = GasUsage::new(gas_limit, gas_limit);
 
@@ -570,13 +568,8 @@ impl ExecutorV2 {
         mut tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
-        if let Some(system_menu_selection) = execute_request.execution_kind.system_menu_selection()
-        {
-            return self.execute_system_contract(
-                system_menu_selection,
-                tracking_copy,
-                execute_request,
-            );
+        if let Some(ffi_menu_selection) = execute_request.execution_kind.ffi_selection() {
+            return self.execute_ffi(ffi_menu_selection, tracking_copy, execute_request);
         }
 
         let ExecuteRequest {
@@ -936,13 +929,11 @@ impl ExecutorV2 {
                 return Err(ExecuteError::Fatal(FatalHostError::DispatchSystemContract));
             }
         };
-
+        let ffi_call_costs = self.build_ffi_call_costs(&self.config);
         let context = Context {
             initiator,
             config: self.config.wasm_config,
             storage_costs: self.config.storage_costs,
-            mint_costs: self.config.mint_costs,
-            auction_costs: self.config.auction_costs,
             baseline_motes_amount: self.config.baseline_motes_amount,
             caller: caller_key,
             callee: callee_key,
@@ -959,6 +950,7 @@ impl ExecutorV2 {
             parent_block_hash: parent_block_hash.inner().value(),
             block_height,
             authorization_keys,
+            ffi_call_costs,
             execution_stack: Arc::clone(&execution_stack),
         };
 
@@ -1107,6 +1099,87 @@ impl ExecutorV2 {
                 Err(ExecuteError::Fatal(internal_error))
             }
         }
+    }
+
+    fn build_ffi_call_costs(&self, config: &ExecutorConfig) -> BTreeMap<u32, HostFFIFunctionCost> {
+        FFIMenu::all_ffi_options()
+            .map(|ffi_opt| {
+                let ffi_function_cost = match &ffi_opt {
+                    FFIMenu::Mint(mint_methods) => {
+                        let base_cost = match mint_methods {
+                            MintMethods::Burn => config.mint_costs.burn,
+                            MintMethods::Transfer => config.mint_costs.transfer,
+                            MintMethods::TransferPurse => config.mint_costs.transfer,
+                        };
+                        HostFFIFunctionCost::fixed(base_cost as u64)
+                    }
+                    FFIMenu::Auction(auction_methods) => {
+                        let base_cost = match auction_methods {
+                            AuctionMethods::Activate => config.auction_costs.activate_bid,
+                            AuctionMethods::Bid => config.auction_costs.add_bid,
+                            AuctionMethods::Withdraw => config.auction_costs.withdraw_bid,
+                            AuctionMethods::Delegate => config.auction_costs.delegate,
+                            AuctionMethods::Undelegate => config.auction_costs.undelegate,
+                            AuctionMethods::Redelegate => config.auction_costs.redelegate,
+                            AuctionMethods::AddReservation => config.auction_costs.add_reservations,
+                            AuctionMethods::CancelReservation => {
+                                config.auction_costs.cancel_reservations
+                            }
+                            AuctionMethods::ChangePublicKey => {
+                                config.auction_costs.change_bid_public_key
+                            }
+                        };
+                        HostFFIFunctionCost::fixed(base_cost)
+                    }
+                    FFIMenu::Crypto(crypto_methods) => match crypto_methods {
+                        CryptoMethods::AltBn128Add => {
+                            config.wasm_config.host_ffi_opt_costs().alt_bn128_add
+                        }
+                        CryptoMethods::AltBn128Multiply => {
+                            config.wasm_config.host_ffi_opt_costs().alt_bn128_mul
+                        }
+                        CryptoMethods::AltBn128Pairing => {
+                            config.wasm_config.host_ffi_opt_costs().alt_bn128_pairing
+                        }
+                        CryptoMethods::GenericHash => {
+                            config.wasm_config.host_ffi_opt_costs().generic_hash
+                        }
+                        CryptoMethods::RecoverSecp256K1 => {
+                            config.wasm_config.host_ffi_opt_costs().recover_secp256k1
+                        }
+                    },
+                    FFIMenu::Emit(emit_methods) => match emit_methods {
+                        EmitMethods::PrintStd => config.wasm_config.host_ffi_opt_costs().print,
+                        EmitMethods::Native => config.wasm_config.host_ffi_opt_costs().emit,
+                    },
+                    FFIMenu::GlobalState(global_state_methods) => match global_state_methods {
+                        GlobalStateMethods::Read => config.wasm_config.host_ffi_opt_costs().read,
+                        GlobalStateMethods::Write => config.wasm_config.host_ffi_opt_costs().write,
+                        GlobalStateMethods::Remove => {
+                            config.wasm_config.host_ffi_opt_costs().remove
+                        }
+                        GlobalStateMethods::GetBalance => {
+                            config.wasm_config.host_ffi_opt_costs().env_balance
+                        }
+                        GlobalStateMethods::GetInfo => {
+                            config.wasm_config.host_ffi_opt_costs().env_info
+                        }
+                        GlobalStateMethods::Create => {
+                            config.wasm_config.host_ffi_opt_costs().create
+                        }
+                    },
+                    FFIMenu::Control(control_methods) => match control_methods {
+                        ControlMethods::Call => config.wasm_config.host_ffi_opt_costs().call,
+                        ControlMethods::Upgrade => config.wasm_config.host_ffi_opt_costs().upgrade,
+                    },
+                    FFIMenu::IO(iomethods) => match iomethods {
+                        IOMethods::Return => config.wasm_config.host_ffi_opt_costs().ret,
+                        IOMethods::CopyInput => config.wasm_config.host_ffi_opt_costs().copy_input,
+                    },
+                };
+                (ffi_opt.into(), ffi_function_cost)
+            })
+            .collect()
     }
     #[allow(clippy::too_many_arguments)]
     fn execute_vm1_wasm_byte_code<R>(
@@ -1347,6 +1420,7 @@ impl Executor for ExecutorV2 {
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,
                     CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
+                    CallError::InputInvalid => SandboxedExecutionError::InputInvalid,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),

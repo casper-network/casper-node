@@ -126,9 +126,10 @@ pub enum TrapCode {
 pub const CALLEE_SUCCEEDED: u32 = 0;
 pub const CALLEE_ROLLED_BACK: u32 = 1;
 pub const CALLEE_TRAPPED: u32 = 2;
-pub const CALLEE_GAS_DEPLETED: u32 = 3;
-pub const CALLEE_NOT_CALLABLE: u32 = 4;
-pub const CALLEE_API_ERROR: u32 = 5;
+pub const CALLEE_INPUT_INVALID: u32 = 3;
+pub const CALLEE_GAS_DEPLETED: u32 = 4;
+pub const CALLEE_NOT_CALLABLE: u32 = 5;
+pub const CALLEE_API_ERROR: u32 = 6;
 /// Represents the result of a host function call.
 ///
 /// 0 is used as a success.
@@ -140,6 +141,9 @@ pub enum CallError {
     /// Called contract trapped.
     #[error("callee trapped: {0}")]
     CalleeTrapped(TrapCode),
+    /// Callee input data was invalid
+    #[error("callee input invalid")]
+    InputInvalid,
     /// Called contract reached gas limit.
     #[error("callee gas depleted")]
     CalleeGasDepleted,
@@ -156,6 +160,7 @@ impl CallError {
     #[must_use]
     pub fn into_u32(self) -> u32 {
         match self {
+            Self::InputInvalid => CALLEE_INPUT_INVALID,
             Self::CalleeRolledBack => CALLEE_ROLLED_BACK,
             Self::CalleeTrapped(_) => CALLEE_TRAPPED,
             Self::CalleeGasDepleted => CALLEE_GAS_DEPLETED,

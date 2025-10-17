@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
@@ -9,7 +9,7 @@ use casper_storage::{
     global_state::GlobalStateReader, AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, AuctionCosts, BlockTime, Key, MessageLimits, MintCosts, StorageCosts,
+    account::AccountHash, BlockTime, HostFFIFunctionCost, Key, MessageLimits, StorageCosts,
     TransactionHash, WasmV2Config,
 };
 use parking_lot::RwLock;
@@ -30,8 +30,6 @@ pub struct Context<S: GlobalStateReader> {
     pub transferred_value: u64,
     pub config: WasmV2Config,
     pub storage_costs: StorageCosts,
-    pub mint_costs: MintCosts,
-    pub auction_costs: AuctionCosts,
     pub baseline_motes_amount: u64,
     pub message_limits: MessageLimits,
     pub tracking_copy: TrackingCopy<S>,
@@ -51,6 +49,8 @@ pub struct Context<S: GlobalStateReader> {
     pub runtime_native_config: RuntimeNativeConfig,
     /// Authorization keys for this execution.
     pub authorization_keys: BTreeSet<AccountHash>,
+    /// Map of ffi menu options to their respective cost entries
+    pub ffi_call_costs: BTreeMap<u32, HostFFIFunctionCost>,
     /// Shared execution stack across nested calls
     pub execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }
