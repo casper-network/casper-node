@@ -1,6 +1,6 @@
 //! Storage for a node on the Casper network.
 
-#![doc(html_root_url = "https://docs.rs/casper-storage/2.1.1")]
+#![doc(html_root_url = "https://docs.rs/casper-storage/3.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png"
@@ -33,10 +33,7 @@ pub use block_store::{
 };
 
 pub use system::runtime_native::Config as RuntimeNativeConfig;
-const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
-const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
-const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
-const MESSAGING_ADDR_ENTITY_ADDR_TOPIC: &str = "addressable_entity_addr";
-const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
-const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
+const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_key";
+const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_key";
+const MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC: &str = "bytecode_key";
 const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";

@@ -14,7 +14,7 @@ use casper_types::{
         UnbondEra, UnbondKind, UnbondingPurse, WithdrawPurse, WithdrawPurses,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityAddr,
-    EntityKind, EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
+    EntityKind, EntityVersions, Groups, Key, Package, PackageAddr, PackageStatus, ProtocolVersion,
     PublicKey, StoredValue, URef, U512,
 };
 
@@ -158,7 +158,7 @@ impl<T: StateReader> StateTracker<T> {
         let mut rng = rand::thread_rng();
 
         let entity_hash = AddressableEntityHash::new(account_hash.value());
-        let package_hash = PackageHash::new(rng.gen());
+        let package_hash = PackageAddr::new(rng.gen());
         let contract_wasm_hash = ByteCodeHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

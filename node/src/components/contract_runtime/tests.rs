@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
-    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
+    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageAddr,
     PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
     TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
 };
@@ -88,6 +88,8 @@ impl Unhandled for FatalAnnouncement {}
 impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
+
+impl Unhandled for NonExecutableBlockAnnouncement {}
 
 struct TestConfig {
     config: Config,
@@ -261,7 +263,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(initial_pre_state);
+        .set_execution_pre_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
     let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
@@ -398,7 +400,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(ExecutionPreState::new(
+        .set_execution_pre_state(ExecutionPreState::new(
             next_block_height,
             Digest::hash(rng.next_u64().to_le_bytes()),
             BlockHash::random(rng),
@@ -462,7 +464,7 @@ fn valid_versioned_call_txn(
     chain_name: &str,
     pricing_mode: PricingMode,
     entry_point: &str,
-    package_hash: PackageHash,
+    package_hash: PackageAddr,
     runtime_args: RuntimeArgs,
     version: Option<EntityVersion>,
     protocol_version_major: Option<ProtocolVersionMajor>,
@@ -535,7 +537,7 @@ async fn should_correctly_manage_entity_version_calls() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(initial_pre_state);
+        .set_execution_pre_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
     let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
@@ -665,7 +667,7 @@ async fn should_correctly_manage_entity_version_calls() {
 
     let package_hash = package_key
         .into_hash_addr()
-        .map(PackageHash::new)
+        .map(PackageAddr::new)
         .expect("must get package hash");
 
     let upgrader_transaction = valid_wasm_txn(

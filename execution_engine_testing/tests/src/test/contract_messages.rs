@@ -13,7 +13,7 @@ use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig, Digest,
-    EntityAddr, HashAddr, HostFunction, HostFunctionCostsV1, HostFunctionCostsV2, Key,
+    EntityAddr, HashAddr, HostFFIFunctionCosts, HostFunction, HostFunctionCostsV1, Key,
     MessageLimits, OpcodeCosts, PublicKey, RuntimeArgs, StorageCosts, StoredValue, SystemConfig,
     WasmConfig, WasmV1Config, WasmV2Config, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
     U512,
@@ -551,7 +551,7 @@ fn should_not_exceed_configured_limits() {
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -729,7 +729,7 @@ fn should_charge_expected_gas_for_storage() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::zero(),
+            HostFFIFunctionCosts::zero(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -850,7 +850,7 @@ fn should_charge_increasing_gas_consumed_for_multiple_messages_emitted() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::default(),
+            HostFFIFunctionCosts::default(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -970,7 +970,7 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -1013,7 +1013,7 @@ fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -1244,7 +1244,7 @@ fn emit_message_should_consume_variable_gas_based_on_topic_and_message_size() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::default(),
+            HostFFIFunctionCosts::default(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -1289,7 +1289,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(contract_package_addr)),
-        "contract_package_addr",
+        "package_key",
         system_account_entity,
         0,
         0,
@@ -1297,7 +1297,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(contract_hash.value())),
-        "contract_addr",
+        "contract_key",
         system_account_entity,
         1,
         0,
@@ -1305,7 +1305,7 @@ fn on_install_should_emit_system_messages() {
     expect_message_on_topic_and_index(
         &query_view,
         &format!("hash-{}", hex::encode(wasm_addr)),
-        "contract_wasm_addr",
+        "bytecode_key",
         system_account_entity,
         2,
         0,

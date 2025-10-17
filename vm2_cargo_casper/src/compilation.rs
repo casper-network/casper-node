@@ -111,7 +111,7 @@ impl<'a> CompileJob<'a> {
                         cargo_metadata::Message::BuildScriptExecuted(_build_script) => {}
                         cargo_metadata::Message::BuildFinished(_build_finished) => {}
                         cargo_metadata::Message::TextLine(text) => log_trail.push_line(text)?,
-                        _ => todo!(),
+                        _ => unreachable!(),
                     }
                 }
                 command_runner::Line::Stderr(line) => {

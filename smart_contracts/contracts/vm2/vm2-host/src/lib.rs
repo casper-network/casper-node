@@ -1,10 +1,11 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use casper_contract_sdk::{
+    casper::casper_ffi,
     common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
-    sys::casper_return,
-    types::HashAlgorithm,
+    serializers::borsh,
+    types::{HashAlgorithm, IOFunctionOption},
 };
 
 const CURRENT_VERSION: &str = "v1";
@@ -135,7 +136,7 @@ impl MinimalHostWrapper {
     }
 
     pub fn print(&self) {
-        casper::print("");
+        let _ = casper::print("");
     }
 
     pub fn read(&self) {
@@ -172,9 +173,10 @@ impl MinimalHostWrapper {
             // "faulty_flags value"
             casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
         }
-        let data = [1, 2, 3];
-        let (data_ptr, data_len) = (data.as_ptr(), data.len());
-        unsafe { casper_return(faulty_flags, data_ptr, data_len) };
+        let data: [u8; 3] = [1, 2, 3];
+        let args = (faulty_flags, Some(Vec::from(data)));
+        let arg_bytes = borsh::to_vec(&args).expect("Expected borsh to work");
+        let _ = casper_ffi(IOFunctionOption::Return.into(), &arg_bytes);
     }
 
     pub fn generic_hash(&self) {

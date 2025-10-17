@@ -30,7 +30,7 @@ pub struct Config {
     balance_hold_interval: u64,
     include_credits: bool,
     credit_cap: Ratio<U512>,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
     native_transfer_cost: u32,
 }
 
@@ -52,7 +52,7 @@ impl Config {
         balance_hold_interval: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
         native_transfer_cost: u32,
     ) -> Self {
         Config {
@@ -70,7 +70,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             native_transfer_cost,
         }
     }
@@ -108,7 +108,7 @@ impl Config {
             U512::from(*core_config.validator_credit_cap.numer()),
             U512::from(*core_config.validator_credit_cap.denom()),
         );
-        let enable_addressable_entity = core_config.enable_addressable_entity;
+        let addressable_entity_enabled = core_config.addressable_entity_enabled;
         Config::new(
             protocol_version,
             transfer_config,
@@ -124,7 +124,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             native_transfer_cost,
         )
     }
@@ -200,8 +200,8 @@ impl Config {
     }
 
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 
     /// Changes the transfer config.
@@ -221,7 +221,7 @@ impl Config {
             balance_hold_interval: self.balance_hold_interval,
             include_credits: self.include_credits,
             credit_cap: self.credit_cap,
-            enable_addressable_entity: self.enable_addressable_entity,
+            addressable_entity_enabled: self.addressable_entity_enabled,
             native_transfer_cost: self.native_transfer_cost,
         }
     }
@@ -407,7 +407,7 @@ where
             .borrow_mut()
             .system_entity_runtime_footprint(config.protocol_version())?;
         let address = PublicKey::System.to_account_hash();
-        let context_key = if config.enable_addressable_entity {
+        let context_key = if config.addressable_entity_enabled {
             Key::AddressableEntity(entity_addr)
         } else {
             Key::Hash(entity_addr.value())
@@ -450,7 +450,7 @@ where
                 ));
             }
         };
-        let context_key = if config.enable_addressable_entity {
+        let context_key = if config.addressable_entity_enabled {
             Key::AddressableEntity(EntityAddr::System(hash))
         } else {
             Key::Hash(hash)

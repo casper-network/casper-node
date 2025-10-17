@@ -2,11 +2,7 @@ use std::collections::{BTreeSet, HashMap, LinkedList};
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    collections::Map,
-    log, revert,
-    types::CallError,
-    ContractHandle,
+    casper, collections::Map, log, prelude::Entity, revert, types::CallError, ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
@@ -110,8 +106,6 @@ impl Harness {
     #[casper(constructor)]
     pub fn trapping_constructor() -> Self {
         log!("👋 Hello from trapping constructor");
-        // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
-        // the tracking copy.
         panic!("This will revert the execution of this constructor and won't create a new package");
     }
 
@@ -358,10 +352,6 @@ impl Harness {
                 }
             }
         }
-
-        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed
-        // with error, or something like that) return Err(CustomError::WithBody("Transfer
-        // failed".into())); }
 
         let balance_after = balance_before + amount;
 

@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     addressable_entity::{EntityKindTag, DEFAULT_ENTRY_POINT_NAME},
-    runtime_args, AddressableEntityHash, ByteCodeAddr, Key, RuntimeArgs, U512,
+    runtime_args, AddressableEntityHash, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -87,7 +87,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
 fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
-    let enable_entity = builder.chainspec().core_config.enable_addressable_entity;
+    let enable_entity = builder.chainspec().core_config.addressable_entity_enabled;
 
     let bytes = if enable_entity {
         let factory_contract = builder
@@ -101,9 +101,11 @@ fn contract_factory_wasm_should_have_expected_exports() {
             .cloned()
             .expect("should be contract");
 
-        let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-            factory_contract.byte_code_addr(),
-        ));
+        let factory_contract_byte_code_key = Key::byte_code_key(
+            factory_contract
+                .byte_code_addr()
+                .expect("Expected addressable entity to contains byte code addr"),
+        );
 
         let factory_contract_wasm = builder
             .query(None, factory_contract_byte_code_key, &[])
@@ -201,13 +203,15 @@ fn should_install_and_use_factory_pattern() {
         .get_addressable_entity(new_counter_2)
         .expect("should have contract instance");
 
-    let counter_1_wasm = if builder.chainspec().core_config.enable_addressable_entity {
+    let counter_1_wasm = if builder.chainspec().core_config.addressable_entity_enabled {
         builder
             .query(
                 None,
-                Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                    new_counter_1_contract.byte_code_addr(),
-                )),
+                Key::byte_code_key(
+                    new_counter_1_contract
+                        .byte_code_addr()
+                        .expect("Expected addressable entity to contains byte code addr"),
+                ),
                 &[],
             )
             .expect("should have contract wasm")
@@ -219,7 +223,7 @@ fn should_install_and_use_factory_pattern() {
         builder
             .query(
                 None,
-                Key::Hash(new_counter_1_contract.byte_code_addr()),
+                Key::Hash(new_counter_1_contract.byte_code().value()),
                 &[],
             )
             .expect("should have contract wasm")

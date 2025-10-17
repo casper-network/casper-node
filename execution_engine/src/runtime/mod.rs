@@ -8,6 +8,7 @@ mod host_function_flag;
 mod mint_internal;
 pub mod stack;
 mod utils;
+
 pub(crate) mod wasm_prep;
 
 use std::{
@@ -30,7 +31,7 @@ use num_rational::Ratio;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
-    tracking_copy::TrackingCopyExt,
+    tracking_copy::{MessageEmissionError, TrackingCopyExt},
 };
 use casper_types::{
     account::{
@@ -61,7 +62,7 @@ use casper_types::{
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
-    HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
+    HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageAddr,
     PackageStatus, Phase, PublicKey, RuntimeArgs, RuntimeFootprint, StoredValue, Transfer,
     TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
@@ -76,16 +77,6 @@ pub use wasm_prep::{
     DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS, DEFAULT_MAX_PARAMETER_COUNT,
     DEFAULT_MAX_TABLE_SIZE,
 };
-
-const MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC: &str = "contract_package_addr";
-const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_addr";
-const MESSAGING_CONTRACT_WASM_ADDR_TOPIC: &str = "contract_wasm_addr";
-
-const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_addr";
-const MESSAGING_ADDR_ENTITY_ADDR_TOPIC: &str = "addressable_entity_addr";
-const MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC: &str = "byte_code_wasm_addr";
-
-const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";
 
 #[derive(Debug)]
 enum CallContractIdentifier {
@@ -1438,7 +1429,7 @@ where
     /// Call a version within a package by pushing a stack element onto the frame.
     pub fn call_package_version_with_stack(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         protocol_version_major: Option<ProtocolVersionMajor>,
         version: Option<EntityVersion>,
         entry_point_name: String,
@@ -1533,7 +1524,7 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args: RuntimeArgs,
@@ -1552,7 +1543,7 @@ where
     /// types given in the contract header.
     pub fn call_package_version(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         protocol_version_major: Option<ProtocolVersionMajor>,
         version: Option<EntityVersion>,
         entry_point_name: String,
@@ -1631,6 +1622,7 @@ where
                 EntityAddr::System(system_hash_addr) => Key::Hash(system_hash_addr),
                 EntityAddr::Account(hash_addr) => Key::Account(AccountHash::new(hash_addr)),
                 EntityAddr::SmartContract(contract_hash_addr) => Key::Hash(contract_hash_addr),
+                EntityAddr::Package(package_hash) => Key::Hash(package_hash),
             }
         }
     }
@@ -1918,6 +1910,7 @@ where
                     }
                     EntityKind::Account(_) => {}
                     EntityKind::SmartContract(_) => {}
+                    EntityKind::Package(_) => {}
                 }
                 return Err(ExecError::NoSuchMethod(entry_point_name.to_owned()));
             }
@@ -2067,7 +2060,7 @@ where
             let mut stack = self.try_get_stack()?.clone();
 
             let package_hash = match footprint.package_hash() {
-                Some(hash) => PackageHash::new(hash),
+                Some(hash) => PackageAddr::new(hash),
                 None => {
                     return Err(ExecError::UnexpectedStoredValueVariant);
                 }
@@ -2133,6 +2126,9 @@ where
                     } else {
                         Key::Hash(byte_code_addr)
                     }
+                }
+                EntityKind::Package(_) => {
+                    return Err(ExecError::UnexpectedEntityKind(footprint.entity_kind()))
                 }
                 EntityKind::SmartContract(runtime @ ContractRuntimeTag::VmCasperV2) => {
                     return Err(ExecError::IncompatibleRuntime(runtime));
@@ -2299,7 +2295,7 @@ where
 
     fn call_versioned_contract_host_buffer(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args_bytes: &[u8],
@@ -2337,7 +2333,7 @@ where
 
     fn call_package_version_host_buffer(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         protocol_version_major: Option<ProtocolVersionMajor>,
         contract_version: Option<EntityVersion>,
         entry_point_name: String,
@@ -2500,7 +2496,7 @@ where
         let access_key = if self.context.engine_config().enable_entity {
             let (package, access_key) = self.create_package(lock_status)?;
             self.context
-                .metered_write_gs_unsafe(Key::SmartContract(addr), package)?;
+                .metered_write_gs_unsafe(Key::Package(addr.into()), package)?;
             access_key
         } else {
             let (package, access_key) = self.create_contract_package(lock_status)?;
@@ -2513,7 +2509,7 @@ where
 
     fn create_contract_user_group_by_contract_package(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         label: String,
         num_new_urefs: u32,
         mut existing_urefs: BTreeSet<URef>,
@@ -2587,7 +2583,7 @@ where
 
     fn create_contract_user_group(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         label: String,
         num_new_urefs: u32,
         mut existing_urefs: BTreeSet<URef>,
@@ -2669,7 +2665,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         version_ptr: u32,
         entry_points: EntryPoints,
         named_keys: NamedKeys,
@@ -2732,7 +2728,7 @@ where
 
         // Return an error if the contract is locked and has some version associated with it.
         if contract_package.is_locked() && version.is_some() {
-            return Err(ExecError::LockedEntity(PackageHash::new(
+            return Err(ExecError::LockedEntity(PackageAddr::new(
                 contract_package_hash,
             )));
         }
@@ -2794,40 +2790,35 @@ where
         let contract_package_key = Key::Hash(contract_package_hash.value());
         self.context
             .metered_write_gs_unsafe(contract_package_key, contract_package)?;
-        let system_account_hash = PublicKey::System.to_account_hash().value();
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(contract_package_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_ADDR_TOPIC,
-            MessagePayload::String(contract_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_WASM_ADDR_TOPIC,
-            MessagePayload::String(contract_wasm_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_VERSION_TOPIC,
-            MessagePayload::String(insert_contract_result.to_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
+        let current_blocktime = self.context.get_block_info().block_time();
 
+        match self.context.emit_messages_for_new_installed_version(
+            current_blocktime,
+            contract_package_key,
+            contract_key,
+            contract_wasm_key,
+            insert_contract_result.protocol_version_major(),
+            insert_contract_result.contract_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
+        }
         // set return values to buffer
         {
             let hash_bytes = match contract_hash_addr.to_bytes() {
@@ -2854,7 +2845,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version_by_package(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         version_ptr: u32,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
@@ -2973,43 +2964,34 @@ where
                 return Err(ExecError::Interpreter(error.into()));
             }
         }
-
-        let system_account_hash = PublicKey::System.to_account_hash().value();
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_PACKAGE_ADDR_TOPIC,
-            MessagePayload::String(Key::Hash(package_hash.value()).to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
+        let current_blocktime = self.context.get_block_info().block_time();
+        match self.context.emit_messages_for_new_installed_version(
+            current_blocktime,
+            Key::Hash(package_hash.value()),
+            entity_key,
+            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
+            insert_entity_version_result.protocol_version_major(),
+            insert_entity_version_result.entity_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
         }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
-            MessagePayload::String(entity_key.to_formatted_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC,
-            MessagePayload::String(
-                Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)).to_formatted_string(),
-            ),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-        if let Err(e) = self.emit_message_for_entity(
-            EntityAddr::Account(system_account_hash),
-            MESSAGING_CONTRACT_VERSION_TOPIC,
-            MessagePayload::String(insert_entity_version_result.to_string()),
-            true,
-        )? {
-            return Ok(Err(e));
-        }
-
         Ok(Ok(()))
     }
 
@@ -3102,7 +3084,7 @@ where
 
                 let access_key = match self
                     .context
-                    .read_gs(&Key::Hash(previous_entity.package_hash().value()))?
+                    .read_gs(&Key::Hash(previous_entity.package().value()))?
                 {
                     Some(StoredValue::ContractPackage(contract_package)) => {
                         contract_package.access_key()
@@ -3161,11 +3143,11 @@ where
 
     fn disable_contract_version(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
-            let contract_package_key = Key::SmartContract(contract_package_hash.value());
+            let contract_package_key = Key::Package(contract_package_hash);
             self.context.validate_key(&contract_package_key)?;
 
             let mut contract_package: Package =
@@ -3192,7 +3174,7 @@ where
                 .get_validated_contract_package(contract_package_hash.value())?;
 
             if contract_package.is_locked() {
-                return Err(ExecError::LockedEntity(PackageHash::new(
+                return Err(ExecError::LockedEntity(PackageAddr::new(
                     contract_package_hash.value(),
                 )));
             }
@@ -3211,11 +3193,11 @@ where
 
     fn enable_contract_version(
         &mut self,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
-            let contract_package_key = Key::SmartContract(contract_package_hash.value());
+            let contract_package_key = Key::Package(contract_package_hash);
             self.context.validate_key(&contract_package_key)?;
 
             let mut contract_package: Package =
@@ -3242,7 +3224,7 @@ where
                 .get_validated_contract_package(contract_package_hash.value())?;
 
             if contract_package.is_locked() {
-                return Err(ExecError::LockedEntity(PackageHash::new(
+                return Err(ExecError::LockedEntity(PackageAddr::new(
                     contract_package_hash.value(),
                 )));
             }
@@ -3753,7 +3735,7 @@ where
                 let protocol_version = self.context.protocol_version();
                 let byte_code_hash = ByteCodeHash::default();
                 let entity_hash = AddressableEntityHash::new(target.value());
-                let package_hash = PackageHash::new(self.context.new_hash_address()?);
+                let package_hash = PackageAddr::new(self.context.new_hash_address()?);
 
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
 
@@ -4222,7 +4204,7 @@ where
     /// Remove a user group from access to a contract
     fn remove_contract_user_group(
         &mut self,
-        package_key: PackageHash,
+        package_key: PackageAddr,
         label: Group,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if self.context.engine_config().enable_entity {
@@ -4419,7 +4401,7 @@ where
         urefs_ptr: u32,
         urefs_size: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        let contract_package_hash: PackageHash = self.t_from_mem(package_ptr, package_size)?;
+        let contract_package_hash: PackageAddr = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
 

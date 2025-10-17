@@ -15,10 +15,9 @@ use crate::{
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::{blake2b, ProtocolUpgradeError},
     },
-    AddressGenerator, TrackingCopy, MESSAGING_ADDR_ENTITY_ADDR_TOPIC,
-    MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC, MESSAGING_CONTRACT_ADDR_TOPIC,
-    MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
-    MESSAGING_CONTRACT_WASM_ADDR_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
+    AddressGenerator, TrackingCopy, MESSAGING_CONTRACT_ADDR_TOPIC,
+    MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
+    MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
     account::AccountHash,
@@ -53,7 +52,7 @@ use casper_types::{
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue,
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
-    GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
+    GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageAddr, PackageStatus, Phase,
     ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
@@ -537,15 +536,9 @@ where
     }
 
     fn create_messaging_topics(&self, block_time: BlockTime) -> Result<(), Box<GenesisError>> {
-        if self.config.enable_entity() {
-            self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_BYTE_CODE_WASM_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_ADDR_ENTITY_ADDR_TOPIC)?;
-        } else {
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_PACKAGE_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
-            self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_WASM_ADDR_TOPIC)?;
-        }
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
 
         self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
         Ok(())

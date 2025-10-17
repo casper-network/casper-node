@@ -5,6 +5,7 @@ mod byte_size;
 mod error;
 mod ext;
 mod ext_entity;
+mod messages;
 mod meter;
 #[cfg(test)]
 mod tests;
@@ -26,6 +27,7 @@ use crate::{
         error::Error as GlobalStateError, state::StateReader,
         trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
     },
+    tracking_copy::messages::NewContractMessagesEmitter,
     KeyPrefix,
 };
 use casper_types::{
@@ -37,8 +39,8 @@ use casper_types::{
         Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
     },
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
-    KeyTag, StoredValue, StoredValueTypeMismatch, U512,
+    handle_stored_dictionary_value, BlockGlobalAddr, BlockTime, CLType, CLValue, CLValueError,
+    Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -46,6 +48,7 @@ pub use self::{
     error::Error as TrackingCopyError,
     ext::TrackingCopyExt,
     ext_entity::{FeesPurseHandling, TrackingCopyEntityExt},
+    messages::MessageEmissionError,
 };
 
 /// Result of a query on a `TrackingCopy`.
@@ -339,7 +342,7 @@ pub struct TrackingCopy<R> {
     effects: Effects,
     max_query_depth: u64,
     messages: Messages,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -381,7 +384,7 @@ where
     pub fn new(
         reader: R,
         max_query_depth: u64,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> TrackingCopy<R> {
         TrackingCopy {
             reader: Arc::new(reader),
@@ -390,7 +393,7 @@ where
             effects: Effects::new(),
             max_query_depth,
             messages: Vec::new(),
-            enable_addressable_entity,
+            addressable_entity_enabled,
         }
     }
 
@@ -416,7 +419,7 @@ where
     /// the main `TrackingCopy`. Therefore, forking should be done repeatedly, which is
     /// suboptimal and will be improved in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
-        TrackingCopy::new(self, self.max_query_depth, self.enable_addressable_entity)
+        TrackingCopy::new(self, self.max_query_depth, self.addressable_entity_enabled)
     }
 
     /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
@@ -436,7 +439,7 @@ where
             effects: self.effects.clone(),
             max_query_depth: self.max_query_depth,
             messages: self.messages.clone(),
-            enable_addressable_entity: self.enable_addressable_entity,
+            addressable_entity_enabled: self.addressable_entity_enabled,
         }
     }
 
@@ -476,8 +479,8 @@ where
     }
 
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 
     /// Get record by key.
@@ -887,6 +890,26 @@ where
             }
         }
     }
+
+    /// Emits system messages for a new contract version by writing them to global state
+    pub fn emit_messages_for_new_installed_version(
+        &mut self,
+        key_of_package: Key,
+        key_of_contract: Key,
+        key_of_wasm: Key,
+        version_major: u32,
+        version_minor: u32,
+        current_blocktime: BlockTime,
+    ) -> Result<(), MessageEmissionError> {
+        let contract_emitter = NewContractMessagesEmitter::new(
+            key_of_package,
+            key_of_contract,
+            key_of_wasm,
+            version_major,
+            version_minor,
+        );
+        contract_emitter.emit_contract_creation_messages(self, current_blocktime)
+    }
 }
 
 /// The purpose of this implementation is to allow a "snapshot" mechanism for
@@ -1137,7 +1160,7 @@ use tempfile::TempDir;
 pub fn new_temporary_tracking_copy(
     initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
     max_query_depth: Option<u64>,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) = make_temporary_global_state(initial_data);
 
@@ -1149,7 +1172,7 @@ pub fn new_temporary_tracking_copy(
     let query_depth = max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
 
     (
-        TrackingCopy::new(reader, query_depth, enable_addressable_entity),
+        TrackingCopy::new(reader, query_depth, addressable_entity_enabled),
         tempdir,
     )
 }

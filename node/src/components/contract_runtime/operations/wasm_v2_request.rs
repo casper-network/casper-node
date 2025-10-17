@@ -14,7 +14,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
         ExecuteWithProviderResult, ExecutionKind,
     },
-    GasUsage, InternalHostError,
+    FatalHostError, GasUsage,
 };
 use casper_storage::{
     global_state::state::{CommitProvider, StateProvider},
@@ -81,21 +81,19 @@ pub(crate) enum WasmV2Error {
 }
 
 impl WasmV2Error {
-    pub(crate) fn as_internal_host_error(&self) -> Option<InternalHostError> {
+    pub(crate) fn as_internal_host_error(&self) -> Option<FatalHostError> {
         match self {
             WasmV2Error::Install(install_error) => {
-                if let InstallContractError::Execute(ExecuteError::InternalHost(
-                    internal_host_error,
-                )) = install_error
+                if let InstallContractError::Execute(ExecuteError::Fatal(internal_host_error)) =
+                    install_error
                 {
                     return Some(internal_host_error.clone());
                 }
                 None
             }
             WasmV2Error::Execute(execute_with_provider_error) => {
-                if let ExecuteWithProviderError::Execute(ExecuteError::InternalHost(
-                    internal_host_error,
-                )) = execute_with_provider_error
+                if let ExecuteWithProviderError::Execute(ExecuteError::Fatal(internal_host_error)) =
+                    execute_with_provider_error
                 {
                     let err = internal_host_error.clone();
                     return Some(err);
@@ -270,6 +268,7 @@ impl WasmV2Request {
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
+                    .with_authorization_keys(transaction.signers())
                     .build()
                     .expect("should build");
 
@@ -313,7 +312,12 @@ impl WasmV2Request {
 
                 builder = builder.with_execution_kind(execution_kind);
 
-                let execute_request = builder.build().expect("should build");
+                let authorization_keys = transaction.signers();
+
+                let execute_request = builder
+                    .with_authorization_keys(authorization_keys)
+                    .build()
+                    .expect("should build");
 
                 Ok(Self::Execute(execute_request))
             }

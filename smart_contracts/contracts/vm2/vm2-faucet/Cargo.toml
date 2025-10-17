@@ -8,11 +8,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-sdk = { path = "../../../sdk" }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-serde_json = "1"
-casper-contract-sdk = { path = "../../../sdk", features = ["cli"] }
+casper-contract-sdk = { path = "../../../vm2/sdk" }
+casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }
 
 [build-dependencies]
-casper-contract-sdk = { path = "../../../sdk" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }

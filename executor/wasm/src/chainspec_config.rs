@@ -123,7 +123,7 @@ pub struct GenesisConfigBuilder {
     genesis_timestamp_millis: Option<u64>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
     gas_hold_interval_millis: Option<u64>,
-    enable_addressable_entity: Option<bool>,
+    addressable_entity_enabled: Option<bool>,
     storage_costs: Option<StorageCosts>,
 }
 
@@ -188,8 +188,8 @@ impl GenesisConfigBuilder {
     }
 
     /// Sets the enable addressable entity flag.
-    pub fn with_enable_addressable_entity(mut self, enable_addressable_entity: bool) -> Self {
-        self.enable_addressable_entity = Some(enable_addressable_entity);
+    pub fn with_addressable_entity_enabled(mut self, addressable_entity_enabled: bool) -> Self {
+        self.addressable_entity_enabled = Some(addressable_entity_enabled);
         self
     }
 
@@ -218,7 +218,7 @@ impl GenesisConfigBuilder {
                 .unwrap_or(DEFAULT_GAS_HOLD_BALANCE_HANDLING),
             self.gas_hold_interval_millis
                 .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
-            self.enable_addressable_entity
+            self.addressable_entity_enabled
                 .unwrap_or(DEFAULT_ENABLE_ENTITY),
             self.storage_costs.unwrap_or_default(),
         )
@@ -432,8 +432,8 @@ impl ChainspecConfig {
     }
 
     /// Sets the enable addressable entity flag.
-    pub fn with_enable_addressable_entity(mut self, enable_addressable_entity: bool) -> Self {
-        self.core_config.enable_addressable_entity = enable_addressable_entity;
+    pub fn with_addressable_entity_enabled(mut self, addressable_entity_enabled: bool) -> Self {
+        self.core_config.addressable_entity_enabled = addressable_entity_enabled;
         self
     }
 
@@ -459,7 +459,7 @@ impl ChainspecConfig {
             .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
             .with_refund_handling(self.core_config.refund_handling)
             .with_fee_handling(self.core_config.fee_handling)
-            .with_enable_entity(self.core_config.enable_addressable_entity)
+            .with_enable_entity(self.core_config.addressable_entity_enabled)
             .with_storage_costs(self.storage_costs)
             .build()
     }
@@ -486,7 +486,7 @@ impl From<ChainspecConfig> for EngineConfig {
             )
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
-            .with_enable_entity(chainspec_config.core_config.enable_addressable_entity)
+            .with_enable_entity(chainspec_config.core_config.addressable_entity_enabled)
             .build()
     }
 }
@@ -508,7 +508,9 @@ impl TryFrom<ChainspecConfig> for GenesisConfig {
             .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_storage_costs(chainspec_config.storage_costs)
-            .with_enable_addressable_entity(chainspec_config.core_config.enable_addressable_entity)
+            .with_addressable_entity_enabled(
+                chainspec_config.core_config.addressable_entity_enabled,
+            )
             .build())
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -20,8 +21,8 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, AuctionCosts, BlockHash, Chainspec, ChainspecRegistry, Digest,
-    FeeHandling, GenesisAccount, GenesisConfig, GenesisValidator, HostFunctionCostsV2,
-    HostFunctionV2, Key, MessageLimits, MintCosts, Motes, Phase, ProtocolVersion, PublicKey,
+    FeeHandling, GenesisAccount, GenesisConfig, GenesisValidator, HostFFIFunctionCost,
+    HostFFIFunctionCosts, Key, MessageLimits, MintCosts, Motes, Phase, ProtocolVersion, PublicKey,
     SecretKey, StorageCosts, SystemConfig, Timestamp, TransactionHash, TransactionV1Hash,
     WasmConfig, WasmV2Config, DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
@@ -142,12 +143,6 @@ pub const TRANSACTION_HASH: TransactionHash =
 pub const DEFAULT_GAS_LIMIT: u64 = 1_000_000 * TOKEN;
 pub const DEFAULT_CHAIN_NAME: &str = "casper-test";
 
-// TODO: This is a temporary value, it should be set in the config. Default value from V1 engine
-// does not apply to V2 engine due to different cost structure. Rather than hardcoding it here, we
-// should probably reflect gas costs in a dynamic costs in host function charge. Proper value is
-// pending calculation.
-pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 1_117_587;
-
 pub fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     let id = Id::Transaction(TRANSACTION_HASH);
     Arc::new(RwLock::new(AddressGenerator::new(
@@ -172,6 +167,7 @@ pub fn base_execute_builder(chainspec_config: &ChainspecConfig) -> ExecuteReques
         .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
 }
 
 pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeConfig {
@@ -195,7 +191,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         U512::from(*chainspec_config.core_config.validator_credit_cap.numer()),
         U512::from(*chainspec_config.core_config.validator_credit_cap.denom()),
     );
-    let enable_addressable_entity = chainspec_config.core_config.enable_addressable_entity;
+    let addressable_entity_enabled = chainspec_config.core_config.addressable_entity_enabled;
     let native_transfer_cost = chainspec_config.system_costs_config.mint_costs().transfer;
     Config::new(
         protocol_version,
@@ -212,7 +208,7 @@ pub fn make_runtime_config(chainspec_config: &ChainspecConfig) -> RuntimeNativeC
         balance_hold_interval,
         include_credits,
         credit_cap,
-        enable_addressable_entity,
+        addressable_entity_enabled,
         native_transfer_cost,
     )
 }
@@ -233,6 +229,7 @@ pub fn base_install_request_builder(
         .with_runtime_native_config(make_runtime_config(chainspec_config))
         .with_parent_block_hash(BlockHash::new(Digest::hash(b"block1")))
         .with_runtime_native_config(runtime_native_config)
+        .with_authorization_keys(BTreeSet::from_iter([*DEFAULT_ACCOUNT_HASH]))
 }
 
 pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
@@ -255,7 +252,7 @@ pub fn make_executor(chainspec_config: &ChainspecConfig) -> ExecutorV2 {
         .with_message_limits(message_limits)
         .build()
         .expect("Should build");
-    ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+    ExecutorV2::new(executor_config, execution_engine_v1)
 }
 
 pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
@@ -367,25 +364,25 @@ pub fn call_dummy_host_fn_by_name(
         let wasm_config = WasmV2Config::new(
             default_wasm_config.max_memory(),
             default_wasm_config.opcode_costs(),
-            HostFunctionCostsV2 {
-                read: HostFunctionV2::fixed(1),
-                write: HostFunctionV2::fixed(1),
-                remove: HostFunctionV2::fixed(1),
-                copy_input: HostFunctionV2::fixed(1),
-                ret: HostFunctionV2::fixed(1),
-                create: HostFunctionV2::fixed(1),
-                transfer: HostFunctionV2::fixed(1),
-                env_balance: HostFunctionV2::fixed(1),
-                upgrade: HostFunctionV2::fixed(1),
-                call: HostFunctionV2::fixed(1),
-                print: HostFunctionV2::fixed(1),
-                emit: HostFunctionV2::fixed(1),
-                env_info: HostFunctionV2::fixed(1),
-                generic_hash: HostFunctionV2::fixed(1),
-                recover_secp256k1: HostFunctionV2::fixed(1),
-                alt_bn128_add: HostFunctionV2::fixed(1),
-                alt_bn128_mul: HostFunctionV2::fixed(1),
-                alt_bn128_pairing: HostFunctionV2::fixed(1),
+            HostFFIFunctionCosts {
+                read: HostFFIFunctionCost::fixed(1),
+                write: HostFFIFunctionCost::fixed(1),
+                remove: HostFFIFunctionCost::fixed(1),
+                copy_input: HostFFIFunctionCost::fixed(1),
+                ret: HostFFIFunctionCost::fixed(1),
+                create: HostFFIFunctionCost::fixed(1),
+                transfer: HostFFIFunctionCost::fixed(1),
+                env_balance: HostFFIFunctionCost::fixed(1),
+                upgrade: HostFFIFunctionCost::fixed(1),
+                call: HostFFIFunctionCost::fixed(1),
+                print: HostFFIFunctionCost::fixed(1),
+                emit: HostFFIFunctionCost::fixed(1),
+                env_info: HostFFIFunctionCost::fixed(1),
+                generic_hash: HostFFIFunctionCost::fixed(1),
+                recover_secp256k1: HostFFIFunctionCost::fixed(1),
+                alt_bn128_add: HostFFIFunctionCost::fixed(1),
+                alt_bn128_mul: HostFFIFunctionCost::fixed(1),
+                alt_bn128_pairing: HostFFIFunctionCost::fixed(1),
             },
         );
         let executor_config = ExecutorConfigBuilder::default()
@@ -399,7 +396,7 @@ pub fn call_dummy_host_fn_by_name(
             .with_message_limits(MessageLimits::default())
             .build()
             .expect("Should build");
-        ExecutorV2::new(executor_config, Arc::new(execution_engine_v1))
+        ExecutorV2::new(executor_config, execution_engine_v1)
     };
 
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();

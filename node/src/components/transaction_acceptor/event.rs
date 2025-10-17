@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use casper_types::{
     contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHeader,
-    EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
+    EntityVersion, Package, PackageAddr, Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};
@@ -91,7 +91,7 @@ pub(crate) enum Event {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         maybe_entity_version: Option<EntityVersion>,
         maybe_protocol_version_major: Option<ProtocolVersionMajor>,
         maybe_package: Option<Box<Package>>,

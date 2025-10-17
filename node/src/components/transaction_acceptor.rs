@@ -6,7 +6,9 @@ mod tests;
 
 use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
-use casper_types::{contracts::ProtocolVersionMajor, ContractRuntimeTag};
+use casper_types::{
+    contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
+};
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
@@ -16,9 +18,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageIdentifier,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
+    DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -366,7 +368,7 @@ impl TransactionAcceptor {
                 let maybe_protocol_version_major =
                     contract_package_identifier.protocol_version_major();
                 effect_builder
-                    .get_package(*block_header.state_root_hash(), package_hash.value())
+                    .get_package(*block_header.state_root_hash(), package_hash)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -488,7 +490,7 @@ impl TransactionAcceptor {
             ) => {
                 let maybe_package_version = package_identifier.version();
                 effect_builder
-                    .get_package(*block_header.state_root_hash(), package_hash.value())
+                    .get_package(*block_header.state_root_hash(), package_hash)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -546,9 +548,23 @@ impl TransactionAcceptor {
                         NextStep::CryptoValidation
                     }
                 },
-                TransactionTarget::Native | TransactionTarget::Session { .. } => {
+                TransactionTarget::Session {
+                    is_install_upgrade,
+                    runtime,
+                    ..
+                } => {
+                    if *is_install_upgrade && txn.is_v2_wasm() && runtime.seed().is_none() {
+                        return self.reject_transaction(
+                            effect_builder,
+                            *event_metadata,
+                            Error::InvalidTransaction(InvalidTransaction::V1(
+                                InvalidTransactionV1::MissingSeed,
+                            )),
+                        );
+                    }
                     NextStep::CryptoValidation
                 }
+                TransactionTarget::Native => NextStep::CryptoValidation,
             },
         };
 
@@ -576,7 +592,7 @@ impl TransactionAcceptor {
                     event_metadata,
                     block_header,
                     is_payment: false,
-                    package_hash: PackageHash::new(package_addr),
+                    package_hash: package_addr,
                     maybe_entity_version,
                     maybe_protocol_version_major,
                     maybe_package,
@@ -682,7 +698,8 @@ impl TransactionAcceptor {
         match addressable_entity.kind() {
             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1)
             | EntityKind::Account(_)
-            | EntityKind::System(_) => {
+            | EntityKind::System(_)
+            | EntityKind::Package(_) => {
                 if !entry_point_exist {
                     let error = Error::parameter_failure(
                         &block_header,
@@ -710,7 +727,7 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         maybe_contract_version: Option<EntityVersion>,
         maybe_protocol_version_major: Option<ProtocolVersionMajor>,
         maybe_package: Option<Box<Package>>,

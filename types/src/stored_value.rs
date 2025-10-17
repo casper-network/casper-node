@@ -944,6 +944,7 @@ pub mod serde_helpers {
         NamedKey(&'a NamedKeyValue),
         Prepayment(&'a PrepaymentKind),
         EntryPoint(&'a EntryPointValue),
+        TypeDef(&'a TypeDefinition),
     }
 
     /// A value stored in Global State.
@@ -1034,7 +1035,7 @@ pub mod serde_helpers {
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
                 StoredValue::Prepayment(payload) => HumanReadableSerHelper::Prepayment(payload),
                 StoredValue::EntryPoint(payload) => HumanReadableSerHelper::EntryPoint(payload),
-                StoredValue::TypeDef(_) => todo!(),
+                StoredValue::TypeDef(payload) => HumanReadableSerHelper::TypeDef(payload),
             }
         }
     }
@@ -1135,7 +1136,10 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, gens, StoredValue, TypeDefinitions, TypeDefinitionsV1};
+    use crate::{
+        bytesrepr, gens, type_definitions, CLType, StoredValue, TypeDefinition, TypeDefinitionKind,
+        TypeUid,
+    };
     use proptest::proptest;
     use serde_json::Value;
 
@@ -1313,11 +1317,22 @@ mod tests {
 
     #[test]
     fn type_definitions_roundtrip() {
-        let type_definitions = TypeDefinitions::v1(TypeDefinitionsV1::new(
-            Default::default(),
-            Vec::new(),
-            Vec::new(),
-        ));
+        let type_definitions = TypeDefinition {
+            definition: TypeDefinitionKind::Struct {
+                items: vec![
+                    type_definitions::StructField {
+                        decl: TypeUid::new(1),
+                    },
+                    type_definitions::StructField {
+                        decl: TypeUid::new(2),
+                    },
+                    type_definitions::StructField {
+                        decl: TypeUid::new(3),
+                    },
+                ],
+            },
+            cl_type: CLType::Any,
+        };
         let stored_value = StoredValue::TypeDef(type_definitions.clone());
 
         bytesrepr::test_serialization_roundtrip(&stored_value);

@@ -10,7 +10,7 @@
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/6.0.1")]
+#![doc(html_root_url = "https://docs.rs/casper-types/7.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
@@ -130,8 +130,8 @@ pub use chainspec::{
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisConfig, GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig,
-    GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig, HoldBalanceHandling, HostFunction,
-    HostFunctionCost, HostFunctionCostsV1, HostFunctionCostsV2, HostFunctionV2,
+    GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig, HoldBalanceHandling,
+    HostFFIFunctionCost, HostFFIFunctionCosts, HostFunction, HostFunctionCost, HostFunctionCostsV1,
     LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts,
     PricingHandling, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts,
     StorageCosts, SystemConfig, TransactionConfig, TransactionLaneDefinition, TransactionV1Config,
@@ -172,13 +172,13 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, PackageAddr,
-    BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
 #[doc(inline)]
 pub use package::{
-    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
+    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageAddr,
     PackageStatus, ENTITY_INITIAL_VERSION,
 };
 pub use peers_map::{PeerEntry, Peers};
@@ -212,8 +212,8 @@ pub use transfer::{
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use type_definitions::{
-    Definition as TypeDefinitionKind, EnumVariant as TypeEnumVariant, Primitive as TypePrimitive,
-    StructField as TypeStructField, TypeDefinition, TypeMessage, TypeUid,
+    EnumVariant as TypeEnumVariant, Primitive as TypePrimitive, StructField as TypeStructField,
+    TypeDefinition, TypeDefinitionKind, TypeMessage, TypeUid,
 };
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,

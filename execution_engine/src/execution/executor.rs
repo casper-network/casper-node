@@ -87,7 +87,9 @@ impl Executor {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
-                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::System(hash)
+                | EntityAddr::SmartContract(hash)
+                | EntityAddr::Package(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
             }
         };

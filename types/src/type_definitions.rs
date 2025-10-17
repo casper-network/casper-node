@@ -1,7 +1,4 @@
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
@@ -87,12 +84,12 @@ impl FromBytes for TypeUid {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct TypeDefinition {
-    pub definition: Definition,
+    pub definition: TypeDefinitionKind,
     pub cl_type: CLType,
 }
 
 impl TypeDefinition {
-    pub fn new(definition: Definition, cl_type: CLType) -> Self {
+    pub fn new(definition: TypeDefinitionKind, cl_type: CLType) -> Self {
         Self {
             definition,
             cl_type,
@@ -119,7 +116,7 @@ impl ToBytes for TypeDefinition {
 
 impl FromBytes for TypeDefinition {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (definition, rem) = Definition::from_bytes(bytes)?;
+        let (definition, rem) = TypeDefinitionKind::from_bytes(bytes)?;
         let (cl_type, rem) = CLType::from_bytes(rem)?;
         Ok((
             TypeDefinition {
@@ -338,25 +335,24 @@ pub enum Primitive {
     Bool,
 }
 
-impl ToString for Primitive {
-    fn to_string(&self) -> String {
+impl Display for Primitive {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Primitive::Char => "Char",
-            Primitive::U8 => "U8",
-            Primitive::I8 => "I8",
-            Primitive::U16 => "U16",
-            Primitive::I16 => "I16",
-            Primitive::U32 => "U32",
-            Primitive::I32 => "I32",
-            Primitive::U64 => "U64",
-            Primitive::I64 => "I64",
-            Primitive::U128 => "U128",
-            Primitive::I128 => "I128",
-            Primitive::F32 => "F32",
-            Primitive::F64 => "F64",
-            Primitive::Bool => "Bool",
+            Primitive::Char => write!(f, "Char"),
+            Primitive::U8 => write!(f, "U8"),
+            Primitive::I8 => write!(f, "I8"),
+            Primitive::U16 => write!(f, "U16"),
+            Primitive::I16 => write!(f, "I16"),
+            Primitive::U32 => write!(f, "U32"),
+            Primitive::I32 => write!(f, "I32"),
+            Primitive::U64 => write!(f, "U64"),
+            Primitive::I64 => write!(f, "I64"),
+            Primitive::U128 => write!(f, "U128"),
+            Primitive::I128 => write!(f, "I128"),
+            Primitive::F32 => write!(f, "F32"),
+            Primitive::F64 => write!(f, "F64"),
+            Primitive::Bool => write!(f, "Bool"),
         }
-        .to_string()
     }
 }
 
@@ -385,7 +381,7 @@ impl FromBytes for Primitive {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum Definition {
+pub enum TypeDefinitionKind {
     Primitive(Primitive),
     Mapping { key: TypeUid, value: TypeUid },
     Sequence { decl: TypeUid },
@@ -424,30 +420,30 @@ impl TryFrom<u8> for DefinitionTag {
     }
 }
 
-impl From<Definition> for DefinitionTag {
-    fn from(value: Definition) -> Self {
+impl From<TypeDefinitionKind> for DefinitionTag {
+    fn from(value: TypeDefinitionKind) -> Self {
         match value {
-            Definition::Primitive(..) => DefinitionTag::Primitive,
-            Definition::Mapping { .. } => DefinitionTag::Mapping,
-            Definition::Sequence { .. } => DefinitionTag::Sequence,
-            Definition::FixedSequence { .. } => DefinitionTag::FixedSequence,
-            Definition::Tuple { .. } => DefinitionTag::Tuple,
-            Definition::Enum { .. } => DefinitionTag::Enum,
-            Definition::Struct { .. } => DefinitionTag::Struct,
+            TypeDefinitionKind::Primitive(..) => DefinitionTag::Primitive,
+            TypeDefinitionKind::Mapping { .. } => DefinitionTag::Mapping,
+            TypeDefinitionKind::Sequence { .. } => DefinitionTag::Sequence,
+            TypeDefinitionKind::FixedSequence { .. } => DefinitionTag::FixedSequence,
+            TypeDefinitionKind::Tuple { .. } => DefinitionTag::Tuple,
+            TypeDefinitionKind::Enum { .. } => DefinitionTag::Enum,
+            TypeDefinitionKind::Struct { .. } => DefinitionTag::Struct,
         }
     }
 }
 
-impl From<&Definition> for DefinitionTag {
-    fn from(value: &Definition) -> Self {
+impl From<&TypeDefinitionKind> for DefinitionTag {
+    fn from(value: &TypeDefinitionKind) -> Self {
         match value {
-            Definition::Primitive(..) => DefinitionTag::Primitive,
-            Definition::Mapping { .. } => DefinitionTag::Mapping,
-            Definition::Sequence { .. } => DefinitionTag::Sequence,
-            Definition::FixedSequence { .. } => DefinitionTag::FixedSequence,
-            Definition::Tuple { .. } => DefinitionTag::Tuple,
-            Definition::Enum { .. } => DefinitionTag::Enum,
-            Definition::Struct { .. } => DefinitionTag::Struct,
+            TypeDefinitionKind::Primitive(..) => DefinitionTag::Primitive,
+            TypeDefinitionKind::Mapping { .. } => DefinitionTag::Mapping,
+            TypeDefinitionKind::Sequence { .. } => DefinitionTag::Sequence,
+            TypeDefinitionKind::FixedSequence { .. } => DefinitionTag::FixedSequence,
+            TypeDefinitionKind::Tuple { .. } => DefinitionTag::Tuple,
+            TypeDefinitionKind::Enum { .. } => DefinitionTag::Enum,
+            TypeDefinitionKind::Struct { .. } => DefinitionTag::Struct,
         }
     }
 }
@@ -458,7 +454,7 @@ impl From<DefinitionTag> for u8 {
     }
 }
 
-impl Definition {
+impl TypeDefinitionKind {
     fn tag(&self) -> DefinitionTag {
         DefinitionTag::from(self)
     }
@@ -466,22 +462,22 @@ impl Definition {
     fn content_serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                Definition::Primitive(primitive) => primitive.serialized_length(),
-                Definition::Mapping { key, value } => {
+                TypeDefinitionKind::Primitive(primitive) => primitive.serialized_length(),
+                TypeDefinitionKind::Mapping { key, value } => {
                     key.serialized_length() + value.serialized_length()
                 }
-                Definition::Sequence { decl } => decl.serialized_length(),
-                Definition::FixedSequence { length: _, decl } => {
+                TypeDefinitionKind::Sequence { decl } => decl.serialized_length(),
+                TypeDefinitionKind::FixedSequence { length: _, decl } => {
                     U32_SERIALIZED_LENGTH + decl.serialized_length()
                 }
-                Definition::Tuple { items } => items.serialized_length(),
-                Definition::Enum { items } => items.serialized_length(),
-                Definition::Struct { items } => items.serialized_length(),
+                TypeDefinitionKind::Tuple { items } => items.serialized_length(),
+                TypeDefinitionKind::Enum { items } => items.serialized_length(),
+                TypeDefinitionKind::Struct { items } => items.serialized_length(),
             }
     }
 }
 
-impl ToBytes for Definition {
+impl ToBytes for TypeDefinitionKind {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -495,56 +491,56 @@ impl ToBytes for Definition {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.push(u8::from(self.tag()));
         match self {
-            Definition::Primitive(primitive) => primitive.write_bytes(writer),
-            Definition::Mapping { key, value } => {
+            TypeDefinitionKind::Primitive(primitive) => primitive.write_bytes(writer),
+            TypeDefinitionKind::Mapping { key, value } => {
                 key.write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Definition::Sequence { decl } => decl.write_bytes(writer),
-            Definition::FixedSequence { length, decl } => {
+            TypeDefinitionKind::Sequence { decl } => decl.write_bytes(writer),
+            TypeDefinitionKind::FixedSequence { length, decl } => {
                 length.write_bytes(writer)?;
                 decl.write_bytes(writer)
             }
-            Definition::Tuple { items } => items.write_bytes(writer),
-            Definition::Enum { items } => items.write_bytes(writer),
-            Definition::Struct { items } => items.write_bytes(writer),
+            TypeDefinitionKind::Tuple { items } => items.write_bytes(writer),
+            TypeDefinitionKind::Enum { items } => items.write_bytes(writer),
+            TypeDefinitionKind::Struct { items } => items.write_bytes(writer),
         }
     }
 }
 
-impl FromBytes for Definition {
+impl FromBytes for TypeDefinitionKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (raw_tag, rem) = u8::from_bytes(bytes)?;
         match DefinitionTag::try_from(raw_tag)? {
             DefinitionTag::Primitive => {
                 let (primitive, rem) = Primitive::from_bytes(rem)?;
-                Ok((Definition::Primitive(primitive), rem))
+                Ok((TypeDefinitionKind::Primitive(primitive), rem))
             }
             DefinitionTag::Mapping => {
                 let (key, rem) = TypeUid::from_bytes(rem)?;
                 let (value, rem) = TypeUid::from_bytes(rem)?;
-                Ok((Definition::Mapping { key, value }, rem))
+                Ok((TypeDefinitionKind::Mapping { key, value }, rem))
             }
             DefinitionTag::Sequence => {
                 let (decl, rem) = TypeUid::from_bytes(rem)?;
-                Ok((Definition::Sequence { decl }, rem))
+                Ok((TypeDefinitionKind::Sequence { decl }, rem))
             }
             DefinitionTag::FixedSequence => {
                 let (length, rem) = u32::from_bytes(rem)?;
                 let (decl, rem) = TypeUid::from_bytes(rem)?;
-                Ok((Definition::FixedSequence { length, decl }, rem))
+                Ok((TypeDefinitionKind::FixedSequence { length, decl }, rem))
             }
             DefinitionTag::Tuple => {
                 let (items, rem) = Vec::<TypeUid>::from_bytes(rem)?;
-                Ok((Definition::Tuple { items }, rem))
+                Ok((TypeDefinitionKind::Tuple { items }, rem))
             }
             DefinitionTag::Enum => {
                 let (items, rem) = Vec::<EnumVariant>::from_bytes(rem)?;
-                Ok((Definition::Enum { items }, rem))
+                Ok((TypeDefinitionKind::Enum { items }, rem))
             }
             DefinitionTag::Struct => {
                 let (items, rem) = Vec::<StructField>::from_bytes(rem)?;
-                Ok((Definition::Struct { items }, rem))
+                Ok((TypeDefinitionKind::Struct { items }, rem))
             }
         }
     }
@@ -561,25 +557,14 @@ mod tests {
     }
 
     #[test]
-    fn type_uid_and_argument_roundtrip() {
-        let uid = TypeUid::new(0xdeadbeef);
-        test_serialization_roundtrip(&uid);
-
-        let arg = TypeArgument { decl: uid };
-        test_serialization_roundtrip(&arg);
-    }
-
-    #[test]
     fn enum_variant_and_struct_field_roundtrip() {
         let variant = EnumVariant {
-            name: String::from("VariantA"),
             discriminant: 42,
             decl: Some(TypeUid::new(7)),
         };
         test_serialization_roundtrip(&variant);
 
         let field = StructField {
-            name: String::from("field1"),
             decl: TypeUid::new(8),
         };
         test_serialization_roundtrip(&field);
@@ -588,31 +573,31 @@ mod tests {
     #[test]
     fn definition_variants_roundtrip() {
         // Primitive
-        let def_prim = Definition::Primitive(Primitive::Bool);
+        let def_prim = TypeDefinitionKind::Primitive(Primitive::Bool);
         test_serialization_roundtrip(&def_prim);
 
         // Mapping
-        let def_map = Definition::Mapping {
+        let def_map = TypeDefinitionKind::Mapping {
             key: TypeUid::new(1),
             value: TypeUid::new(2),
         };
         test_serialization_roundtrip(&def_map);
 
         // Sequence
-        let def_seq = Definition::Sequence {
+        let def_seq = TypeDefinitionKind::Sequence {
             decl: TypeUid::new(3),
         };
         test_serialization_roundtrip(&def_seq);
 
         // FixedSequence
-        let def_fixed = Definition::FixedSequence {
+        let def_fixed = TypeDefinitionKind::FixedSequence {
             length: 10,
             decl: TypeUid::new(4),
         };
         test_serialization_roundtrip(&def_fixed);
 
         // Tuple
-        let def_tuple = Definition::Tuple {
+        let def_tuple = TypeDefinitionKind::Tuple {
             items: vec![TypeUid::new(5), TypeUid::new(6)],
         };
         test_serialization_roundtrip(&def_tuple);
@@ -620,55 +605,29 @@ mod tests {
         // Enum
         let enum_items = vec![
             EnumVariant {
-                name: String::from("A"),
                 discriminant: 0,
                 decl: None,
             },
             EnumVariant {
-                name: String::from("B"),
                 discriminant: 1,
                 decl: Some(TypeUid::new(9)),
             },
         ];
-        let def_enum = Definition::Enum { items: enum_items };
+        let def_enum = TypeDefinitionKind::Enum { items: enum_items };
         test_serialization_roundtrip(&def_enum);
 
         // Struct
         let struct_items = vec![
             StructField {
-                name: String::from("x"),
                 decl: TypeUid::new(10),
             },
             StructField {
-                name: String::from("y"),
                 decl: TypeUid::new(11),
             },
         ];
-        let def_struct = Definition::Struct {
+        let def_struct = TypeDefinitionKind::Struct {
             items: struct_items,
         };
         test_serialization_roundtrip(&def_struct);
-    }
-
-    #[test]
-    fn entry_point_and_message_roundtrip() {
-        let args = vec![TypeArgument {
-            decl: TypeUid::new(100),
-        }];
-        let flags = TypeEntryPointFlags::IS_CONSTRUCTOR | TypeEntryPointFlags::IS_PAYABLE;
-        let entry = TypeEntryPoint {
-            name: String::from("init"),
-            export_name: String::from("init_export"),
-            arguments: args,
-            result: TypeUid::new(101),
-            flags,
-        };
-        test_serialization_roundtrip(&entry);
-
-        let message = TypeMessage {
-            topic: String::from("topic1"),
-            decl: TypeUid::new(102),
-        };
-        test_serialization_roundtrip(&message);
     }
 }

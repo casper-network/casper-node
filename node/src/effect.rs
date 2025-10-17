@@ -155,6 +155,7 @@ use crate::{
         transaction_acceptor,
     },
     contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
+    effect::announcements::NonExecutableBlockAnnouncement,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -1937,6 +1938,20 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
+    /// Announces that a finalized block has been created, but it was not
+    /// executed due to subjective node state.
+    pub(crate) async fn announce_not_executing_block(self, block_height: u64)
+    where
+        REv: From<NonExecutableBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                NonExecutableBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
     /// An equivocation has been detected.
     pub(crate) async fn announce_fault_event(
         self,
@@ -2068,14 +2083,14 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let key = Key::Hash(package_addr);
+        let key = Key::Hash(package_addr.value());
         let query_request = QueryRequest::new(state_root_hash, key, vec![]);
 
         match self.query_global_state(query_request).await {
             QueryResult::RootNotFound | QueryResult::Failure(_) => None,
             QueryResult::ValueNotFound(_) => {
                 let query_request =
-                    QueryRequest::new(state_root_hash, Key::SmartContract(package_addr), vec![]);
+                    QueryRequest::new(state_root_hash, Key::Package(package_addr), vec![]);
                 debug!("requesting under different key");
                 if let QueryResult::Success { value, .. } =
                     self.query_global_state(query_request).await

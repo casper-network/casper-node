@@ -2,20 +2,19 @@
 
 pub mod exports {
     use casper_contract_sdk::{
-        casper::{casper_system, ret},
+        casper::{casper_ffi, ret},
         common::flags::ReturnFlags,
         prelude::*,
+        serializers::borsh,
         types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption},
     };
 
     #[casper(export)]
-    pub fn call(opt: u32) {
-        use borsh;
-
+    pub fn call(opt: u32, purse_delegation: bool) {
         let option = match SystemContractOption::try_from(opt) {
             Ok(option) => option,
             Err(_) => match &borsh::to_vec(&(opt,)) {
-                Ok(bytes) => return ret(ReturnFlags::REVERT, Some(bytes)),
+                Ok(bytes) => return ret(ReturnFlags::ROLLBACK, Some(bytes)),
                 Err(_) => unreachable!("failed to serialize opt"),
             },
         };
@@ -92,23 +91,27 @@ pub mod exports {
             }
             SystemContractOption::AddReservation => {
                 let pub_k = PublicKey::Ed25519([1; 32]);
-                let res_pu = Reservation::new(DelegatorKind::Purse([254; 32]), pub_k, 1);
-                let res_pk = Reservation::new(
-                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
-                    pub_k,
-                    1,
-                );
-                let reservations = vec![res_pu, res_pk];
-                let args = (reservations,);
+                let reservation = if purse_delegation {
+                    Reservation::new(DelegatorKind::Purse([254; 32]), pub_k, 1)
+                } else {
+                    Reservation::new(
+                        DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
+                        pub_k,
+                        1,
+                    )
+                };
+
+                let args = (reservation,);
                 let input = borsh::to_vec(&args).expect("Serialization to succeed");
                 Some(input)
             }
             SystemContractOption::CancelReservation => {
-                let reservations = vec![
-                    DelegatorKind::Purse([254; 32]),
-                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32])),
-                ];
-                let args = (PublicKey::Ed25519([1; 32]), reservations);
+                let delegator_kind = if purse_delegation {
+                    DelegatorKind::Purse([254; 32])
+                } else {
+                    DelegatorKind::PublicKey(PublicKey::Ed25519([255; 32]))
+                };
+                let args = (PublicKey::Ed25519([1; 32]), delegator_kind);
                 let input = borsh::to_vec(&args).expect("Serialization to succeed");
                 Some(input)
             }
@@ -121,9 +124,9 @@ pub mod exports {
 
         match &input {
             Some(input) => {
-                let (_output, _result) = casper_system(option.into(), &input);
+                let (_output, _result) = casper_ffi(option.into(), &input);
             }
-            None => ret(ReturnFlags::REVERT, None),
+            None => ret(ReturnFlags::ROLLBACK, None),
         }
     }
 }

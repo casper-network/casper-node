@@ -18,7 +18,7 @@ mod withdraw_bid;
 
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::{executor::CryptoMethods, GasUsage, InternalHostError};
+use casper_executor_wasm_interface::{executor::SystemContractMenu, FatalHostError, GasUsage};
 use casper_storage::{
     global_state::GlobalStateReader,
     system::runtime_native::{Id, RuntimeNative},
@@ -27,7 +27,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr, AccessRights, ApiError, CLValueError, EntityAddr, Key, Phase, PublicKey,
-    RuntimeFootprint, TransactionHash, URef, URefAddr, U256, U512,
+    RuntimeFootprint, TransactionHash, URef, URefAddr, U512,
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -35,14 +35,11 @@ use thiserror::Error;
 use tracing::{debug, error};
 
 use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteResult, MintMethods, SystemMenu,
+    AuctionMethods, ExecuteError, ExecuteResult, MintMethods,
 };
 use casper_types::bytesrepr::ToBytes;
 
-use crate::{
-    host::altbn128::{alt_bn128_add, alt_bn128_mul, alt_bn128_pairing, Pair},
-    system,
-};
+use crate::system;
 use casper_types::system::auction::{
     DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
     ERA_ID_KEY,
@@ -80,7 +77,7 @@ pub enum DispatchError {
     RuntimeFootprint(TrackingCopyError),
     // INTERNAL ERRORS ARE FATAL!
     #[error("Internal host error: {0}")]
-    Internal(InternalHostError),
+    Internal(FatalHostError),
     #[error("Call error: {0}")]
     Call(CallError),
     #[error("Api error: {0}")]
@@ -219,7 +216,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         )
         .map_err(|tracking_copy_error| {
             error!(%tracking_copy_error, "Failed to create system contract runtime");
-            DispatchError::Internal(InternalHostError::DispatchSystemContract)
+            DispatchError::Internal(FatalHostError::DispatchSystemContract)
         })?;
 
         func(runtime)
@@ -229,7 +226,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy
         // the effects.
         error!("Expected the tracking copy to have no other references");
-        DispatchError::Internal(InternalHostError::TypeConversion)
+        DispatchError::Internal(FatalHostError::TypeConversion)
     })?;
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
@@ -259,7 +256,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     initiator: AccountHash,
     caller_key: Key,
     input: Bytes,
-    system_menu_selection: SystemMenu,
+    system_menu_selection: SystemContractMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
     let (caller_key, entity_addr) = if let Key::Account(account_hash) = caller_key {
         (caller_key, EntityAddr::Account(account_hash.value()))
@@ -271,8 +268,8 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             },
             Err(tce) => return Err(ExecuteError::Api(tce.to_string())),
         }
-    } else if let Key::SmartContract(package_addr) = caller_key {
-        match tracking_copy.get_package(package_addr) {
+    } else if let Key::Package(package_addr) = caller_key {
+        match tracking_copy.get_package(package_addr.value()) {
             Ok(package) => match package.enabled_versions().latest() {
                 Some(entity_addr) => (Key::Hash(entity_addr.value()), *entity_addr),
                 None => return Err(ExecuteError::NoActiveContract(caller_key)),
@@ -298,23 +295,20 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     };
 
     let ret: Result<Option<Bytes>, DispatchError> = match system_menu_selection {
-        SystemMenu::Auction(method) => match method {
+        SystemContractMenu::Auction(method) => match method {
             AuctionMethods::Activate => {
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (PublicKey,)>(&input);
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Activate");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if unpacked.0.is_system() {
                     debug!(
                         ?method,
                         "attempt to pass system public key from userland Activate"
                     );
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
                 let args = ActivateBidArgs::new(
                     runtime_native_config,
@@ -338,17 +332,14 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Bid");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if unpacked.0.is_system() {
                     debug!(
                         ?method,
                         "attempt to pass system public key from userland Bid"
                     );
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
                 let delegation_rate = {
                     if unpacked.1 > DELEGATION_RATE_DENOMINATOR {
@@ -399,17 +390,13 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             }
             AuctionMethods::Withdraw => {
                 let unpacked: (PublicKey, u64) = bytesrepr::deserialize_from_slice(&input)
-                    .map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                    .map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if unpacked.0.is_system() {
                     debug!(
                         ?method,
                         "attempt to pass system public key from userland Withdraw"
                     );
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
                 let args = WithdrawBidArgs::new(
                     runtime_native_config,
@@ -437,18 +424,15 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Delegate");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if let DelegatorKind::PublicKey(del_pub_key) = &unpacked.0 {
                     if del_pub_key.is_system() {
                         debug!(
                             ?method,
                             "attempt to pass system public key from userland Delegate source"
                         );
-                        return Err(ExecuteError::InternalHost(
-                            InternalHostError::InvalidPublicKey,
-                        ));
+                        return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                     }
                 }
                 if unpacked.1.is_system() {
@@ -456,9 +440,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         ?method,
                         "attempt to pass system public key from userland Delegate target"
                     );
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
                 let args = DelegateArgs::new(
                     runtime_native_config,
@@ -490,9 +472,8 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Undelegate");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let args = UndelegateArgs::new(
                     runtime_native_config,
                     transaction_hash,
@@ -523,9 +504,8 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Redelegate");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let args = RedelegateArgs::new(
                     runtime_native_config,
                     transaction_hash,
@@ -551,39 +531,31 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
             AuctionMethods::AddReservation => {
-                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Vec<Reservation>,)>(&input);
+                let ret = bytesrepr::deserialize_from_slice::<&Bytes, (Reservation,)>(&input);
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec AddReservation");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
-                let reservations = unpacked.0;
-                for reservation in &reservations {
-                    if reservation.validator_public_key().is_system() {
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
+                let reservation = unpacked.0;
+                if reservation.validator_public_key().is_system() {
+                    debug!(
+                        ?method,
+                        "attempt to pass system public key from userland AddReservation validator"
+                    );
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
+                }
+                if let DelegatorKind::PublicKey(delegator_public_key) = reservation.delegator_kind()
+                {
+                    if delegator_public_key.is_system() {
                         debug!(
-                            ?method,
-                            "attempt to pass system public key from userland AddReservation validator"
-                        );
-                        return Err(ExecuteError::InternalHost(
-                            InternalHostError::InvalidPublicKey,
-                        ));
-                    }
-                    if let DelegatorKind::PublicKey(delegator_public_key) =
-                        reservation.delegator_kind()
-                    {
-                        if delegator_public_key.is_system() {
-                            debug!(
                             ?method,
                             "attempt to pass system public key from userland AddReservation delegator"
                         );
-                            return Err(ExecuteError::InternalHost(
-                                InternalHostError::InvalidPublicKey,
-                            ));
-                        }
+                        return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                     }
                 }
-                let add_reservations_args = AddReservationsArgs::new(reservations);
+                let add_reservations_args = AddReservationsArgs::new(vec![reservation]);
                 system::add_reservations(
                     &mut tracking_copy,
                     runtime_native_config,
@@ -594,24 +566,22 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
             AuctionMethods::CancelReservation => {
-                let unpacked: (PublicKey, Vec<DelegatorKind>) =
-                    bytesrepr::deserialize_from_slice(&input).map_err(|_err| {
-                        ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                    })?;
+                let unpacked: (PublicKey, DelegatorKind) =
+                    bytesrepr::deserialize_from_slice(&input)
+                        .map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 if unpacked.0.is_system() {
                     debug!(
                         ?method,
                         "attempt to pass system public key from userland CancelReservation"
                     );
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
+                let reservations = vec![unpacked.1];
                 let cancel_reservations_args = CancelReservationsArgs::new(
                     // validator
                     unpacked.0,
-                    // delegators
-                    unpacked.1,
+                    // delegator
+                    reservations,
                     runtime_native_config.max_delegators_per_validator(),
                 );
                 system::cancel_reservations(
@@ -629,16 +599,13 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec ChangePublicKey");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let pk_curr = unpacked.0;
                 let pk_new = unpacked.1;
                 if pk_curr.is_system() || pk_new.is_system() {
                     debug!(?method, "attempt to pass system public key from userland");
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidPublicKey,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidPublicKey));
                 }
                 let args = ChangeBidPublicKeyArgs::new(pk_curr, pk_new);
                 system::change_bid_public_key(
@@ -651,16 +618,15 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
         },
-        SystemMenu::Mint(method) => match method {
+        SystemContractMenu::Mint(method) => match method {
             MintMethods::Burn => {
                 // VM2 only allows userland burning from caller's main purse
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (u64,)>(&input);
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Burn");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let source = match tracking_copy.main_purse_by_key(&caller_key) {
                     Ok(uref) => uref,
                     Err(err) => return Err(ExecuteError::Api(err.to_string())),
@@ -689,23 +655,18 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Transfer");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let target_entity = unpacked.0;
                 if target_entity.is_system() {
                     debug!("attempt to pass system address from userland");
-                    return Err(ExecuteError::InternalHost(
-                        InternalHostError::InvalidEntityAddr,
-                    ));
+                    return Err(ExecuteError::Fatal(FatalHostError::InvalidEntityAddr));
                 }
                 let target = match tracking_copy.runtime_footprint_by_entity_addr(target_entity) {
                     Ok(target_runtime_footprint) => match target_runtime_footprint.main_purse() {
                         Some(target_purse) => URef::new(target_purse.addr(), AccessRights::ADD),
                         None => {
-                            return Err(ExecuteError::InternalHost(
-                                InternalHostError::UnexpectedEntityKind,
-                            ))
+                            return Err(ExecuteError::Fatal(FatalHostError::UnexpectedEntityKind))
                         }
                     },
                     Err(err) => {
@@ -714,7 +675,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                             ?target_entity,
                             "runtime_footprint_by_entity_addr failed"
                         );
-                        return Err(ExecuteError::InternalHost(InternalHostError::TrackingCopy));
+                        return Err(ExecuteError::Fatal(FatalHostError::TrackingCopy));
                     }
                 };
                 let source = match tracking_copy.main_purse_by_key(&caller_key) {
@@ -746,9 +707,8 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 if let Err(err) = &ret {
                     debug!(?err, "bytesrepr error in native_exec Transfer");
                 }
-                let unpacked = ret.map_err(|_err| {
-                    ExecuteError::InternalHost(InternalHostError::TypeConversion)
-                })?;
+                let unpacked =
+                    ret.map_err(|_err| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
                 let source = match tracking_copy.main_purse_by_key(&caller_key) {
                     Ok(uref) => uref,
                     Err(err) => return Err(ExecuteError::Api(err.to_string())),
@@ -775,79 +735,6 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 }
             }
         },
-        SystemMenu::Crypto(crypto_method) => match crypto_method {
-            CryptoMethods::AltBn128Add => {
-                let (x1_bytes, y1_bytes, x2_bytes, y2_bytes) = bytesrepr::deserialize_from_slice::<
-                    &Bytes,
-                    ([u8; 32], [u8; 32], [u8; 32], [u8; 32]),
-                >(&input)
-                .map_err(|_e| {
-                    ExecuteError::Api(
-                        "Cannot deserialize arguments to AltBn128Add host function".to_string(),
-                    )
-                })?;
-                let x1 = U256::from_little_endian(&x1_bytes);
-                let y1 = U256::from_little_endian(&y1_bytes);
-                let x2 = U256::from_little_endian(&x2_bytes);
-                let y2 = U256::from_little_endian(&y2_bytes);
-                let res = alt_bn128_add(x1, y1, x2, y2)
-                    .map(|(x, y)| {
-                        let mut x_buf = [0u8; 32];
-                        let mut y_buf = [0u8; 32];
-                        x.to_little_endian(&mut x_buf);
-                        y.to_little_endian(&mut y_buf);
-                        (x_buf, y_buf)
-                    })
-                    .map_err(|err| err as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
-                }
-            }
-            CryptoMethods::AltBn128Multiply => {
-                let (x_bytes, y_bytes, scalar_bytes) = bytesrepr::deserialize_from_slice::<
-                    &Bytes,
-                    ([u8; 32], [u8; 32], [u8; 32]),
-                >(&input)
-                .map_err(|_e| {
-                    ExecuteError::Api(
-                        "Cannot deserialize arguments to AltBn128Multiply host function"
-                            .to_string(),
-                    )
-                })?;
-                let x = U256::from_little_endian(&x_bytes);
-                let y = U256::from_little_endian(&y_bytes);
-                let scalar = U256::from_little_endian(&scalar_bytes);
-                let res = alt_bn128_mul(x, y, scalar)
-                    .map(|(x, y)| {
-                        let mut x_buf = [0u8; 32];
-                        let mut y_buf = [0u8; 32];
-                        x.to_little_endian(&mut x_buf);
-                        y.to_little_endian(&mut y_buf);
-                        (x_buf, y_buf)
-                    })
-                    .map_err(|err| err as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
-                }
-            }
-            CryptoMethods::AltBn128Pairing => {
-                let pairs = bytesrepr::deserialize_from_slice::<&Bytes, Vec<Pair>>(&input)
-                    .map_err(|_e| {
-                        ExecuteError::Api(
-                            "Cannot deserialize arguments to AltBn128Pairing host function"
-                                .to_string(),
-                        )
-                    })?;
-                let values = pairs.iter().map(Pair::to_u256_tuples).collect();
-                let res = alt_bn128_pairing(values).map_err(|e| e as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
-                }
-            }
-        },
     };
 
     let (output, host_error, execute_error) = match ret {
@@ -871,9 +758,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 (
                     None,
                     None,
-                    Some(ExecuteError::InternalHost(
-                        InternalHostError::DispatchSystemContract,
-                    )),
+                    Some(ExecuteError::Fatal(FatalHostError::DispatchSystemContract)),
                 )
             }
             DispatchError::MissingSystemContract(name) => {
@@ -881,21 +766,19 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 (
                     None,
                     None,
-                    Some(ExecuteError::InternalHost(
-                        InternalHostError::DispatchSystemContract,
-                    )),
+                    Some(ExecuteError::Fatal(FatalHostError::DispatchSystemContract)),
                 )
             }
             DispatchError::Internal(ihe) => {
                 error!(?transaction_hash, %ihe, "internal host error");
-                (None, None, Some(ExecuteError::InternalHost(ihe)))
+                (None, None, Some(ExecuteError::Fatal(ihe)))
             }
             DispatchError::Storage(tce) | DispatchError::RuntimeFootprint(tce) => {
                 error!(?transaction_hash, %tce, "tracking copy error");
                 (
                     None,
                     None,
-                    Some(ExecuteError::InternalHost(InternalHostError::TrackingCopy)),
+                    Some(ExecuteError::Fatal(FatalHostError::TrackingCopy)),
                 )
             }
         },

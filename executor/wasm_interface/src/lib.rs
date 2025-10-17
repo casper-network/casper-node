@@ -82,7 +82,7 @@ pub enum MemoryError {
 
 /// Represents a catastrophic internal host error.
 #[derive(Error, Debug, Clone, Serialize)]
-pub enum InternalHostError {
+pub enum FatalHostError {
     #[error("type conversion failure")]
     TypeConversion,
     #[error("contract already exists")]
@@ -101,14 +101,10 @@ pub enum InternalHostError {
     RemainingGasExceedsGasLimit,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
-    #[error("attempted writing in restricted mode")]
-    AttemptWriteInRestricted,
     #[error("missing system contract")]
     MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
-    #[error("attempt to call a non-existent system option {0}")]
-    InvalidSystemOption(u32),
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
     #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
@@ -127,6 +123,8 @@ pub enum InternalHostError {
     InvalidEntityAddr,
     #[error("serialization failure")]
     Serialization,
+    #[error("Unable to determine the cost of ffi call")]
+    UnableToValueFFICall,
 }
 
 /// The outcome of a call.
@@ -134,6 +132,10 @@ pub enum InternalHostError {
 /// type.
 #[derive(Debug, Error)]
 pub enum VMError {
+    /// NOTE: This will kill the node.
+    #[error("Fatal host error: {0}")]
+    Fatal(#[from] FatalHostError),
+
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,
@@ -141,6 +143,8 @@ pub enum VMError {
     },
     #[error("export: {0}")]
     Export(ExportError),
+    #[error("missing table entry: {0}")]
+    AllocError(String),
     #[error("Out of gas")]
     OutOfGas,
     /// Error while executing Wasm: traps, memory access errors, etc.
@@ -149,8 +153,6 @@ pub enum VMError {
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Trap: {0}")]
     Trap(TrapCode),
-    #[error("Internal host error")]
-    Internal(#[from] InternalHostError),
     #[error("Execute error: {0}")]
     Execute(#[from] ExecuteError),
 }
@@ -260,6 +262,7 @@ impl MeteringPoints {
 /// instance, wasm linear memory access, etc.
 pub trait Caller {
     type Context;
+    type Executor: crate::executor::Executor;
 
     fn context(&self) -> &Self::Context;
     fn context_mut(&mut self) -> &mut Self::Context;
@@ -280,6 +283,8 @@ pub trait Caller {
     fn get_remaining_points(&mut self) -> VMResult<MeteringPoints>;
     /// Check for gas exhaustion, then reduce remaining by amount if able.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
+    /// Returns a reference to the executor used by the current instance.
+    fn executor(&self) -> &Self::Executor;
 }
 
 #[derive(Debug, Error)]
@@ -293,7 +298,7 @@ pub enum WasmPreparationError {
     #[error("Instantiation error: {0}")]
     Instantiation(String),
     #[error("Internal host error {0}")]
-    Internal(#[from] InternalHostError),
+    Internal(#[from] FatalHostError),
 }
 
 #[derive(Debug, Clone)]

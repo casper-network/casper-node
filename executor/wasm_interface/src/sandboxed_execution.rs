@@ -8,8 +8,8 @@ use casper_types::{
 /// Errors that can occur during sandboxed execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SandboxedExecutionError {
-    /// The contract reverted execution.
-    CalleeReverted,
+    /// The contract rolled back execution for the callee.
+    CalleeRolledBack,
     /// The contract trapped during execution.
     CalleeTrapped,
     /// The contract ran out of gas.
@@ -22,18 +22,21 @@ pub enum SandboxedExecutionError {
     InternalHostError,
     /// Api error occurred.
     Api(String),
+    /// Input invalid
+    InputInvalid,
 }
 
 impl core::fmt::Display for SandboxedExecutionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            SandboxedExecutionError::CalleeReverted => write!(f, "contract reverted"),
+            SandboxedExecutionError::CalleeRolledBack => write!(f, "contract rolled back"),
             SandboxedExecutionError::CalleeTrapped => write!(f, "contract trapped"),
             SandboxedExecutionError::CalleeGasDepleted => write!(f, "contract gas depleted"),
             SandboxedExecutionError::NotCallable => write!(f, "contract not callable"),
             SandboxedExecutionError::CodeNotFound => write!(f, "contract code not found"),
             SandboxedExecutionError::InternalHostError => write!(f, "internal host error"),
             SandboxedExecutionError::Api(api_error) => write!(f, "{}", api_error),
+            SandboxedExecutionError::InputInvalid => write!(f, "input invalid"),
         }
     }
 }

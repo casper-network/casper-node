@@ -1106,10 +1106,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_snapshot_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_snapshot_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ SeigniorageRecipientsResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -1508,21 +1508,12 @@ pub trait StateProvider: Send + Sync + Sized {
                 gas_price,
                 consumed,
                 ratio,
-                source,
+                available,
             } => {
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
-                };
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => Some(refund),
                     Err(hpe) => {
@@ -1542,6 +1533,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 ratio,
                 source,
                 target,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1550,12 +1542,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1590,20 +1577,35 @@ pub trait StateProvider: Send + Sync + Sized {
                 cost,
                 gas_price,
             } => {
-                let source = BalanceIdentifier::Payment;
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
+                let balance_result = self.balance(BalanceRequest::new(
+                    state_hash,
+                    protocol_version,
+                    BalanceIdentifier::Payment,
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
+                ));
+                let available_balance = match balance_result {
+                    BalanceResult::RootNotFound => {
+                        return HandleRefundResult::RootNotFound;
+                    }
+                    BalanceResult::Failure(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                    BalanceResult::Success {
+                        available_balance, ..
+                    } => available_balance,
                 };
+
                 let consumed = U512::zero();
                 let ratio = Ratio::new_raw(U512::one(), U512::one());
+
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
                     limit,
                     gas_price,
                     cost,
                     consumed,
-                    source_purse,
                     ratio,
+                    available_balance,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1612,8 +1614,15 @@ pub trait StateProvider: Send + Sync + Sized {
                         ));
                     }
                 };
-                let target = BalanceIdentifier::Refund;
-                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                let source_purse = match BalanceIdentifier::Payment
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let target_purse = match BalanceIdentifier::Refund
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
                     Ok(value) => value,
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
@@ -1639,6 +1648,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 consumed,
                 source,
                 ratio,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1647,12 +1657,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let burn_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((amount, _)) => Some(amount),
                     Err(hpe) => {
@@ -1959,7 +1964,7 @@ pub trait StateProvider: Send + Sync + Sized {
             },
             SystemEntityRegistrySelector::ByName(name) => match reg.get(name).copied() {
                 Some(entity_hash) => {
-                    let key = if !request.enable_addressable_entity() {
+                    let key = if !request.addressable_entity_enabled() {
                         Key::Hash(entity_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(entity_hash))
@@ -2078,10 +2083,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return TotalSupplyResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_total_supply_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_total_supply_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ TotalSupplyResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2116,10 +2121,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return RoundSeigniorageRateResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_round_seigniorage_rate_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_round_seigniorage_rate_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ RoundSeigniorageRateResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2258,11 +2263,13 @@ pub trait StateProvider: Send + Sync + Sized {
                 return TransferResult::Failure(TransferError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
-                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::System(hash)
+                | EntityAddr::SmartContract(hash)
+                | EntityAddr::Package(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
             }
         };
@@ -2385,12 +2392,13 @@ pub trait StateProvider: Send + Sync + Sized {
                 return BurnResult::Failure(BurnError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
                 EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+                EntityAddr::Package(hash_addr) => Key::Hash(hash_addr),
             }
         };
 
@@ -2527,11 +2535,11 @@ fn get_round_seigniorage_rate_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> RoundSeigniorageRateResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2575,11 +2583,11 @@ fn get_total_supply_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> TotalSupplyResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2618,10 +2626,10 @@ fn get_snapshot_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> SeigniorageRecipientsResult {
     let (snapshot_query_request, snapshot_version_query_request) =
-        match build_query_requests(scr, state_hash, enable_addressable_entity) {
+        match build_query_requests(scr, state_hash, addressable_entity_enabled) {
             Ok(res) => res,
             Err(res) => return res,
         };
@@ -2733,11 +2741,11 @@ fn query_snapshot_version<T: StateProvider>(
 fn build_query_requests(
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> Result<(QueryRequest, QueryRequest), SeigniorageRecipientsResult> {
     match scr.get(AUCTION).copied() {
         Some(auction_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(auction_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(auction_hash))

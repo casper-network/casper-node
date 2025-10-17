@@ -463,7 +463,7 @@ async fn network_should_recover_from_stall() {
 async fn node_should_rejoin_after_ejection() {
     let initial_stakes = InitialStakes::AllEqual {
         count: 5,
-        stake: 1_000_000_000,
+        stake: 10_000_000_000,
     };
     let minimum_era_height = 4;
     let configs_override = ConfigsOverride {
@@ -505,7 +505,9 @@ async fn node_should_rejoin_after_ejection() {
         fixture.chainspec.network_config.name.clone(),
         fixture.system_contract_hash(AUCTION),
         stopped_public_key.clone(),
-        100_000_000_000_000_000_u64.into(),
+        //by default, validators in this flow have an account balance of
+        // 100_000_000_000_000_000u64
+        99_000_000_000_000_000_u64.into(),
         10,
         Timestamp::now(),
         TimeDiff::from_seconds(60),

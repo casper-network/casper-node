@@ -3,8 +3,6 @@
 pub mod contracts;
 pub mod traits;
 
-use casper_contract_macros::casper;
-
 #[cfg(test)]
 mod tests {
 
@@ -22,10 +20,10 @@ mod tests {
 
     #[test]
     fn should_greet() {
-        let mut flipper = Harness::constructor_with_args("Hello".into());
-        assert_eq!(flipper.get_greeting(), "Hello"); // TODO: Initializer
-        flipper.set_greeting("Hi".into());
-        assert_eq!(flipper.get_greeting(), "Hi");
+        let mut harness = Harness::constructor_with_args("Hello".into());
+        assert_eq!(harness.get_greeting(), "Hello");
+        harness.set_greeting("Hi".into());
+        assert_eq!(harness.get_greeting(), "Hi");
     }
 
     #[test]

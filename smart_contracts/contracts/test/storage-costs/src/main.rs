@@ -274,7 +274,7 @@ pub extern "C" fn call() {
 
         named_keys.insert(
             CONTRACT_KEY_NAME.to_string(),
-            Key::SmartContract(contract_package_hash.value()),
+            Key::Package(contract_package_hash.value().into()),
         );
         named_keys.insert(ACCESS_KEY_NAME.to_string(), access_uref.into());
 

@@ -220,7 +220,7 @@ impl TestScenario {
             .storage()
             .read_block_header_by_height(block_height, true)
             .expect("failure to read block header")
-            .unwrap();
+            .expect("should have block header");
         let state_hash = *block_header.state_root_hash();
         let request =
             TaggedValuesRequest::new(state_hash, TaggedValuesSelection::All(KeyTag::Account));
@@ -357,7 +357,7 @@ impl TestScenario {
     }
 }
 
-type StakesType = Option<(Vec<Arc<SecretKey>>, BTreeMap<PublicKey, U512>)>;
+type StakesType = Option<(Vec<Arc<SecretKey>>, BTreeMap<PublicKey, (U512, U512)>)>;
 
 #[derive(Default)]
 pub(crate) struct TestScenarioBuilder {
@@ -386,11 +386,16 @@ impl TestScenarioBuilder {
             maybe_minimum_era_height,
         } = self;
         let (secret_keys, stakes) = maybe_stakes_setup.unwrap_or({
-            let stakes: BTreeMap<PublicKey, U512> = vec![
-                (ALICE_PUBLIC_KEY.clone(), U512::from(u128::MAX)), /* Node 0 is effectively
-                                                                    * guaranteed to be the
-                                                                    * proposer. */
-                (BOB_PUBLIC_KEY.clone(), U512::from(1)),
+            /* Node 0 is effectively guaranteed to be the proposer. */
+            let stakes: BTreeMap<PublicKey, (U512, U512)> = vec![
+                (
+                    ALICE_PUBLIC_KEY.clone(),
+                    (U512::from(u64::MAX), U512::from(u128::MAX)),
+                ),
+                (
+                    BOB_PUBLIC_KEY.clone(),
+                    (U512::from(u64::MAX), U512::from(1)),
+                ),
             ]
             .into_iter()
             .collect();

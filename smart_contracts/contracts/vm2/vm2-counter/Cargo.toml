@@ -1,3 +1,4 @@
+
 [package]
 name = "vm2-counter"
 version = "0.1.0"
@@ -8,4 +9,4 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-sdk = { path = "../../../sdk" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }

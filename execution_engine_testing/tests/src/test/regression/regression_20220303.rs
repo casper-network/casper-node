@@ -106,11 +106,11 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .expect("should have mint contract");
     assert_eq!(
         old_mint_contract.contract_package_hash().value(),
-        new_contract.package_hash().value()
+        new_contract.package().value()
     );
     assert_eq!(
         old_mint_contract.contract_wasm_hash().value(),
-        new_contract.byte_code_hash().value()
+        new_contract.byte_code().value()
     );
     let new_entry_points = builder.get_entry_points(EntityAddr::System(mint_contract_hash));
     let old_entry_points = EntryPoints::from(old_mint_contract.entry_points().clone());

@@ -27,8 +27,8 @@ use casper_types::{
     BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes,
     Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas,
     InitiatorAddr, ProtocolVersion, PublicKey, SecretKey, TestBlockBuilder, TestBlockV1Builder,
-    TimeDiff, Transaction, TransactionConfig, TransactionHash, TransactionV1Hash, Transfer,
-    TransferV2, U512,
+    TimeDiff, Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionV1Hash,
+    Transfer, TransferV2, U512,
 };
 use tempfile::tempdir;
 
@@ -45,7 +45,8 @@ use crate::{
     storage::TransactionHeader,
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, BlockWithMetadata,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData,
+        transaction::transaction_v1_builder::TransactionV1Builder, BlockWithMetadata,
         SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
@@ -3123,4 +3124,113 @@ fn check_block_operations_with_node_1_5_2_storage() {
             new_highest_block_height,
         );
     }
+}
+
+#[test]
+fn storage_should_warm_up_utilization_tracking() {
+    let mut harness = ComponentHarness::default();
+    let pk = PublicKey::random_ed25519(&mut harness.rng);
+    let transaction = TransactionV1Builder::new()
+        .with_chain_name("a")
+        .with_timestamp(Timestamp::now())
+        .with_initiator_addr(pk)
+        .build()
+        .unwrap();
+    let transaction_hash = *transaction.hash();
+
+    let block_32 = TestBlockBuilder::new()
+        .era(1)
+        .height(32)
+        .protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .switch_block(true)
+        .build_versioned(&mut harness.rng);
+    let block_33 = TestBlockBuilder::new()
+        .era(2)
+        .height(33)
+        .protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .switch_block(false)
+        .build_versioned(&mut harness.rng);
+    let block_34 = TestBlockBuilder::new()
+        .era(2)
+        .height(34)
+        .protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .transactions(vec![&Transaction::V1(transaction)])
+        .switch_block(false)
+        .build_versioned(&mut harness.rng);
+
+    let mut storage = storage_fixture(&harness);
+    put_complete_block(&mut harness, &mut storage, block_32.clone());
+    put_complete_block(&mut harness, &mut storage, block_33.clone());
+    put_complete_block(&mut harness, &mut storage, block_34.clone());
+    let mut execution_results: HashMap<TransactionHash, ExecutionResult> = HashMap::new();
+    execution_results.insert(
+        TransactionHash::V1(transaction_hash),
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+    );
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        *block_34.hash(),
+        block_34.height(),
+        block_34.era_id(),
+        execution_results,
+    );
+    drop(storage);
+    // We want the warm up to happen again
+    let storage = storage_fixture(&harness);
+    // We don't care about old eras
+    assert!(!storage.utilization_tracker.contains_key(&EraId::new(1)));
+    let utilization_for_era_2 = storage
+        .utilization_tracker
+        .get(&EraId::new(2))
+        .expect("expected entry for era: 2");
+    assert_eq!(
+        *utilization_for_era_2
+            .get(&33)
+            .expect("expected entry for h: 33"),
+        0_u64
+    );
+    assert!(
+        *utilization_for_era_2
+            .get(&34)
+            .expect("expected entry for h: 34")
+            > 0
+    ); //We don't really care about the value, but there were execution results so it shouldn't be
+       // 0
+}
+
+#[test]
+fn storage_warm_up_should_ignore_old_disjoint_sequence() {
+    let mut harness = ComponentHarness::default();
+
+    let block_31 = TestBlockBuilder::new()
+        .era(2)
+        .height(31)
+        .protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .switch_block(true)
+        .build_versioned(&mut harness.rng);
+    let block_33 = TestBlockBuilder::new()
+        .era(2)
+        .height(33)
+        .protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .switch_block(false)
+        .build_versioned(&mut harness.rng);
+
+    let mut storage = storage_fixture(&harness);
+    put_complete_block(&mut harness, &mut storage, block_31.clone());
+    put_complete_block(&mut harness, &mut storage, block_33.clone());
+    drop(storage);
+    // We want the warm up to happen again
+    let storage = storage_fixture(&harness);
+    let utilization_for_era_2 = storage
+        .utilization_tracker
+        .get(&EraId::new(2))
+        .expect("expected entry for era: 2");
+    assert!(utilization_for_era_2.get(&31_u64).is_none());
+    assert_eq!(
+        *utilization_for_era_2
+            .get(&33_u64)
+            .expect("expected value for h: 33"),
+        0
+    );
 }
