@@ -209,7 +209,11 @@ pub enum CallError {
     CalleeGasDepleted = 4,
     NotCallable = 5,
     Api = 6,
-    InvalidOutput = 7,
+    NoActiveContract = 7,
+    CodeNotFound = 8,
+    EntityNotFound = 9,
+    LockedPackage = 10,
+    InvalidOutput = 255,
 }
 
 impl fmt::Display for CallError {
@@ -221,6 +225,10 @@ impl fmt::Display for CallError {
             CallError::NotCallable => write!(f, "not callable"),
             CallError::InputInvalid => write!(f, "input invalid"),
             CallError::Api => write!(f, "api"),
+            CallError::NoActiveContract => write!(f, "no active contract"),
+            CallError::CodeNotFound => write!(f, "code not found"),
+            CallError::EntityNotFound => write!(f, "entity not found"),
+            CallError::LockedPackage => write!(f, "locked package"),
             CallError::InvalidOutput => write!(f, "invalid output"),
         }
     }
