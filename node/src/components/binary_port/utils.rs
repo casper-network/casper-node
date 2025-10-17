@@ -58,6 +58,7 @@ pub(super) fn map_sandbox_error(
                 InnerSandboxedExecutionError::Api(api_error) => {
                     SandboxedExecutionError::Api(api_error)
                 }
+                InnerSandboxedExecutionError::InputInvalid => SandboxedExecutionError::InputInvalid,
             };
             Some(ret)
         }

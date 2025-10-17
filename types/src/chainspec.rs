@@ -72,7 +72,7 @@ pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
-    HostFunction, HostFunctionCost, HostFunctionCostsV1, HostFunctionCostsV2, HostFunctionV2,
+    HostFFIFunctionCost, HostFFIFunctionCosts, HostFunction, HostFunctionCost, HostFunctionCostsV1,
     MessageLimits, MintCosts, OpcodeCosts, StandardPaymentCosts, StorageCosts, SystemConfig,
     WasmConfig, WasmV1Config, WasmV2Config, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };

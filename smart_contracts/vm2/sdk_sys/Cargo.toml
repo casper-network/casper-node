@@ -10,3 +10,4 @@ repository = "https://github.com/casper-network/casper-node/tree/dev/smart_contr
 license = "Apache-2.0"
 
 [dependencies]
+borsh = { version = "1.5", features = ["derive", "bytes"] }

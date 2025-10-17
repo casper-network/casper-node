@@ -28,6 +28,8 @@ pub enum SandboxedExecutionError {
     LockedPackage,
     /// Api error occurred.
     Api(String),
+    /// Input invalid
+    InputInvalid,
 }
 
 impl core::fmt::Display for SandboxedExecutionError {
@@ -43,6 +45,7 @@ impl core::fmt::Display for SandboxedExecutionError {
             SandboxedExecutionError::EntityNotFound => write!(f, "entity not found"),
             SandboxedExecutionError::LockedPackage => write!(f, "locked package"),
             SandboxedExecutionError::Api(api_error) => write!(f, "{}", api_error),
+            SandboxedExecutionError::InputInvalid => write!(f, "input invalid"),
         }
     }
 }

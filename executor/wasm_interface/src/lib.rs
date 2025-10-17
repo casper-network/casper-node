@@ -101,14 +101,10 @@ pub enum FatalHostError {
     RemainingGasExceedsGasLimit,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
-    #[error("attempted writing in restricted mode")]
-    AttemptWriteInRestricted,
     #[error("missing system contract")]
     MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
-    #[error("attempt to call a non-existent system option {0}")]
-    InvalidSystemOption(u32),
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
     #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
@@ -127,6 +123,8 @@ pub enum FatalHostError {
     InvalidEntityAddr,
     #[error("serialization failure")]
     Serialization,
+    #[error("Unable to determine the cost of ffi call")]
+    UnableToValueFFICall,
 }
 
 /// The outcome of a call.

@@ -7,9 +7,7 @@ use casper_executor_wasm::testing::{
 };
 
 use casper_executor_wasm::{chainspec_config, chainspec_config::ChainspecConfig};
-use casper_executor_wasm_interface::executor::{
-    ExecuteError, ExecuteWithProviderError, ExecutionKind,
-};
+use casper_executor_wasm_interface::executor::{ExecuteWithProviderError, ExecutionKind};
 use casper_storage::global_state::state::CommitProvider;
 use once_cell::sync::Lazy;
 
@@ -87,18 +85,26 @@ fn should_run_test_suite() {
 #[test]
 fn should_fail_when_passed_wrong_data_to_pairing() {
     let res = run_pairing_endpoint_test(Vec::<u8>::new());
-    let err = res.err().unwrap();
-    assert!(matches!(
-        err,
-        ExecuteWithProviderError::Execute(ExecuteError::Api(x)) if x == "Cannot deserialize arguments to AltBn128Pairing host function".to_owned()
-    ));
+    let res = extract_result_from_pairing_call(res);
+    assert_eq!(res, Err(3)); //Expected "invalid input" error code
 
     let res = run_pairing_endpoint_test(vec![1_u8, 5, 6, 7]); //Some random bytes, insufficient to build input data
-    let err = res.err().unwrap();
-    assert!(matches!(
-        err,
-        ExecuteWithProviderError::Execute(ExecuteError::Api(x)) if x == "Cannot deserialize arguments to AltBn128Pairing host function".to_owned()
-    ));
+    let res = extract_result_from_pairing_call(res);
+    assert_eq!(res, Err(3)); //Expected "invalid input" error code
+}
+
+fn extract_result_from_pairing_call(
+    res: Result<
+        casper_executor_wasm_interface::executor::ExecuteWithProviderResult,
+        ExecuteWithProviderError,
+    >,
+) -> Result<bool, u32> {
+    assert!(res.is_ok());
+    let binding = res.unwrap();
+    let maybe_output = binding.output();
+    assert!(maybe_output.is_some());
+    let res: Result<bool, u32> = borsh::from_slice(&maybe_output.unwrap()).unwrap();
+    res
 }
 
 #[test]

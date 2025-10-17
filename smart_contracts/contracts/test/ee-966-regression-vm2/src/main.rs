@@ -7,6 +7,7 @@ extern crate core;
 
 #[cfg(target_arch = "wasm32")]
 use core::arch::wasm32;
+use core::{ffi::c_void, ptr};
 
 const REVERT_FLAGS: u32 = 0x0000_0001;
 const MAX_MEMORY_PAGES: usize = 64;
@@ -14,7 +15,13 @@ const GROW_MARGIN: usize = 2;
 
 mod internal_ffi {
     extern "C" {
-        pub fn casper_return(flags: u32, data_ptr: u32, data_len: u32) -> !;
+        pub fn casper_ffi(
+            ffi_opt: u32,
+            input_ptr: u32,
+            input_size: u32,
+            alloc: u32,
+            alloc_ctx: u32,
+        ) -> !;
     }
 }
 
@@ -24,13 +31,32 @@ pub enum ApiError {
     Unhandled = 31,
 }
 
+#[allow(clippy::fn_to_numeric_cast)]
 fn revert(value: ApiError) -> ! {
+    let mut return_data = [0_u8; 8];
     unsafe {
-        let data = (value as u32).to_le_bytes();
-        let data_ptr = data.as_ptr() as u32;
-        let data_len = data.len() as u32;
+        extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
+            // Return shouldn't have any output data and should not return anything
+            ptr::null_mut()
+        }
+        let rev_flag = REVERT_FLAGS.to_le_bytes();
+        for (index, b) in rev_flag.iter().enumerate() {
+            return_data[index] = *b;
+        }
+        let data_flag = (value as u32).to_le_bytes();
+        let base_index = rev_flag.len();
+        for (index, b) in data_flag.iter().enumerate() {
+            return_data[base_index + index] = *b;
+        }
 
-        internal_ffi::casper_return(REVERT_FLAGS, data_ptr, data_len);
+        // 600 is code for return
+        internal_ffi::casper_ffi(
+            600,
+            return_data.as_ptr() as u32,
+            return_data.len() as u32,
+            alloc_cb as u32,
+            0_u32,
+        );
     }
 }
 

@@ -4,7 +4,7 @@ use core::array::TryFromSliceError;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::{
-    casper::casper_system,
+    casper::casper_ffi,
     types::{CryptoFunctionOption, U256},
 };
 
@@ -114,36 +114,38 @@ impl From<[u8; 32]> for Fq {
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
 #[repr(u32)]
 pub enum AltBn128Error {
+    /// Invalid input passed to function
+    InvalidInput = 3,
     /// Invalid point x coordinate.
-    InvalidXCoordinate = 1,
+    InvalidXCoordinate = 100,
     /// Invalid point y coordinate.
-    InvalidYCoordinate = 2,
+    InvalidYCoordinate = 101,
     /// Invalid point.
-    InvalidPoint = 3,
+    InvalidPoint = 102,
     /// Invalid A.
-    InvalidA = 4,
+    InvalidA = 103,
     /// Invalid B.
-    InvalidB = 5,
+    InvalidB = 104,
     /// Invalid Ax.
-    InvalidAx = 6,
+    InvalidAx = 105,
     /// Invalid Ay.
-    InvalidAy = 7,
+    InvalidAy = 106,
     /// Invalid Bay.
-    InvalidBay = 8,
+    InvalidBay = 107,
     /// Invalid Bax.
-    InvalidBax = 9,
+    InvalidBax = 108,
     /// Invalid Bby.
-    InvalidBby = 10,
+    InvalidBby = 109,
     /// Invalid Bbx.
-    InvalidBbx = 11,
+    InvalidBbx = 110,
     /// No return value or error
-    NoValueNorError = 12,
+    NoValueNorError = 111,
     /// Call error
-    CallError = 13,
+    CallError = 112,
     /// Couldnt deserialize return value
-    ReturnNotDeserializable = 14,
+    ReturnNotDeserializable = 113,
     /// Invalid length.
-    InvalidLength = 15,
+    InvalidLength = 114,
     /// Unknown error.
     Unknown(u32),
 }
@@ -151,21 +153,22 @@ pub enum AltBn128Error {
 impl From<AltBn128Error> for u32 {
     fn from(value: AltBn128Error) -> Self {
         match value {
-            AltBn128Error::InvalidXCoordinate => 1,
-            AltBn128Error::InvalidYCoordinate => 2,
-            AltBn128Error::InvalidPoint => 3,
-            AltBn128Error::InvalidA => 4,
-            AltBn128Error::InvalidB => 5,
-            AltBn128Error::InvalidAx => 6,
-            AltBn128Error::InvalidAy => 7,
-            AltBn128Error::InvalidBay => 8,
-            AltBn128Error::InvalidBax => 9,
-            AltBn128Error::InvalidBby => 10,
-            AltBn128Error::InvalidBbx => 11,
-            AltBn128Error::NoValueNorError => 12,
-            AltBn128Error::CallError => 13,
-            AltBn128Error::ReturnNotDeserializable => 14,
-            AltBn128Error::InvalidLength => 15,
+            AltBn128Error::InvalidInput => 3,
+            AltBn128Error::InvalidXCoordinate => 100,
+            AltBn128Error::InvalidYCoordinate => 101,
+            AltBn128Error::InvalidPoint => 102,
+            AltBn128Error::InvalidA => 103,
+            AltBn128Error::InvalidB => 104,
+            AltBn128Error::InvalidAx => 105,
+            AltBn128Error::InvalidAy => 106,
+            AltBn128Error::InvalidBay => 107,
+            AltBn128Error::InvalidBax => 108,
+            AltBn128Error::InvalidBby => 109,
+            AltBn128Error::InvalidBbx => 110,
+            AltBn128Error::NoValueNorError => 111,
+            AltBn128Error::CallError => 112,
+            AltBn128Error::ReturnNotDeserializable => 113,
+            AltBn128Error::InvalidLength => 114,
             AltBn128Error::Unknown(catch_all) => catch_all,
         }
     }
@@ -173,21 +176,22 @@ impl From<AltBn128Error> for u32 {
 impl From<u32> for AltBn128Error {
     fn from(value: u32) -> Self {
         match value {
-            1 => AltBn128Error::InvalidXCoordinate,
-            2 => AltBn128Error::InvalidYCoordinate,
-            3 => AltBn128Error::InvalidPoint,
-            4 => AltBn128Error::InvalidA,
-            5 => AltBn128Error::InvalidB,
-            6 => AltBn128Error::InvalidAx,
-            7 => AltBn128Error::InvalidAy,
-            8 => AltBn128Error::InvalidBay,
-            9 => AltBn128Error::InvalidBax,
-            10 => AltBn128Error::InvalidBby,
-            11 => AltBn128Error::InvalidBbx,
-            12 => AltBn128Error::NoValueNorError,
-            13 => AltBn128Error::CallError,
-            14 => AltBn128Error::ReturnNotDeserializable,
-            15 => AltBn128Error::InvalidLength,
+            3 => AltBn128Error::InvalidInput,
+            100 => AltBn128Error::InvalidXCoordinate,
+            101 => AltBn128Error::InvalidYCoordinate,
+            102 => AltBn128Error::InvalidPoint,
+            103 => AltBn128Error::InvalidA,
+            104 => AltBn128Error::InvalidB,
+            105 => AltBn128Error::InvalidAx,
+            106 => AltBn128Error::InvalidAy,
+            107 => AltBn128Error::InvalidBay,
+            108 => AltBn128Error::InvalidBax,
+            109 => AltBn128Error::InvalidBby,
+            110 => AltBn128Error::InvalidBbx,
+            111 => AltBn128Error::NoValueNorError,
+            112 => AltBn128Error::CallError,
+            113 => AltBn128Error::ReturnNotDeserializable,
+            114 => AltBn128Error::InvalidLength,
             value => AltBn128Error::Unknown(value),
         }
     }
@@ -200,14 +204,15 @@ pub type Result<T> = core::result::Result<T, AltBn128Error>;
 pub fn alt_bn128_add(x1: &G1, y1: &G1, x2: &G1, y2: &G1) -> Result<(Fq, Fq)> {
     let input = borsh::to_vec(&(x1, y1, x2, y2)).expect("Serialization to succeed");
     let option = CryptoFunctionOption::AltBn128Add;
-    let (output, result) = casper_system(option.into(), &input);
-    result.map_err(|_err| AltBn128Error::CallError)?;
+    let (output, result) = casper_ffi(option.into(), &input);
+    if result != 0 {
+        return Err(AltBn128Error::from(result));
+    }
     match output {
         Some(raw) => {
-            let val: core::result::Result<([u8; 32], [u8; 32]), u32> =
+            let (x, y): ([u8; 32], [u8; 32]) =
                 borsh::from_slice(&raw).map_err(|_err| AltBn128Error::ReturnNotDeserializable)?;
-            val.map(|(x, y)| (Fq(x), Fq(y)))
-                .map_err(AltBn128Error::from)
+            Ok((Fq(x), Fq(y)))
         }
         None => Err(AltBn128Error::NoValueNorError),
     }
@@ -217,14 +222,15 @@ pub fn alt_bn128_add(x1: &G1, y1: &G1, x2: &G1, y2: &G1) -> Result<(Fq, Fq)> {
 pub fn alt_bn128_mul(x: &G1, y: &G1, scalar: &Fr) -> Result<(Fq, Fq)> {
     let input = borsh::to_vec(&(x, y, scalar)).expect("Serialization to succeed");
     let option = CryptoFunctionOption::AltBn128Multiply;
-    let (output, result) = casper_system(option.into(), &input);
-    result.map_err(|_err| AltBn128Error::CallError)?;
+    let (output, result) = casper_ffi(option.into(), &input);
+    if result != 0 {
+        return Err(AltBn128Error::from(result));
+    }
     match output {
         Some(raw) => {
-            let val: core::result::Result<([u8; 32], [u8; 32]), u32> =
+            let (x, y): ([u8; 32], [u8; 32]) =
                 borsh::from_slice(&raw).map_err(|_err| AltBn128Error::ReturnNotDeserializable)?;
-            val.map(|(x, y)| (Fq(x), Fq(y)))
-                .map_err(AltBn128Error::from)
+            Ok((Fq(x), Fq(y)))
         }
         None => Err(AltBn128Error::NoValueNorError),
     }
@@ -280,13 +286,15 @@ pub fn alt_bn128_pairing(pairs: &[Pair]) -> Result<bool> {
     let input = borsh::to_vec(pairs).expect("Serialization to succeed");
     let option = CryptoFunctionOption::AltBn128Pairing;
 
-    let (output, result) = casper_system(option.into(), &input);
-    result.map_err(|_err| AltBn128Error::CallError)?;
+    let (output, result) = casper_ffi(option.into(), &input);
+    if result != 0 {
+        return Err(AltBn128Error::from(result));
+    }
     match output {
         Some(raw) => {
-            let val: core::result::Result<bool, u32> =
+            let is_paired: bool =
                 borsh::from_slice(&raw).map_err(|_err| AltBn128Error::ReturnNotDeserializable)?;
-            val.map_err(AltBn128Error::from)
+            Ok(is_paired)
         }
         None => Err(AltBn128Error::NoValueNorError),
     }

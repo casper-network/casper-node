@@ -5,7 +5,7 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes},
     Gas,
 };
 
@@ -27,135 +27,103 @@ pub type Cost = u64;
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
-pub struct HostFunctionV2<T> {
+pub struct HostFFIFunctionCost {
     /// How much the user is charged for calling the host function.
-    cost: Cost,
-    /// Weights of the function arguments.
-    arguments: T,
+    base_cost: Cost,
+    /// How much the user is charged for each byte of the input data.
+    per_byte: Cost,
 }
 
-impl<T> Default for HostFunctionV2<T>
-where
-    T: Default,
-{
+impl Default for HostFFIFunctionCost {
     fn default() -> Self {
         Self {
-            cost: DEFAULT_FIXED_COST,
-            arguments: T::default(),
+            base_cost: DEFAULT_FIXED_COST,
+            per_byte: DEFAULT_PER_BYTES_COST,
         }
     }
 }
 
-impl<T> HostFunctionV2<T> {
-    /// Creates a new instance of `HostFunction` with a fixed call cost and argument weights.
-    pub const fn new(cost: Cost, arguments: T) -> Self {
-        Self { cost, arguments }
-    }
-
-    pub fn with_new_static_cost(self, cost: Cost) -> Self {
+impl HostFFIFunctionCost {
+    /// Creates a new instance of `HostFFIFunctionCost`.
+    pub const fn new(base_cost: Cost, per_byte: Cost) -> Self {
         Self {
-            cost,
-            arguments: self.arguments,
+            base_cost,
+            per_byte,
         }
     }
 
-    /// Returns the base gas fee for calling the host function.
-    pub fn cost(&self) -> Cost {
-        self.cost
-    }
-}
-
-impl<T> HostFunctionV2<T>
-where
-    T: Default,
-{
     /// Creates a new fixed host function cost with argument weights of zero.
-    pub fn fixed(cost: Cost) -> Self {
+    pub fn fixed(base_cost: Cost) -> Self {
         Self {
-            cost,
+            base_cost,
             ..Default::default()
         }
     }
 
     pub fn zero() -> Self {
         Self {
-            cost: Default::default(),
-            arguments: Default::default(),
+            base_cost: Default::default(),
+            per_byte: Default::default(),
         }
     }
-}
 
-impl<T> HostFunctionV2<T>
-where
-    T: AsRef<[Cost]>,
-{
-    /// Returns a slice containing the argument weights.
-    pub fn arguments(&self) -> &[Cost] {
-        self.arguments.as_ref()
+    pub fn with_new_base_cost(self, base_cost: Cost) -> Self {
+        Self {
+            base_cost,
+            per_byte: self.per_byte,
+        }
+    }
+
+    /// Returns the base gas fee for calling the host function.
+    pub fn base_cost(&self) -> Cost {
+        self.base_cost
     }
 
     /// Calculate gas cost for a host function
-    pub fn calculate_gas_cost(&self, weights: T) -> Option<Gas> {
-        let mut gas = Gas::new(self.cost);
-        for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
-            let lhs = Gas::new(*argument);
-            let rhs = Gas::new(*weight);
-            let product = lhs.checked_mul(rhs)?;
-            gas = gas.checked_add(product)?;
-        }
+    pub fn calculate_gas_cost(&self, number_of_bytes: u64) -> Option<Gas> {
+        let mut gas = Gas::new(self.base_cost);
+        let lhs = Gas::new(self.per_byte);
+        let rhs = Gas::new(number_of_bytes);
+        let product = lhs.checked_mul(rhs)?;
+        gas = gas.checked_add(product)?;
         Some(gas)
     }
 }
 
 #[cfg(any(feature = "testing", test))]
-impl<T> Distribution<HostFunctionV2<T>> for Standard
-where
-    Standard: Distribution<T>,
-    T: AsMut<[Cost]> + Default,
-{
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionV2<T> {
+impl Distribution<HostFFIFunctionCost> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFFIFunctionCost {
         let cost = rng.gen::<u32>() as u64;
-        let mut arguments = T::default();
-        for arg in arguments.as_mut() {
-            *arg = rng.gen::<u32>() as u64;
-        }
-
-        HostFunctionV2::new(cost, arguments)
+        let per_byte = rng.gen::<u32>() as u64;
+        HostFFIFunctionCost::new(cost, per_byte)
     }
 }
 
-impl<T> ToBytes for HostFunctionV2<T>
-where
-    T: AsRef<[Cost]>,
-{
+impl ToBytes for HostFFIFunctionCost {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        ret.append(&mut self.cost.to_bytes()?);
-        for value in self.arguments.as_ref().iter() {
-            ret.append(&mut value.to_bytes()?);
-        }
+        ret.append(&mut self.base_cost.to_bytes()?);
+        ret.append(&mut self.per_byte.to_bytes()?);
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        self.cost.serialized_length() + (U64_SERIALIZED_LENGTH * self.arguments.as_ref().len())
+        self.base_cost.serialized_length() + self.per_byte.serialized_length()
     }
 }
 
-impl<T> FromBytes for HostFunctionV2<T>
-where
-    T: Default + AsMut<[Cost]>,
-{
+impl FromBytes for HostFFIFunctionCost {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (cost, mut bytes) = FromBytes::from_bytes(bytes)?;
-        let mut arguments = T::default();
-        let arguments_mut = arguments.as_mut();
-        for ith_argument in arguments_mut {
-            let (cost, rem) = FromBytes::from_bytes(bytes)?;
-            *ith_argument = cost;
-            bytes = rem;
-        }
-        Ok((Self { cost, arguments }, bytes))
+        let (base_cost, bytes) = FromBytes::from_bytes(bytes)?;
+        let (per_byte, bytes) = FromBytes::from_bytes(bytes)?;
+
+        Ok((
+            Self {
+                base_cost,
+                per_byte,
+            },
+            bytes,
+        ))
     }
 }
 /// An identifier that represents an unused argument.
@@ -163,6 +131,7 @@ const NOT_USED: Cost = 0;
 
 /// An arbitrary default fixed cost for host functions that were not researched yet.
 const DEFAULT_FIXED_COST: Cost = 200;
+const DEFAULT_PER_BYTES_COST: Cost = 0;
 const DEFAULT_CALL_COST: u64 = 10_000;
 const DEFAULT_ENV_BALANCE_COST: u64 = 100;
 
@@ -186,12 +155,8 @@ const DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT: Cost = 0;
 
 const DEFAULT_CREATE_COST: Cost = 0;
 const DEFAULT_CREATE_CODE_SIZE_WEIGHT: Cost = 0;
-const DEFAULT_CREATE_ENTRYPOINT_SIZE_WEIGHT: Cost = 0;
-const DEFAULT_CREATE_INPUT_SIZE_WEIGHT: Cost = 0;
-const DEFAULT_CREATE_SEED_SIZE_WEIGHT: Cost = 0;
 
 const DEFAULT_EMIT_COST: Cost = 200;
-const DEFAULT_EMIT_TOPIC_SIZE_WEIGHT: Cost = 100;
 const DEFAULT_EMIT_PAYLOAD_SIZE_HEIGHT: Cost = 100;
 
 const DEFAULT_ENV_INFO_COST: Cost = 10_000;
@@ -209,170 +174,105 @@ const DEFAULT_ALT_BN128_PAIRING_COST: Cost = 1_000_000;
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
-pub struct HostFunctionCostsV2 {
+pub struct HostFFIFunctionCosts {
     /// Cost of calling the `read` host function.
-    pub read: HostFunctionV2<[Cost; 6]>,
+    pub read: HostFFIFunctionCost,
     /// Cost of calling the `write` host function.
-    pub write: HostFunctionV2<[Cost; 5]>,
+    pub write: HostFFIFunctionCost,
     /// Cost of calling the `remove` host function.
-    pub remove: HostFunctionV2<[Cost; 3]>,
+    pub remove: HostFFIFunctionCost,
     /// Cost of calling the `copy_input` host function.
-    pub copy_input: HostFunctionV2<[Cost; 2]>,
+    pub copy_input: HostFFIFunctionCost,
     /// Cost of calling the `ret` host function.
-    pub ret: HostFunctionV2<[Cost; 2]>,
+    pub ret: HostFFIFunctionCost,
     /// Cost of calling the `create` host function.
-    pub create: HostFunctionV2<[Cost; 10]>,
+    pub create: HostFFIFunctionCost,
     /// Cost of calling the `transfer` host function.
-    pub transfer: HostFunctionV2<[Cost; 3]>,
+    pub transfer: HostFFIFunctionCost,
     /// Cost of calling the `env_balance` host function.
-    pub env_balance: HostFunctionV2<[Cost; 4]>,
+    pub env_balance: HostFFIFunctionCost,
     /// Cost of calling the `upgrade` host function.
-    pub upgrade: HostFunctionV2<[Cost; 6]>,
+    pub upgrade: HostFFIFunctionCost,
     /// Cost of calling the `call` host function.
-    pub call: HostFunctionV2<[Cost; 9]>,
+    pub call: HostFFIFunctionCost,
     /// Cost of calling the `print` host function.
-    pub print: HostFunctionV2<[Cost; 2]>,
+    pub print: HostFFIFunctionCost,
     /// Cost of calling the `emit` host function.
-    pub emit: HostFunctionV2<[Cost; 4]>,
+    pub emit: HostFFIFunctionCost,
     /// Cost of calling the `env_info` host function.
-    pub env_info: HostFunctionV2<[Cost; 2]>,
+    pub env_info: HostFFIFunctionCost,
     /// Cost of calling the `generic_hash` host function.
-    pub generic_hash: HostFunctionV2<[Cost; 4]>,
+    pub generic_hash: HostFFIFunctionCost,
     /// Cost of calling the `` host function.
-    pub recover_secp256k1: HostFunctionV2<[Cost; 6]>,
+    pub recover_secp256k1: HostFFIFunctionCost,
     /// Cost of calling the `alt_bn128_add` host function.
-    pub alt_bn128_add: HostFunctionV2<[Cost; 2]>,
+    pub alt_bn128_add: HostFFIFunctionCost,
     /// Cost of calling the `alt_bn128_mul` host function.
-    pub alt_bn128_mul: HostFunctionV2<[Cost; 2]>,
+    pub alt_bn128_mul: HostFFIFunctionCost,
     /// Cost of calling the `alt_bn128_pairing` host function.
-    pub alt_bn128_pairing: HostFunctionV2<[Cost; 2]>,
+    pub alt_bn128_pairing: HostFFIFunctionCost,
 }
 
-impl HostFunctionCostsV2 {
+impl HostFFIFunctionCosts {
     pub fn zero() -> Self {
         Self {
-            read: HostFunctionV2::zero(),
-            write: HostFunctionV2::zero(),
-            remove: HostFunctionV2::zero(),
-            copy_input: HostFunctionV2::zero(),
-            ret: HostFunctionV2::zero(),
-            create: HostFunctionV2::zero(),
-            transfer: HostFunctionV2::zero(),
-            env_balance: HostFunctionV2::zero(),
-            upgrade: HostFunctionV2::zero(),
-            call: HostFunctionV2::zero(),
-            print: HostFunctionV2::zero(),
-            emit: HostFunctionV2::zero(),
-            env_info: HostFunctionV2::zero(),
-            generic_hash: HostFunctionV2::zero(),
-            recover_secp256k1: HostFunctionV2::zero(),
-            alt_bn128_add: HostFunctionV2::zero(),
-            alt_bn128_mul: HostFunctionV2::zero(),
-            alt_bn128_pairing: HostFunctionV2::zero(),
+            read: HostFFIFunctionCost::zero(),
+            write: HostFFIFunctionCost::zero(),
+            remove: HostFFIFunctionCost::zero(),
+            copy_input: HostFFIFunctionCost::zero(),
+            ret: HostFFIFunctionCost::zero(),
+            create: HostFFIFunctionCost::zero(),
+            transfer: HostFFIFunctionCost::zero(),
+            env_balance: HostFFIFunctionCost::zero(),
+            upgrade: HostFFIFunctionCost::zero(),
+            call: HostFFIFunctionCost::zero(),
+            print: HostFFIFunctionCost::zero(),
+            emit: HostFFIFunctionCost::zero(),
+            env_info: HostFFIFunctionCost::zero(),
+            generic_hash: HostFFIFunctionCost::zero(),
+            recover_secp256k1: HostFFIFunctionCost::zero(),
+            alt_bn128_add: HostFFIFunctionCost::zero(),
+            alt_bn128_mul: HostFFIFunctionCost::zero(),
+            alt_bn128_pairing: HostFFIFunctionCost::zero(),
         }
     }
 }
 
-impl Default for HostFunctionCostsV2 {
+impl Default for HostFFIFunctionCosts {
     fn default() -> Self {
         Self {
-            read: HostFunctionV2::new(
-                DEFAULT_READ_COST,
-                [
-                    NOT_USED,
-                    NOT_USED,
-                    DEFAULT_READ_KEY_SIZE_WEIGHT,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                ],
-            ),
-            write: HostFunctionV2::new(
-                DEFAULT_WRITE_COST,
-                [
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    DEFAULT_WRITE_SIZE_WEIGHT,
-                ],
-            ),
-            remove: HostFunctionV2::new(DEFAULT_REMOVE_COST, [NOT_USED, NOT_USED, NOT_USED]),
-            copy_input: HostFunctionV2::new(
+            read: HostFFIFunctionCost::new(DEFAULT_READ_COST, DEFAULT_READ_KEY_SIZE_WEIGHT),
+            write: HostFFIFunctionCost::new(DEFAULT_WRITE_COST, DEFAULT_WRITE_SIZE_WEIGHT),
+            remove: HostFFIFunctionCost::new(DEFAULT_REMOVE_COST, NOT_USED),
+            copy_input: HostFFIFunctionCost::new(
                 DEFAULT_COPY_INPUT_COST,
-                [NOT_USED, DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT],
+                DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT,
             ),
-            ret: HostFunctionV2::new(DEFAULT_RET_COST, [NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
-            create: HostFunctionV2::new(
-                DEFAULT_CREATE_COST,
-                [
-                    NOT_USED,
-                    DEFAULT_CREATE_CODE_SIZE_WEIGHT,
-                    NOT_USED,
-                    NOT_USED,
-                    DEFAULT_CREATE_ENTRYPOINT_SIZE_WEIGHT,
-                    NOT_USED,
-                    DEFAULT_CREATE_INPUT_SIZE_WEIGHT,
-                    NOT_USED,
-                    DEFAULT_CREATE_SEED_SIZE_WEIGHT,
-                    NOT_USED,
-                ],
-            ),
-            env_balance: HostFunctionV2::fixed(DEFAULT_ENV_BALANCE_COST),
-            transfer: HostFunctionV2::new(DEFAULT_TRANSFER_COST, [NOT_USED, NOT_USED, NOT_USED]),
-            upgrade: HostFunctionV2::new(
-                DEFAULT_FIXED_COST,
-                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
-            ),
-            call: HostFunctionV2::new(
-                DEFAULT_CALL_COST,
-                [
-                    NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED,
-                    NOT_USED,
-                ],
-            ),
-            print: HostFunctionV2::new(DEFAULT_PRINT_COST, [NOT_USED, NOT_USED]),
-            emit: HostFunctionV2::new(
-                DEFAULT_EMIT_COST,
-                [
-                    NOT_USED,
-                    DEFAULT_EMIT_TOPIC_SIZE_WEIGHT,
-                    NOT_USED,
-                    DEFAULT_EMIT_PAYLOAD_SIZE_HEIGHT,
-                ],
-            ),
-            env_info: HostFunctionV2::new(DEFAULT_ENV_INFO_COST, [NOT_USED, NOT_USED]),
-            generic_hash: HostFunctionV2::new(
+            ret: HostFFIFunctionCost::new(DEFAULT_RET_COST, DEFAULT_RET_VALUE_SIZE_WEIGHT),
+            create: HostFFIFunctionCost::new(DEFAULT_CREATE_COST, DEFAULT_CREATE_CODE_SIZE_WEIGHT),
+            env_balance: HostFFIFunctionCost::fixed(DEFAULT_ENV_BALANCE_COST),
+            transfer: HostFFIFunctionCost::new(DEFAULT_TRANSFER_COST, NOT_USED),
+            upgrade: HostFFIFunctionCost::new(DEFAULT_FIXED_COST, NOT_USED),
+            call: HostFFIFunctionCost::new(DEFAULT_CALL_COST, NOT_USED),
+            print: HostFFIFunctionCost::new(DEFAULT_PRINT_COST, NOT_USED),
+            emit: HostFFIFunctionCost::new(DEFAULT_EMIT_COST, DEFAULT_EMIT_PAYLOAD_SIZE_HEIGHT),
+            env_info: HostFFIFunctionCost::new(DEFAULT_ENV_INFO_COST, NOT_USED),
+            generic_hash: HostFFIFunctionCost::new(
                 DEFAULT_GENERIC_HASH_COST,
-                [
-                    NOT_USED,
-                    DEFAULT_GENERIC_HASH_SIZE_WEIGHT,
-                    NOT_USED,
-                    NOT_USED,
-                ],
+                DEFAULT_GENERIC_HASH_SIZE_WEIGHT,
             ),
-            recover_secp256k1: HostFunctionV2::new(
+            recover_secp256k1: HostFFIFunctionCost::new(
                 DEFAULT_RECOVER_SECP256K1_COST,
-                [
-                    NOT_USED,
-                    DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                ],
+                DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT,
             ),
-            alt_bn128_add: HostFunctionV2::new(DEFAULT_ALT_BN128_ADD_COST, [NOT_USED, NOT_USED]),
-            alt_bn128_mul: HostFunctionV2::new(DEFAULT_ALT_BN128_MUL_COST, [NOT_USED, NOT_USED]),
-            alt_bn128_pairing: HostFunctionV2::new(
-                DEFAULT_ALT_BN128_PAIRING_COST,
-                [NOT_USED, NOT_USED],
-            ),
+            alt_bn128_add: HostFFIFunctionCost::new(DEFAULT_ALT_BN128_ADD_COST, NOT_USED),
+            alt_bn128_mul: HostFFIFunctionCost::new(DEFAULT_ALT_BN128_MUL_COST, NOT_USED),
+            alt_bn128_pairing: HostFFIFunctionCost::new(DEFAULT_ALT_BN128_PAIRING_COST, NOT_USED),
         }
     }
 }
 
-impl ToBytes for HostFunctionCostsV2 {
+impl ToBytes for HostFFIFunctionCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.read.to_bytes()?);
@@ -418,7 +318,7 @@ impl ToBytes for HostFunctionCostsV2 {
     }
 }
 
-impl FromBytes for HostFunctionCostsV2 {
+impl FromBytes for HostFFIFunctionCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (read, rem) = FromBytes::from_bytes(bytes)?;
         let (write, rem) = FromBytes::from_bytes(rem)?;
@@ -439,7 +339,7 @@ impl FromBytes for HostFunctionCostsV2 {
         let (alt_bn128_mul, rem) = FromBytes::from_bytes(rem)?;
         let (alt_bn128_pairing, rem) = FromBytes::from_bytes(rem)?;
         Ok((
-            HostFunctionCostsV2 {
+            HostFFIFunctionCosts {
                 read,
                 write,
                 remove,
@@ -465,9 +365,9 @@ impl FromBytes for HostFunctionCostsV2 {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl Distribution<HostFunctionCostsV2> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCostsV2 {
-        HostFunctionCostsV2 {
+impl Distribution<HostFFIFunctionCosts> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFFIFunctionCosts {
+        HostFFIFunctionCosts {
             read: rng.gen(),
             write: rng.gen(),
             remove: rng.gen(),
@@ -498,14 +398,13 @@ pub mod gens {
     use super::*;
 
     #[allow(unused)]
-    pub fn host_function_cost_v2_arb<const N: usize>(
-    ) -> impl Strategy<Value = HostFunctionV2<[Cost; N]>> {
-        (any::<u64>(), any::<[u64; N]>())
-            .prop_map(|(cost, arguments)| HostFunctionV2::new(cost, arguments))
+    pub fn host_function_cost_v2_arb() -> impl Strategy<Value = HostFFIFunctionCost> {
+        (any::<u64>(), any::<u64>())
+            .prop_map(|(cost, arguments)| HostFFIFunctionCost::new(cost, arguments))
     }
 
     prop_compose! {
-        pub fn host_function_costs_v2_arb() (
+        pub fn host_ffi_opt_costs_arb() (
             read in host_function_cost_v2_arb(),
             write in host_function_cost_v2_arb(),
             remove in host_function_cost_v2_arb(),
@@ -524,8 +423,8 @@ pub mod gens {
                         alt_bn128_add in host_function_cost_v2_arb(),
             alt_bn128_mul in host_function_cost_v2_arb(),
             alt_bn128_pairing in host_function_cost_v2_arb(),
-        ) -> HostFunctionCostsV2 {
-            HostFunctionCostsV2 {
+        ) -> HostFFIFunctionCosts {
+            HostFFIFunctionCosts {
                 read,
                 write,
                 remove,
@@ -556,18 +455,13 @@ mod tests {
     use super::*;
 
     const COST: Cost = 42;
-    const ARGUMENT_COSTS: [Cost; 3] = [123, 456, 789];
-    const WEIGHTS: [u64; 3] = [1000, 1000, 1000];
 
     #[test]
     fn calculate_gas_cost_for_host_function() {
-        let host_function = HostFunctionV2::new(COST, ARGUMENT_COSTS);
-        let expected_cost = COST
-            + (ARGUMENT_COSTS[0] * Cost::from(WEIGHTS[0]))
-            + (ARGUMENT_COSTS[1] * Cost::from(WEIGHTS[1]))
-            + (ARGUMENT_COSTS[2] * Cost::from(WEIGHTS[2]));
+        let host_function = HostFFIFunctionCost::new(COST, 789);
+        let expected_cost = COST + 789 * 155;
         assert_eq!(
-            host_function.calculate_gas_cost(WEIGHTS),
+            host_function.calculate_gas_cost(155),
             Some(Gas::new(expected_cost))
         );
     }
@@ -576,28 +470,19 @@ mod tests {
     fn calculate_gas_cost_would_overflow() {
         let large_value = Cost::MAX;
 
-        let host_function = HostFunctionV2::new(
-            large_value,
-            [large_value, large_value, large_value, large_value],
-        );
+        let host_function = HostFFIFunctionCost::new(large_value, large_value);
 
-        let lhs =
-            host_function.calculate_gas_cost([large_value, large_value, large_value, large_value]);
+        let lhs = host_function.calculate_gas_cost(large_value);
 
         let large_value = U512::from(large_value);
-        let rhs = large_value + (U512::from(4) * large_value * large_value);
+        let rhs = large_value + (large_value * large_value);
 
         assert_eq!(lhs, Some(Gas::new(rhs)));
     }
     #[test]
     fn calculate_large_gas_cost() {
-        let hf = HostFunctionV2::new(1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-        assert_eq!(
-            hf.calculate_gas_cost([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-            Some(Gas::new(
-                1 + (1 + 2 * 2 + 3 * 3 + 4 * 4 + 5 * 5 + 6 * 6 + 7 * 7 + 8 * 8 + 9 * 9 + 10 * 10)
-            ))
-        );
+        let hf = HostFFIFunctionCost::new(1, 55);
+        assert_eq!(hf.calculate_gas_cost(17), Some(Gas::new(1 + (17 * 55))));
     }
 }
 
@@ -611,12 +496,12 @@ mod proptests {
 
     proptest! {
         #[test]
-        fn test_host_function(host_function in gens::host_function_cost_v2_arb::<10>()) {
+        fn test_host_function(host_function in gens::host_function_cost_v2_arb()) {
             bytesrepr::test_serialization_roundtrip(&host_function);
         }
 
         #[test]
-        fn test_host_function_costs(host_function_costs in gens::host_function_costs_v2_arb()) {
+        fn test_host_function_costs(host_function_costs in gens::host_ffi_opt_costs_arb()) {
             bytesrepr::test_serialization_roundtrip(&host_function_costs);
         }
     }

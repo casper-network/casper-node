@@ -410,25 +410,25 @@ cost = 150
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 
-[wasm.v2.host_function_costs]
-read = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
-write = { cost = 0, arguments = [0, 0, 0, 0, 0] }
-remove = { cost = 0, arguments = [0, 0, 0] }
-copy_input = { cost = 0, arguments = [0, 0] }
-ret = { cost = 0, arguments = [0, 0] }
-create = { cost = 0, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
-transfer = { cost = 0, arguments = [0, 0, 0] }
-env_balance = { cost = 0, arguments = [0, 0, 0, 0] }
-upgrade = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
-call = { cost = 0, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
-print = { cost = 0, arguments = [0, 0] }
-emit = { cost = 0, arguments = [0, 0, 0, 0] }
-env_info = { cost = 0, arguments = [0, 0] }
-generic_hash = { cost = 0, arguments = [0, 0, 0, 0] }
-recover_secp256k1 = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
-alt_bn128_add = { cost = 1_000_000, arguments = [0, 0] }
-alt_bn128_mul = { cost = 1_000_000, arguments = [0, 0] }
-alt_bn128_pairing = { cost = 1_000_000, arguments = [0, 2_000] }
+[wasm.v2.host_ffi_opt_costs]
+read = { base_cost = 0, per_byte = 0 }
+write = { base_cost = 0, per_byte = 0 }
+remove = { base_cost = 0, per_byte = 0 }
+copy_input = { base_cost = 0, per_byte = 0 }
+ret = { base_cost = 0, per_byte = 0 }
+create = { base_cost = 0, per_byte = 0 }
+transfer = { base_cost = 0, per_byte = 0 }
+env_balance = { base_cost = 0, per_byte = 0 }
+upgrade = { base_cost = 0, per_byte = 0 }
+call = { base_cost = 0, per_byte = 0 }
+print = { base_cost = 0, per_byte = 0 }
+emit = { base_cost = 0, per_byte = 0 }
+env_info = { base_cost = 0, per_byte = 0 }
+generic_hash = { base_cost = 0, per_byte = 0 }
+recover_secp256k1 = { base_cost = 0, per_byte = 0 }
+alt_bn128_add = { base_cost = 1_000_000, per_byte = 0 }
+alt_bn128_mul = { base_cost = 1_000_000, per_byte = 0 }
+alt_bn128_pairing = { base_cost = 1_000_000, per_byte = 2_000 }
 
 [wasm.messages_limits]
 max_topic_name_size = 256

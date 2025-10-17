@@ -18,7 +18,7 @@ mod withdraw_bid;
 
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::{executor::CryptoMethods, FatalHostError, GasUsage};
+use casper_executor_wasm_interface::{executor::SystemContractMenu, FatalHostError, GasUsage};
 use casper_storage::{
     global_state::GlobalStateReader,
     system::runtime_native::{Id, RuntimeNative},
@@ -27,7 +27,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr, AccessRights, ApiError, CLValueError, EntityAddr, Key, Phase, PublicKey,
-    RuntimeFootprint, TransactionHash, URef, URefAddr, U256, U512,
+    RuntimeFootprint, TransactionHash, URef, URefAddr, U512,
 };
 use parking_lot::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -35,14 +35,11 @@ use thiserror::Error;
 use tracing::{debug, error};
 
 use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteResult, MintMethods, SystemMenu,
+    AuctionMethods, ExecuteError, ExecuteResult, MintMethods,
 };
 use casper_types::bytesrepr::ToBytes;
 
-use crate::{
-    host::altbn128::{alt_bn128_add, alt_bn128_mul, alt_bn128_pairing, Pair},
-    system,
-};
+use crate::system;
 use casper_types::system::auction::{
     DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
     ERA_ID_KEY,
@@ -259,7 +256,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     initiator: AccountHash,
     caller_key: Key,
     input: Bytes,
-    system_menu_selection: SystemMenu,
+    system_menu_selection: SystemContractMenu,
 ) -> Result<ExecuteResult, ExecuteError> {
     let (caller_key, entity_addr) = if let Key::Account(account_hash) = caller_key {
         (caller_key, EntityAddr::Account(account_hash.value()))
@@ -330,7 +327,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
     };
 
     let ret: Result<Option<Bytes>, DispatchError> = match system_menu_selection {
-        SystemMenu::Auction(method) => match method {
+        SystemContractMenu::Auction(method) => match method {
             AuctionMethods::Activate => {
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (PublicKey,)>(&input);
                 if let Err(err) = &ret {
@@ -653,7 +650,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                 .map(|_| None)
             }
         },
-        SystemMenu::Mint(method) => match method {
+        SystemContractMenu::Mint(method) => match method {
             MintMethods::Burn => {
                 // VM2 only allows userland burning from caller's main purse
                 let ret = bytesrepr::deserialize_from_slice::<&Bytes, (u64,)>(&input);
@@ -767,79 +764,6 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
                         Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
                     },
                     Err(err) => Err(err),
-                }
-            }
-        },
-        SystemMenu::Crypto(crypto_method) => match crypto_method {
-            CryptoMethods::AltBn128Add => {
-                let (x1_bytes, y1_bytes, x2_bytes, y2_bytes) = bytesrepr::deserialize_from_slice::<
-                    &Bytes,
-                    ([u8; 32], [u8; 32], [u8; 32], [u8; 32]),
-                >(&input)
-                .map_err(|_e| {
-                    ExecuteError::Api(
-                        "Cannot deserialize arguments to AltBn128Add host function".to_string(),
-                    )
-                })?;
-                let x1 = U256::from_little_endian(&x1_bytes);
-                let y1 = U256::from_little_endian(&y1_bytes);
-                let x2 = U256::from_little_endian(&x2_bytes);
-                let y2 = U256::from_little_endian(&y2_bytes);
-                let res = alt_bn128_add(x1, y1, x2, y2)
-                    .map(|(x, y)| {
-                        let mut x_buf = [0u8; 32];
-                        let mut y_buf = [0u8; 32];
-                        x.to_little_endian(&mut x_buf);
-                        y.to_little_endian(&mut y_buf);
-                        (x_buf, y_buf)
-                    })
-                    .map_err(|err| err as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
-                }
-            }
-            CryptoMethods::AltBn128Multiply => {
-                let (x_bytes, y_bytes, scalar_bytes) = bytesrepr::deserialize_from_slice::<
-                    &Bytes,
-                    ([u8; 32], [u8; 32], [u8; 32]),
-                >(&input)
-                .map_err(|_e| {
-                    ExecuteError::Api(
-                        "Cannot deserialize arguments to AltBn128Multiply host function"
-                            .to_string(),
-                    )
-                })?;
-                let x = U256::from_little_endian(&x_bytes);
-                let y = U256::from_little_endian(&y_bytes);
-                let scalar = U256::from_little_endian(&scalar_bytes);
-                let res = alt_bn128_mul(x, y, scalar)
-                    .map(|(x, y)| {
-                        let mut x_buf = [0u8; 32];
-                        let mut y_buf = [0u8; 32];
-                        x.to_little_endian(&mut x_buf);
-                        y.to_little_endian(&mut y_buf);
-                        (x_buf, y_buf)
-                    })
-                    .map_err(|err| err as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
-                }
-            }
-            CryptoMethods::AltBn128Pairing => {
-                let pairs = bytesrepr::deserialize_from_slice::<&Bytes, Vec<Pair>>(&input)
-                    .map_err(|_e| {
-                        ExecuteError::Api(
-                            "Cannot deserialize arguments to AltBn128Pairing host function"
-                                .to_string(),
-                        )
-                    })?;
-                let values = pairs.iter().map(Pair::to_u256_tuples).collect();
-                let res = alt_bn128_pairing(values).map_err(|e| e as u32);
-                match res.to_bytes() {
-                    Ok(bytes) => Ok(Some(bytes.into())),
-                    Err(_) => Err(DispatchError::Api(ApiError::Formatting)),
                 }
             }
         },
