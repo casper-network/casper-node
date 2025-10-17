@@ -5,7 +5,6 @@ use casper_contract_sdk::{
     casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     serializers::borsh,
-    sys::casper_return,
     types::{EntityAddr, HashAlgorithm, IOFunctionOption},
 };
 
