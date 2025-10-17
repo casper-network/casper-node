@@ -1,12 +1,12 @@
 mod artifact;
 
-use std::{env::consts::DLL_EXTENSION, ffi::OsStr, fs, io::Write, path::PathBuf};
+use std::{env::consts::DLL_EXTENSION, ffi::OsStr, io::Write, path::PathBuf};
 
 use anyhow::Context;
 use artifact::Artifact;
 use cargo_metadata::MetadataCommand;
 use casper_contract_sdk::{
-    bundle::{self, Bundle, BundleV1},
+    bundle::{Bundle, BundleV1},
     schema::Schema,
     serializers::borsh,
 };

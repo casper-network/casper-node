@@ -7,7 +7,7 @@ use std::{
 
 use bytes::Bytes;
 use casper_executor_wasm::{
-    install::{InstallContractError, InstallContractRequest},
+    install::{InstallContractError, InstallContractRequest, InstallContractResult},
     testing::{
         base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
         expect_successful_execution, make_address_generator, make_executor,
@@ -48,7 +48,6 @@ use casper_types::{
     execution::RetValue,
     system::auction::{BidAddr, BidKind},
     BlockHash, BlockTime, Digest, EntityAddr, Key, RuntimeArgs, StoredValue, Timestamp,
-    NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -1088,12 +1087,14 @@ fn backwards_compatibility() {
     let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
+    let vm2_vm1_wrapper = read_wasm("vm2_vm1_wrapper.wasm");
     //
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_vm1_wrapper.wasm").wasm)
+        .with_wasm_bytes(vm2_vm1_wrapper.wasm)
+        .with_bundle_data(vm2_vm1_wrapper.bundle.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1139,12 +1140,27 @@ fn backwards_compatibility() {
 fn host_functions_consume_gas() {
     fn assert_consumes_gas(chainspec_config: &ChainspecConfig, host_function_name: &str) {
         let result = call_dummy_host_fn_by_name(&chainspec_config.clone(), host_function_name, 1);
-        assert!(result.is_err_and(|e| matches!(
-            e,
+        let Err(error) = result else {
+            panic!(
+                "calling host function '{}' failed unexpectedly: {:?}",
+                host_function_name, result
+            );
+        };
+
+        match error {
             InstallContractError::Constructor {
+                gas_usage,
                 host_error: CallError::CalleeGasDepleted,
+            } => {
+                assert_ne!(
+                    gas_usage.gas_spent(),
+                    0,
+                    "host function '{}' did not consume any gas",
+                    host_function_name
+                );
             }
-        )));
+            other => panic!("unexpected install contract error: {:?}", other),
+        }
     }
 
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)

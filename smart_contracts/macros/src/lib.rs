@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, DeriveInput, Fields, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStruct,
-    ItemTrait, ItemUnion, LitStr, Type,
+    parse_macro_input, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
+    ItemUnion, LitStr, Type,
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -180,6 +180,9 @@ fn process_casper_message_for_struct(
         )
     };
 
+    let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
+    let maybe_entrypoint_defs;
+
     let topic = match struct_meta.message {
         Some(Override::Inherit) => quote! { stringify!(#struct_name) },
         Some(Override::Explicit(message_meta)) => {
@@ -192,9 +195,6 @@ fn process_casper_message_for_struct(
             return TokenStream::from(err.to_compile_error());
         }
     };
-
-    let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
-    let maybe_entrypoint_defs;
 
     #[cfg(feature = "__abi_generator")]
     {
@@ -230,7 +230,7 @@ fn process_casper_message_for_struct(
         #item_struct
 
         impl #crate_path::Message for #struct_name {
-            const TOPIC: &'static str = stringify!(#struct_name);
+            const TOPIC: &'static str = #topic;
 
             #[inline]
             fn payload(&self) -> casper_contract_sdk::prelude::vec::Vec<u8> {
@@ -310,7 +310,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
             pub static EXPORTS: casper_contract_sdk::abi::collector::AbiItem = casper_contract_sdk::abi::collector::AbiItem::EntryPoint(casper_contract_sdk::abi::collector::AbiEntryPoint {
                 name: NAME,
                 export_name: EXPORT_NAME,
-                receiver: None,// casper_contract_sdk::abi::collector::AbiReceiver::ByRef,
+                receiver: casper_contract_sdk::abi::collector::AbiReceiver::NoReceiver,
                 is_constructor: false, // todo
                 is_payable: false, // todo
                 params: &[
@@ -320,7 +320,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                         decl: casper_contract_sdk::abi::collector::AbiType {
                             type_name: core::any::type_name::<#arg_types>,
                             type_id: casper_contract_sdk::common::type_uid::of::<#arg_types>(),
-                            cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                            cl_type: <#arg_types as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                             visit_abi_types: |visitor| {
                                 casper_contract_sdk::abi::visit_types_recursively::<#arg_types>(visitor);
                             },
@@ -333,7 +333,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                     casper_contract_sdk::abi::collector::AbiType {
                         type_name: core::any::type_name::<#ret>,
                         type_id: casper_contract_sdk::common::type_uid::of::<#ret>(),
-                        cl_type: <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type(),
+                        cl_type: <#ret as casper_contract_sdk::compat::types::CLTyped>::cl_type,
                         visit_abi_types: |visitor| {
                             casper_contract_sdk::abi::visit_types_recursively::<#ret>(visitor);
                         },
@@ -1992,7 +1992,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                 Fields::Unnamed(unnamed_fields) => {
                     let mut fields = Vec::new();
 
-                    let variant_name = format_ident!("{name}_{variant_name}");
+                    let _variant_name = format_ident!("{name}_{variant_name}");
 
                     for field in &unnamed_fields.unnamed {
                         match &field.ty {

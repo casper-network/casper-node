@@ -460,7 +460,14 @@ impl ExecutionArtifactBuilder {
         if error.as_internal_host_error().is_some() {
             return Err(EngineStateError::Catastrophic(error.to_string()));
         }
+
         self.with_error_message(error.to_string());
+
+        if let Some(gas_usage) = error.gas_usage() {
+            // Errors may still consume gas
+            self.with_added_consumed(Gas::from(gas_usage.gas_spent()));
+        }
+
         Ok(self)
     }
 }

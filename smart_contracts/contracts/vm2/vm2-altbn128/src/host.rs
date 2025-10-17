@@ -5,7 +5,7 @@ use casper_contract_sdk::{
         altbn128::{self, AltBn128Error as Error, Fq, Fr, Pair, G1},
         casper_system,
     },
-    casper_executor_wasm_common::flags::ReturnFlags,
+    common::flags::ReturnFlags,
     serializers::borsh::from_slice,
     types::CryptoFunctionOption,
 };

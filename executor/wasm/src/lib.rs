@@ -6,7 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use casper_contract_sdk::bundle::{Bundle, BundlePrimitive, BundleTypeDefinition, BundleV1};
+use casper_contract_sdk::bundle::{Bundle, BundlePrimitive, BundleTypeDefinition};
 use casper_execution_engine::{
     engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
@@ -38,7 +38,7 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
-    tracking_copy::TrackingCopyEntityExt,
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
@@ -46,7 +46,8 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityEntryPoint, EntryPoints as EntityEntryPoints,
     },
-    bytesrepr,
+    bytesrepr::{self, ToBytes},
+    contract_messages::{MessageAddr, MessageTopicSummary},
     contracts::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         EntryPoints as ContractEntryPoints,
@@ -59,10 +60,11 @@ use casper_types::{
     Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
     TransactionInvocationTarget, TypeDefinition, TypeDefinitionKind, TypeEnumVariant,
     TypePrimitive, TypeStructField, TypeUid, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
+    U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::install::BundleError;
 
@@ -195,6 +197,55 @@ pub struct ExecutorV2 {
     execution_engine_v1: Arc<ExecutionEngineV1>,
 }
 
+struct InstallerState<R> {
+    config: ExecutorConfig,
+    tracking_copy: TrackingCopy<R>,
+    total_bytes_written: usize,
+    gas_usage: GasUsage,
+}
+
+impl<R> InstallerState<R>
+where
+    R: GlobalStateReader,
+{
+    fn new(config: ExecutorConfig, tracking_copy: TrackingCopy<R>, gas_limit: u64) -> Self {
+        Self {
+            config,
+            tracking_copy,
+            total_bytes_written: 0,
+            gas_usage: GasUsage::new_from_limit(gas_limit),
+        }
+    }
+
+    fn metered_write(&mut self, key: Key, value: StoredValue) -> Result<(), InstallContractError> {
+        let serialized_length = value.serialized_length();
+
+        let cost = self
+            .config
+            .storage_costs
+            .calculate_gas_cost(serialized_length);
+
+        if cost.value() > U512::from(u64::MAX) {
+            debug!("Insufficient gas for storage operation");
+            return Err(InstallContractError::GasDepleted {
+                gas_usage: self.gas_usage.clone(),
+            });
+        }
+
+        self.total_bytes_written += serialized_length;
+
+        self.gas_usage
+            .consume_gas(cost.value().as_u64())
+            .map_err(|_gas_limit| InstallContractError::GasDepleted {
+                gas_usage: self.gas_usage.clone(),
+            })?;
+
+        self.tracking_copy.write(key, value);
+
+        Ok(())
+    }
+}
+
 impl ExecutorV2 {
     pub fn install_contract<R>(
         &self,
@@ -206,7 +257,7 @@ impl ExecutorV2 {
         R: StateProvider + CommitProvider,
         <R as StateProvider>::Reader: 'static,
     {
-        let mut tracking_copy = match state_provider.checkout(state_root_hash) {
+        let tracking_copy = match state_provider.checkout(state_root_hash) {
             Ok(Some(tracking_copy)) => {
                 TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity())
             }
@@ -237,13 +288,15 @@ impl ExecutorV2 {
             bundle_data,
         } = install_request;
 
+        let mut state = InstallerState::new(self.config.clone(), tracking_copy, gas_limit);
+
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
 
         let caller_key = Key::Account(initiator);
         // TODO: Michal: why is this result not evaluated?
-        let _result = get_purse_for_entity(&mut tracking_copy, caller_key);
+        let _result = get_purse_for_entity(&mut state.tracking_copy, caller_key);
 
-        let enable_addressable_entity = tracking_copy.enable_addressable_entity();
+        let enable_addressable_entity = state.tracking_copy.enable_addressable_entity();
 
         // 1. Store package hash
         let package_addr = chain_utils::compute_predictable_address(
@@ -276,10 +329,11 @@ impl ExecutorV2 {
             );
             debug_assert_eq!(entity_version_key.entity_version(), next_version);
 
-            tracking_copy.write(
+            state.metered_write(
                 Key::SmartContract(package_addr),
                 StoredValue::SmartContract(smart_contract_package),
-            );
+            )?;
+
             smart_contract_addr
         } else {
             let mut contract_package = ContractPackage::new(
@@ -300,10 +354,10 @@ impl ExecutorV2 {
                 ContractHash::new(smart_contract_addr),
             );
 
-            tracking_copy.write(
+            state.metered_write(
                 Key::Hash(package_addr),
                 StoredValue::ContractPackage(contract_package),
-            );
+            )?;
             smart_contract_addr
         };
 
@@ -312,22 +366,22 @@ impl ExecutorV2 {
         let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
         let bytecode_key = Key::ByteCode(bytecode_addr);
 
-        tracking_copy.write(bytecode_key, StoredValue::ByteCode(bytecode));
+        state.metered_write(bytecode_key, StoredValue::ByteCode(bytecode))?;
 
         // 2.1 Store contract wasm and setup indirection
         if !enable_addressable_entity {
             let bytecode_key_as_clvalue =
                 CLValue::from_t(bytecode_key).map_err(InstallContractError::CLValueError)?;
 
-            tracking_copy.write(
+            state.metered_write(
                 Key::Hash(bytecode_hash),
                 StoredValue::CLValue(bytecode_key_as_clvalue),
-            );
+            )?;
         }
 
         // TODO: abort(str) as an alternative to trap
         let main_purse: URef = match system::create_purse(
-            &mut tracking_copy,
+            &mut state.tracking_copy,
             runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
@@ -335,9 +389,10 @@ impl ExecutorV2 {
             Ok(uref) => uref,
             Err(mint_error) => {
                 error!(?mint_error, "Failed to create a purse");
-                return Err(InstallContractError::SystemContract(
-                    CallError::CalleeTrapped(TrapCode::UnreachableCodeReached),
-                ));
+                return Err(InstallContractError::SystemContract {
+                    host_error: CallError::CalleeTrapped(TrapCode::UnreachableCodeReached),
+                    gas_usage: state.gas_usage,
+                });
             }
         };
 
@@ -360,6 +415,59 @@ impl ExecutorV2 {
         .map_err(|wasm_prep_error| {
             InstallContractError::Execute(ExecuteError::WasmPreparation(wasm_prep_error))
         })?;
+
+        // 2.2 Setup message topics described in the bundle.
+        let smart_contract_entity_addr = EntityAddr::SmartContract(smart_contract_addr);
+
+        // Take the addressable entity out of the global state
+        {
+            {
+                // let mut message_topics =
+                //     tracking_copy
+                //     .get_message_topics(smart_contract_entity_addr)?;
+
+                let max_topics_per_contract = self.config.message_limits.max_topics_per_contract();
+
+                if bundle.messages().len() > max_topics_per_contract as usize {
+                    return Err(InstallContractError::Bundle(
+                        BundleError::InvalidBundleData(format!(
+                            "Number of message topics ({}) exceeds the maximum allowed ({})",
+                            bundle.messages().len(),
+                            max_topics_per_contract
+                        )),
+                    ));
+                }
+
+                for bundle_message in bundle.messages() {
+                    let topic_name_hash =
+                        chain_utils::compute_topic_name_hash(&bundle_message.topic);
+                    let topic_key = Key::Message(MessageAddr::new_topic_addr(
+                        smart_contract_entity_addr,
+                        topic_name_hash.into(),
+                    ));
+                    let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+                        0,
+                        block_time,
+                        bundle_message.topic.clone(),
+                    ));
+
+                    state.metered_write(topic_key, summary)?;
+                }
+
+                // Ensure all topics have been stored in proper format expected by the key prefix
+                // iterator below
+                debug_assert_eq!(
+                    {
+                        state
+                            .tracking_copy
+                            .get_message_topics(smart_contract_entity_addr)
+                            .map(|topics| topics.len())
+                    },
+                    Ok(bundle.messages().len()),
+                    "All message topics from the bundle should have been stored successfully"
+                );
+            }
+        }
 
         // 3. Gather entrypoints first.
         let entrypoints = {
@@ -456,7 +564,8 @@ impl ExecutorV2 {
                     cl_type: cl_type,
                 });
 
-                match tracking_copy
+                match state
+                    .tracking_copy
                     .read(&Key::TypeDef(type_uid))
                     .map_err(|read_err| {
                         error!(
@@ -481,7 +590,7 @@ impl ExecutorV2 {
                     }
                     None => {
                         // Type definition doesn't exist yet, we can proceed to store it.
-                        tracking_copy.write(Key::TypeDef(type_uid), pending_type_definition);
+                        state.metered_write(Key::TypeDef(type_uid), pending_type_definition)?;
                     }
                 }
             }
@@ -558,7 +667,7 @@ impl ExecutorV2 {
                 entity_entrypoints.add_entry_point(entry_point);
 
                 let entry_point_addr = EntryPointAddr::new_v2_entry_point_addr(
-                    EntityAddr::SmartContract(smart_contract_addr),
+                    smart_contract_entity_addr,
                     &bundle_entry_point.export_name,
                 )
                 .map_err(|err| {
@@ -578,10 +687,10 @@ impl ExecutorV2 {
                     flags,
                 );
 
-                tracking_copy.write(
+                state.metered_write(
                     Key::EntryPoint(entry_point_addr),
                     StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point_v2)),
-                );
+                )?;
             }
 
             entity_entrypoints
@@ -613,10 +722,10 @@ impl ExecutorV2 {
                 EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
             );
 
-            tracking_copy.write(
+            state.metered_write(
                 addressable_entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
-            );
+            )?;
         } else {
             let contract_entrypoints = ContractEntryPoints::from(entrypoints);
             let named_keys = {
@@ -636,78 +745,82 @@ impl ExecutorV2 {
                 protocol_version,
             );
 
-            tracking_copy.write(
+            state.metered_write(
                 Key::Hash(smart_contract_addr),
                 StoredValue::Contract(contract),
-            )
+            )?
         }
 
-        let ctor_gas_usage = match entry_point {
-            Some(entry_point_name) => {
-                let input = input.unwrap_or_default();
-                let execute_request = ExecuteRequestBuilder::default()
-                    .with_initiator(initiator)
-                    .with_caller_key(caller_key)
-                    .with_execution_kind(ExecutionKind::Stored {
-                        address: package_addr,
-                        entry_point: entry_point_name,
-                    })
-                    .with_gas_limit(gas_limit)
-                    .with_input(input)
-                    .with_transferred_value(transferred_value)
-                    .with_transaction_hash(transaction_hash)
-                    .with_shared_address_generator(address_generator)
-                    .with_chain_name(chain_name)
-                    .with_block_time(block_time)
-                    .with_state_hash(state_hash)
-                    .with_parent_block_hash(parent_block_hash)
-                    .with_block_height(block_height)
-                    .with_runtime_native_config(runtime_native_config)
-                    .build()
-                    .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
+        if let Some(entry_point_name) = entry_point {
+            let input = input.unwrap_or_default();
+            debug!(gas_spent=state.gas_usage.gas_spent(), total_bytes_written=state.total_bytes_written, input_len=input.len(), %entry_point_name,"installer state before constructor execution");
+            let execute_request = ExecuteRequestBuilder::default()
+                .with_initiator(initiator)
+                .with_caller_key(caller_key)
+                .with_execution_kind(ExecutionKind::Stored {
+                    address: package_addr,
+                    entry_point: entry_point_name,
+                })
+                .with_gas_limit(state.gas_usage.remaining_points())
+                .with_input(input)
+                .with_transferred_value(transferred_value)
+                .with_transaction_hash(transaction_hash)
+                .with_shared_address_generator(address_generator)
+                .with_chain_name(chain_name)
+                .with_block_time(block_time)
+                .with_state_hash(state_hash)
+                .with_parent_block_hash(parent_block_hash)
+                .with_block_height(block_height)
+                .with_runtime_native_config(runtime_native_config)
+                .build()
+                .map_err(InstallContractError::FailedBuildingExecuteRequest)?;
 
-                let forked_tc = tracking_copy.fork2();
+            let forked_tc = state.tracking_copy.fork2();
 
-                match Self::execute_with_tracking_copy(self, forked_tc, execute_request) {
-                    Ok(ExecuteResult {
-                        host_error,
-                        output,
-                        gas_usage,
-                        effects,
-                        cache,
-                        messages,
-                    }) => {
-                        if let Some(host_error) = host_error {
-                            return Err(InstallContractError::Constructor { host_error });
-                        }
-
-                        tracking_copy.apply_changes(effects, cache, messages);
-
-                        if let Some(output) = output {
-                            warn!(?output, "unexpected output from constructor");
-                        }
-
-                        gas_usage
+            match Self::execute_with_tracking_copy(self, forked_tc, execute_request) {
+                Ok(ExecuteResult {
+                    host_error,
+                    output,
+                    gas_usage: ctor_gas_usage,
+                    effects,
+                    cache,
+                    messages,
+                }) => {
+                    if let Some(host_error) = host_error {
+                        debug!(%host_error, "constructor execution failed");
+                        return Err(InstallContractError::Constructor {
+                            host_error,
+                            gas_usage: ctor_gas_usage,
+                        });
                     }
-                    Err(execute_error) => {
-                        error!(%execute_error, "unable to execute constructor");
-                        return Err(InstallContractError::Execute(execute_error));
+
+                    state.tracking_copy.apply_changes(effects, cache, messages);
+
+                    if let Some(output) = output {
+                        warn!(?output, "unexpected output from constructor");
                     }
+
+                    state.gas_usage.consume_gas(ctor_gas_usage.gas_spent()).map_err(|_gas_limit| {
+                        // This should not happen as we set the gas limit to remaining gas.
+                        // Unless there is a bug somewhere else around wasm gas opcode accounting
+                        // we're not expecting a situation where `ctor_gas_usage.gas_spent() > remaining_gas_points_before_ctor`.
+                        debug!(gas_usage=?state.gas_usage, ?ctor_gas_usage, "gas depleted when consuming constructor gas usage");
+                        InstallContractError::GasDepleted { gas_usage: state.gas_usage.clone() }
+                    })?;
+                }
+                Err(execute_error) => {
+                    error!(%execute_error, "unable to execute constructor");
+                    return Err(InstallContractError::Execute(execute_error));
                 }
             }
-            None => {
-                // TODO: Calculate storage gas cost etc. and make it the base cost, then add
-                // constructor gas cost
-                GasUsage::new(gas_limit, gas_limit)
-            }
-        };
+        }
 
-        let effects = tracking_copy.effects();
+        let effects = state.tracking_copy.effects();
 
         match state_provider.commit_effects(state_root_hash, effects.clone()) {
             Ok(post_state_hash) => Ok(InstallContractResult {
                 smart_contract_addr: package_addr,
-                gas_usage: ctor_gas_usage,
+                gas_usage: state.gas_usage.clone(),
                 effects,
                 post_state_hash,
             }),
@@ -738,7 +851,7 @@ impl ExecutorV2 {
             return Err(ExecuteError::SandboxedSystemContractCall);
         }
 
-        let gas_usage = GasUsage::new(gas_limit, gas_limit);
+        let gas_usage = GasUsage::new_from_limit(gas_limit);
 
         native_exec::<TransferArgs, (), R>(
             tracking_copy,
@@ -911,7 +1024,7 @@ impl ExecutorV2 {
 
                         if transferred_value != 0 {
                             // TODO: consult w/ Michal re: charge timing
-                            let gas_usage = GasUsage::new(gas_limit, gas_limit);
+                            let gas_usage = GasUsage::new_from_limit(gas_limit);
 
                             let runtime_footprint =
                                 match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
@@ -983,7 +1096,7 @@ impl ExecutorV2 {
                             Some(StoredValue::ByteCode(bytecode)) => {
                                 if transferred_value != 0 {
                                     // TODO: consult w/ Michal re: charge timing
-                                    let gas_usage = GasUsage::new(gas_limit, gas_limit);
+                                    let gas_usage = GasUsage::new_from_limit(gas_limit);
 
                                     let runtime_footprint = match tracking_copy
                                         .runtime_footprint_by_entity_addr(entity_addr)

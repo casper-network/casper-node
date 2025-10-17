@@ -248,8 +248,20 @@ pub enum BundleError {
 
 #[derive(Debug, Error)]
 pub enum InstallContractError {
-    #[error("system contract error: {0}")]
-    SystemContract(CallError),
+    #[error("system contract error: {host_error}")]
+    SystemContract {
+        host_error: CallError,
+        gas_usage: GasUsage,
+    },
+
+    #[error("insufficient gas")]
+    GasDepleted { gas_usage: GasUsage },
+
+    #[error("insufficient gas")]
+    Constructor {
+        host_error: CallError,
+        gas_usage: GasUsage,
+    },
 
     #[error("execute: {0}")]
     Execute(ExecuteError),
@@ -260,9 +272,6 @@ pub enum InstallContractError {
     #[error("Tracking copy error: {0}")]
     TrackingCopy(TrackingCopyError),
 
-    #[error("constructor error: {host_error}")]
-    Constructor { host_error: CallError },
-
     #[error("failed building BuildingExecuteRequest: {0}")]
     FailedBuildingExecuteRequest(&'static str),
 
@@ -271,4 +280,15 @@ pub enum InstallContractError {
 
     #[error("Bundle install error: {0}")]
     Bundle(#[from] BundleError),
+}
+
+impl InstallContractError {
+    pub fn gas_usage(&self) -> Option<&GasUsage> {
+        match self {
+            InstallContractError::SystemContract { gas_usage, .. } => Some(gas_usage),
+            InstallContractError::GasDepleted { gas_usage } => Some(gas_usage),
+            InstallContractError::Constructor { gas_usage, .. } => Some(gas_usage),
+            _ => None,
+        }
+    }
 }

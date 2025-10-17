@@ -9,7 +9,7 @@ use crate::{
 };
 use casper_executor_wasm_common::{
     keyspace::Keyspace,
-    type_uid::{self, TypeUid, Uid},
+    type_uid::{TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
@@ -103,7 +103,7 @@ impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
         Definition::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
-                decl: type_uid::of::<u64>().into(),
+                decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
             }],
         }
     }

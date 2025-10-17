@@ -1,4 +1,4 @@
-use casper_executor_wasm_common::type_uid::{self, TypeUid, Uid};
+use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
 
 use crate::{
     compat::types::CLTyped,
@@ -36,11 +36,11 @@ impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
             items: vec![
                 crate::abi::StructField {
                     name: "prefix".into(),
-                    decl: type_uid::of::<String>().into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<String>().into(),
                 },
                 crate::abi::StructField {
                     name: "length".into(),
-                    decl: type_uid::of::<u64>().into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
                 },
             ],
         }

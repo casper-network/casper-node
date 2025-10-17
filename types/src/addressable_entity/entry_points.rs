@@ -727,11 +727,11 @@ impl ToBytes for EntryPointAddr {
             + match self {
                 EntryPointAddr::VmCasperV1 {
                     entity_addr,
-                    name_hash: name_hash,
+                    name_hash,
                 } => entity_addr.serialized_length() + name_hash.serialized_length(),
                 EntryPointAddr::VmCasperV2 {
                     entity_addr,
-                    name_hash: name_hash,
+                    name_hash,
                 } => entity_addr.serialized_length() + name_hash.serialized_length(),
             }
     }

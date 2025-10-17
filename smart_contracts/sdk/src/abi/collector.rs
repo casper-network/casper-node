@@ -3,10 +3,7 @@ use crate::prelude::collections::BTreeMap;
 use casper_executor_wasm_common::type_uid::Uid;
 
 use crate::{
-    abi::{ABIVisitor, AbiDeclaration},
-    compat::types::CLType,
-    linkme::distributed_slice,
-    serializers::AbiConvention,
+    abi::ABIVisitor, compat::types::CLType, linkme::distributed_slice, serializers::AbiConvention,
 };
 
 #[derive(Debug)]

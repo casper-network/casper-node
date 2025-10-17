@@ -77,7 +77,6 @@ pub fn build_impl(
     // Move to output_dir if specified
     let mut out_wasm_path = production_wasm_path.clone();
     let mut out_schema_path = None;
-    let mut out_bundle_path = None;
 
     if let Some(output_dir) = output_dir {
         out_wasm_path = output_dir
@@ -93,7 +92,7 @@ pub fn build_impl(
         std::fs::rename(&production_schema_path, out_schema_path.as_ref().unwrap())
             .context("Couldn't write to the specified output directory.")?;
     }
-    out_bundle_path = Some(out_wasm_path.with_extension("bundle"));
+    let out_bundle_path = Some(out_wasm_path.with_extension("bundle"));
     let production_bundle_path = production_wasm_path.with_extension("bundle");
     std::fs::rename(&production_bundle_path, out_bundle_path.as_ref().unwrap())
         .context("Couldn't write to the specified output directory.")?;

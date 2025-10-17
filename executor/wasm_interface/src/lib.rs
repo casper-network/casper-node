@@ -296,7 +296,7 @@ pub enum WasmPreparationError {
     Internal(#[from] InternalHostError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GasUsage {
     /// The amount of gas used by the execution.
     gas_limit: u64,
@@ -304,7 +304,19 @@ pub struct GasUsage {
     remaining_points: u64,
 }
 
+#[derive(Error, Debug)]
+#[error("Gas limit exceeded")]
+pub struct GasLimit;
+
 impl GasUsage {
+    #[must_use]
+    pub fn new_from_limit(gas_limit: u64) -> Self {
+        GasUsage {
+            gas_limit,
+            remaining_points: gas_limit,
+        }
+    }
+
     #[must_use]
     pub fn new(gas_limit: u64, remaining_points: u64) -> Self {
         GasUsage {
@@ -327,6 +339,20 @@ impl GasUsage {
     #[must_use]
     pub fn remaining_points(&self) -> u64 {
         self.remaining_points
+    }
+
+    /// Consumes the specified amount of gas.
+    pub fn consume_gas(&mut self, amount: u64) -> Result<(), GasLimit> {
+        match self.remaining_points.checked_sub(amount) {
+            None => {
+                self.remaining_points = 0;
+                Err(GasLimit)
+            }
+            Some(remaining) => {
+                self.remaining_points = remaining;
+                Ok(())
+            }
+        }
     }
 }
 

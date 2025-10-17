@@ -392,7 +392,7 @@ pub fn call_dummy_host_fn_by_name(
             .with_memory_limit(DEFAULT_WASM_MAX_MEMORY)
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(wasm_config)
-            .with_storage_costs(StorageCosts::default())
+            .with_storage_costs(StorageCosts::new(0))
             .with_mint_costs(MintCosts::default())
             .with_auction_costs(AuctionCosts::default())
             .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)

@@ -132,8 +132,8 @@ pub enum SchemaType {
         )]
         state: Uid,
     },
-    /// Schemas of interface type does not contain state.
-    Interface,
+    /// Schemas of session code does not contain any state.
+    Session,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -300,18 +300,6 @@ pub fn casper_collect_schema() -> Schema {
         .filter_map(AbiItem::as_smart_contract)
         .collect::<Vec<_>>();
 
-    // assert_eq!(
-    //     smart_contracts.len(),
-    //     1,
-    //     "Expected exactly one smart contract in the ABI_ITEMS, found {}",
-    //     smart_contracts.len()
-    // );
-
-    let smart_contract = smart_contracts
-        .into_iter()
-        .next()
-        .expect("Failed to get smart contract");
-
     // Collect types from params + result
     for abi_type in abi_types {
         let param_type_id = abi_type.type_id;
@@ -430,26 +418,37 @@ pub fn casper_collect_schema() -> Schema {
         }
     }
 
-    let metadata = (smart_contract.metadata)();
+    let schema_metadata = if let Some(smart_contract) = smart_contracts.iter().next() {
+        let metadata = (smart_contract.metadata)();
+        SchemaMetadata {
+            name: metadata["CARGO_PKG_NAME"].map(ToOwned::to_owned),
+            version: metadata["CARGO_PKG_VERSION"].map(ToOwned::to_owned),
+            authors: metadata["CARGO_PKG_AUTHORS"].map(|s| {
+                s.split(':')
+                    .filter(|part| !part.is_empty())
+                    .map(|part| part.to_string())
+                    .collect::<Vec<String>>()
+            }),
+            description: metadata["CARGO_PKG_DESCRIPTION"].map(ToOwned::to_owned),
+            rust_version: metadata["CARGO_PKG_RUST_VERSION"].map(ToOwned::to_owned),
+        }
+    } else {
+        SchemaMetadata::default()
+    };
 
-    let schema_metadata = SchemaMetadata {
-        name: metadata["CARGO_PKG_NAME"].map(ToOwned::to_owned),
-        version: metadata["CARGO_PKG_VERSION"].map(ToOwned::to_owned),
-        authors: metadata["CARGO_PKG_AUTHORS"].map(|s| {
-            s.split(':')
-                .filter(|part| !part.is_empty())
-                .map(|part| part.to_string())
-                .collect::<Vec<String>>()
-        }),
-        description: metadata["CARGO_PKG_DESCRIPTION"].map(ToOwned::to_owned),
-        rust_version: metadata["CARGO_PKG_RUST_VERSION"].map(ToOwned::to_owned),
+    let type_ = match smart_contracts.iter().next() {
+        Some(smart_contract) => SchemaType::Contract {
+            state: smart_contract.decl.type_id,
+        },
+        None => {
+            // Can't find smart contract; treat as session code.
+            SchemaType::Session
+        }
     };
 
     Schema {
         metadata: schema_metadata,
-        type_: SchemaType::Contract {
-            state: smart_contract.decl.type_id,
-        },
+        type_,
         declarations: schema_decls,
         definitions: schema_defs,
         entry_points: schema_entry,

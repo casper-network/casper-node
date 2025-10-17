@@ -1,5 +1,4 @@
 use alloc::{
-    collections::BTreeMap,
     string::{String, ToString},
     vec::Vec,
 };
@@ -8,7 +7,6 @@ use core::{
     fmt::{self, Display, Formatter},
 };
 
-use bitflags::bitflags;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]

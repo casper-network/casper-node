@@ -104,6 +104,13 @@ impl WasmV2Error {
             }
         }
     }
+
+    pub(crate) fn gas_usage(&self) -> Option<&GasUsage> {
+        match self {
+            WasmV2Error::Install(install_error) => install_error.gas_usage(),
+            WasmV2Error::Execute(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Error, Debug)]

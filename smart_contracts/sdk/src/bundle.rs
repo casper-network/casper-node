@@ -4,9 +4,7 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use bnum::cast::As;
 use casper_executor_wasm_common::type_uid::Uid;
-use serde::{Deserialize, Serialize};
 
 use crate::{abi::Definition, compat::types::CLType};
 
