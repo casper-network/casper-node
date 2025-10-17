@@ -61,8 +61,7 @@ use casper_types::{
     NAME_FOR_V2_CONTRACT_MAIN_PURSE,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
-use parking_lot::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 #[cfg(any(feature = "testing", test))]
 pub mod chainspec_config;
