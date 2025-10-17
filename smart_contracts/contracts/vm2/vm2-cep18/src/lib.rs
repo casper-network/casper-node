@@ -133,7 +133,6 @@ mod tests {
     fn e2e() {
         // let db = casper::native::Container::default();
         // let env = Environment::new(db.clone(), DEFAULT_ADDRESS);
-
         let result = casper::native::dispatch(move || {
             assert_eq!(casper::get_caller(), DEFAULT_ADDRESS);
 

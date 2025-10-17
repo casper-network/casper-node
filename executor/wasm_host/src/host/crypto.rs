@@ -1,6 +1,22 @@
+use blake2::Blake2bVar;
 use bn::{AffineG1, Fq, Fr, Group, G1};
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_types::{bytesrepr::FromBytes, U256};
+use bytes::Bytes;
+use casper_executor_wasm_common::error::{
+    HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT, HOST_ERROR_PAYLOAD_TOO_LONG,
+    HOST_ERROR_SUCCESS,
+};
+use casper_executor_wasm_interface::{executor::ExecuteError, FatalHostError, VMError, VMResult};
+use casper_types::{
+    bytesrepr::{self, Bytes as BytesreprBytes, FromBytes, ToBytes},
+    HashAlgorithm, Signature, U256,
+};
+use keccak_asm::Digest as KeccakDigest;
+use num_traits::FromPrimitive;
+use sha2::{
+    digest::{Update, VariableOutput},
+    Sha256,
+};
 use thiserror::Error as ThisError;
 use tracing::debug;
 
@@ -56,50 +72,241 @@ impl Pair {
 }
 
 /// Errors that can occur when working with alt_bn128 curve.
+/// We start numbering altbn128 specific errors from 100,
+/// since the lower ones we reserve for "generic processing"
+/// errors
 #[derive(Debug, ThisError, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum AltBN128Error {
     /// Invalid point x coordinate.
     #[error("Invalid point x coordinate")]
-    InvalidXCoordinate = 1,
+    InvalidXCoordinate = 100,
     /// Invalid point y coordinate.
     #[error("Invalid point y coordinate")]
-    InvalidYCoordinate = 2,
+    InvalidYCoordinate = 101,
     /// Invalid point.
     #[error("Invalid point")]
-    InvalidPoint = 3,
+    InvalidPoint = 102,
     /// Invalid A.
     #[error("Invalid A")]
-    InvalidA = 4,
+    InvalidA = 103,
     /// Invalid B.
     #[error("Invalid B")]
-    InvalidB = 5,
+    InvalidB = 104,
     /// Invalid Ax.
     #[error("Invalid Ax")]
-    InvalidAx = 6,
+    InvalidAx = 105,
     /// Invalid Ay.
     #[error("Invalid Ay")]
-    InvalidAy = 7,
+    InvalidAy = 106,
     /// Invalid Bay.
     #[error("Invalid Bay")]
-    InvalidBay = 8,
+    InvalidBay = 107,
     /// Invalid Bax.
     #[error("Invalid Bax")]
-    InvalidBax = 9,
+    InvalidBax = 108,
     /// Invalid Bby.
     #[error("Invalid Bby")]
-    InvalidBby = 10,
+    InvalidBby = 109,
     /// Invalid Bbx.
     #[error("Invalid Bbx")]
-    InvalidBbx = 11,
+    InvalidBbx = 110,
 }
 
-pub(crate) fn alt_bn128_add(
-    x1: U256,
-    y1: U256,
-    x2: U256,
-    y2: U256,
-) -> Result<(U256, U256), AltBN128Error> {
+pub(crate) fn host_alt_bn128_add(input: Bytes) -> VMResult<(Option<Bytes>, u32)> {
+    let (x1_bytes, y1_bytes, x2_bytes, y2_bytes) = match bytesrepr::deserialize_from_slice::<
+        &Bytes,
+        ([u8; 32], [u8; 32], [u8; 32], [u8; 32]),
+    >(&input)
+    {
+        Ok(res) => res,
+        Err(_) => {
+            return Ok((None, HOST_ERROR_INVALID_INPUT));
+        }
+    };
+    let x1 = U256::from_little_endian(&x1_bytes);
+    let y1 = U256::from_little_endian(&y1_bytes);
+    let x2 = U256::from_little_endian(&x2_bytes);
+    let y2 = U256::from_little_endian(&y2_bytes);
+    let res = alt_bn128_add(x1, y1, x2, y2)
+        .map(|(x, y)| {
+            let mut output = Vec::with_capacity(64);
+            let mut x_buf = [0u8; 32];
+            let mut y_buf = [0u8; 32];
+            x.to_little_endian(&mut x_buf);
+            y.to_little_endian(&mut y_buf);
+            output.extend_from_slice(&x_buf);
+            output.extend_from_slice(&y_buf);
+            output
+        })
+        .map_err(|err| err as u32);
+    match res {
+        Ok(bytes) => Ok((Some(bytes.into()), HOST_ERROR_SUCCESS)),
+        Err(err_code) => Ok((None, err_code)),
+    }
+}
+
+pub(crate) fn host_alt_bn128_mul(input: Bytes) -> VMResult<(Option<Bytes>, u32)> {
+    let (x_bytes, y_bytes, scalar_bytes) =
+        match bytesrepr::deserialize_from_slice::<&Bytes, ([u8; 32], [u8; 32], [u8; 32])>(&input) {
+            Ok(res) => res,
+            Err(_) => {
+                return Ok((None, HOST_ERROR_INVALID_INPUT));
+            }
+        };
+    let x = U256::from_little_endian(&x_bytes);
+    let y = U256::from_little_endian(&y_bytes);
+    let scalar = U256::from_little_endian(&scalar_bytes);
+    let res = alt_bn128_mul(x, y, scalar)
+        .map(|(x, y)| {
+            let mut output = Vec::with_capacity(64);
+            let mut x_buf = [0u8; 32];
+            let mut y_buf = [0u8; 32];
+            x.to_little_endian(&mut x_buf);
+            y.to_little_endian(&mut y_buf);
+            output.extend_from_slice(&x_buf);
+            output.extend_from_slice(&y_buf);
+            output
+        })
+        .map_err(|err| err as u32);
+    match res {
+        Ok(bytes) => Ok((Some(bytes.into()), HOST_ERROR_SUCCESS)),
+        Err(err_code) => Ok((None, err_code)),
+    }
+}
+
+pub(crate) fn host_alt_bn128_pairing(input: Bytes) -> VMResult<(Option<Bytes>, u32)> {
+    let pairs = match bytesrepr::deserialize_from_slice::<&Bytes, Vec<Pair>>(&input) {
+        Ok(res) => res,
+        Err(_) => {
+            return Ok((None, HOST_ERROR_INVALID_INPUT));
+        }
+    };
+    let values = pairs.iter().map(Pair::to_u256_tuples).collect();
+    let res = alt_bn128_pairing(values).map_err(|e| e as u32);
+    match res {
+        Ok(is_paired) => match is_paired.to_bytes() {
+            Ok(bytes) => Ok((Some(bytes.into()), HOST_ERROR_SUCCESS)),
+            Err(_) => Err(VMError::Fatal(FatalHostError::TypeConversion)),
+        },
+        Err(err_code) => Ok((None, err_code)),
+    }
+}
+
+/// Computes digest hash, using provided algorithm type.
+///
+/// # Arguments
+/// - `input` byte array consisting of:
+///     - `hash_algorithm`: 4 bytes deserialized as `u32` and interpreted as [HashAlgorithm].
+///     - `in_bytes`: an array of bytes serialized in a bytesrepr-compatible way. This will be
+///       interpreted as the payload to sign.
+pub(crate) fn host_generic_hash(input: Bytes) -> VMResult<(Option<Bytes>, u32)> {
+    let (hash_algorithm, in_bytes) =
+        match bytesrepr::deserialize_from_slice::<&Bytes, (u32, BytesreprBytes)>(&input) {
+            Ok(res) => res,
+            Err(_) => {
+                return Ok((None, HOST_ERROR_INVALID_INPUT));
+            }
+        };
+
+    const DIGEST_LENGTH: usize = 32;
+
+    let hash_algorithm = match HashAlgorithm::from_u32(hash_algorithm) {
+        Some(alg) => alg,
+        None => return Ok((None, HOST_ERROR_INVALID_INPUT)),
+    };
+
+    let hashed_bytes = match hash_algorithm {
+        HashAlgorithm::Blake2b => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = Blake2bVar::new(DIGEST_LENGTH).map_err(|_| {
+                ExecuteError::Fatal(FatalHostError::CorruptExecutionState(
+                    "Error when creating instance of Blake2bVar hashing".to_owned(),
+                ))
+            })?;
+            hasher.update(in_bytes.as_ref());
+            hasher.finalize_variable(&mut result).ok();
+            result
+        }
+        HashAlgorithm::Blake3 => {
+            let mut result = [0; DIGEST_LENGTH];
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(in_bytes.as_ref());
+            let hash = hasher.finalize();
+            let hash_bytes: &[u8; DIGEST_LENGTH] = hash.as_bytes();
+            result.copy_from_slice(hash_bytes);
+            result
+        }
+        HashAlgorithm::Sha256 => Sha256::digest(in_bytes).into(),
+        HashAlgorithm::Keccak256 => {
+            use keccak_asm::Keccak256;
+            let mut result = [0u8; DIGEST_LENGTH];
+            let mut hasher = Keccak256::new();
+            KeccakDigest::update(&mut hasher, &in_bytes);
+            let hash = KeccakDigest::finalize(hasher);
+            result.copy_from_slice(&hash);
+            result
+        }
+    };
+
+    Ok((Some(hashed_bytes.to_vec().into()), HOST_ERROR_SUCCESS))
+}
+
+/// Recovers a Secp256k1 public key from a signed message
+/// and a signature used in the process of signing.
+///
+/// # Arguments
+/// - `input` is a byte array consisting of:
+///     - `recovery_id`: 4 bytes deserialized as `u32`. valid values: 0_u32, 1_u32, 2_u32, 3_u32.
+///       Interpretation for these `recovery_id` values is as follows:
+///           - Low bit (0/1): was the y-coordinate of the affine point resulting from the
+///             fixed-base multiplication 𝑘×𝑮 odd?
+///            - Hi bit (3/4): did the affine x-coordinate of 𝑘×𝑮 overflow the order of the scalar
+///              field,
+///             requiring a reduction when computing r?
+///     - `message`: an array of bytes serialized in a bytesrepr-compatible way. This will be
+///       interpreted as the signed data.
+///     - `signature`: an array of bytes serialized in a bytesrepr-compatible way. This will be
+///       interpreted as the signature for the `message`.
+///
+/// # Output is one of:
+///  - Err(VmError): if a internal vm error happened (not related to the imputed data)
+///  - Ok(None, err_code): with err_code > 0. Err_code represents a problem with processing imputed
+///    data.
+///  - Ok(Some(pk_bytes), 0): `pk_bytes` is a serialized [PublicKey] recovered for the signature
+pub(crate) fn host_recover_secp256k1(input: Bytes) -> VMResult<(Option<Bytes>, u32)> {
+    let (recovery_id, message, signature_bytes) =
+        match bytesrepr::deserialize_from_slice::<&Bytes, (u32, BytesreprBytes, BytesreprBytes)>(
+            &input,
+        ) {
+            Ok(res) => res,
+            Err(_) => {
+                return Ok((None, HOST_ERROR_INVALID_INPUT));
+            }
+        };
+
+    if recovery_id >= 4 {
+        return Ok((None, HOST_ERROR_INVALID_INPUT));
+    }
+
+    let Ok((signature, _)) = Signature::from_bytes(&signature_bytes) else {
+        return Ok((None, HOST_ERROR_INVALID_DATA));
+    };
+
+    let Ok(public_key) =
+        casper_types::crypto::recover_secp256k1(message, &signature, recovery_id as u8)
+    else {
+        return Ok((None, HOST_ERROR_INVALID_INPUT));
+    };
+
+    let Ok(key_bytes) = public_key.to_bytes() else {
+        return Ok((None, HOST_ERROR_PAYLOAD_TOO_LONG));
+    };
+
+    Ok((Some(key_bytes.into()), HOST_ERROR_SUCCESS))
+}
+
+fn alt_bn128_add(x1: U256, y1: U256, x2: U256, y2: U256) -> Result<(U256, U256), AltBN128Error> {
     let p1 = point_from_coords(x1, y1)?;
     let p2 = point_from_coords(x2, y2)?;
     let mut x = U256::zero();
@@ -112,7 +319,7 @@ pub(crate) fn alt_bn128_add(
     Ok((x, y))
 }
 
-pub(crate) fn alt_bn128_mul(x: U256, y: U256, scalar: U256) -> Result<(U256, U256), AltBN128Error> {
+fn alt_bn128_mul(x: U256, y: U256, scalar: U256) -> Result<(U256, U256), AltBN128Error> {
     let p = point_from_coords(x, y)?;
 
     let mut x = U256::zero();
@@ -130,7 +337,7 @@ pub(crate) fn alt_bn128_mul(x: U256, y: U256, scalar: U256) -> Result<(U256, U25
 }
 
 /// Pairing check for a list of points.
-pub(crate) fn alt_bn128_pairing(
+fn alt_bn128_pairing(
     values: Vec<(U256, U256, U256, U256, U256, U256)>,
 ) -> Result<bool, AltBN128Error> {
     let mut pairs = Vec::with_capacity(values.len());

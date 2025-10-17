@@ -10,7 +10,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId,
-    HostFunctionCostsV1, HostFunctionCostsV2, MessageLimits, OpcodeCosts, ProtocolVersion,
+    HostFFIFunctionCosts, HostFunctionCostsV1, MessageLimits, OpcodeCosts, ProtocolVersion,
     RuntimeArgs, WasmConfig, WasmV1Config, WasmV2Config, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY,
 };
@@ -29,7 +29,7 @@ static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
     let wasm_v2_config = WasmV2Config::new(
         DEFAULT_WASM_MAX_MEMORY * 2,
         OpcodeCosts::default(),
-        HostFunctionCostsV2::default(),
+        HostFFIFunctionCosts::default(),
     );
     WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config)
 });

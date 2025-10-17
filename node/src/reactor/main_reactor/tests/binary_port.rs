@@ -1461,7 +1461,6 @@ async fn binary_port_sandboxed_execution_request() {
         .unwrap(),
     );
     txn.sign(&alice_secret_key);
-
     let txn_hash = txn.hash();
     fixture.inject_transaction(txn).await;
     fixture
@@ -1516,7 +1515,6 @@ async fn binary_port_sandboxed_execution_request() {
 
     // Let the network run in the background while we wait for the request to be processed
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
-
     // Create and send the command
     let request = Command::TrySandboxedExecution { request };
     let request_bytes = {
