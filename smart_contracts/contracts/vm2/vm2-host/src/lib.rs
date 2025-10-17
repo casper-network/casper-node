@@ -5,9 +5,8 @@ use casper_contract_sdk::{
     casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     serializers::borsh,
-    types::{HashAlgorithm, IOFunctionOption},
     sys::casper_return,
-    types::{EntityAddr},
+    types::{EntityAddr, HashAlgorithm, IOFunctionOption},
 };
 
 const CURRENT_VERSION: &str = "v1";
