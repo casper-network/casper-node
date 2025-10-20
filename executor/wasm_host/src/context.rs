@@ -1,9 +1,10 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
 use bytes::Bytes;
+use casper_executor_wasm_interface::executor::ExecutionKind;
 use casper_storage::{
     global_state::GlobalStateReader, AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
@@ -50,4 +51,6 @@ pub struct Context<S: GlobalStateReader> {
     pub authorization_keys: BTreeSet<AccountHash>,
     /// Map of ffi menu options to their respective cost entries
     pub ffi_call_costs: BTreeMap<u32, HostFFIFunctionCost>,
+    /// Shared execution stack across nested calls
+    pub execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }

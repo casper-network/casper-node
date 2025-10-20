@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
@@ -68,6 +71,8 @@ pub struct ExecuteRequest {
     pub runtime_native_config: RuntimeNativeConfig,
     /// Authorization keys for this execution.
     pub authorization_keys: BTreeSet<AccountHash>,
+    /// Shared execution stack across nested calls.
+    pub execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -89,6 +94,7 @@ pub struct ExecuteRequestBuilder {
     sandboxed: Option<bool>,
     runtime_native_config: Option<RuntimeNativeConfig>,
     authorization_keys: Option<BTreeSet<AccountHash>>,
+    execution_stack: Option<Arc<RwLock<VecDeque<ExecutionKind>>>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -229,6 +235,15 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the shared execution stack used to track nested calls.
+    pub fn with_execution_stack(
+        mut self,
+        execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
+    ) -> Self {
+        self.execution_stack = Some(execution_stack);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -255,6 +270,9 @@ impl ExecuteRequestBuilder {
         let authorization_keys = self
             .authorization_keys
             .ok_or("Authorization keys are not set")?;
+        let execution_stack = self
+            .execution_stack
+            .unwrap_or_else(|| Arc::new(RwLock::new(VecDeque::new())));
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -272,6 +290,7 @@ impl ExecuteRequestBuilder {
             sandboxed,
             runtime_native_config,
             authorization_keys,
+            execution_stack,
         })
     }
 }
