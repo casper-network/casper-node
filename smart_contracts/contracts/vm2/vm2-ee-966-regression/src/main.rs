@@ -21,7 +21,7 @@ mod internal_ffi {
             input_size: u32,
             alloc: u32,
             alloc_ctx: u32,
-        ) -> !;
+        ) -> u32;
     }
 }
 
@@ -31,24 +31,27 @@ pub enum ApiError {
     Unhandled = 31,
 }
 
+fn write(base: &mut [u8], bytes_to_write: &[u8]) {
+    for (index, b) in bytes_to_write.iter().enumerate() {
+        base[index] = *b;
+    }
+}
+
 #[allow(clippy::fn_to_numeric_cast)]
-fn revert(value: ApiError) -> ! {
-    let mut return_data = [0_u8; 8];
+fn revert(value: ApiError) -> u32 {
+    let mut return_data = [0_u8; 13];
     unsafe {
         extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
             // Return shouldn't have any output data and should not return anything
             ptr::null_mut()
         }
         let rev_flag = REVERT_FLAGS.to_le_bytes();
-        for (index, b) in rev_flag.iter().enumerate() {
-            return_data[index] = *b;
-        }
-        let data_flag = (value as u32).to_le_bytes();
-        let base_index = rev_flag.len();
-        for (index, b) in data_flag.iter().enumerate() {
-            return_data[base_index + index] = *b;
-        }
-
+        write(&mut return_data[0..4], &rev_flag);
+        write(&mut return_data[4..5], &[1_u8]);
+        let data_bytes = (value as u32).to_le_bytes();
+        let len = data_bytes.len() as u32;
+        write(&mut return_data[5..9], &len.to_le_bytes());
+        write(&mut return_data[9..13], &data_bytes);
         // 600 is code for return
         internal_ffi::casper_ffi(
             600,
@@ -56,7 +59,7 @@ fn revert(value: ApiError) -> ! {
             return_data.len() as u32,
             alloc_cb as u32,
             0_u32,
-        );
+        )
     }
 }
 
@@ -70,7 +73,7 @@ pub fn memory_size() -> usize {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn memory_size() -> usize {
-    revert(ApiError::Unhandled)
+    revert(ApiError::Unhandled) as usize
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -84,12 +87,13 @@ pub fn memory_grow(new_pages: usize) {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn memory_grow(_: usize) {
-    revert(ApiError::Unhandled)
+    revert(ApiError::Unhandled);
 }
 
 #[panic_handler]
 pub fn panic(_info: &::core::panic::PanicInfo) -> ! {
-    revert(ApiError::OutOfMemory)
+    revert(ApiError::OutOfMemory);
+    loop {}
 }
 
 #[lang = "eh_personality"]

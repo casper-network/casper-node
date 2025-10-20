@@ -6,7 +6,6 @@ use casper_executor_wasm_common::{
     error::{
         CALLEE_INPUT_INVALID, CALLEE_LOCKED_PACKAGE, CALLEE_NOT_CALLABLE,
         CALLEE_NO_ACTIVE_CONTRACT, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA,
-        HOST_ERROR_INVALID_INPUT,
     },
 };
 use casper_executor_wasm_interface::{
@@ -107,7 +106,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
     {
         Ok(res) => res,
         Err(_) => {
-            return Ok(HOST_ERROR_INVALID_INPUT);
+            return Ok(CALLEE_INPUT_INVALID);
         }
     };
     let code: Bytes = Bytes::from(code.take_inner());
