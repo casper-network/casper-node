@@ -85,10 +85,6 @@ fn metered_write<S: GlobalStateReader>(
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
-    if caller.context().sandboxed {
-        return Err(VMError::Execute(ExecuteError::AttemptWriteInRestricted));
-    }
-
     charge_gas_storage(caller, value.serialized_length())?;
     caller.context_mut().tracking_copy.write(key, value);
     Ok(())
@@ -144,9 +140,6 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             return Err(VMError::Execute(ExecuteError::InvalidFFIOption(ffi_opt)));
         }
     };
-    if caller.context().sandboxed && !option.allowed_in_sandbox() {
-        return Err(VMError::Execute(ExecuteError::AttemptWriteInRestricted));
-    }
 
     let call_cost_definition = match caller.context().ffi_call_costs.get(&ffi_opt) {
         Some(ffi_call_cost) => ffi_call_cost,
