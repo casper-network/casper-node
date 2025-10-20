@@ -26,7 +26,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    SandboxedExecutionRequest, Uptime, ValueWithProof,
+    SandboxedExecutionRequest, SandboxedExecutionResult, Uptime, ValueWithProof,
 };
 use casper_executor_wasm_common::chain_utils;
 use casper_storage::global_state::state::CommitProvider;
@@ -1543,9 +1543,15 @@ async fn binary_port_sandboxed_execution_request() {
     let response_obj = binary_response_and_request.response();
     assert!(response_obj.is_success());
 
+    let (result, remainder): (SandboxedExecutionResult, _) =
+        FromBytes::from_bytes(response_obj.payload()).expect("should deserialize");
+    assert!(remainder.is_empty());
+    assert!(result.is_success());
+
     // The get entrypoint in flipper should return a single boolean value
     let (flipper_state, remainder) =
-        bool::from_bytes(response_obj.payload()).expect("should deserialize");
+        bool::from_bytes(result.output().expect("should contain output").as_slice())
+            .expect("should deserialize bool from output bytes");
     assert!(remainder.is_empty());
     assert!(!flipper_state);
 
