@@ -447,6 +447,14 @@ impl Entity {
             Entity::Contract(_) => true,
         }
     }
+
+    #[must_use]
+    pub fn entity_addr(&self) -> EntityAddr {
+        match self {
+            Self::Contract(addr) => EntityAddr::SmartContract(*addr),
+            Self::Account(addr) => EntityAddr::Account(*addr),
+        }
+    }
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
@@ -507,12 +515,11 @@ pub fn transferred_value() -> u64 {
 }
 
 /// Transfer tokens from the current contract to another account or contract.
-pub fn transfer(target_account: &Address, amount: u64) -> Result<(), CallError> {
+pub fn transfer(target_account: &EntityAddr, amount: u64) -> Result<(), CallError> {
     // TODO: the variable name is called target_account, but
     // logic would call it with misc addresses. need to confer w/ michal
-    let entity_addr = EntityAddr::Account(*target_account);
-    log!("transfer entity_addr {:?}", entity_addr);
-    let bytes = match borsh::to_vec(&(entity_addr, amount)) {
+    log!("transfer entity_addr {:?}", target_account);
+    let bytes = match borsh::to_vec(&(target_account, amount)) {
         Ok(bytes) => bytes,
         Err(_err) => return Err(CallError::CalleeTrapped),
     };

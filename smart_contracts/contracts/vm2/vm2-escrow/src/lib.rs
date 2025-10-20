@@ -65,7 +65,7 @@ impl Escrow {
             self.balances.insert(&entity, &new_balance);
         }
         debug_assert!(entity.is_account(), "Entity must be an account");
-        casper::transfer(entity.address(), amount).unwrap();
+        casper::transfer(&entity.entity_addr(), amount).unwrap();
         Ok(())
     }
 }
