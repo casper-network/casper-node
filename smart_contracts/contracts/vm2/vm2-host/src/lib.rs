@@ -2,10 +2,13 @@
 
 use casper_contract_sdk::{
     casper::casper_ffi,
-    casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     serializers::borsh,
     types::{EntityAddr, HashAlgorithm, IOFunctionOption},
+};
+use casper_contract_sdk::casper_executor_wasm_common::{
+    flags::ReturnFlags,
+    keyspace::{CollectionAddrInner, ContextAddr, Keyspace},
 };
 
 const CURRENT_VERSION: &str = "v1";
@@ -140,18 +143,13 @@ impl MinimalHostWrapper {
     }
 
     pub fn read(&self) {
-        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+        let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             0,
             [0u8; 8],
             [0u8; 32],
         );
-        casper::read(
-            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
-                addr,
-            )),
-            |_| None,
-        )
+        casper::read(Keyspace::Context(ContextAddr::from(addr)), |_| None)
         .ok();
     }
 
@@ -168,35 +166,25 @@ impl MinimalHostWrapper {
     }
 
     pub fn write(&self) {
-        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+        let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             0,
             [0u8; 8],
             [0u8; 32],
         );
-        casper::write(
-            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
-                addr,
-            )),
-            &[],
-        )
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &[])
         .ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {
         let buffer = vec![0; n as usize];
-        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+        let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             0,
             [0u8; 8],
             [0u8; 32],
         );
-        casper::write(
-            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
-                addr,
-            )),
-            &buffer,
-        )
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &buffer)
         .ok();
     }
 

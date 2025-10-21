@@ -2,12 +2,12 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::casper;
-use casper_contract_sdk::{casper, log, prelude::Entity, serializers::borsh::BorshDeserialize};
+use casper_contract_sdk::{casper, log, prelude::Entity};
 
 const CURRENT_VERSION: &str = "v2";
 
-#[derive(BorshDeserialize, Debug)]
-#[borsh(crate = "casper_contract_sdk::serializers::borsh")]
+#[derive(Debug)]
+#[casper(contract_state)]
 pub struct UpgradableContractV1 {
     /// The current state of the flipper.
     value: u8,
@@ -87,11 +87,11 @@ impl UpgradableContractV2 {
     #[casper(ignore_state)]
     pub fn migrate() {
         log!("Reading old state...");
-        let old_state: UpgradableContractV1 = casper::read_state().unwrap();
+        let old_state: UpgradableContractV1 = casper::read_contract_state::<UpgradableContractV1>().unwrap();
         log!("Old state {old_state:?}");
         let new_state = UpgradableContractV2::from(old_state);
         log!("Success! New state: {new_state:?}");
-        casper::write_state(&new_state).unwrap();
+        casper::write_contract_state(&new_state).unwrap();
     }
 
     #[casper(ignore_state)]
