@@ -631,7 +631,9 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             [0u8; 8],
             casper::generic_hash(&key, casper::HashAlgorithm::Blake2b).unwrap(),
         );
-        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr));
+        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
+            addr,
+        ));
         // No value exists
         assert_eq!(casper::read(keyspace, |_size| None), Ok(None));
 
@@ -657,9 +659,15 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             *casper::get_callee().address(),
             0,
             [0u8; 8],
-            casper::generic_hash(b"this key definetely does not exists", casper::HashAlgorithm::Blake2b).unwrap(),
+            casper::generic_hash(
+                b"this key definetely does not exists",
+                casper::HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
         );
-        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr));
+        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
+            addr,
+        ));
         let result = casper::remove(keyspace);
         assert_eq!(result, Err(HostResult::NotFound));
     }

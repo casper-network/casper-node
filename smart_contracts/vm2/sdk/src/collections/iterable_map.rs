@@ -1,9 +1,9 @@
 use crate::prelude::{marker::PhantomData, *};
 
+use crate::types::HashAlgorithm;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
 use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
-use crate::types::HashAlgorithm;
 use const_fnv1a_hash::fnv1a_hash_64;
 
 use crate::casper::{self, read_into_vec};
@@ -166,7 +166,8 @@ where
         let (to_remove_ptr, at_remove_ptr) = self.find_slot(key)?;
 
         let to_remove_prefix = self.create_prefix_from_ptr(&to_remove_ptr);
-        let to_remove_tail = casper::generic_hash(&to_remove_prefix, HashAlgorithm::Blake2b).unwrap();
+        let to_remove_tail =
+            casper::generic_hash(&to_remove_prefix, HashAlgorithm::Blake2b).unwrap();
         let to_remove_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
             *casper::get_callee().address(),
             3,
@@ -180,13 +181,15 @@ where
             index: to_remove_ptr.index + 1,
             ..to_remove_ptr
         });
-        let to_remove_ptr_child_tail = casper::generic_hash(&to_remove_ptr_child_prefix, HashAlgorithm::Blake2b).unwrap();
-        let to_remove_ptr_child_keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
-            *casper::get_callee().address(),
-            3,
-            [0u8; 8],
-            to_remove_ptr_child_tail,
-        )));
+        let to_remove_ptr_child_tail =
+            casper::generic_hash(&to_remove_ptr_child_prefix, HashAlgorithm::Blake2b).unwrap();
+        let to_remove_ptr_child_keyspace =
+            Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                3,
+                [0u8; 8],
+                to_remove_ptr_child_tail,
+            )));
 
         if self.get_entry(to_remove_ptr_child_keyspace).is_some() {
             // A child exists, so we need to retain this element to maintain
@@ -216,13 +219,15 @@ where
         let mut current_hash = self.tail_key_hash;
         while let Some(key) = current_hash {
             let current_prefix = self.create_prefix_from_ptr(&key);
-            let current_tail = casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
-            let current_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
-                *casper::get_callee().address(),
-                3,
-                [0u8; 8],
-                current_tail,
-            )));
+            let current_tail =
+                casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
+            let current_context_key =
+                Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                    *casper::get_callee().address(),
+                    3,
+                    [0u8; 8],
+                    current_tail,
+                )));
             let mut current_entry = self.get_entry(current_context_key).unwrap();
 
             // If there is no previous entry, then we've finished iterating.
@@ -245,13 +250,15 @@ where
                 current_entry.serialize(&mut entry_bytes).unwrap();
                 // Reconstruct current_context_key to avoid moved value
                 let current_prefix = self.create_prefix_from_ptr(&key);
-                let current_tail = casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
-                let current_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
-                    *casper::get_callee().address(),
-                    3,
-                    [0u8; 8],
-                    current_tail,
-                )));
+                let current_tail =
+                    casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
+                let current_context_key =
+                    Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                        *casper::get_callee().address(),
+                        3,
+                        [0u8; 8],
+                        current_tail,
+                    )));
                 casper::write(current_context_key, &entry_bytes).unwrap();
 
                 return at_remove_ptr.value;

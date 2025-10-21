@@ -35,7 +35,8 @@ where
             *casper::get_callee().address(),
             1,
             [0u8; 8],
-            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b).unwrap(),
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
+                .unwrap(),
         );
         casper::write(Keyspace::Context(ContextAddr::from(addr)), &[]).unwrap();
     }
@@ -46,7 +47,8 @@ where
             *casper::get_callee().address(),
             1,
             [0u8; 8],
-            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b).unwrap(),
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
+                .unwrap(),
         );
         let entry = casper::read(Keyspace::Context(ContextAddr::from(addr)), |_size| None).unwrap();
         entry.is_some()

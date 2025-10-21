@@ -243,7 +243,11 @@ where
             *casper::get_callee().address(),
             2,
             [0u8; 8],
-            casper::generic_hash(&self.compute_prefix_bytes_for_index(self.length), crate::types::HashAlgorithm::Blake2b).unwrap(),
+            casper::generic_hash(
+                &self.compute_prefix_bytes_for_index(self.length),
+                crate::types::HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
         );
         casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
 
@@ -271,7 +275,11 @@ where
             *casper::get_callee().address(),
             2,
             [0u8; 8],
-            casper::generic_hash(&self.compute_prefix_bytes_for_index(self.length), crate::types::HashAlgorithm::Blake2b).unwrap(),
+            casper::generic_hash(
+                &self.compute_prefix_bytes_for_index(self.length),
+                crate::types::HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
         );
         casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
 

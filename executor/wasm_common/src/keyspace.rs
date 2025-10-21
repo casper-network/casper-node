@@ -1,5 +1,5 @@
-use num_derive::{FromPrimitive, ToPrimitive};
 use borsh::{BorshDeserialize, BorshSerialize};
+use num_derive::{FromPrimitive, ToPrimitive};
 
 /// Discriminant indicating which keyspace is being accessed.
 #[repr(u64)]
@@ -39,8 +39,8 @@ impl StateAddrInner {
 /// Address for a collection element owned by `entity_addr`.
 ///
 /// The `collection_type_tag` identifies the collection kind (e.g., map, set, vector).
-/// The `collection_prefix` is an 8-byte collection-level namespace derived from the collection name.
-/// The `tail` is a 32-byte element-level discriminator (e.g., hashed key or index).
+/// The `collection_prefix` is an 8-byte collection-level namespace derived from the collection
+/// name. The `tail` is a 32-byte element-level discriminator (e.g., hashed key or index).
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct CollectionAddrInner {
     pub entity_addr: [u8; 32],

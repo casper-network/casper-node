@@ -46,7 +46,11 @@ where
             [0u8; 8],
             casper::generic_hash(&context_key, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
-        casper::write(Keyspace::Context(ContextAddr::from(addr)), &borsh::to_vec(value).unwrap()).unwrap();
+        casper::write(
+            Keyspace::Context(ContextAddr::from(addr)),
+            &borsh::to_vec(value).unwrap(),
+        )
+        .unwrap();
     }
 
     pub fn remove(&mut self, key: &K) {

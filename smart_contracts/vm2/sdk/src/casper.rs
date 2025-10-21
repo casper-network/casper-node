@@ -84,10 +84,13 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     f: F,
 ) -> Result<Option<()>, HostResult> {
     let (key_space, key_bytes): (u64, Vec<u8>) = match key {
-        Keyspace::Context(context_addr) => {
-            (KeyspaceTag::Context as u64, borsh::to_vec(&context_addr).expect("borsh"))
+        Keyspace::Context(context_addr) => (
+            KeyspaceTag::Context as u64,
+            borsh::to_vec(&context_addr).expect("borsh"),
+        ),
+        Keyspace::NamedKey(key_name) => {
+            (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec())
         }
-        Keyspace::NamedKey(key_name) => (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec()),
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -130,8 +133,13 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 /// Write to the global state.
 pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
     let (key_space, key_bytes): (u64, Vec<u8>) = match key {
-        Keyspace::Context(context_addr) => (KeyspaceTag::Context as u64, borsh::to_vec(&context_addr).expect("borsh")),
-        Keyspace::NamedKey(key_name) => (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec()),
+        Keyspace::Context(context_addr) => (
+            KeyspaceTag::Context as u64,
+            borsh::to_vec(&context_addr).expect("borsh"),
+        ),
+        Keyspace::NamedKey(key_name) => {
+            (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec())
+        }
     };
 
     let input_data = borsh::to_vec(&(key_space, key_bytes, value)).expect("Expected borsh to work");
@@ -156,8 +164,13 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
 /// Remove from the global state.
 pub fn remove(key: Keyspace) -> Result<(), HostResult> {
     let (key_space, key_bytes): (u64, Vec<u8>) = match key {
-        Keyspace::Context(context_addr) => (KeyspaceTag::Context as u64, borsh::to_vec(&context_addr).expect("borsh")),
-        Keyspace::NamedKey(key_name) => (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec()),
+        Keyspace::Context(context_addr) => (
+            KeyspaceTag::Context as u64,
+            borsh::to_vec(&context_addr).expect("borsh"),
+        ),
+        Keyspace::NamedKey(key_name) => {
+            (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec())
+        }
     };
     let input_data = borsh::to_vec(&(key_space, key_bytes)).expect("Expected borsh to work");
     extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
@@ -279,19 +292,29 @@ pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, HostResult> {
 pub fn has_state(state_addr: ContextAddr) -> Result<bool, HostResult> {
     // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
     let mut vec = Vec::new();
-    let read_info = read(Keyspace::Context(state_addr), |size| reserve_vec_space(&mut vec, size))?;
+    let read_info = read(Keyspace::Context(state_addr), |size| {
+        reserve_vec_space(&mut vec, size)
+    })?;
     Ok(read_info.is_some())
 }
 
 /// Read state from the global state.
 pub fn read_state<T: Default + BorshDeserialize>(state_addr: ContextAddr) -> Result<T, HostResult> {
     let mut vec = Vec::new();
-    let read_info = read(Keyspace::Context(state_addr), |size| reserve_vec_space(&mut vec, size))?;
-    Ok(match read_info { Some(()) => borsh::from_slice(&vec).unwrap(), None => T::default() })
+    let read_info = read(Keyspace::Context(state_addr), |size| {
+        reserve_vec_space(&mut vec, size)
+    })?;
+    Ok(match read_info {
+        Some(()) => borsh::from_slice(&vec).unwrap(),
+        None => T::default(),
+    })
 }
 
 /// Write state to the global state.
-pub fn write_state<T: BorshSerialize>(state_addr: ContextAddr, state: &T) -> Result<(), HostResult> {
+pub fn write_state<T: BorshSerialize>(
+    state_addr: ContextAddr,
+    state: &T,
+) -> Result<(), HostResult> {
     let new_state = borsh::to_vec(state).unwrap();
     write(Keyspace::Context(state_addr), &new_state)?;
     Ok(())

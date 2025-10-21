@@ -146,7 +146,13 @@ impl MinimalHostWrapper {
             [0u8; 8],
             [0u8; 32],
         );
-        casper::read(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), |_| None).ok();
+        casper::read(
+            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
+                addr,
+            )),
+            |_| None,
+        )
+        .ok();
     }
 
     pub fn ret(&self) {
@@ -168,7 +174,13 @@ impl MinimalHostWrapper {
             [0u8; 8],
             [0u8; 32],
         );
-        casper::write(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), &[]).ok();
+        casper::write(
+            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
+                addr,
+            )),
+            &[],
+        )
+        .ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {
@@ -179,7 +191,13 @@ impl MinimalHostWrapper {
             [0u8; 8],
             [0u8; 32],
         );
-        casper::write(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), &buffer).ok();
+        casper::write(
+            Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(
+                addr,
+            )),
+            &buffer,
+        )
+        .ok();
     }
 
     pub fn ret_faulty_flags(&self) {
