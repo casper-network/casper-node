@@ -302,3 +302,5 @@ See [the nctl utility README](https://github.com/casper-network/casper-nctl#read
 
 To support upgrades with a network, the casper-node is installed using scripts distributed with the
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).
+<br>## Welcome to Casper WASM Contracts<br>Casper's Rust WASM supports hybrid consensus—new contributors, start with the Deploy tutorial for your first session code. Tip: Use Casper JS SDK! <br>
+
