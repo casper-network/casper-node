@@ -625,7 +625,13 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let key = [0, 1, 2, 3];
         let value_1 = [4, 5, 6, 7];
         let value_2 = [8, 9, 10, 11, 12, 13, 14, 15];
-        let keyspace = Keyspace::Context(&key);
+        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            casper::generic_hash(&key, casper::HashAlgorithm::Blake2b).unwrap(),
+        );
+        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr));
         // No value exists
         assert_eq!(casper::read(keyspace, |_size| None), Ok(None));
 
@@ -647,7 +653,13 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         assert_eq!(casper::read_into_vec(keyspace), Ok(Some(value_2.to_vec())));
 
         // Attempting to remove a definetely non-existent key should be an error
-        let keyspace = Keyspace::Context(b"this key definetely does not exists");
+        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            casper::generic_hash(b"this key definetely does not exists", casper::HashAlgorithm::Blake2b).unwrap(),
+        );
+        let keyspace = Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr));
         let result = casper::remove(keyspace);
         assert_eq!(result, Err(HostResult::NotFound));
     }

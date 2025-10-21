@@ -1,7 +1,7 @@
 use crate::prelude::marker::PhantomData;
 
 use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
@@ -31,12 +31,24 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        casper::write(Keyspace::Context(lookup_key.as_ref()), &[]).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            1,
+            [0u8; 8],
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &[]).unwrap();
     }
 
     pub fn contains_key(&self, key: T) -> bool {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        let entry = casper::read(Keyspace::Context(lookup_key.as_ref()), |_size| None).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            1,
+            [0u8; 8],
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        let entry = casper::read(Keyspace::Context(ContextAddr::from(addr)), |_size| None).unwrap();
         entry.is_some()
     }
 }

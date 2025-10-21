@@ -140,7 +140,13 @@ impl MinimalHostWrapper {
     }
 
     pub fn read(&self) {
-        casper::read(Keyspace::Context(&[]), |_| None).ok();
+        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::read(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), |_| None).ok();
     }
 
     pub fn ret(&self) {
@@ -156,12 +162,24 @@ impl MinimalHostWrapper {
     }
 
     pub fn write(&self) {
-        casper::write(Keyspace::Context(&[]), &[]).ok();
+        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::write(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), &[]).ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {
         let buffer = vec![0; n as usize];
-        casper::write(Keyspace::Context(&[0]), &buffer).ok();
+        let addr = casper_executor_wasm_common::keyspace::CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::write(Keyspace::Context(casper_executor_wasm_common::keyspace::ContextAddr::from(addr)), &buffer).ok();
     }
 
     pub fn ret_faulty_flags(&self) {

@@ -2,7 +2,8 @@ use crate::prelude::{marker::PhantomData, *};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
+use crate::types::HashAlgorithm;
 use const_fnv1a_hash::fnv1a_hash_64;
 
 use crate::casper::{self, read_into_vec};
@@ -138,7 +139,13 @@ where
         entry_to_write.serialize(&mut entry_bytes).unwrap();
 
         let prefix = self.create_prefix_from_ptr(&ptr);
-        let keyspace = Keyspace::Context(&prefix);
+        let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
+        let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            3,
+            [0u8; 8],
+            tail,
+        )));
         casper::write(keyspace, &entry_bytes).unwrap();
 
         previous
@@ -159,7 +166,13 @@ where
         let (to_remove_ptr, at_remove_ptr) = self.find_slot(key)?;
 
         let to_remove_prefix = self.create_prefix_from_ptr(&to_remove_ptr);
-        let to_remove_context_key = Keyspace::Context(&to_remove_prefix);
+        let to_remove_tail = casper::generic_hash(&to_remove_prefix, HashAlgorithm::Blake2b).unwrap();
+        let to_remove_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            3,
+            [0u8; 8],
+            to_remove_tail,
+        )));
 
         // See if the removed entry is a part of a collision resolution chain
         // by investigating its potential child.
@@ -167,7 +180,13 @@ where
             index: to_remove_ptr.index + 1,
             ..to_remove_ptr
         });
-        let to_remove_ptr_child_keyspace = Keyspace::Context(&to_remove_ptr_child_prefix);
+        let to_remove_ptr_child_tail = casper::generic_hash(&to_remove_ptr_child_prefix, HashAlgorithm::Blake2b).unwrap();
+        let to_remove_ptr_child_keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            3,
+            [0u8; 8],
+            to_remove_ptr_child_tail,
+        )));
 
         if self.get_entry(to_remove_ptr_child_keyspace).is_some() {
             // A child exists, so we need to retain this element to maintain
@@ -197,7 +216,13 @@ where
         let mut current_hash = self.tail_key_hash;
         while let Some(key) = current_hash {
             let current_prefix = self.create_prefix_from_ptr(&key);
-            let current_context_key = Keyspace::Context(&current_prefix);
+            let current_tail = casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
+            let current_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                3,
+                [0u8; 8],
+                current_tail,
+            )));
             let mut current_entry = self.get_entry(current_context_key).unwrap();
 
             // If there is no previous entry, then we've finished iterating.
@@ -218,6 +243,15 @@ where
                 // Re-write the updated current entry
                 let mut entry_bytes = Vec::new();
                 current_entry.serialize(&mut entry_bytes).unwrap();
+                // Reconstruct current_context_key to avoid moved value
+                let current_prefix = self.create_prefix_from_ptr(&key);
+                let current_tail = casper::generic_hash(&current_prefix, HashAlgorithm::Blake2b).unwrap();
+                let current_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                    *casper::get_callee().address(),
+                    3,
+                    [0u8; 8],
+                    current_tail,
+                )));
                 casper::write(current_context_key, &entry_bytes).unwrap();
 
                 return at_remove_ptr.value;
@@ -234,10 +268,14 @@ where
     pub fn clear(&mut self) {
         for key in self.keys() {
             let prefix = self.create_prefix_from_key(&key);
-            {
-                let key = Keyspace::Context(&prefix);
-                casper::remove(key).unwrap()
-            };
+            let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
+            let key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                3,
+                [0u8; 8],
+                tail,
+            )));
+            casper::remove(key).unwrap();
         }
 
         self.tail_key_hash = None;
@@ -290,7 +328,13 @@ where
         // This should rarely iterate more than once assuming a solid hashing algorithm.
         loop {
             let prefix = self.create_prefix_from_ptr(&bucket_ptr);
-            let keyspace = Keyspace::Context(&prefix);
+            let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
+            let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                3,
+                [0u8; 8],
+                tail,
+            )));
 
             if let Some(entry) = self.get_entry(keyspace) {
                 // Existing value, check if the keys match
@@ -319,7 +363,13 @@ where
         // This should rarely iterate more than once assuming a solid hashing algorithm.
         loop {
             let prefix = self.create_prefix_from_ptr(&bucket_ptr);
-            let keyspace = Keyspace::Context(&prefix);
+            let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
+            let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                3,
+                [0u8; 8],
+                tail,
+            )));
 
             if let Some(entry) = self.get_entry(keyspace) {
                 // Existing value, check if the keys match
@@ -429,7 +479,13 @@ where
         key_bytes.extend(b"_");
         key_bytes.put_u64_le(current_hash.index);
 
-        let context_key = Keyspace::Context(&key_bytes);
+        let tail = casper::generic_hash(&key_bytes, HashAlgorithm::Blake2b).unwrap();
+        let context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            3,
+            [0u8; 8],
+            tail,
+        )));
 
         match read_into_vec(context_key) {
             Ok(Some(vec)) => {

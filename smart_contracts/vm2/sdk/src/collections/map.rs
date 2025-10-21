@@ -5,7 +5,7 @@ use crate::{
     prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
@@ -40,21 +40,36 @@ where
         // NOTE: We may want to create new keyspace for a hashed context element to avoid hashing in
         // the wasm.
         key.serialize(&mut context_key).unwrap();
-        let prefix = Keyspace::Context(&context_key);
-        casper::write(prefix, &borsh::to_vec(value).unwrap()).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            casper::generic_hash(&context_key, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &borsh::to_vec(value).unwrap()).unwrap();
     }
 
     pub fn remove(&mut self, key: &K) {
         let prefix_bytes = self.compute_prefix_for_key(key);
-        let prefix = Keyspace::Context(&prefix_bytes);
-        casper::remove(prefix).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
         let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
-        let prefix = Keyspace::Context(&key_bytes);
-        read_into_vec(prefix)
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            0,
+            [0u8; 8],
+            casper::generic_hash(&key_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        read_into_vec(Keyspace::Context(ContextAddr::from(addr)))
             .unwrap()
             .map(|vec| borsh::from_slice(&vec).unwrap())
     }
