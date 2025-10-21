@@ -395,6 +395,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 // Entry point has &self or &mut self
                 let mut entry_point_requires_state: bool = false;
 
+                #[allow(unused_variables)]
                 let handle_write_state = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
                         entry_point_requires_state = true;
@@ -584,7 +585,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                 let handle_call = if entry_point_requires_state {
                     quote! {
-                        let mut instance: #struct_name = casper_contract_sdk::casper::read_state().unwrap();
+                        let mut instance: #struct_name = #struct_name::__read_state_from_fields().unwrap();
                         let _ret = instance.#func_name(#(args.#arg_names,)*);
                     }
                 } else if method_attribute.constructor {
@@ -632,7 +633,10 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                         #handle_err;
 
-                        #handle_write_state;
+                        // Persist modified fields if state was mutated.
+                        if entry_point_requires_state {
+                            let _ = instance.__write_state_to_fields().unwrap();
+                        }
 
                         #handle_ret;
                     }
@@ -1643,6 +1647,53 @@ fn process_casper_contract_state_for_struct(
         },
     };
 
+    // Build per-field read/write code for named fields
+    let (read_bindings, write_stmts, init_fields) = match &contract_struct.fields {
+        syn::Fields::Named(fields) => {
+            let mut reads = Vec::new();
+            let mut writes = Vec::new();
+            let mut inits = Vec::new();
+            for field in &fields.named {
+                if let Some(field_ident) = &field.ident {
+                    let field_ty = &field.ty;
+                    reads.push(quote! {
+                        let #field_ident: #field_ty = {
+                            let mut key = #crate_path::prelude::Vec::new();
+                            key.extend_from_slice(stringify!(#struct_name).as_bytes());
+                            key.push(b'_');
+                            key.extend_from_slice(stringify!(#field_ident).as_bytes());
+                            let mut buf = #crate_path::prelude::Vec::new();
+                            let info = #crate_path::casper::read(
+                                #crate_path::casper_executor_wasm_common::keyspace::Keyspace::Context(&key),
+                                |sz| #crate_path::reserve_vec_space(&mut buf, sz)
+                            )?;
+                            match info {
+                                Some(()) => #crate_path::serializers::borsh::from_slice(&buf).unwrap(),
+                                None => panic!(concat!("Field missing: ", stringify!(#field_ident))),
+                            }
+                        };
+                    });
+                    writes.push(quote! {
+                        {
+                            let mut key = #crate_path::prelude::Vec::new();
+                            key.extend_from_slice(stringify!(#struct_name).as_bytes());
+                            key.push(b'_');
+                            key.extend_from_slice(stringify!(#field_ident).as_bytes());
+                            let bytes = #crate_path::serializers::borsh::to_vec(&self.#field_ident).unwrap();
+                            #crate_path::casper::write(
+                                #crate_path::casper_executor_wasm_common::keyspace::Keyspace::Context(&key),
+                                &bytes
+                            )?;
+                        }
+                    });
+                    inits.push(quote! { #field_ident, });
+                }
+            }
+            (reads, writes, inits)
+        }
+        _ => (Vec::new(), Vec::new(), Vec::new()),
+    };
+
     quote! {
         #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
         #[borsh(crate = #borsh_path)]
@@ -1664,6 +1715,21 @@ fn process_casper_contract_state_for_struct(
         impl #crate_path::compat::types::CLTyped for #struct_name {
             fn cl_type() -> #crate_path::compat::types::CLType {
                 #crate_path::compat::types::CLType::Any
+            }
+        }
+
+        // Internal per-field storage helpers and state read/write using Context
+        impl #struct_name {
+            /// Read state using field-scoped storage.
+            pub fn __read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
+                #(#read_bindings)*
+                Ok(Self { #(#init_fields)* })
+            }
+
+            /// Write state using field-scoped storage.
+            pub fn __write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
+                #(#write_stmts)*
+                Ok(())
             }
         }
     }
