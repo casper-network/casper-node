@@ -418,7 +418,6 @@ fn should_run_ee_966_should_request_exactly_maximum() {
     assert!(result.is_ok());
 }
 
-/* #TODO fix this test
 #[test]
 fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     let session_code = read_wasm(CONTRACT_EE_966_REGRESSION);
@@ -462,5 +461,8 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
             ..
         })
     ));
+    assert_eq!(
+        result.unwrap().output(),
+        Some(&Bytes::from(vec![20, 0, 0, 0]))
+    );
 }
-*/
