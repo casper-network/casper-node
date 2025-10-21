@@ -1,5 +1,5 @@
 [package]
-name = "ee-966-regression-vm2"
+name = "vm2-ee-966-regression"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casper.network>"]
 edition = "2021"
