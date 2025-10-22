@@ -1,7 +1,7 @@
 pub mod install;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
 
@@ -65,7 +65,6 @@ use casper_types::{
     U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
-use parking_lot::RwLock;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::install::BundleError;
@@ -193,7 +192,6 @@ impl ExecutorConfigBuilder {
 pub struct ExecutorV2 {
     config: ExecutorConfig,
     compiled_wasm_engine: Arc<WasmerEngine>,
-    execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
     execution_engine_v1: ExecutionEngineV1,
 }
 
@@ -919,6 +917,7 @@ impl ExecutorV2 {
             sandboxed,
             runtime_native_config,
             authorization_keys,
+            execution_stack,
         } = execute_request;
 
         let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
@@ -954,7 +953,14 @@ impl ExecutorV2 {
                             "Couldn't find an active version for smart contract under path {:?}",
                             [&vm1_key, &smart_contract_key]
                         );
-                            return Err(ExecuteError::NoActiveContract(smart_contract_key));
+                            return Ok(ExecuteResult {
+                                host_error: Some(CallError::NoActiveContract),
+                                output: None,
+                                gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                effects: tracking_copy.effects(),
+                                cache: tracking_copy.cache(),
+                                messages: tracking_copy.messages(),
+                            });
                         };
                         let entity_addr = EntityAddr::SmartContract(contract_hash.value());
                         let latest_version_key = Key::AddressableEntity(entity_addr);
@@ -977,7 +983,14 @@ impl ExecutorV2 {
                             "Couldn't find an active version for smart contract under path {:?}",
                             [&vm1_key, &smart_contract_key]
                         );
-                            return Err(ExecuteError::NoActiveContract(smart_contract_key));
+                            return Ok(ExecuteResult {
+                                host_error: Some(CallError::NoActiveContract),
+                                output: None,
+                                gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                effects: tracking_copy.effects(),
+                                cache: tracking_copy.cache(),
+                                messages: tracking_copy.messages(),
+                            });
                         };
                         let latest_version_key = Key::Hash(contract_hash.value());
                         tracking_copy
@@ -1031,15 +1044,27 @@ impl ExecutorV2 {
                         // Note: Bytecode stored in the GlobalStateReader has a "kind" option -
                         // currently we know we have a v2 bytecode as the stored contract is of "V2"
                         // variant.
-                        let wasm_bytes = tracking_copy
-                            .read(&wasm_key)
-                            .map_err(|read_err| {
+                        let stored_value =
+                            match tracking_copy.read(&wasm_key).map_err(|read_err| {
                                 error!(
                                     "Error when fetching wasm_bytes {wasm_key}. Details {read_err}"
                                 );
                                 ExecuteError::Fatal(FatalHostError::TrackingCopy)
-                            })?
-                            .ok_or(ExecuteError::EntityNotFound(wasm_key))?
+                            })? {
+                                None => {
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(CallError::CodeNotFound),
+                                        output: None,
+                                        gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                        effects: tracking_copy.effects(),
+                                        cache: tracking_copy.cache(),
+                                        messages: tracking_copy.messages(),
+                                    });
+                                }
+                                Some(stored_value) => stored_value,
+                            };
+
+                        let wasm_bytes = stored_value
                             .into_byte_code()
                             .ok_or({
                                 error!("Couldn't wasm stored value into ByteCode");
@@ -1055,7 +1080,14 @@ impl ExecutorV2 {
                                 match tracking_copy.runtime_footprint_by_entity_addr(entity_addr) {
                                     Ok(footprint) => footprint,
                                     Err(_) => {
-                                        return Err(ExecuteError::EntityNotFound(caller_key));
+                                        return Ok(ExecuteResult {
+                                            host_error: Some(CallError::EntityNotFound),
+                                            output: None,
+                                            gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                            effects: tracking_copy.effects(),
+                                            cache: tracking_copy.cache(),
+                                            messages: tracking_copy.messages(),
+                                        });
                                     }
                                 };
                             match system::transfer(
@@ -1128,7 +1160,14 @@ impl ExecutorV2 {
                                     {
                                         Ok(footprint) => footprint,
                                         Err(_) => {
-                                            return Err(ExecuteError::EntityNotFound(caller_key));
+                                            return Ok(ExecuteResult {
+                                                host_error: Some(CallError::CodeNotFound),
+                                                output: None,
+                                                gas_usage,
+                                                effects: tracking_copy.effects(),
+                                                cache: tracking_copy.cache(),
+                                                messages: tracking_copy.messages(),
+                                            });
                                         }
                                     };
 
@@ -1227,7 +1266,14 @@ impl ExecutorV2 {
                             ?execution_kind,
                             "No contract code found",
                         );
-                        return Err(ExecuteError::CodeNotFound(*contract_package_addr));
+                        return Ok(ExecuteResult {
+                            host_error: Some(CallError::CodeNotFound),
+                            output: None,
+                            gas_usage: GasUsage::new(gas_limit, gas_limit),
+                            effects: tracking_copy.effects(),
+                            cache: tracking_copy.cache(),
+                            messages: tracking_copy.messages(),
+                        });
                     }
                 }
             } else {
@@ -1280,6 +1326,7 @@ impl ExecutorV2 {
             block_height,
             authorization_keys,
             ffi_call_costs,
+            execution_stack: Arc::clone(&execution_stack),
         };
 
         // Check that the input argument size does not exceed the VM memory limit
@@ -1305,10 +1352,16 @@ impl ExecutorV2 {
             .instantiate(wasm_bytes, self.clone(), context, wasm_instance_config)
             .map_err(ExecuteError::WasmPreparation)?;
 
-        self.push_execution_stack(execution_kind.clone());
+        {
+            let mut stack = execution_stack.write();
+            stack.push_back(execution_kind.clone());
+        }
         let (vm_result, gas_usage) = instance.call_export(export_name);
-
-        let top_execution_kind = self.pop_execution_stack().ok_or({
+        let top_execution_kind = {
+            let mut stack = execution_stack.write();
+            stack.pop_back()
+        }
+        .ok_or({
             //This shouldn't happen since we just pushed
             ExecuteError::Fatal(FatalHostError::CorruptExecutionState(
                 "Unexpected empty execution stack".to_owned(),
@@ -1675,21 +1728,8 @@ impl ExecutorV2 {
         ExecutorV2 {
             config,
             compiled_wasm_engine: Arc::new(wasm_engine),
-            execution_stack: Default::default(),
             execution_engine_v1,
         }
-    }
-
-    /// Push the execution stack.
-    pub(crate) fn push_execution_stack(&self, execution_kind: ExecutionKind) {
-        let mut execution_stack = self.execution_stack.write();
-        execution_stack.push_back(execution_kind);
-    }
-
-    /// Pop the execution stack.
-    pub(crate) fn pop_execution_stack(&self) -> Option<ExecutionKind> {
-        let mut execution_stack = self.execution_stack.write();
-        execution_stack.pop_back()
     }
 }
 
@@ -1754,6 +1794,10 @@ impl Executor for ExecutorV2 {
                     CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
                     CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
                     CallError::NotCallable => SandboxedExecutionError::NotCallable,
+                    CallError::NoActiveContract => SandboxedExecutionError::NoActiveContract,
+                    CallError::CodeNotFound => SandboxedExecutionError::CodeNotFound,
+                    CallError::EntityNotFound => SandboxedExecutionError::EntityNotFound,
+                    CallError::LockedPackage => SandboxedExecutionError::LockedPackage,
                     CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
                     CallError::InputInvalid => SandboxedExecutionError::InputInvalid,
                 }),
@@ -1772,7 +1816,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
     let stored_value = tracking_copy
         .read(&caller_key)
         .map_err(|_error| ExecuteError::Fatal(FatalHostError::TrackingCopy))?
-        .ok_or(ExecuteError::EntityNotFound(caller_key))?;
+        .ok_or(ExecuteError::MainPurseNotFound(caller_key))?;
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key.into_t::<Key>().map_err(|cl_error| {
@@ -1781,7 +1825,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             })?;
             let hash = match key.into_entity_hash() {
                 Some(hash) => hash,
-                None => return Err(ExecuteError::EntityNotFound(key)),
+                None => return Err(ExecuteError::MainPurseNotFound(key)),
             };
             let stored_value = tracking_copy
                 .read(&key)
@@ -1812,7 +1856,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                 contract_hash
             } else {
                 debug!("Couldn't find an active version for smart contract {caller_key}");
-                return Err(ExecuteError::NoActiveContract(caller_key));
+                return Err(ExecuteError::MainPurseNotFound(caller_key));
             };
 
             let entity_addr = EntityAddr::SmartContract(contract_hash.value());
@@ -1824,7 +1868,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
                     ExecuteError::Fatal(FatalHostError::TrackingCopy)
                 })?;
             let addressable_entity = stored_value
-                .ok_or(ExecuteError::EntityNotFound(latest_version_key))?
+                .ok_or(ExecuteError::MainPurseNotFound(latest_version_key))?
                 .into_addressable_entity()
                 .ok_or(ExecuteError::Fatal(FatalHostError::TypeConversion))?;
 
@@ -1833,13 +1877,13 @@ fn get_purse_for_entity<R: GlobalStateReader>(
         StoredValue::ContractPackage(contract_package) => {
             let contract_hash = match contract_package.enabled_versions().last_key_value() {
                 Some((_, contract_hash)) => Key::Hash(contract_hash.value()),
-                None => return Err(ExecuteError::NoActiveContract(caller_key)),
+                None => return Err(ExecuteError::MainPurseNotFound(caller_key)),
             };
 
             let named_keys = tracking_copy
                 .read(&contract_hash)
                 .map_err(|_error| ExecuteError::Fatal(FatalHostError::TrackingCopy))?
-                .ok_or(ExecuteError::EntityNotFound(contract_hash))?
+                .ok_or(ExecuteError::MainPurseNotFound(contract_hash))?
                 .into_contract()
                 .map(|contract| contract.take_named_keys())
                 .ok_or(ExecuteError::InvalidKeyForPurse(contract_hash))?;
@@ -1852,7 +1896,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
 
             let hash_addr = contract_hash
                 .into_entity_hash_addr()
-                .ok_or(ExecuteError::EntityNotFound(contract_hash))?;
+                .ok_or(ExecuteError::MainPurseNotFound(contract_hash))?;
 
             Ok((EntityAddr::SmartContract(hash_addr), uref))
         }

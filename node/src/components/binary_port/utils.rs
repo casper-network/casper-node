@@ -46,6 +46,15 @@ pub(super) fn map_sandbox_error(
                 InnerSandboxedExecutionError::InternalHostError => {
                     SandboxedExecutionError::InternalHostError
                 }
+                InnerSandboxedExecutionError::NoActiveContract => {
+                    SandboxedExecutionError::NoActiveContract
+                }
+                InnerSandboxedExecutionError::EntityNotFound => {
+                    SandboxedExecutionError::EntityNotFound
+                }
+                InnerSandboxedExecutionError::LockedPackage => {
+                    SandboxedExecutionError::LockedPackage
+                }
                 InnerSandboxedExecutionError::Api(api_error) => {
                     SandboxedExecutionError::Api(api_error)
                 }

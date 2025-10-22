@@ -5,7 +5,7 @@ use casper_contract_sdk::{
     common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     serializers::borsh,
-    types::{HashAlgorithm, IOFunctionOption},
+    types::{EntityAddr, HashAlgorithm, IOFunctionOption},
 };
 
 const CURRENT_VERSION: &str = "v1";
@@ -148,7 +148,7 @@ impl MinimalHostWrapper {
     }
 
     pub fn transfer(&self) {
-        casper::transfer(&[0; 32], 0).ok();
+        casper::transfer(&EntityAddr::SmartContract([0; 32]), 0).ok();
     }
 
     pub fn upgrade(&self) {

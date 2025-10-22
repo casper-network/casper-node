@@ -19,6 +19,7 @@ pub fn build_schema_impl<W: Write>(
     package_name: Option<&str>,
     schema_writer: &mut W,
     bundle_writer: &mut W,
+    allow_skipping_abi_schema: bool,
 ) -> Result<(), anyhow::Error> {
     // Compile contract package to a native library with extra code that will
     // produce ABI information including entrypoints, types, etc.
@@ -74,7 +75,12 @@ pub fn build_schema_impl<W: Write>(
     if dependencies.contains(&"casper-contract-macros".into()) {
         features.push("casper-contract-macros/__abi_generator".to_owned());
     }
-
+    if allow_skipping_abi_schema && features.is_empty() {
+        eprintln!(
+            "🤷 Skipping ABI schema because the project doesn't have necessary dependencies..."
+        );
+        return Ok(());
+    }
     let build_result = compilation
         .dispatch(env!("TARGET"), &features)
         .context("ABI-rich wasm compilation failure")?;
@@ -93,7 +99,6 @@ pub fn build_schema_impl<W: Write>(
     let bundle = Bundle::V1(bundle_v1);
 
     serde_json::to_writer(schema_writer, &collected).context("Serialize collected schema")?;
-    // bundle_writer borsh::to_vec(&bundle).context("Serialize bundle")?)
     borsh::to_writer(bundle_writer, &bundle).context("Write bundle")?;
     Ok(())
 }

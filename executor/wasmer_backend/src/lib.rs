@@ -528,6 +528,7 @@ where
             block_height: data.context.block_height,
             authorization_keys: data.context.authorization_keys.clone(),
             ffi_call_costs: data.context.ffi_call_costs.clone(),
+            execution_stack: Arc::clone(&data.context.execution_stack),
         }
     }
 }

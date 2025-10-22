@@ -2398,10 +2398,6 @@ name = "ee-966-regression"
 version = "0.1.0"
 
 [[package]]
-name = "ee-966-regression-vm2"
-version = "0.1.0"
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7275,6 +7271,10 @@ version = "0.1.0"
 dependencies = [
  "casper-contract-sdk",
 ]
+
+[[package]]
+name = "vm2-ee-966-regression"
+version = "0.1.0"
 
 [[package]]
 name = "vm2-escrow"

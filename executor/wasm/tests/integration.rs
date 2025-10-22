@@ -1459,11 +1459,10 @@ fn non_existing_smart_contract_does_not_panic() {
 
     let result = executor
         .execute_with_provider(state_root_hash, &global_state, execute_request)
-        .expect_err("Failure");
+        .expect("should return execute with call error")
+        .host_error;
 
-    assert!(matches!(
-        result,
-        ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
+    assert!(matches!(result, Some(CallError::CodeNotFound)))
 }
 
 #[test]

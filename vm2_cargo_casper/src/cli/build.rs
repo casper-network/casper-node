@@ -9,6 +9,7 @@ pub fn build_impl(
     package_name: Option<&str>,
     output_dir: Option<PathBuf>,
     embed_schema: bool,
+    allow_skipping_abi_schema: bool,
 ) -> Result<(), anyhow::Error> {
     // Build the contract package targetting wasm32-unknown-unknown without
     // extra feature flags - this is the production contract wasm file.
@@ -23,6 +24,7 @@ pub fn build_impl(
             package_name,
             &mut schema_buffer,
             &mut bundle_buffer,
+            allow_skipping_abi_schema,
         )
         .context("Failed to build contract schema")?;
 

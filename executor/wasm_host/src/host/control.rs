@@ -4,8 +4,8 @@ use bytes::Bytes;
 use casper_executor_wasm_common::{
     chain_utils::{compute_next_contract_hash_version, compute_wasm_bytecode_hash},
     error::{
-        CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA,
-        HOST_ERROR_INVALID_INPUT, HOST_LOCKED_PACKAGE, HOST_NO_ACTIVE_CONTRACT,
+        CALLEE_INPUT_INVALID, CALLEE_LOCKED_PACKAGE, CALLEE_NOT_CALLABLE,
+        CALLEE_NO_ACTIVE_CONTRACT, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA,
     },
 };
 use casper_executor_wasm_interface::{
@@ -106,7 +106,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
     {
         Ok(res) => res,
         Err(_) => {
-            return Ok(HOST_ERROR_INVALID_INPUT);
+            return Ok(CALLEE_INPUT_INVALID);
         }
     };
     let code: Bytes = Bytes::from(code.take_inner());
@@ -291,7 +291,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
             };
 
             if package.is_locked() {
-                return Ok(HOST_LOCKED_PACKAGE);
+                return Ok(CALLEE_LOCKED_PACKAGE);
             }
 
             match package.current_contract_hash() {
@@ -345,7 +345,7 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
                         contract_version_key.contract_version(),
                     )
                 }
-                None => return Ok(HOST_NO_ACTIVE_CONTRACT),
+                None => return Ok(CALLEE_NO_ACTIVE_CONTRACT),
             }
         }
         Ok(Some(other_entity)) => {
