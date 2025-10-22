@@ -417,23 +417,23 @@ cost = 150
 size_multiplier = 100
 
 [wasm.v2.host_ffi_opt_costs]
-read = { base_cost = 0, per_byte = 0 }
-write = { base_cost = 0, per_byte = 0 }
-remove = { base_cost = 0, per_byte = 0 }
-copy_input = { base_cost = 0, per_byte = 0 }
-ret = { base_cost = 0, per_byte = 0 }
-create = { base_cost = 0, per_byte = 0 }
-transfer = { base_cost = 0, per_byte = 0 }
-env_balance = { base_cost = 0, per_byte = 0 }
-upgrade = { base_cost = 0, per_byte = 0 }
-call = { base_cost = 0, per_byte = 0 }
-print = { base_cost = 0, per_byte = 0 }
-emit = { base_cost = 0, per_byte = 0 }
-env_info = { base_cost = 0, per_byte = 0 }
-generic_hash = { base_cost = 0, per_byte = 0 }
-recover_secp256k1 = { base_cost = 0, per_byte = 0 }
-alt_bn128_add = { base_cost = 1_000_000, per_byte = 0 }
-alt_bn128_mul = { base_cost = 1_000_000, per_byte = 0 }
+read = { base_cost = 1_000_000, per_byte = 2_000 }
+write = { base_cost = 1_000_000, per_byte = 2_000 }
+remove = { base_cost = 1_000_000, per_byte = 2_000 }
+copy_input = { base_cost = 1_000_000, per_byte = 2_000 }
+ret = { base_cost = 1_000_000, per_byte = 2_000 }
+create = { base_cost = 1_000_000, per_byte = 2_000 }
+transfer = { base_cost = 1_000_000, per_byte = 2_000 }
+env_balance = { base_cost = 1_000_000, per_byte = 2_000 }
+upgrade = { base_cost = 1_000_000, per_byte = 2_000 }
+call = { base_cost = 1_000_000, per_byte = 2_000 }
+print = { base_cost = 1_000_000, per_byte = 2_000 }
+emit = { base_cost = 1_000_000, per_byte = 2_000 }
+env_info = { base_cost = 1_000_000, per_byte = 2_000 }
+generic_hash = { base_cost = 1_000_000, per_byte = 2_000 }
+recover_secp256k1 = { base_cost = 1_000_000, per_byte = 2_000 }
+alt_bn128_add = { base_cost = 1_000_000, per_byte = 2_000 }
+alt_bn128_mul = { base_cost = 1_000_000, per_byte = 2_000 }
 alt_bn128_pairing = { base_cost = 1_000_000, per_byte = 2_000 }
 
 [wasm.messages_limits]
