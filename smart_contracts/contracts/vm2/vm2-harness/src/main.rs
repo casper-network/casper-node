@@ -9,10 +9,13 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_message},
-    casper_executor_wasm_common::{error::HostResult, keyspace::{Keyspace, CollectionAddrInner, ContextAddr}},
+    casper_executor_wasm_common::{
+        error::HostResult,
+        keyspace::{CollectionAddrInner, ContextAddr, Keyspace},
+    },
     log,
     prelude::Entity,
-    types::{Address, CallError, NamedKey, PublicKey, HashAlgorithm},
+    types::{Address, CallError, HashAlgorithm, NamedKey, PublicKey},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
@@ -638,7 +641,10 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // Write a value
         casper::write(keyspace.clone(), &value_1).unwrap();
         // Value exists
-        assert_eq!(casper::read_into_vec(keyspace.clone()), Ok(Some(value_1.to_vec())));
+        assert_eq!(
+            casper::read_into_vec(keyspace.clone()),
+            Ok(Some(value_1.to_vec()))
+        );
         // Remove the value
         casper::remove(keyspace.clone()).unwrap();
         // No value exists

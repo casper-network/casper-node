@@ -393,10 +393,15 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     .map(|(name, ty)| quote! { #name: #ty })
                     .collect();
 
-                let (receiver_is_ref, receiver_is_mut, receiver_exists) = match func.sig.inputs.first() {
-                    Some(syn::FnArg::Receiver(receiver)) => (receiver.reference.is_some(), receiver.mutability.is_some(), true),
-                    _ => (false, false, false),
-                };
+                let (receiver_is_ref, receiver_is_mut, receiver_exists) =
+                    match func.sig.inputs.first() {
+                        Some(syn::FnArg::Receiver(receiver)) => (
+                            receiver.reference.is_some(),
+                            receiver.mutability.is_some(),
+                            true,
+                        ),
+                        _ => (false, false, false),
+                    };
 
                 let call_data_return_lifetime = if method_attribute.constructor {
                     quote! {
@@ -571,7 +576,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                 let persist_after_call_tokens = if receiver_is_ref && receiver_is_mut {
                     quote! { let _ = instance.__write_state_to_fields().unwrap(); }
-                } else { quote!{} };
+                } else {
+                    quote! {}
+                };
 
                 extern_entry_points.push(quote! {
 
@@ -1614,7 +1621,9 @@ fn process_casper_contract_state_for_struct(
     };
 
     // Build per-field read/write code for named fields
-    let (default_destructure, read_bindings, write_statements, init_fields) = match &contract_struct.fields {
+    let (default_destructure, read_bindings, write_statements, init_fields) = match &contract_struct
+        .fields
+    {
         syn::Fields::Named(fields) => {
             let mut default_pairs = Vec::new();
             let mut reads = Vec::new();

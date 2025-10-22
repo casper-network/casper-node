@@ -87,7 +87,8 @@ impl UpgradableContractV2 {
     #[casper(ignore_state)]
     pub fn migrate() {
         log!("Reading old state...");
-        let old_state: UpgradableContractV1 = casper::read_contract_state::<UpgradableContractV1>().unwrap();
+        let old_state: UpgradableContractV1 =
+            casper::read_contract_state::<UpgradableContractV1>().unwrap();
         log!("Old state {old_state:?}");
         let new_state = UpgradableContractV2::from(old_state);
         log!("Success! New state: {new_state:?}");
