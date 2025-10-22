@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{
@@ -19,8 +21,10 @@ use crate::{
     },
     CLType, CLTyped, PublicKey, URef, U512,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
-pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
+pub use vesting::{VestingSchedule, LOCKED_FUNDS_PERIOD_MILLIS, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
@@ -335,6 +339,30 @@ impl Bid {
             .try_fold(U512::zero(), |a, (_, b)| a.checked_add(b.staked_amount()))
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
             .ok_or(Error::InvalidAmount)
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_public_key(rng: &mut TestRng, validator_public_key: PublicKey) -> Self {
+        Self {
+            validator_public_key,
+            bonding_purse: rng.gen(),
+            staked_amount: rng.gen(),
+            delegation_rate: rng.gen(),
+            vesting_schedule: rng.gen(),
+            inactive: rng.gen(),
+            delegators: Self::random_delegators(rng),
+        }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    fn random_delegators(rng: &mut TestRng) -> BTreeMap<PublicKey, Delegator> {
+        let mut map = BTreeMap::new();
+        for _ in 0..rng.gen_range(0..20) {
+            let value: Delegator = rng.gen();
+            let key = value.delegator_public_key().clone();
+            map.insert(key, value);
+        }
+        map
     }
 }
 

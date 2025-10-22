@@ -346,32 +346,14 @@ pub mod smart_contracts_sdk {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-            DependentFile::new(
-                "smart_contracts/sdk_codegen/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-contract-sdk = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-        ]
-    });
-}
-
-pub mod smart_contracts_sdk_codegen {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![DependentFile::new(
-            "smart_contracts/sdk_codegen/Cargo.toml",
+            "smart_contracts/sdk/Cargo.toml",
             MANIFEST_VERSION_REGEX.clone(),
             replacement,
         )]
     });
 }
+
 pub mod smart_contracts_macros {
     use super::*;
 

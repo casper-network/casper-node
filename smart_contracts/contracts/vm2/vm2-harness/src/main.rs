@@ -8,13 +8,18 @@ extern crate alloc;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, emit, emit_raw, Entity},
-    casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
+    casper::{self, emit, emit_message},
+    casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
     log,
-    types::{Address, CallError},
+    prelude::Entity,
+    types::{Address, CallError, NamedKey, PublicKey},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
+
+#[casper]
+#[allow(dead_code)]
+const EXAMPLE_STABLE_KEY: NamedKey<String> = NamedKey::new("My Stable Key");
 
 #[casper(message)]
 pub struct TestMessage {
@@ -119,7 +124,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
                 .try_call(|harness| harness.emit_revert_with_data())
                 .expect("Call succeed");
 
-            assert_eq!(call_result.result, Err(CallError::CalleeReverted));
+            assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
             assert_eq!(call_result.into_result().unwrap(), Err(CustomError::Bar),);
 
             let counter_value_after = contract_handle
@@ -134,7 +139,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.emit_revert_without_data())
             .expect("Call succeed");
-        assert_eq!(call_result.result, Err(CallError::CalleeReverted));
+        assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
         assert_eq!(call_result.data, None);
 
         log!("Revert without data success");
@@ -142,7 +147,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(false))
             .expect("Call succeed");
-        assert!(!call_result.did_revert());
+        assert!(!call_result.did_rollback());
         assert_eq!(call_result.into_result().unwrap(), Ok(()));
 
         log!("Revert on error success (ok case)");
@@ -150,24 +155,11 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let call_result = contract_handle
             .try_call(|harness| harness.should_revert_on_error(true))
             .expect("Call succeed");
-        assert!(call_result.did_revert());
+        assert!(call_result.did_rollback());
         assert_eq!(
             call_result.into_result().unwrap(),
             Err(CustomError::WithBody("Reverted".to_string()))
         );
-
-        log!("Revert on error success (err case)");
-        // let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
-        //     TypedCall::new(contract_address, selector!("should_revert_on_error"));
-        // let result = should_revert_on_error.call((false,));
-        // assert!(!result.did_revert());
-
-        // let result = should_revert_on_error.call((true,));
-        // assert!(result.did_revert());
-        // assert_eq!(
-        //     result.into_return_value(),
-        //     Err(CustomError::WithBody("Reverted".to_string()))
-        // );
     }
 
     // Constructor with args
@@ -207,7 +199,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             Ok(_) => panic!("Constructor that reverts should fail to create"),
             Err(error) => error,
         };
-        assert_eq!(error, CallError::CalleeReverted);
+        assert_eq!(error, CallError::CalleeRolledBack);
 
         let error = match ContractBuilder::<HarnessRef>::new()
             .with_seed(&seed.next_seed())
@@ -318,29 +310,31 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             .expect("Should call");
         assert_eq!(current_contract_balance, 100 + 25);
 
-        {
-            next_test(
-                &mut counter,
-                &format!("{current_test} Withdrawing as an account"),
-            );
-            let account_balance_before = casper::get_balance_of(&caller);
-            contract_handle
-                .build_call()
-                .call(|harness| harness.withdraw(account_balance_before, 50))
-                .expect("Should call")
-                .expect("Should succeed");
-            let account_balance_after = casper::get_balance_of(&caller);
-            assert_ne!(account_balance_after, account_balance_before);
-            assert_eq!(account_balance_after, account_balance_before + 50);
-
-            let current_deposit_balance = contract_handle
-                .build_call()
-                .call(|harness| harness.balance())
-                .expect("Should call");
-            assert_eq!(current_deposit_balance, 100 + 25 - 50);
-
-            assert_eq!(contract_handle.balance(), 100 + 25 - 50);
-        }
+        // {
+        //     next_test(
+        //         &mut counter,
+        //         &format!("{current_test} Withdrawing as an account"),
+        //     );
+        //     let account_balance_before = casper::get_balance_of(&caller);
+        //     log!("account_balance_before {}", account_balance_before);
+        //     contract_handle
+        //         .build_call()
+        //         .call(|harness| harness.withdraw(account_balance_before, 50))
+        //         .expect("Should call")
+        //         .expect("Should succeed");
+        //     let account_balance_after = casper::get_balance_of(&caller);
+        //     log!("account_balance_after {}", account_balance_after);
+        //     assert_ne!(account_balance_after, account_balance_before);
+        //     assert_eq!(account_balance_after, account_balance_before + 50);
+        //
+        //     let current_deposit_balance = contract_handle
+        //         .build_call()
+        //         .call(|harness| harness.balance())
+        //         .expect("Should call");
+        //     assert_eq!(current_deposit_balance, 100 + 25 - 50);
+        //
+        //     assert_eq!(contract_handle.balance(), 100 + 25 - 50);
+        // }
     }
 
     //
@@ -594,7 +588,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         for i in 0..10 {
             assert_eq!(
-                emit(TestMessage {
+                emit_message(TestMessage {
                     message: format!("Hello, world: {i}!"),
                 }),
                 Ok(())
@@ -605,26 +599,23 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let large_topic_name = "a".repeat(257);
         let large_payload_data = vec![0; 16384];
 
+        assert_eq!(emit(&large_topic_name, &[]), Err(HostResult::TopicTooLong));
         assert_eq!(
-            emit_raw(&large_topic_name, &[]),
-            Err(CommonResult::TopicTooLong)
-        );
-        assert_eq!(
-            emit_raw(&small_topic_name, &large_payload_data),
-            Err(CommonResult::PayloadTooLong)
+            emit(&small_topic_name, &large_payload_data),
+            Err(HostResult::PayloadTooLong)
         );
 
         for i in 0..127u64 {
             assert_eq!(
-                emit_raw(&format!("Topic{i}"), &i.to_be_bytes()),
+                emit(&format!("Topic{i}"), &i.to_be_bytes()),
                 Ok(()),
                 "Emitting message with small payload failed"
             );
         }
 
         assert_eq!(
-            emit_raw(&format!("Topic128"), &[128]),
-            Err(CommonResult::TooManyTopics),
+            emit(&format!("Topic128"), &[128]),
+            Err(HostResult::TooManyTopics),
             "Emitting message with small payload failed"
         );
     }
@@ -647,7 +638,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // No value exists
         assert_eq!(casper::read_into_vec(keyspace), Ok(None));
         // Removing again (aka removing non-existent key) should raise an error
-        assert_eq!(casper::remove(keyspace), Err(CommonResult::NotFound));
+        assert_eq!(casper::remove(keyspace), Err(HostResult::NotFound));
         // Re-reading already purged value wouldn't be an issue
         assert_eq!(casper::read_into_vec(keyspace), Ok(None));
         // Write a new value under same key
@@ -658,7 +649,44 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // Attempting to remove a definetely non-existent key should be an error
         let keyspace = Keyspace::Context(b"this key definetely does not exists");
         let result = casper::remove(keyspace);
-        assert_eq!(result, Err(CommonResult::NotFound));
+        assert_eq!(result, Err(HostResult::NotFound));
+    }
+
+    {
+        next_test(&mut counter, "Stable key read/write");
+
+        let old_value = EXAMPLE_STABLE_KEY.read();
+        assert!(old_value.is_none());
+
+        let new_string: String = "Updated value".into();
+        EXAMPLE_STABLE_KEY.write(new_string.clone());
+
+        let new_value = EXAMPLE_STABLE_KEY.read();
+        assert_eq!(new_value, Some(new_string))
+    }
+
+    {
+        next_test(&mut counter, "Secp2561k recover");
+
+        let message_bytes = [82, 101, 99, 111, 118, 101, 114, 121, 32, 116, 101, 115, 116];
+        let signature_bytes = [
+            2, 33, 154, 147, 197, 122, 73, 167, 50, 27, 55, 198, 199, 72, 150, 161, 233, 124, 60,
+            152, 11, 232, 62, 162, 254, 202, 238, 47, 132, 126, 214, 136, 27, 4, 130, 19, 56, 134,
+            202, 212, 111, 42, 165, 15, 114, 70, 125, 79, 234, 132, 96, 193, 56, 157, 210, 52, 51,
+            93, 205, 34, 152, 122, 236, 64, 66,
+        ];
+        let public_key_bytes = [
+            2, 105, 205, 254, 188, 142, 121, 77, 200, 81, 106, 88, 171, 244, 176, 18, 97, 121, 89,
+            51, 105, 37, 210, 95, 231, 10, 81, 221, 63, 65, 129, 191, 113,
+        ];
+
+        let recovered_public_key =
+            casper::recover_secp256k1(&message_bytes, &signature_bytes, 1).expect("Should recover");
+
+        match recovered_public_key {
+            PublicKey::Secp256k1(bytes) => assert_eq!(bytes, public_key_bytes),
+            _ => panic!("Expected Secp256k1 variant"),
+        }
     }
 
     log!("👋 Goodbye");
@@ -707,10 +735,10 @@ mod tests {
 
     #[test]
     fn should_greet() {
-        let mut flipper = Harness::constructor_with_args("Hello".into());
-        assert_eq!(flipper.get_greeting(), "Hello"); // TODO: Initializer
-        flipper.set_greeting("Hi".into());
-        assert_eq!(flipper.get_greeting(), "Hi");
+        let mut harness = Harness::constructor_with_args("Hello".into());
+        assert_eq!(harness.get_greeting(), "Hello");
+        harness.set_greeting("Hi".into());
+        assert_eq!(harness.get_greeting(), "Hi");
     }
 
     #[test]

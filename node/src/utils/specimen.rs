@@ -25,7 +25,7 @@ use casper_types::{
     BlockHeaderV1, BlockHeaderV2, BlockHeaderWithSignatures, BlockSignatures, BlockSignaturesV2,
     BlockV2, ChainNameDigest, ChunkWithProof, Deploy, DeployHash, DeployId, Digest, EraEndV1,
     EraEndV2, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
-    FinalitySignatureV2, PackageHash, ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey,
+    FinalitySignatureV2, PackageAddr, ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey,
     SemVer, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
     TransactionId, TransactionRuntimeParams, TransactionV1, TransactionV1Hash, URef,
     AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, KEY_HASH_LENGTH, MINT_LANE_ID, U512,
@@ -1111,9 +1111,9 @@ impl LargestSpecimen for U512 {
     }
 }
 
-impl LargestSpecimen for PackageHash {
+impl LargestSpecimen for PackageAddr {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        PackageHash::new([LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH])
+        PackageAddr::new([LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH])
     }
 }
 

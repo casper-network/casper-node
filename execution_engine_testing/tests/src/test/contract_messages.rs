@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::cell::RefCell;
 
-use casper_execution_engine::runtime::cryptography;
+use casper_execution_engine::runtime::cryptography::{self};
 
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -13,9 +13,10 @@ use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig, Digest,
-    EntityAddr, HostFunction, HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits,
-    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config,
-    WasmV2Config, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    EntityAddr, HashAddr, HostFFIFunctionCosts, HostFunction, HostFunctionCostsV1, Key,
+    MessageLimits, OpcodeCosts, PublicKey, RuntimeArgs, StorageCosts, StoredValue, SystemConfig,
+    WasmConfig, WasmV1Config, WasmV2Config, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
+    U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -38,10 +39,10 @@ const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 // Number of messages that will be emitted when calling `ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION`
 const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
 
-fn install_messages_emitter_contract(
+fn install_messages_emitter_contract_with_metadata(
     builder: &RefCell<LmdbWasmTestBuilder>,
     use_initializer: bool,
-) -> AddressableEntityHash {
+) -> (AddressableEntityHash, HashAddr, HashAddr) {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -69,6 +70,24 @@ fn install_messages_emitter_contract(
             &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
         )
         .expect("should query");
+    let account_query_result = builder
+        .borrow_mut()
+        .query(None, Key::from(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("should query");
+
+    let contract_package_hash = if let StoredValue::Account(acc) = account_query_result {
+        let key = acc
+            .named_keys()
+            .get(MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME)
+            .expect("Expected account to have named key");
+        if let Key::Hash(package_addr_hash) = key {
+            *package_addr_hash
+        } else {
+            panic!("Not expected key variant: {key}");
+        }
+    } else {
+        panic!("Stored value is not an account {:?}", account_query_result);
+    };
 
     let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
         package
@@ -77,12 +96,29 @@ fn install_messages_emitter_contract(
     };
 
     // Get the contract hash of the messages_emitter contract.
-    message_emitter_package
+    let contract_hash = message_emitter_package
         .versions()
         .values()
         .last()
         .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
-        .expect("Should have contract hash")
+        .expect("Should have contract hash");
+    let val = builder
+        .borrow_mut()
+        .query(None, Key::Hash(contract_hash.value()), &[])
+        .unwrap();
+    let wasm_addr_hash = if let StoredValue::Contract(contract) = val {
+        contract.contract_wasm_hash().value()
+    } else {
+        panic!("No contract found!")
+    };
+    (contract_hash, contract_package_hash, wasm_addr_hash)
+}
+
+fn install_messages_emitter_contract(
+    builder: &RefCell<LmdbWasmTestBuilder>,
+    use_initializer: bool,
+) -> AddressableEntityHash {
+    install_messages_emitter_contract_with_metadata(builder, use_initializer).0
 }
 
 fn upgrade_messages_emitter_contract(
@@ -198,17 +234,21 @@ impl<'a> ContractQueryView<'a> {
     }
 
     fn message_topic(&self, topic_name_hash: TopicNameHash) -> MessageTopicSummary {
+        self.message_topic_for_enity(
+            topic_name_hash,
+            EntityAddr::SmartContract(self.contract_hash.value()),
+        )
+    }
+
+    fn message_topic_for_enity(
+        &self,
+        topic_name_hash: TopicNameHash,
+        entity_addr: EntityAddr,
+    ) -> MessageTopicSummary {
         let query_result = self
             .builder
             .borrow_mut()
-            .query(
-                None,
-                Key::message_topic(
-                    EntityAddr::SmartContract(self.contract_hash.value()),
-                    topic_name_hash,
-                ),
-                &[],
-            )
+            .query(None, Key::message_topic(entity_addr, topic_name_hash), &[])
             .expect("should query");
 
         match query_result {
@@ -222,19 +262,16 @@ impl<'a> ContractQueryView<'a> {
         }
     }
 
-    fn message_summary(
+    fn message_summary_for_entity(
         &self,
         topic_name_hash: TopicNameHash,
         message_index: u32,
         state_hash: Option<Digest>,
+        entity_addr: EntityAddr,
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(
-                EntityAddr::SmartContract(self.contract_hash.value()),
-                topic_name_hash,
-                message_index,
-            ),
+            Key::message(entity_addr, topic_name_hash, message_index),
             &[],
         )?;
 
@@ -242,6 +279,20 @@ impl<'a> ContractQueryView<'a> {
             StoredValue::Message(summary) => Ok(summary),
             _ => panic!("Stored value is not a message summary: {:?}", query_result),
         }
+    }
+
+    fn message_summary(
+        &self,
+        topic_name_hash: TopicNameHash,
+        message_index: u32,
+        state_hash: Option<Digest>,
+    ) -> Result<MessageChecksum, String> {
+        self.message_summary_for_entity(
+            topic_name_hash,
+            message_index,
+            state_hash,
+            EntityAddr::SmartContract(self.contract_hash.value()),
+        )
     }
 }
 
@@ -257,7 +308,6 @@ fn should_emit_messages() {
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let message_topics = query_view.message_topics();
-
     let (topic_name, message_topic_hash) = message_topics
         .iter()
         .next()
@@ -277,7 +327,7 @@ fn should_emit_messages() {
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
     let expected_message_hash = cryptography::blake2b(
         [
-            0u64.to_bytes().unwrap(),
+            4u64.to_bytes().unwrap(), // there are system messages emitted before the custom one
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -298,7 +348,7 @@ fn should_emit_messages() {
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message_hash = cryptography::blake2b(
         [
-            1u64.to_bytes().unwrap(),
+            5u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -501,7 +551,7 @@ fn should_not_exceed_configured_limits() {
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -679,7 +729,7 @@ fn should_charge_expected_gas_for_storage() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::zero(),
+            HostFFIFunctionCosts::zero(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -800,7 +850,7 @@ fn should_charge_increasing_gas_consumed_for_multiple_messages_emitted() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::default(),
+            HostFFIFunctionCosts::default(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -920,7 +970,7 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -963,7 +1013,7 @@ fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
         let wasm_v2_config = WasmV2Config::new(
             default_wasm_v2_config.max_memory(),
             default_wasm_v2_config.opcode_costs(),
-            default_wasm_v2_config.take_host_function_costs(),
+            default_wasm_v2_config.take_host_ffi_opt_costs(),
         );
         let wasm_config = WasmConfig::new(
             MessageLimits {
@@ -1043,16 +1093,16 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(0);
+    assert_last_message_block_index(4); //there are 4 system messaged on contract install
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 5))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
     let expected_message_hash = cryptography::blake2b(
         [
-            0u64.to_bytes().unwrap(),
+            4u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1070,16 +1120,16 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(1);
+    assert_last_message_block_index(5);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 6))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
     let expected_message_hash = cryptography::blake2b(
         [
-            1u64.to_bytes().unwrap(),
+            5u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1116,16 +1166,16 @@ fn should_produce_per_block_message_ordering() {
         .exec(emit_message_request)
         .expect_success()
         .commit();
-    assert_last_message_block_index(2);
+    assert_last_message_block_index(10);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 11))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
     let expected_message_hash = cryptography::blake2b(
         [
-            2u64.to_bytes().unwrap(),
+            10u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1194,7 +1244,7 @@ fn emit_message_should_consume_variable_gas_based_on_topic_and_message_size() {
         let wasm_v2_config = WasmV2Config::new(
             DEFAULT_WASM_MAX_MEMORY,
             OpcodeCosts::zero(),
-            HostFunctionCostsV2::default(),
+            HostFFIFunctionCosts::default(),
         );
         let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
         ChainspecConfig {
@@ -1221,4 +1271,81 @@ fn emit_message_should_consume_variable_gas_based_on_topic_and_message_size() {
         + COST_PER_MESSAGE_TOPIC_NAME_SIZE * MESSAGE_EMITTER_GENERIC_TOPIC.len() as u32
         + COST_PER_MESSAGE_LENGTH * payload.serialized_length() as u32;
     assert_eq!(emit_message_gas_consume, expected_consume.into());
+}
+
+#[ignore]
+#[test]
+fn on_install_should_emit_system_messages() {
+    let system_account_entity = EntityAddr::Account(PublicKey::System.to_account_hash().value());
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let (contract_hash, contract_package_addr, wasm_addr) =
+        install_messages_emitter_contract_with_metadata(&builder, true);
+
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", hex::encode(contract_package_addr)),
+        "package_key",
+        system_account_entity,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", hex::encode(contract_hash.value())),
+        "contract_key",
+        system_account_entity,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", hex::encode(wasm_addr)),
+        "bytecode_key",
+        system_account_entity,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        "2.1",
+        "contract_version",
+        system_account_entity,
+        3,
+        0,
+    );
+}
+
+fn expect_message_on_topic_and_index<'a>(
+    query_view: &'a ContractQueryView<'a>,
+    message: &str,
+    topic_name: &str,
+    entity_addr: EntityAddr,
+    index_in_block: u64,
+    index_in_topic: u32,
+) {
+    let expected_message = MessagePayload::from(message);
+    let expected_message_hash = cryptography::blake2b(
+        [
+            index_in_block.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let topic_name_hash = cryptography::blake2b(topic_name);
+    let queried_message_summary = query_view
+        .message_summary_for_entity(topic_name_hash.into(), index_in_topic, None, entity_addr)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
+    assert_eq!(
+        query_view
+            .message_topic_for_enity(topic_name_hash.into(), entity_addr)
+            .message_count(),
+        1
+    );
 }

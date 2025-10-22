@@ -12,6 +12,8 @@ use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
 pub use crate::key::BLAKE2B_DIGEST_LENGTH;
+#[cfg(any(feature = "testing", test))]
+pub use asymmetric_key::ed25519_imputed;
 #[cfg(any(feature = "std", test))]
 pub use asymmetric_key::generate_ed25519_keypair;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -46,6 +48,8 @@ pub enum HashAlgorithm {
     Blake3 = 1,
     /// Sha256,
     Sha256 = 2,
+    /// Keccak256
+    Keccak256 = 3,
 }
 
 impl TryFrom<u8> for HashAlgorithm {

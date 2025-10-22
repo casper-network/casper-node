@@ -35,6 +35,11 @@ jobs:
       - name: Build update package
         run: ./ci/build_update_package.sh
 
+      - name: Publish to crates.io
+        env:
+          CARGO_TOKEN: ${{ secrets.crates_io_token }}
+        run: ./ci/publish_to_crates_io.sh
+
       # Add config.tar.gz, bin.tar.gz to release
       - name: Upload files to release
         uses: svenstaro/upload-release-action@v2
@@ -44,8 +49,3 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-
-      - name: Publish to crates.io
-        env:
-          CARGO_TOKEN: ${{ secrets.crates_io_token }}
-        run: ./ci/publish_to_crates.io

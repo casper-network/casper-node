@@ -471,9 +471,6 @@ impl Display for InvalidTransaction {
                                                     "invalid transaction runtime: expected {expected}"
                                                 )
                                             }
-            InvalidTransaction::MissingSeed => {
-                                                write!(formatter, "missing seed for install or upgrade")
-                                            }
             InvalidTransaction::PricingModeNotSupported => {
                                                 write!(formatter, "Pricing mode not supported")
                                             }
@@ -527,6 +524,11 @@ impl Display for InvalidTransaction {
                             "the transaction invocation target is unsupported under V2 runtime",
                         )
                     }
+
+                    _ => {
+                        // This may involve deprecated variants, so we can't list them
+                                                write!(formatter, "deprecated")
+                                            }
         }
     }
 }
@@ -578,7 +580,6 @@ impl StdError for InvalidTransaction {
             InvalidTransaction::ExpectedNamedArguments
             | InvalidTransaction::ExpectedBytesArguments
             | InvalidTransaction::InvalidTransactionRuntime { .. }
-            | InvalidTransaction::MissingSeed
             | InvalidTransaction::PricingModeNotSupported
             | InvalidTransaction::InvalidPaymentAmount
             | InvalidTransaction::InsufficientBurnAmount { .. }
@@ -590,6 +591,9 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidReservedSlots { .. }
             | InvalidTransaction::InvalidDelegationAmount { .. }
             | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
+
+            #[allow(deprecated)]
+            InvalidTransaction::MissingSeed => None,
         }
     }
 }

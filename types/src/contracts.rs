@@ -39,7 +39,7 @@ use crate::{
     uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityAddr, EntityEntryPoint, EntityVersionKey,
     EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Group,
-    Groups, HashAddr, Key, Package, PackageHash, Parameter, Parameters, ProtocolVersion,
+    Groups, HashAddr, Key, Package, PackageAddr, Parameter, Parameters, ProtocolVersion,
     KEY_HASH_LENGTH,
 };
 
@@ -497,8 +497,8 @@ impl ContractPackageHash {
     }
 }
 
-impl From<PackageHash> for ContractPackageHash {
-    fn from(value: PackageHash) -> Self {
+impl From<PackageAddr> for ContractPackageHash {
+    fn from(value: PackageAddr) -> Self {
         ContractPackageHash::new(value.value())
     }
 }
@@ -819,7 +819,12 @@ impl ContractPackage {
     pub fn remove_group(&mut self, group: &Group) -> bool {
         self.groups.0.remove(group).is_some()
     }
-    fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
+
+    /// Returns the next contract version number
+    pub fn next_contract_version_for(
+        &self,
+        protocol_version: ProtocolVersionMajor,
+    ) -> ContractVersion {
         let current_version = self
             .versions
             .keys()

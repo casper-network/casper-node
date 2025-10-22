@@ -55,6 +55,14 @@ impl DelegatorKind {
     pub fn is_purse(&self) -> bool {
         matches!(self, DelegatorKind::Purse(_))
     }
+
+    /// Returns public key if kind is a public key.
+    pub fn maybe_public_key(&self) -> Option<PublicKey> {
+        match self {
+            DelegatorKind::PublicKey(ret) => Some(ret.clone()),
+            DelegatorKind::Purse(_) => None,
+        }
+    }
 }
 
 impl ToBytes for DelegatorKind {

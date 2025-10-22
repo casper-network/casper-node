@@ -1,6 +1,5 @@
 use crate::{
-    data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
-    tracking_copy::TrackingCopyError,
+    data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError, RuntimeNativeConfig,
 };
 use casper_types::{
     execution::Effects, Digest, InitiatorAddr, Phase, ProtocolVersion, TransactionHash, Transfer,
@@ -25,6 +24,8 @@ pub enum HandleRefundMode {
         source: Box<BalanceIdentifier>,
         /// Refund ratio.
         ratio: Ratio<u64>,
+        /// Available.
+        available: U512,
     },
     /// This variant will cause the refund amount to be calculated and the refund to be executed.
     Refund {
@@ -44,6 +45,8 @@ pub enum HandleRefundMode {
         source: Box<BalanceIdentifier>,
         /// Target for refund.
         target: Box<BalanceIdentifier>,
+        /// Available.
+        available: U512,
     },
     /// This variant handles the edge case of custom payment plus no fee plus no refund.
     /// This ultimately turns into a hold on the initiator, but it takes extra steps to get there
@@ -71,8 +74,8 @@ pub enum HandleRefundMode {
         gas_price: u8,
         /// Refund ratio.
         ratio: Ratio<u64>,
-        /// Refund source.
-        source: Box<BalanceIdentifier>,
+        /// Available.
+        available: U512,
     },
     /// This variant will cause the refund purse tracked by handle_payment to be set.
     SetRefundPurse {
@@ -103,7 +106,7 @@ impl HandleRefundMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleRefundRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
     /// The protocol version.
@@ -117,7 +120,7 @@ pub struct HandleRefundRequest {
 impl HandleRefundRequest {
     /// Creates a new instance.
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -133,7 +136,7 @@ impl HandleRefundRequest {
     }
 
     /// Returns a reference to the config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 

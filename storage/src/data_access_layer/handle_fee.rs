@@ -1,6 +1,5 @@
 use crate::{
-    data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
-    tracking_copy::TrackingCopyError,
+    data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError, RuntimeNativeConfig,
 };
 use casper_types::{
     execution::Effects, Digest, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TransactionHash,
@@ -72,17 +71,24 @@ impl HandleFeeMode {
             era_id,
         }
     }
+
+    /// Returns source if available.
+    pub fn maybe_source(&self) -> Option<BalanceIdentifier> {
+        match self {
+            HandleFeeMode::Pay { source, .. } => Some(*source.clone()),
+            HandleFeeMode::Burn { source, .. } => Some(source.clone()),
+            HandleFeeMode::Credit { .. } => None,
+        }
+    }
 }
 
 /// Handle fee request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleFeeRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// The protocol version.
-    pub(crate) protocol_version: ProtocolVersion,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
     /// Handle fee mode.
@@ -93,23 +99,21 @@ impl HandleFeeRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         handle_fee_mode: HandleFeeMode,
     ) -> Self {
         Self {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             handle_fee_mode,
         }
     }
 
     /// Returns config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 
@@ -120,7 +124,7 @@ impl HandleFeeRequest {
 
     /// Returns handle protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns handle transaction hash.
@@ -156,6 +160,15 @@ impl HandleFeeResult {
         match self {
             HandleFeeResult::RootNotFound | HandleFeeResult::Failure(_) => Effects::new(),
             HandleFeeResult::Success { effects, .. } => effects.clone(),
+        }
+    }
+
+    /// The error message, if any.
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            HandleFeeResult::RootNotFound => Some("root not found".to_string()),
+            HandleFeeResult::Failure(tce) => Some(format!("{}", tce)),
+            HandleFeeResult::Success { .. } => None,
         }
     }
 }

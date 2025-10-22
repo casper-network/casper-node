@@ -418,14 +418,14 @@ impl Block {
 
     /// Returns the utilization of the block against a given chainspec.
     #[cfg(feature = "std")]
-    pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
+    pub fn block_utilization(&self, transaction_config: &TransactionConfig) -> u64 {
         match self {
             Block::V1(_) => {
                 // We shouldnt be tracking this for legacy blocks
                 0
             }
             Block::V2(block_v2) => {
-                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config.clone());
+                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config);
                 let per_block_capacity = transaction_config
                     .transaction_v1_config
                     .get_max_block_count();
@@ -442,7 +442,7 @@ impl Block {
 
     /// Returns true if the block has reached capacity in any of its transaction limit.
     #[cfg(feature = "std")]
-    pub fn has_hit_slot_capacity(&self, transaction_config: TransactionConfig) -> bool {
+    pub fn has_hit_slot_capacity(&self, transaction_config: &TransactionConfig) -> bool {
         match self {
             Block::V1(_) => false,
             Block::V2(block_v2) => {

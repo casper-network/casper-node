@@ -1102,7 +1102,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"
@@ -3704,6 +3704,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Registers a value return from the contract",
+          "type": "object",
+          "required": [
+            "Ret"
+          ],
+          "properties": {
+            "Ret": {
+              "$ref": "#/definitions/RetValue"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3972,19 +3985,6 @@
           "properties": {
             "EntryPoint": {
               "$ref": "#/definitions/EntryPointValue"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
-          "type": "object",
-          "required": [
-            "RawBytes"
-          ],
-          "properties": {
-            "RawBytes": {
-              "type": "string"
             }
           },
           "additionalProperties": false
@@ -4405,10 +4405,10 @@
       "required": [
         "action_thresholds",
         "associated_keys",
-        "byte_code_hash",
+        "byte_code",
         "entity_kind",
         "main_purse",
-        "package_hash",
+        "package",
         "protocol_version"
       ],
       "properties": {
@@ -4418,10 +4418,10 @@
         "entity_kind": {
           "$ref": "#/definitions/EntityKind"
         },
-        "package_hash": {
-          "$ref": "#/definitions/PackageHash"
+        "package": {
+          "$ref": "#/definitions/PackageAddr"
         },
-        "byte_code_hash": {
+        "byte_code": {
           "$ref": "#/definitions/ByteCodeHash"
         },
         "main_purse": {
@@ -4476,6 +4476,18 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Package"
+          ],
+          "properties": {
+            "Package": {
+              "$ref": "#/definitions/PackageAddr"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4520,7 +4532,7 @@
         "VmCasperV2"
       ]
     },
-    "PackageHash": {
+    "PackageAddr": {
       "description": "The hex-encoded address of the Package.",
       "type": "string"
     },
@@ -4676,7 +4688,7 @@
       "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
       "anyOf": [
         {
-          "description": "The address for a system entity account or contract.",
+          "description": "The address for a system entity contract.",
           "type": "string"
         },
         {
@@ -4685,6 +4697,10 @@
         },
         {
           "description": "The address of an entity that corresponds to a Userland smart contract.",
+          "type": "string"
+        },
+        {
+          "description": "The address of an entity that corresponds to a Userland smart contract package.",
           "type": "string"
         }
       ]
@@ -5018,6 +5034,37 @@
           "type": "string"
         }
       }
+    },
+    "RetValue": {
+      "description": "Type disambiguating between the formatting of the returned data.",
+      "oneOf": [
+        {
+          "description": "The returned data is CLValue.",
+          "type": "object",
+          "required": [
+            "CLValue"
+          ],
+          "properties": {
+            "CLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The returned data is serialized bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "Message": {
       "description": "Message that was emitted by an addressable entity during execution.",

@@ -11,14 +11,20 @@ license = "Apache-2.0"
 [dependencies]
 base16 = "0.2"
 bytes = "1.10"
+blake2 = { version = "0.10.6", default-features = false }
+blake3 = { version = "1.5.0", default-features = false, features = ["pure"] }
+bn = { version = "0.5", package = "zeropool-bn", default-features = false }
+bnum = { version = "0.13.0", features = ["borsh", "num-integer", "num-traits"] }
+borsh = { version = "1.5", features = ["derive"] }
+sha2 = { version = "0.10.8", default-features = false }
+keccak-asm = { version = "0.1.4", default-features = false }
 casper-executor-wasm-common = { version = "0.1.3", path = "../wasm_common" }
 casper-executor-wasm-interface = { version = "0.1.3", path = "../wasm_interface" }
-casper-storage = { version = "2.1.1", path = "../../storage" }
-casper-types = { version = "6.0.1", path = "../../types" }
+casper-storage = { version = "3.0.0", path = "../../storage" }
+casper-types = { version = "7.0.0", path = "../../types", features = ["std", "testing"] }
 either = "1.15"
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 parking_lot = "0.12"
-safe-transmute = "0.11"
 thiserror = "2"
 tracing = "0.1"

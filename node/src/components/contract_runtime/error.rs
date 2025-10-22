@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::Error as EngineStateError;
+use casper_execution_engine::engine_state::Error as Vm1Error;
 use casper_storage::{
     data_access_layer::{
         forced_undelegate::ForcedUndelegateError, BlockRewardsError, FeeError, StepError,
@@ -16,9 +16,21 @@ use casper_storage::{
 use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::{
-    components::contract_runtime::ExecutionPreState,
+    contract_runtime::types::ExecutionPreState,
     types::{ChunkingError, ExecutableBlock, InternalEraReport},
 };
+
+#[derive(Debug, Error)]
+#[allow(dead_code)]
+/// Errors returned by execution of Wasm.
+pub enum EngineStateError {
+    /// Catastrophic internal failure of the execution
+    #[error("catastrophic internal failure of the execution engine: {0}")]
+    Catastrophic(String),
+    /// Vm1 related errors
+    #[error(transparent)]
+    WasmV1Err(Vm1Error),
+}
 
 /// Common state result errors.
 #[derive(Debug, Error)]

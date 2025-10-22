@@ -9,6 +9,7 @@ pub fn build_impl(
     package_name: Option<&str>,
     output_dir: Option<PathBuf>,
     embed_schema: bool,
+    allow_skipping_abi_schema: bool,
 ) -> Result<(), anyhow::Error> {
     // Build the contract package targetting wasm32-unknown-unknown without
     // extra feature flags - this is the production contract wasm file.
@@ -18,8 +19,12 @@ pub fn build_impl(
     let production_wasm_path = if embed_schema {
         // Build the schema first
         let mut buffer = Cursor::new(Vec::new());
-        super::build_schema::build_schema_impl(package_name, &mut buffer)
-            .context("Failed to build contract schema")?;
+        super::build_schema::build_schema_impl(
+            package_name,
+            &mut buffer,
+            allow_skipping_abi_schema,
+        )
+        .context("Failed to build contract schema")?;
 
         let contract_schema =
             String::from_utf8(buffer.into_inner()).context("Failed to read contract schema")?;

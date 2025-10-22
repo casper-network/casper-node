@@ -29,23 +29,28 @@ use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
+use casper_executor_wasm_interface::sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionResult,
+};
 use casper_storage::{
     data_access_layer::{
+        bids::{DelegatorBidRequest, ValidatorBidRequest},
         AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, ScratchProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
     system::genesis::GenesisError,
     tracking_copy::TrackingCopyError,
+    RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    EntityAddr, EraId, Key, PublicKey,
+    EntityAddr, EraId, Gas, Key, PublicKey,
 };
 
 use crate::{
@@ -54,7 +59,7 @@ use crate::{
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
-            UnexecutedBlockAnnouncement,
+            NonExecutableBlockAnnouncement, UnexecutedBlockAnnouncement,
         },
         incoming::{TrieDemand, TrieRequest as TrieRequestMessage, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
@@ -68,8 +73,11 @@ use crate::{
     },
     NodeRng,
 };
+use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
+pub(crate) use error::{
+    BlockExecutionError, ConfigError, ContractRuntimeError, EngineStateError, StateResultError,
+};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;
@@ -77,10 +85,7 @@ use metrics::Metrics;
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
-pub(crate) use types::{
-    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
-    StepOutcome,
-};
+pub(crate) use types::{ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult};
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -130,7 +135,7 @@ impl ContractRuntime {
                 EraPrice::new(EraId::new(0), chainspec.vacancy_config.min_gas_price)
             }
         };
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let addressable_entity_enabled = chainspec.core_config.addressable_entity_enabled;
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
             .with_max_associated_keys(chainspec.core_config.max_associated_keys)
@@ -149,7 +154,7 @@ impl ContractRuntime {
             .with_allow_unrestricted_transfers(chainspec.core_config.allow_unrestricted_transfers)
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
-            .with_enable_entity(enable_addressable_entity)
+            .with_enable_entity(addressable_entity_enabled)
             .with_trap_on_ambiguous_entity_version(
                 chainspec.core_config.trap_on_ambiguous_entity_version,
             )
@@ -162,23 +167,29 @@ impl ContractRuntime {
             Self::new_data_access_layer(
                 storage_dir,
                 contract_runtime_config,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             )
             .map_err(ConfigError::GlobalState)?,
         );
 
-        let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
+        let execution_engine_v1 = ExecutionEngineV1::new(engine_config);
 
         let executor_v2 = {
+            let baseline_motes_amount = chainspec.core_config.baseline_motes_amount;
+            let mint_costs = *chainspec.system_costs_config.mint_costs();
+            let auction_costs = *chainspec.system_costs_config.auction_costs();
             let executor_config = ExecutorConfigBuilder::default()
                 .with_memory_limit(chainspec.wasm_config.v2().max_memory())
                 .with_executor_kind(ExecutorKind::Compiled)
                 .with_wasm_config(*chainspec.wasm_config.v2())
                 .with_storage_costs(chainspec.storage_costs)
+                .with_mint_costs(mint_costs)
+                .with_auction_costs(auction_costs)
+                .with_baseline_motes_amount(baseline_motes_amount)
                 .with_message_limits(chainspec.wasm_config.messages_limits())
                 .build()
                 .expect("Should build");
-            ExecutorV2::new(executor_config, Arc::clone(&execution_engine_v1))
+            ExecutorV2::new(executor_config, execution_engine_v1.clone())
         };
 
         let metrics = Arc::new(Metrics::new(registry)?);
@@ -186,7 +197,7 @@ impl ContractRuntime {
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
             execution_pre_state,
-            execution_engine_v1,
+            execution_engine_v1: Arc::new(execution_engine_v1),
             execution_engine_v2: executor_v2,
             metrics,
             exec_queue: Default::default(),
@@ -196,7 +207,7 @@ impl ContractRuntime {
         })
     }
 
-    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+    pub(crate) fn set_execution_pre_state(&mut self, sequential_block_state: ExecutionPreState) {
         let next_block_height = sequential_block_state.next_block_height();
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
@@ -211,7 +222,7 @@ impl ContractRuntime {
     fn new_data_access_layer(
         storage_dir: &Path,
         contract_runtime_config: &Config,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
         let data_access_layer = {
             let environment = Arc::new(LmdbEnvironment::new(
@@ -234,14 +245,14 @@ impl ContractRuntime {
                 environment,
                 trie_store,
                 max_query_depth,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             )?;
 
             DataAccessLayer {
                 state: global_state,
                 block_store,
                 max_query_depth,
-                enable_addressable_entity,
+                addressable_entity_enabled,
             }
         };
         Ok(data_access_layer)
@@ -250,6 +261,12 @@ impl ContractRuntime {
     /// How many blocks are backed up in the queue
     pub(crate) fn queue_depth(&self) -> usize {
         self.exec_queue.len()
+    }
+
+    /// Returns the current execution prestate.
+    pub(crate) fn execution_pre_state(&self) -> ExecutionPreState {
+        let execution_pre_state = self.execution_pre_state.lock().unwrap();
+        execution_pre_state.clone()
     }
 
     /// Commits a genesis request.
@@ -314,6 +331,7 @@ impl ContractRuntime {
             + From<MetaBlockAnnouncement>
             + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
+            + From<NonExecutableBlockAnnouncement>
             + Send,
     {
         match request {
@@ -329,6 +347,44 @@ impl ContractRuntime {
                     let result = data_access_layer.query(query_request);
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::SandboxedExecution { request, responder } => {
+                trace!(?request, "call restricted");
+                let metrics = Arc::clone(&self.metrics);
+                let execution_engine_v2 = self.execution_engine_v2.clone();
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                // TODO: consider adding a singleton field for runtime_native_config to this
+                // component, set during construction.
+                let runtime_native_config = RuntimeNativeConfig::from_chainspec(&self.chainspec);
+                async move {
+                    let start = Instant::now();
+                    let result = run_intensive_task(move || {
+                        // Create a tracking copy for the request
+                        let state = data_access_layer.get_scratch_global_state();
+                        let tracking_copy = state
+                            .tracking_copy(request.state_hash)
+                            .expect("should get tracking copy result")
+                            .expect("should create tracking copy");
+                        // Execute the request
+                        execution_engine_v2.execute_sandbox(
+                            tracking_copy,
+                            runtime_native_config,
+                            request,
+                        )
+                    })
+                    .await;
+
+                    let result = result.unwrap_or(SandboxedExecutionResult {
+                        error: Some(SandboxedExecutionError::InternalHostError),
+                        output: None,
+                        gas_usage: Gas::new(0),
+                    });
+
+                    metrics.run_query.observe(start.elapsed().as_secs_f64());
+                    trace!("restricted contract request completed");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -429,6 +485,13 @@ impl ContractRuntime {
                 async move {
                     let start = Instant::now();
                     let entity_key = match entity_addr {
+                        EntityAddr::Package(hash) => {
+                            if data_access_layer.addressable_entity_enabled {
+                                Key::Package(hash.into())
+                            } else {
+                                Key::Hash(hash)
+                            }
+                        }
                         EntityAddr::SmartContract(_) | EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
                         EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
                     };
@@ -450,7 +513,6 @@ impl ContractRuntime {
                         AddressableEntityResult::Success { .. } |
                         AddressableEntityResult::Failure(_) => result,
                     };
-
                     metrics
                         .addressable_entity
                         .observe(start.elapsed().as_secs_f64());
@@ -540,7 +602,7 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 let next_block_height = new_pre_state.next_block_height();
-                self.set_initial_state(new_pre_state);
+                self.set_execution_pre_state(new_pre_state);
                 let current_price = self.current_gas_price.gas_price();
                 async move {
                     let block_header = match effect_builder
@@ -739,6 +801,31 @@ impl ContractRuntime {
                 self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()
             }
+            ContractRuntimeRequest::ValidatorBids {
+                state_root_hash,
+                validator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .validator_bids(ValidatorBidRequest::new(state_root_hash, validator)),
+                )
+                .ignore(),
+            ContractRuntimeRequest::DelegatorBids {
+                state_root_hash,
+                validator,
+                delegator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .delegator_bids(DelegatorBidRequest::new(
+                            state_root_hash,
+                            validator,
+                            delegator,
+                        )),
+                )
+                .ignore(),
         }
     }
 
@@ -845,6 +932,7 @@ where
         + From<MetaBlockAnnouncement>
         + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
+        + From<NonExecutableBlockAnnouncement>
         + Send,
 {
     type Event = Event;

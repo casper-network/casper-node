@@ -241,7 +241,6 @@ fn should_distribute_delegation_rate_zero() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -511,7 +510,6 @@ fn should_withdraw_bids_after_distribute() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(protocol_version)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -991,6 +989,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         delegator_2_stake =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
 
+        let vesting_schedule_period_millis = 0;
         let auction_method = {
             let amount = U512::from(10_000_000);
             if idx % 2 == 0 {
@@ -998,6 +997,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     public_key: VALIDATOR_1.clone(),
                     amount,
                     delegation_rate: 0,
+                    vesting_schedule_period_millis,
                     minimum_delegation_amount: undelegate_amount.as_u64(),
                     maximum_delegation_amount: undelegate_amount.as_u64(),
                     minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
@@ -1140,7 +1140,6 @@ fn should_distribute_delegation_rate_half() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -1556,7 +1555,6 @@ fn should_distribute_uneven_delegation_rate_zero() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -1859,7 +1857,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -2191,7 +2188,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();

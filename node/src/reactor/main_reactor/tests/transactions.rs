@@ -13,12 +13,13 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AccessRights, AddressableEntity, Digest, EntityAddr, ExecutableDeployItem, ExecutionInfo,
-    TransactionRuntimeParams, URef, URefAddr,
+    TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use once_cell::sync::Lazy;
+use std::collections::BTreeMap;
 
 use crate::reactor::main_reactor::tests::{
-    configs_override::ConfigsOverride, initial_stakes::InitialStakes,
+    configs_override::ConfigsOverride, fixture::standard_stakes, initial_stakes::InitialStakes,
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -92,14 +93,39 @@ impl SingleTransactionTestCase {
         let bob_public_key = PublicKey::from(&*bob_secret_key);
         let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-        let stakes = vec![
-            (alice_public_key.clone(), U512::from(u128::MAX)), /* Node 0 is effectively
-                                                                * guaranteed to be the
-                                                                * proposer. */
-            (bob_public_key.clone(), U512::from(1)),
-        ]
-        .into_iter()
-        .collect();
+        let stakes = standard_stakes(
+            alice_public_key.clone(),
+            bob_public_key.clone(),
+            Some(charlie_public_key.clone()),
+        );
+
+        let fixture = TestFixture::new_with_keys(
+            rng,
+            vec![alice_secret_key.clone(), bob_secret_key.clone()],
+            stakes,
+            network_config,
+        )
+        .await;
+        Self {
+            fixture,
+            alice_public_key,
+            bob_public_key,
+            charlie_public_key,
+        }
+    }
+
+    async fn new_with_stakes(
+        alice_secret_key: Arc<SecretKey>,
+        bob_secret_key: Arc<SecretKey>,
+        charlie_secret_key: Arc<SecretKey>,
+        network_config: Option<ConfigsOverride>,
+        stakes: BTreeMap<PublicKey, (U512, U512)>,
+    ) -> Self {
+        let rng = TestRng::new();
+
+        let alice_public_key = PublicKey::from(&*alice_secret_key);
+        let bob_public_key = PublicKey::from(&*bob_secret_key);
+        let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
         let fixture = TestFixture::new_with_keys(
             rng,
@@ -461,7 +487,7 @@ pub(crate) fn get_balance(
         .storage()
         .read_block_header_by_height(block_height, true)
         .expect("failure to read block header")
-        .unwrap();
+        .expect("should have header");
     let state_hash = *block_header.state_root_hash();
     let balance_handling = if get_total {
         BalanceHandling::Total
@@ -558,7 +584,7 @@ fn get_entity_addr_from_account_hash(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .as_cl_value()
             .expect("should have a CLValue")
@@ -583,11 +609,13 @@ fn get_entity(
     entity_addr: EntityAddr,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let (key, is_contract) = if fixture.chainspec.core_config.enable_addressable_entity {
+    let (key, is_contract) = if fixture.chainspec.core_config.addressable_entity_enabled {
         (Key::AddressableEntity(entity_addr), false)
     } else {
         match entity_addr {
-            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => (Key::Hash(hash), true),
+            EntityAddr::System(hash)
+            | EntityAddr::SmartContract(hash)
+            | EntityAddr::Package(hash) => (Key::Hash(hash), true),
             EntityAddr::Account(hash) => (Key::Account(AccountHash::new(hash)), false),
         }
     };
@@ -602,7 +630,7 @@ fn get_entity(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    if fixture.chainspec.core_config.enable_addressable_entity {
+    if fixture.chainspec.core_config.addressable_entity_enabled {
         result
             .into_addressable_entity()
             .expect("should have an AddressableEntity")
@@ -619,11 +647,31 @@ fn get_entity_named_key(
     entity_addr: EntityAddr,
     named_key: &str,
 ) -> Option<Key> {
-    if fixture.chainspec.core_config.enable_addressable_entity {
-        let key = Key::NamedKey(
-            NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
-                .expect("should be valid NamedKeyAddr"),
-        );
+    if fixture.chainspec.core_config.addressable_entity_enabled {
+        let key = if let EntityAddr::Package(hash) = entity_addr {
+            let key = Key::Package(hash.into());
+            match query_global_state(fixture, state_root_hash, key) {
+                Some(val) => match &*val {
+                    StoredValue::SmartContract(package) => {
+                        let entity_addr = *package
+                            .versions()
+                            .latest()
+                            .expect("must have at least one active version");
+                        Key::NamedKey(
+                            NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                                .expect("should be valid NamedKeyAddr"),
+                        )
+                    }
+                    value => panic!("Expected Package but got {:?}", value),
+                },
+                None => return None,
+            }
+        } else {
+            Key::NamedKey(
+                NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                    .expect("should be valid NamedKeyAddr"),
+            )
+        };
 
         match query_global_state(fixture, state_root_hash, key) {
             Some(val) => match &*val {
@@ -636,7 +684,9 @@ fn get_entity_named_key(
         }
     } else {
         match entity_addr {
-            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => {
+            EntityAddr::System(hash)
+            | EntityAddr::SmartContract(hash)
+            | EntityAddr::Package(hash) => {
                 match query_global_state(fixture, state_root_hash, Key::Hash(hash)) {
                     Some(val) => match &*val {
                         StoredValue::Contract(contract) => {
@@ -689,7 +739,7 @@ fn get_entity_by_account_hash(
     account_hash: AccountHash,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+    let key = if fixture.chainspec.core_config.addressable_entity_enabled {
         Key::AddressableEntity(EntityAddr::Account(account_hash.value()))
     } else {
         Key::Account(account_hash)
@@ -1383,7 +1433,7 @@ async fn should_cancel_refund_for_erroneous_wasm() {
     let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
     let bob_expected_available_balance = bob_expected_total_balance;
 
-    // Alice should get the all the fee since it's set to pay to proposer
+    // Alice should get all the fee since it's set to pay to proposer
     // AND Bob didn't get a refund
     let alice_expected_total_balance = alice_initial_balance + expected_transaction_cost;
     let alice_expected_available_balance = alice_expected_total_balance;
@@ -2450,8 +2500,11 @@ async fn transfer_fee_is_burnt_no_refund(txn_pricing_mode: PricingMode) {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    let (alice_initial_balance, _, _) = test.get_balances(None);
+    let (alice_initial_balance, _, charlie_initial_balance) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
+    let charlie_initial_balance = charlie_initial_balance
+        .expect("charlie should have balance")
+        .total;
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
@@ -2488,15 +2541,19 @@ async fn transfer_fee_is_burnt_no_refund(txn_pricing_mode: PricingMode) {
     );
 
     // Get the current balances after the transaction and check them.
-    let (alice_current_balance, _, charlie_balance) = test.get_balances(Some(block_height));
+    let (alice_current_balance, _, charlie_current_balance) = test.get_balances(Some(block_height));
     let alice_expected_total_balance =
         alice_initial_balance.total - transfer_amount - expected_transfer_cost;
     let alice_expected_available_balance = alice_expected_total_balance;
+
+    let charlie_current_balance = charlie_current_balance
+        .expect("charlie should have balance")
+        .total;
+    let charlies_expected_balance = charlie_initial_balance + transfer_amount;
+
     assert_eq!(
-        charlie_balance
-            .expect("Charlie should have a balance.")
-            .total,
-        transfer_amount.into(),
+        charlie_current_balance, charlies_expected_balance,
+        "expected balance does not match"
     );
     assert_eq!(
         alice_current_balance.available, alice_expected_available_balance,
@@ -2558,9 +2615,13 @@ async fn fee_ptp_no_refund(txn_pricing_mode: PricingMode) {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
+    let (alice_initial_balance, bob_initial_balance, charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
+
+    let charlie_initial_balance = charlie_initial_balance
+        .expect("charlie should have balance")
+        .total;
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
@@ -2585,12 +2646,20 @@ async fn fee_ptp_no_refund(txn_pricing_mode: PricingMode) {
     assert_eq!(
         initial_total_supply,
         test.get_total_supply(Some(block_height)),
-        "total supply should unchanged"
+        "total supply should be unchanged"
     );
 
-    let (alice_current_balance, bob_current_balance, charlie_balance) =
+    let (alice_current_balance, bob_current_balance, charlie_current_balance) =
         test.get_balances(Some(block_height));
 
+    let charlie_current_balance = charlie_current_balance
+        .expect("charlie should still have balance")
+        .total;
+    let charlie_expected_balance = charlie_initial_balance.saturating_add(transfer_amount.into());
+    assert_eq!(
+        charlie_current_balance, charlie_expected_balance,
+        "charlie's actual balance not expected total"
+    );
     // since Alice was the proposer of the block, it should get back the transfer fee since
     // FeeHandling is set to PayToProposer.
     let bob_expected_total_balance =
@@ -2600,12 +2669,6 @@ async fn fee_ptp_no_refund(txn_pricing_mode: PricingMode) {
     let alice_expected_total_balance = alice_initial_balance.total + expected_transfer_cost;
     let alice_expected_available_balance = alice_expected_total_balance;
 
-    assert_eq!(
-        charlie_balance
-            .expect("Expected Charlie to have a balance")
-            .total,
-        transfer_amount.into()
-    );
     assert_eq!(
         bob_current_balance.available,
         bob_expected_available_balance
@@ -2878,13 +2941,17 @@ async fn fee_is_accumulated_and_distributed_no_refund(txn_pricing_mode: PricingM
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
-    let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
+    let (alice_initial_balance, bob_initial_balance, charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
     let acc_purse_initial_balance = *test
         .get_accumulate_purse_balance(None, false)
         .available_balance()
         .expect("Accumulate purse should have a balance.");
+
+    let charlie_initial_balance = charlie_initial_balance
+        .expect("Expected Charlie to have a balance")
+        .total;
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
@@ -2902,8 +2969,18 @@ async fn fee_is_accumulated_and_distributed_no_refund(txn_pricing_mode: PricingM
         "total supply should remain unchanged"
     );
 
-    let (alice_current_balance, bob_current_balance, charlie_balance) =
+    let (alice_current_balance, bob_current_balance, charlie_current_balance) =
         test.get_balances(Some(block_height));
+
+    let charlie_current_balance = charlie_current_balance
+        .expect("Expected Charlie to have a balance")
+        .total;
+    let charlie_expected_balance =
+        charlie_initial_balance.saturating_add(U512::from(transfer_amount));
+    assert_eq!(
+        charlie_current_balance, charlie_expected_balance,
+        "charlie balance is not expected amount"
+    );
 
     let bob_expected_total_balance =
         bob_initial_balance.total - transfer_amount - expected_transfer_cost;
@@ -2911,13 +2988,6 @@ async fn fee_is_accumulated_and_distributed_no_refund(txn_pricing_mode: PricingM
 
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
-
-    assert_eq!(
-        charlie_balance
-            .expect("Expected Charlie to have a balance")
-            .total,
-        transfer_amount.into()
-    );
 
     assert_eq!(
         bob_current_balance.available,
@@ -3121,9 +3191,9 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    let (_, bob_initial_balance, _) = test.get_balances(None);
+    let (_, bob_initial_balance, charlie_initial_balance) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
-
+    let charlie_initial_balance = charlie_initial_balance.expect("should have balance").total;
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result), "{:?}", exec_result); // transaction should have succeeded.
     assert_exec_result_cost(
@@ -3140,12 +3210,13 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
     );
 
     // Get the current balances after the transaction and check them.
-    let (_, bob_current_balance, charlie_balance) = test.get_balances(Some(block_height));
+    let (_, bob_current_balance, charlie_current_balance) = test.get_balances(Some(block_height));
+
+    let charlie_current_balance = charlie_current_balance.expect("should have balance").total;
+    let charlie_expected_balance = charlie_initial_balance.saturating_add(transfer_amount);
+
     assert_eq!(
-        charlie_balance
-            .expect("Expected Charlie to have a balance")
-            .total,
-        transfer_amount,
+        charlie_current_balance, charlie_expected_balance,
         "charlie's balance should equal transfer amount"
     );
     assert_ne!(
@@ -3338,15 +3409,18 @@ async fn sufficient_balance_is_available_after_amortization() {
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
+    let charlie_initial_balance = test.get_balances(None).2.expect("should have balance");
+
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
+    let charlie_expected_balance = charlie_initial_balance.total + transfer_amount;
+    let charlie_current_balance = test.get_balances(Some(block_height)).2.unwrap();
 
-    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
     assert_eq!(
-        charlie_balance.available.clone(),
-        charlie_balance.total.clone()
+        charlie_current_balance.available.clone(),
+        charlie_expected_balance,
+        "balance does not match expected"
     );
-    assert_eq!(charlie_balance.available.clone(), transfer_amount);
 
     // Now Charlie has balance to do 2 transfers of the minimum amount but can't pay for both as the
     // same time. Let's say the min transfer amount is 2_500_000_000 and the cost of a transfer
@@ -3369,33 +3443,38 @@ async fn sufficient_balance_is_available_after_amortization() {
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
 
-    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    let charlie_updated_balance = test
+        .get_balances(Some(block_height))
+        .2
+        .expect("should have balance");
+    /* one `min_transfer_amount` * should have gone to Bob. */
+    let expected =
+        charlie_initial_balance.total + min_transfer_amount + transfer_cost + half_transfer_cost;
     assert_eq!(
-        charlie_balance.total.clone(),
-        min_transfer_amount + transfer_cost + half_transfer_cost, /* one `min_transfer_amount`
-                                                                   * should have gone to Bob. */
-    );
-    assert_eq!(
-        charlie_balance.available.clone(),
-        min_transfer_amount + half_transfer_cost, // transfer cost should be held.
+        charlie_updated_balance.total.clone(),
+        expected,
+        "unexpected balance"
     );
 
-    // Let's wait for about 5 sec (5 blocks in this case) which should provide enough time for at
+    // transfer cost should be held.
+    let expected_available =
+        charlie_initial_balance.total + min_transfer_amount + half_transfer_cost;
+    assert_eq!(
+        charlie_updated_balance.available.clone(),
+        expected_available,
+        "charlie updated available should represent held cost"
+    );
+
+    // Let's wait for about 5 sec (5 blocks in this case) which should provide enough time for
     // half of the holds to get amortized.
     test.fixture
         .run_until_block_height(block_height + 5, ONE_MIN)
         .await;
-    let charlie_balance = test.get_balances(Some(block_height + 5)).2.unwrap();
-    assert!(
-        charlie_balance.available >= min_transfer_amount + transfer_cost, /* right now he should
-                                                                           * have enough to make
-                                                                           * a transfer. */
-    );
-    assert!(
-        charlie_balance.available < charlie_balance.total, /* some of the holds
-                                                            * should still be in
-                                                            * place. */
-    );
+    let charlie_post5_balance = test.get_balances(Some(block_height + 5)).2.unwrap();
+    /* right now he should have enough to make a transfer. */
+    assert!(charlie_post5_balance.available >= min_transfer_amount + transfer_cost,);
+    /* some of the holds should still be in place. */
+    assert!(charlie_post5_balance.available < charlie_post5_balance.total,);
 
     // Send another transfer to Bob for `min_transfer_amount`.
     let txn = transfer_txn(
@@ -3407,12 +3486,31 @@ async fn sufficient_balance_is_available_after_amortization() {
         },
         min_transfer_amount,
     );
+
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+
     assert!(exec_result_is_success(&exec_result)); // We expect this transfer to succeed since Charlie has enough balance.
-    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    let charlie_final_balance = test.get_balances(Some(block_height)).2.unwrap();
+
+    let expected_total = charlie_post5_balance.total - min_transfer_amount;
     assert_eq!(
-        charlie_balance.total.clone(),
-        transfer_cost + half_transfer_cost, // two `min_transfer_amount` should have gone to Bob.
+        charlie_final_balance.total, expected_total,
+        "total should match prior amount minus transferred amount"
+    );
+
+    assert!(
+        charlie_final_balance.available < charlie_final_balance.total,
+        "some of the holds should still be in place"
+    );
+
+    test.fixture
+        .run_until_block_height(block_height + 15, ONE_MIN)
+        .await;
+    let charlie_post15_balance = test.get_balances(Some(block_height + 15)).2.unwrap();
+
+    assert_eq!(
+        charlie_post15_balance.available, charlie_post15_balance.total,
+        "all holds should have amortized back"
     );
 }
 
@@ -3457,15 +3555,26 @@ async fn validator_credit_is_written_and_cleared_after_auction() {
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
+    let charlie_initial_balance = test.get_balances(None).2.unwrap();
+    assert_eq!(
+        charlie_initial_balance.available.clone(),
+        charlie_initial_balance.total.clone(),
+        "there should be no holds"
+    );
+
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
+    let charlie_current_balance = test.get_balances(Some(block_height)).2.unwrap();
 
-    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
     assert_eq!(
-        charlie_balance.available.clone(),
-        charlie_balance.total.clone()
+        charlie_current_balance.available, charlie_current_balance.total,
+        "there should be no holds"
     );
-    assert_eq!(charlie_balance.available.clone(), transfer_amount);
+    assert_eq!(
+        charlie_initial_balance.total + transfer_amount,
+        charlie_current_balance.total,
+        "current balance should include received amount"
+    );
 
     let bids =
         get_bids(&mut test.fixture, Some(block_height)).expect("Expected to get some bid records.");
@@ -3638,9 +3747,7 @@ async fn insufficient_funds_transfer_from_account() {
             .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
             .build()
             .unwrap();
-    let price = txn_v1
-        .payment_amount()
-        .expect("must have payment amount as txns are using payment_limited");
+
     let mut txn = Transaction::from(txn_v1);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3648,7 +3755,7 @@ async fn insufficient_funds_transfer_from_account() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let expected_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
     assert_eq!(result.cost, expected_cost);
@@ -3772,7 +3879,7 @@ async fn insufficient_funds_transfer_from_purse() {
     .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
     .build()
     .unwrap();
-    let price = txn.payment_amount().expect("must get payment amount");
+
     let mut txn = Transaction::from(txn);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3780,10 +3887,10 @@ async fn insufficient_funds_transfer_from_purse() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let transfer_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
-    assert_eq!(result.cost, transfer_cost);
+    assert_eq!(result.cost, expected_cost);
 }
 
 #[tokio::test]
@@ -3815,7 +3922,7 @@ async fn insufficient_funds_when_caller_lacks_minimum_balance() {
             .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
             .build()
             .unwrap();
-    let price = txn.payment_amount().expect("must get payment amount");
+
     let mut txn = Transaction::from(txn);
     txn.sign(&BOB_SECRET_KEY);
 
@@ -3823,10 +3930,10 @@ async fn insufficient_funds_when_caller_lacks_minimum_balance() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let transfer_cost: U512 = U512::from(price) * MIN_GAS_PRICE;
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
-    assert_eq!(result.cost, transfer_cost);
+    assert_eq!(result.cost, expected_cost);
 }
 
 #[tokio::test]
@@ -4320,6 +4427,277 @@ async fn should_transfer_with_source_purse_deploy_payment_limited_refund_fee() {
 }
 
 #[tokio::test]
+async fn should_charge_for_insufficient_funds_deploy_payment_limited_refund_fee() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let charlie_balance = test
+        .get_balances(None)
+        .2
+        .expect("should have charlie balance")
+        .available;
+
+    assert_eq!(
+        charlie_balance,
+        U512::from(u32::MAX - 1),
+        "charlie balance should be u32::MAX - 1"
+    );
+    let payment_amount = charlie_balance.saturating_add(U512::from(1)).as_u64();
+
+    let txn = valid_wasm_txn(
+        CHARLIE_SECRET_KEY.clone(),
+        PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        },
+    );
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+
+    assert!(!result.effects.is_empty(), "should have effects");
+    let expected_cost: U512 = charlie_balance;
+
+    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert_eq!(result.cost, expected_cost);
+}
+
+#[tokio::test]
+async fn should_charge_for_marginal_insufficient_funds_deploy_payment_limited_refund_fee() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let base_amount = 100_000_000_000_000_000u64;
+    let charlie_base_amount = 10_000_000_000u64;
+    let mut test = {
+        let alice_public_key = PublicKey::from(&*ALICE_SECRET_KEY.clone());
+        let bob_public_key = PublicKey::from(&*BOB_SECRET_KEY.clone());
+        let charlie_public_key = PublicKey::from(&*CHARLIE_SECRET_KEY.clone());
+
+        let stakes = {
+            let mut ret = BTreeMap::new();
+            ret.insert(
+                alice_public_key.clone(),
+                (U512::from(base_amount), U512::from(u128::MAX)),
+            );
+            ret.insert(
+                bob_public_key.clone(),
+                (U512::from(base_amount), U512::from(1)),
+            );
+
+            ret.insert(
+                charlie_public_key,
+                (U512::from(charlie_base_amount), U512::from(1)),
+            );
+            ret
+        };
+
+        SingleTransactionTestCase::new_with_stakes(
+            ALICE_SECRET_KEY.clone(),
+            BOB_SECRET_KEY.clone(),
+            CHARLIE_SECRET_KEY.clone(),
+            Some(config),
+            stakes,
+        )
+        .await
+    };
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let charlie_balance = test
+        .get_balances(None)
+        .2
+        .expect("should have charlie balance")
+        .available;
+
+    assert_eq!(
+        charlie_balance,
+        U512::from(charlie_base_amount),
+        "charlie balance should be charlie_base_amount"
+    );
+    // make payment 1 more than charlie has
+    let payment_amount = charlie_balance.saturating_add(U512::from(1)).as_u64();
+
+    let txn = valid_wasm_txn(
+        CHARLIE_SECRET_KEY.clone(),
+        PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        },
+    );
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+
+    assert!(!result.effects.is_empty(), "should have effects");
+    let expected_cost: U512 = charlie_balance;
+
+    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert_eq!(result.cost, expected_cost);
+}
+
+async fn make_new_account_and_exec_wasm(
+    config: ConfigsOverride,
+    initial_balance: u64,
+    wasm_payment_amount: u64,
+) -> Result<ExecutionResult, String> {
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // fund a new account
+    let dan_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xDD; SecretKey::ED25519_LENGTH]).unwrap());
+    let dan_public_key = PublicKey::from(&*dan_secret_key.clone());
+    let _dan_account_hash = dan_public_key.to_account_hash();
+
+    let transfer_payment_amount = 100_000_000u64;
+    let txn = transfer_txn(
+        ALICE_SECRET_KEY.clone(),
+        &dan_public_key,
+        PricingMode::PaymentLimited {
+            payment_amount: transfer_payment_amount,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        initial_balance,
+    );
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        return Err(format!(
+            "Expected ExecutionResult::V2 but got {:?}",
+            exec_result
+        ));
+    };
+
+    assert!(!result.effects.is_empty(), "should have effects");
+    assert!(
+        result.error_message.is_none(),
+        "transfer to create new account should not have error msg"
+    );
+
+    let txn = valid_wasm_txn(
+        dan_secret_key.clone(),
+        PricingMode::PaymentLimited {
+            payment_amount: wasm_payment_amount,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+    );
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+
+    Ok(exec_result)
+}
+
+#[tokio::test]
+async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_refund_fee() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let dan_base_amount = 10_000_000_000u64;
+    // pay more than available with the new account
+    let wasm_payment_amount = dan_base_amount.saturating_add(100);
+    match make_new_account_and_exec_wasm(config, dan_base_amount, wasm_payment_amount).await {
+        Ok(exec_result) => {
+            let ExecutionResult::V2(exec_result) = exec_result else {
+                panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+            };
+            assert!(!exec_result.effects.is_empty(), "should have effects");
+            let expected_cost: U512 = dan_base_amount.into();
+
+            assert_eq!(
+                exec_result.error_message.as_deref(),
+                Some("Insufficient funds")
+            );
+            assert_eq!(
+                exec_result.cost, expected_cost,
+                "cost should be expected val"
+            );
+            assert_eq!(exec_result.refund, U512::zero(), "refund should be 0");
+        }
+        Err(err_str) => {
+            panic!("{}", err_str)
+        }
+    }
+}
+
+#[tokio::test]
+async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_refund_fee_price_2() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_min_gas_price(2)
+        .with_max_gas_price(3);
+
+    let dan_base_amount = 10_000_000_000u64;
+    // pay more than available with the new account
+    let wasm_payment_amount = dan_base_amount.saturating_add(100);
+    match make_new_account_and_exec_wasm(config, dan_base_amount, wasm_payment_amount).await {
+        Ok(exec_result) => {
+            let ExecutionResult::V2(exec_result) = exec_result else {
+                panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+            };
+            assert!(!exec_result.effects.is_empty(), "should have effects");
+            let expected_cost: U512 = dan_base_amount.into();
+
+            assert_eq!(
+                exec_result.error_message.as_deref(),
+                Some("Insufficient funds")
+            );
+            assert_eq!(
+                exec_result.cost, expected_cost,
+                "cost should be expected val"
+            );
+            assert_eq!(exec_result.refund, U512::zero(), "refund should be 0");
+        }
+        Err(err_str) => {
+            panic!("{}", err_str)
+        }
+    }
+}
+
+#[tokio::test]
 async fn should_transfer_with_main_purse_deploy_fixed_norefund_nofee() {
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::Fixed)
@@ -4644,7 +5022,7 @@ async fn gh_5058_regression_custom_payment_with_deploy_variant_works() {
         .join("wasm32-unknown-unknown")
         .join("release");
 
-    let payment_amount = U512::from(1_000_000u64);
+    let payment_amount = U512::from(2_500_000_000u64);
 
     let txn = {
         let timestamp = Timestamp::now();
@@ -4888,7 +5266,7 @@ async fn should_allow_custom_payment() {
         .join("wasm32-unknown-unknown")
         .join("release");
 
-    let payment_amount = U512::from(1_000_000u64);
+    let payment_amount = U512::from(2_500_000_000u64);
 
     let txn = {
         let timestamp = Timestamp::now();
@@ -4976,7 +5354,13 @@ async fn should_allow_native_transfer_v1() {
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
-    let expected_cost: U512 = U512::from(payment) * MIN_GAS_PRICE;
+
+    assert_ne!(
+        U512::from(payment),
+        result.cost,
+        "native transfer costing is system limited"
+    );
+    let expected_cost: U512 = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(result.error_message.as_deref(), None);
     assert_eq!(result.cost, expected_cost);
     assert_eq!(result.transfers.len(), 1, "should have exactly 1 transfer");
@@ -5083,8 +5467,11 @@ async fn run_sizing_scenario(sizing_scenario: SizingScenario) {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
-    let initial_stakes: Vec<U512> =
-        vec![alice_stake.into(), bob_stake.into(), charlie_stake.into()];
+    let initial_stakes: Vec<(U512, U512)> = vec![
+        (U512::from(u64::MAX), alice_stake.into()),
+        (U512::from(u64::MAX), bob_stake.into()),
+        (U512::from(u64::MAX), charlie_stake.into()),
+    ];
 
     let secret_keys: Vec<Arc<SecretKey>> = (0..3)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -5304,8 +5691,11 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
-    let initial_stakes: Vec<U512> =
-        vec![alice_stake.into(), bob_stake.into(), charlie_stake.into()];
+    let initial_stakes: Vec<(U512, U512)> = vec![
+        (U512::from(u64::MAX), alice_stake.into()),
+        (U512::from(u64::MAX), bob_stake.into()),
+        (U512::from(u64::MAX), charlie_stake.into()),
+    ];
 
     let secret_keys: Vec<Arc<SecretKey>> = (0..3)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))

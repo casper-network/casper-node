@@ -65,3 +65,9 @@ jobs:
 
       - name: test-contracts
         run: make test-contracts CARGO_FLAGS=--release
+
+      - name: vm2 tests
+        run: |
+          ./vm2-build-contracts.sh
+          cargo test -p casper-executor-wasm
+          cargo test -p casper-contract-sdk

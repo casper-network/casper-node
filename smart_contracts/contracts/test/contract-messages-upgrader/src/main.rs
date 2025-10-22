@@ -20,7 +20,7 @@ use casper_types::{
     api_error::ApiError,
     contract_messages::MessageTopicOperation,
     contracts::NamedKeys,
-    runtime_args, CLType, CLTyped, EntryPointPayment, PackageHash, Parameter, RuntimeArgs,
+    runtime_args, CLType, CLTyped, EntryPointPayment, PackageAddr, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
@@ -50,11 +50,10 @@ pub extern "C" fn upgraded_emit_message() {
 pub extern "C" fn emit_message_from_each_version() {
     let suffix: String = runtime::get_named_arg(ARG_MESSAGE_SUFFIX_NAME);
 
-    let contract_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
+    let contract_package_hash: PackageAddr = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .expect("should have contract package key")
         .into_package_addr()
-        .unwrap_or_revert()
-        .into();
+        .unwrap_or_revert();
 
     // Emit a message from this contract.
     runtime::emit_message(
@@ -128,11 +127,10 @@ pub extern "C" fn call() {
         EntryPointPayment::Caller,
     ));
 
-    let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
+    let message_emitter_package_hash: PackageAddr = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
         .into_package_addr()
-        .unwrap_or_revert()
-        .into();
+        .unwrap_or_revert();
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(

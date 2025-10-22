@@ -45,6 +45,11 @@ pub(crate) enum Command {
         /// The cargo workspace
         #[command(flatten)]
         workspace: clap_cargo::Workspace,
+        /// If set to true the build will NOT fail if
+        /// cargo-casper was not able to generate ABI
+        /// schema for given contract. Defaults to false
+        #[arg(short, long, default_value_t = false)]
+        allow_skipping_abi_schema: bool,
     },
     /// Build the contract with its JSON schema embedded.
     Build {
@@ -57,6 +62,11 @@ pub(crate) enum Command {
         /// The cargo workspace
         #[command(flatten)]
         workspace: clap_cargo::Workspace,
+        /// If set to true the build will NOT fail if
+        /// cargo-casper was not able to generate ABI
+        /// schema for given contract. Defaults to false
+        #[arg(short, long, default_value_t = false)]
+        allow_skipping_abi_schema: bool,
     },
     /// Creates a new VM2 smart contract project from a template.
     New {

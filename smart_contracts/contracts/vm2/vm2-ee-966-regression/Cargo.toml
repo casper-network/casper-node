@@ -1,0 +1,12 @@
+[package]
+name = "vm2-ee-966-regression"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "vm2_ee_966_regression"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false

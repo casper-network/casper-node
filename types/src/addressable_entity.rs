@@ -68,9 +68,9 @@ use crate::{
     contracts::{Contract, ContractHash},
     system::SystemEntityType,
     uref::{self, URef},
-    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
-    Key, NamedKeys, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    AccessRights, ApiError, ByteCodeAddr, CLType, CLTyped, CLValue, CLValueError,
+    ContextAccessRights, HashAddr, Key, NamedKeys, PackageAddr, ProtocolVersion, PublicKey, Tagged,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -96,6 +96,7 @@ pub const SYSTEM_ENTITY_PREFIX: &str = "system-";
 /// The prefix applied to the hex-encoded `Named Key` to produce a formatted string
 /// representation.
 pub const NAMED_KEY_PREFIX: &str = "named-key-";
+pub const PACKAGE_ENTITY_PREFIX: &str = "package-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -442,6 +443,7 @@ pub enum EntityKindTag {
     Account = 1,
     /// `EntityKind::SmartContract` variant.
     SmartContract = 2,
+    Package = 3,
 }
 
 impl TryFrom<u8> for EntityKindTag {
@@ -452,6 +454,7 @@ impl TryFrom<u8> for EntityKindTag {
             0 => Ok(EntityKindTag::System),
             1 => Ok(EntityKindTag::Account),
             2 => Ok(EntityKindTag::SmartContract),
+            3 => Ok(EntityKindTag::Package),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -489,6 +492,9 @@ impl Display for EntityKindTag {
             }
             EntityKindTag::SmartContract => {
                 write!(f, "contract")
+            }
+            EntityKindTag::Package => {
+                write!(f, "package")
             }
         }
     }
@@ -587,6 +593,7 @@ pub enum EntityKind {
     Account(AccountHash),
     /// Packages associated with Wasm stored on chain.
     SmartContract(ContractRuntimeTag),
+    Package(PackageAddr),
 }
 
 impl EntityKind {
@@ -594,7 +601,7 @@ impl EntityKind {
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
-            Self::SmartContract(_) | Self::System(_) => None,
+            _ => None,
         }
     }
 
@@ -602,7 +609,7 @@ impl EntityKind {
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::SmartContract(_) | Self::System(_) => AssociatedKeys::default(),
+            _ => AssociatedKeys::default(),
         }
     }
 
@@ -641,6 +648,7 @@ impl Tagged<EntityKindTag> for EntityKind {
             EntityKind::System(_) => EntityKindTag::System,
             EntityKind::Account(_) => EntityKindTag::Account,
             EntityKind::SmartContract(_) => EntityKindTag::SmartContract,
+            EntityKind::Package(_) => EntityKindTag::Package,
         }
     }
 }
@@ -667,23 +675,19 @@ impl ToBytes for EntityKind {
                 }
                 EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
                 EntityKind::Account(account_hash) => account_hash.serialized_length(),
+                EntityKind::Package(package_hash) => package_hash.serialized_length(),
             }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
         match self {
             EntityKind::SmartContract(transaction_runtime) => {
-                writer.push(self.tag());
                 transaction_runtime.write_bytes(writer)
             }
-            EntityKind::System(system_entity_type) => {
-                writer.push(self.tag());
-                system_entity_type.write_bytes(writer)
-            }
-            EntityKind::Account(account_hash) => {
-                writer.push(self.tag());
-                account_hash.write_bytes(writer)
-            }
+            EntityKind::System(system_entity_type) => system_entity_type.write_bytes(writer),
+            EntityKind::Account(account_hash) => account_hash.write_bytes(writer),
+            EntityKind::Package(package_hash) => package_hash.write_bytes(writer),
         }
     }
 }
@@ -704,6 +708,10 @@ impl FromBytes for EntityKind {
                 let (transaction_runtime, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((EntityKind::SmartContract(transaction_runtime), remainder))
             }
+            EntityKindTag::Package => {
+                let (package_hash, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((EntityKind::Package(package_hash), remainder))
+            }
         }
     }
 }
@@ -720,6 +728,9 @@ impl Display for EntityKind {
             EntityKind::SmartContract(transaction_runtime) => {
                 write!(f, "smart-contract-entity-kind({})", transaction_runtime)
             }
+            EntityKind::Package(package_hash) => {
+                write!(f, "package-entity-kind({})", package_hash)
+            }
         }
     }
 }
@@ -727,10 +738,11 @@ impl Display for EntityKind {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<EntityKind> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKind {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..=3) {
             0 => EntityKind::System(rng.gen()),
             1 => EntityKind::Account(rng.gen()),
             2 => EntityKind::SmartContract(rng.gen()),
+            3 => EntityKind::Package(PackageAddr::default()),
             _ => unreachable!(),
         }
     }
@@ -741,12 +753,15 @@ impl Distribution<EntityKind> for Standard {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema), schemars(untagged))]
 pub enum EntityAddr {
-    /// The address for a system entity account or contract.
+    /// The address for a system entity contract.
+    // DO NOT USE FOR SYSTEM ACCOUNT, ONLY SYSTEM CONTRACTS
     System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to an Account.
     Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to a Userland smart contract.
     SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
+    /// The address of an entity that corresponds to a Userland smart contract package.
+    Package(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
 }
 
 impl EntityAddr {
@@ -768,12 +783,17 @@ impl EntityAddr {
         Self::SmartContract(hash_addr)
     }
 
+    pub const fn new_package(hash_addr: HashAddr) -> Self {
+        Self::Package(hash_addr)
+    }
+
     /// Constructs a new `EntityAddr` based on the supplied kind.
     pub fn new_of_kind(entity_kind: EntityKind, hash_addr: HashAddr) -> Self {
         match entity_kind {
             EntityKind::System(_) => Self::new_system(hash_addr),
             EntityKind::Account(_) => Self::new_account(hash_addr),
             EntityKind::SmartContract(_) => Self::new_smart_contract(hash_addr),
+            EntityKind::Package(_) => Self::new_package(hash_addr),
         }
     }
 
@@ -783,6 +803,7 @@ impl EntityAddr {
             EntityAddr::System(_) => EntityKindTag::System,
             EntityAddr::Account(_) => EntityKindTag::Account,
             EntityAddr::SmartContract(_) => EntityKindTag::SmartContract,
+            EntityAddr::Package(_) => EntityKindTag::Package,
         }
     }
 
@@ -807,7 +828,8 @@ impl EntityAddr {
         match self {
             EntityAddr::System(hash_addr)
             | EntityAddr::Account(hash_addr)
-            | EntityAddr::SmartContract(hash_addr) => *hash_addr,
+            | EntityAddr::SmartContract(hash_addr)
+            | EntityAddr::Package(hash_addr) => *hash_addr,
         }
     }
 
@@ -838,6 +860,14 @@ impl EntityAddr {
                     base16::encode_lower(addr)
                 )
             }
+            EntityAddr::Package(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    PACKAGE_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
         }
     }
 
@@ -859,6 +889,7 @@ impl EntityAddr {
                 EntityKindTag::System => EntityAddr::new_system(hash_addr),
                 EntityKindTag::Account => EntityAddr::new_account(hash_addr),
                 EntityKindTag::SmartContract => EntityAddr::new_smart_contract(hash_addr),
+                EntityKindTag::Package => EntityAddr::new_package(hash_addr),
             };
 
             return Ok(entity_addr);
@@ -900,6 +931,10 @@ impl ToBytes for EntityAddr {
                 EntityKindTag::SmartContract.write_bytes(writer)?;
                 addr.write_bytes(writer)
             }
+            EntityAddr::Package(addr) => {
+                EntityKindTag::Package.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
         }
     }
 }
@@ -912,6 +947,7 @@ impl FromBytes for EntityAddr {
             EntityKindTag::System => EntityAddr::System(addr),
             EntityKindTag::Account => EntityAddr::Account(addr),
             EntityKindTag::SmartContract => EntityAddr::SmartContract(addr),
+            EntityKindTag::Package => EntityAddr::Package(addr),
         };
         Ok((entity_addr, remainder))
     }
@@ -955,6 +991,13 @@ impl Debug for EntityAddr {
                     base16::encode_lower(hash_addr)
                 )
             }
+            EntityAddr::Package(hash_addr) => {
+                write!(
+                    f,
+                    "EntityAddr::SmartContract({})",
+                    base16::encode_lower(hash_addr)
+                )
+            }
         }
     }
 }
@@ -981,6 +1024,7 @@ impl<'de> Deserialize<'de> for EntityAddr {
                 EntityKindTag::System => Ok(EntityAddr::new_system(addr)),
                 EntityKindTag::Account => Ok(EntityAddr::new_account(addr)),
                 EntityKindTag::SmartContract => Ok(EntityAddr::new_smart_contract(addr)),
+                EntityKindTag::Package => Ok(EntityAddr::new_package(addr)),
             }
         }
     }
@@ -1316,8 +1360,8 @@ pub enum MessageTopicError {
 static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let account_hash = PublicKey::from(&secret_key).to_account_hash();
-    let package_hash = PackageHash::new([0; 32]);
-    let byte_code_hash = ByteCodeHash::new([0; 32]);
+    let package = PackageAddr::new([0; 32]);
+    let byte_code = ByteCodeHash::new([0; 32]);
     let main_purse = URef::from_formatted_str(
         "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
     )
@@ -1329,8 +1373,8 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     AddressableEntity {
         protocol_version,
         entity_kind: EntityKind::Account(account_hash),
-        package_hash,
-        byte_code_hash,
+        package,
+        byte_code,
         main_purse,
         associated_keys,
         action_thresholds,
@@ -1338,7 +1382,7 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
 });
 
 /// The address for an AddressableEntity which contains the 32 bytes and tagging information.
-pub type ContractAddress = PackageHash;
+pub type ContractAddress = PackageAddr;
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1347,42 +1391,20 @@ pub type ContractAddress = PackageHash;
 pub struct AddressableEntity {
     protocol_version: ProtocolVersion,
     entity_kind: EntityKind,
-    package_hash: PackageHash,
-    byte_code_hash: ByteCodeHash,
+    package: PackageAddr,
+    byte_code: ByteCodeHash,
     main_purse: URef,
 
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
 }
 
-impl From<AddressableEntity>
-    for (
-        PackageHash,
-        ByteCodeHash,
-        ProtocolVersion,
-        URef,
-        AssociatedKeys,
-        ActionThresholds,
-    )
-{
-    fn from(entity: AddressableEntity) -> Self {
-        (
-            entity.package_hash,
-            entity.byte_code_hash,
-            entity.protocol_version,
-            entity.main_purse,
-            entity.associated_keys,
-            entity.action_thresholds,
-        )
-    }
-}
-
 impl AddressableEntity {
     /// `AddressableEntity` constructor.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        package_hash: PackageHash,
-        byte_code_hash: ByteCodeHash,
+        package: PackageAddr,
+        byte_code: ByteCodeHash,
         protocol_version: ProtocolVersion,
         main_purse: URef,
         associated_keys: AssociatedKeys,
@@ -1390,8 +1412,8 @@ impl AddressableEntity {
         entity_kind: EntityKind,
     ) -> Self {
         AddressableEntity {
-            package_hash,
-            byte_code_hash,
+            package,
+            byte_code,
             protocol_version,
             main_purse,
             action_thresholds,
@@ -1407,6 +1429,7 @@ impl AddressableEntity {
             EntityKind::System(_) => EntityAddr::new_system(hash_addr),
             EntityKind::Account(_) => EntityAddr::new_account(hash_addr),
             EntityKind::SmartContract(_) => EntityAddr::new_smart_contract(hash_addr),
+            EntityKind::Package(_) => EntityAddr::new_package(hash_addr),
         }
     }
 
@@ -1415,13 +1438,13 @@ impl AddressableEntity {
     }
 
     /// Hash for accessing contract package
-    pub fn package_hash(&self) -> PackageHash {
-        self.package_hash
+    pub fn package(&self) -> PackageAddr {
+        self.package
     }
 
     /// Hash for accessing contract WASM
-    pub fn byte_code_hash(&self) -> ByteCodeHash {
-        self.byte_code_hash
+    pub fn byte_code(&self) -> ByteCodeHash {
+        self.byte_code
     }
 
     /// Get the protocol version this header is targeting.
@@ -1601,11 +1624,6 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().upgrade_management()
     }
 
-    /// Addr for accessing wasm bytes
-    pub fn byte_code_addr(&self) -> HashAddr {
-        self.byte_code_hash.value()
-    }
-
     /// Set protocol_version.
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
@@ -1635,6 +1653,11 @@ impl AddressableEntity {
         matches!(self.entity_kind, EntityKind::Account(_))
     }
 
+    /// Is this a contract?
+    pub fn is_smart_contract_kind(&self) -> bool {
+        matches!(self.entity_kind, EntityKind::SmartContract(_))
+    }
+
     /// Key for the addressable entity
     pub fn entity_key(&self, entity_hash: AddressableEntityHash) -> Key {
         match self.entity_kind {
@@ -1647,6 +1670,7 @@ impl AddressableEntity {
             EntityKind::SmartContract(_) => {
                 Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
             }
+            EntityKind::Package(_) => Key::Package(entity_hash.value().into()),
         }
     }
 
@@ -1669,13 +1693,52 @@ impl AddressableEntity {
     pub fn example() -> &'static Self {
         &ADDRESSABLE_ENTITY
     }
+
+    /// Addr for accessing wasm bytes
+    pub fn byte_code_addr(&self) -> Option<ByteCodeAddr> {
+        match self.entity_kind {
+            EntityKind::System(_) => Some(ByteCodeAddr::Empty),
+            EntityKind::Account(_) => None,
+            EntityKind::SmartContract(contract_runtime_tag) => match contract_runtime_tag {
+                ContractRuntimeTag::VmCasperV1 => {
+                    Some(ByteCodeAddr::V1CasperWasm(self.byte_code.value()))
+                }
+                ContractRuntimeTag::VmCasperV2 => {
+                    Some(ByteCodeAddr::V2CasperWasm(self.byte_code.value()))
+                }
+            },
+            EntityKind::Package(_) => None,
+        }
+    }
+}
+
+impl From<AddressableEntity>
+    for (
+        PackageAddr,
+        ByteCodeHash,
+        ProtocolVersion,
+        URef,
+        AssociatedKeys,
+        ActionThresholds,
+    )
+{
+    fn from(entity: AddressableEntity) -> Self {
+        (
+            entity.package,
+            entity.byte_code,
+            entity.protocol_version,
+            entity.main_purse,
+            entity.associated_keys,
+            entity.action_thresholds,
+        )
+    }
 }
 
 impl ToBytes for AddressableEntity {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.package_hash().write_bytes(&mut result)?;
-        self.byte_code_hash().write_bytes(&mut result)?;
+        self.package().write_bytes(&mut result)?;
+        self.byte_code().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
@@ -1685,8 +1748,8 @@ impl ToBytes for AddressableEntity {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.package_hash)
-            + ToBytes::serialized_length(&self.byte_code_hash)
+        ToBytes::serialized_length(&self.package)
+            + ToBytes::serialized_length(&self.byte_code)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.main_purse)
             + ToBytes::serialized_length(&self.associated_keys)
@@ -1695,8 +1758,8 @@ impl ToBytes for AddressableEntity {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.package_hash().write_bytes(writer)?;
-        self.byte_code_hash().write_bytes(writer)?;
+        self.package().write_bytes(writer)?;
+        self.byte_code().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
@@ -1708,8 +1771,8 @@ impl ToBytes for AddressableEntity {
 
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (package_hash, bytes) = PackageHash::from_bytes(bytes)?;
-        let (byte_code_hash, bytes) = ByteCodeHash::from_bytes(bytes)?;
+        let (package, bytes) = PackageAddr::from_bytes(bytes)?;
+        let (byte_code, bytes) = ByteCodeHash::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
@@ -1717,8 +1780,8 @@ impl FromBytes for AddressableEntity {
         let (entity_kind, bytes) = EntityKind::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
-                package_hash,
-                byte_code_hash,
+                package,
+                byte_code,
                 protocol_version,
                 main_purse,
                 associated_keys,
@@ -1733,8 +1796,8 @@ impl FromBytes for AddressableEntity {
 impl Default for AddressableEntity {
     fn default() -> Self {
         AddressableEntity {
-            byte_code_hash: [0; KEY_HASH_LENGTH].into(),
-            package_hash: [0; KEY_HASH_LENGTH].into(),
+            byte_code: [0; KEY_HASH_LENGTH].into(),
+            package: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
@@ -1747,7 +1810,7 @@ impl Default for AddressableEntity {
 impl From<Contract> for AddressableEntity {
     fn from(value: Contract) -> Self {
         AddressableEntity::new(
-            PackageHash::new(value.contract_package_hash().value()),
+            PackageAddr::new(value.contract_package_hash().value()),
             ByteCodeHash::new(value.contract_wasm_hash().value()),
             value.protocol_version(),
             URef::default(),
@@ -1761,7 +1824,7 @@ impl From<Contract> for AddressableEntity {
 impl From<Account> for AddressableEntity {
     fn from(value: Account) -> Self {
         AddressableEntity::new(
-            PackageHash::default(),
+            PackageAddr::default(),
             ByteCodeHash::new([0u8; 32]),
             ProtocolVersion::default(),
             value.main_purse(),
@@ -1927,7 +1990,7 @@ mod tests {
         named_keys.insert("d".to_string(), Key::URef(uref));
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = AddressableEntity::new(
-            PackageHash::new([254; 32]),
+            PackageAddr::new([254; 32]),
             ByteCodeHash::new([253; 32]),
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,

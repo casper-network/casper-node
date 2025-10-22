@@ -13,8 +13,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, PublicKey, SecretKey,
+    U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -150,7 +150,6 @@ fn should_adjust_total_supply() {
     // slash
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
         .with_slash_item(SlashItem::new(ACCOUNT_2_PK.clone()))
         .with_next_era_id(EraId::from(1))

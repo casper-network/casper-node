@@ -1,28 +1,13 @@
-use std::{
-    collections::{BTreeSet, HashMap, LinkedList},
-    ptr::NonNull,
-};
+use std::collections::{BTreeSet, HashMap, LinkedList};
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    casper_executor_wasm_common::{
-        entry_point::{
-            ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-            ENTRY_POINT_PAYMENT_SELF_ONWARD,
-        },
-        error::CommonResult,
-        keyspace::Keyspace,
-    },
-    collections::Map,
-    log, revert,
-    types::CallError,
-    ContractHandle,
+    casper, collections::Map, log, prelude::Entity, revert, types::CallError, ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
 
-pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
+pub const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";
 
 #[derive(Debug)]
@@ -41,7 +26,7 @@ pub struct Harness {
 //         // Called when no entrypoint is matched
 //         //
 //         // Is invoked when
-//         // a) user performs plan CSPR transfer (not a contract call)
+//         // a) user performs plan token transfer (not a contract call)
 //         //   a.1) if there's no fallback entrypoint, the transfer will fail
 //         //   a.2) if there's fallback entrypoint, it will be called
 //         // b) user calls a contract with no matching entrypoint
@@ -72,6 +57,12 @@ pub enum CustomError {
     Deposit(CallError),
 }
 
+#[derive(Debug, PartialEq)]
+#[casper]
+pub struct PublicStructUsedOnlyByPrivateEntrypoint {
+    pub value: u64,
+}
+
 impl Default for Harness {
     fn default() -> Self {
         Self {
@@ -97,36 +88,6 @@ impl Harness {
 
         log!("👋 Hello from constructor with args: {who}");
 
-        assert_eq!(
-            casper::write(Keyspace::PaymentInfo("this does not exists"), &[0]),
-            Err(CommonResult::NotFound)
-        );
-
-        {
-            for payment_info in [
-                ENTRY_POINT_PAYMENT_CALLER,
-                ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
-                ENTRY_POINT_PAYMENT_SELF_ONWARD,
-            ] {
-                casper::write(Keyspace::PaymentInfo("counter"), &[payment_info]).unwrap();
-
-                let mut buffer = [255; 1];
-                assert_eq!(
-                    casper::read(Keyspace::PaymentInfo("counter"), |size| {
-                        assert_eq!(size, 1, "Size should be 1");
-                        NonNull::new(&mut buffer[0])
-                    }),
-                    Ok(Some(()))
-                );
-                assert_eq!(&buffer, &[payment_info]);
-            }
-
-            assert_eq!(
-                casper::write(Keyspace::PaymentInfo("counter"), &[255, 255]),
-                Err(CommonResult::InvalidInput)
-            );
-        }
-
         Self {
             counter: 0,
             greeting: format!("Hello, {who}!"),
@@ -145,8 +106,6 @@ impl Harness {
     #[casper(constructor)]
     pub fn trapping_constructor() -> Self {
         log!("👋 Hello from trapping constructor");
-        // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
-        // the tracking copy.
         panic!("This will revert the execution of this constructor and won't create a new package");
     }
 
@@ -362,9 +321,10 @@ impl Harness {
 
         match caller {
             Entity::Account(account) => {
+                log!("caller account {:?}", account);
                 // if this fails, the transfer will be reverted and the state will be rolled back
-                match casper::transfer(&account, amount) {
-                    Ok(()) => {}
+                match casper::transfer(&caller.entity_addr(), amount) {
+                    Ok(_) => {}
                     Err(call_error) => {
                         log!("Unable to perform a transfer: {call_error:?}");
                         return Err(CustomError::Transfer(call_error.to_string()));
@@ -372,6 +332,7 @@ impl Harness {
                 }
             }
             Entity::Contract(contract) => {
+                log!("caller contract {:?}", contract);
                 let result = ContractHandle::<DepositRef>::from_address(contract)
                     .build_call()
                     .with_transferred_value(amount)
@@ -389,20 +350,12 @@ impl Harness {
                         return Err(CustomError::Deposit(call_error));
                     }
                 }
-
-                // if let Err(call_error) = result.unwrap().result {
-                //     log!("Unable to perform a transfer: {call_error:?}");
-                //     return Err(CustomError::Deposit(call_error));
-                // }
             }
         }
 
-        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed
-        // with error, or something like that) return Err(CustomError::WithBody("Transfer
-        // failed".into())); }
-
         let balance_after = balance_before + amount;
 
+        log!("balance_after {}", balance_after);
         assert_eq!(
             casper::get_balance_of(&caller),
             balance_after,
@@ -433,7 +386,7 @@ impl Harness {
         _arg8: i8,
         _arg9: String,
         _arg10: Vec<u8>,
-        _arg11: [i32; 5],
+        _arg11: [u32; 5],
         _arg12: Option<String>,
         _arg13: Result<(), ()>,
         _arg14: Box<i32>,
@@ -448,5 +401,10 @@ impl Harness {
         _arg23: u64,
     ) {
         log!("Nothing");
+    }
+
+    #[casper(private)]
+    pub fn private_only_uses_public_struct(&self, _arg: PublicStructUsedOnlyByPrivateEntrypoint) {
+        log!("This function should be private and its arg type should not appear in schema");
     }
 }

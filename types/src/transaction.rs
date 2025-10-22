@@ -5,7 +5,7 @@ mod deploy;
 mod error;
 mod execution_info;
 mod initiator_addr;
-#[cfg(any(feature = "std", test, feature = "testing"))]
+#[cfg(any(test, feature = "testing"))]
 mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
@@ -20,8 +20,6 @@ mod transaction_target;
 mod transaction_v1;
 mod transfer_target;
 
-#[cfg(feature = "json-schema")]
-use crate::URef;
 use alloc::{
     collections::BTreeSet,
     string::{String, ToString},
@@ -73,7 +71,7 @@ pub use deploy::{
 pub use error::InvalidTransaction;
 pub use execution_info::ExecutionInfo;
 pub use initiator_addr::InitiatorAddr;
-#[cfg(any(feature = "std", feature = "testing", test))]
+#[cfg(any(feature = "testing", test))]
 pub(crate) use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::{PricingMode, PricingModeError};
@@ -84,9 +82,7 @@ pub use transaction_id::TransactionId;
 pub use transaction_invocation_target::TransactionInvocationTarget;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
-#[cfg(feature = "json-schema")]
-pub(crate) use transaction_v1::arg_handling;
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
     InvalidTransactionV1, TransactionArgs, TransactionV1, TransactionV1DecodeFromJsonError,
@@ -98,40 +94,8 @@ const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
 #[cfg(feature = "json-schema")]
-pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
-    let secret_key = SecretKey::example();
-    let source = URef::from_formatted_str(
-        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-    )
-    .unwrap();
-    let target = URef::from_formatted_str(
-        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-    )
-    .unwrap();
-    let id = Some(999);
-    let amount = 30_000_000_000_u64;
-    let args = arg_handling::new_transfer_args(amount, Some(source), target, id).unwrap();
-    let container = FieldsContainer::new(
-        TransactionArgs::Named(args),
-        TransactionTarget::Native,
-        TransactionEntryPoint::Transfer,
-        TransactionScheduling::Standard,
-    );
-    let pricing_mode = PricingMode::Fixed {
-        gas_price_tolerance: 5,
-        additional_computation_factor: 0,
-    };
-    let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(secret_key);
-    let v1_txn = TransactionV1::build(
-        "casper-example".to_string(),
-        *Timestamp::example(),
-        TimeDiff::from_seconds(3_600),
-        pricing_mode,
-        container.to_map().unwrap(),
-        initiator_addr_and_secret_key,
-    );
-    Transaction::V1(v1_txn)
-});
+pub(super) static TRANSACTION: Lazy<Transaction> =
+    Lazy::new(|| Transaction::V1(TransactionV1::example().clone()));
 
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -364,14 +328,53 @@ impl Transaction {
     /// Calcualates the gas limit for the transaction.
     pub fn gas_limit(&self, chainspec: &Chainspec, lane_id: u8) -> Result<Gas, InvalidTransaction> {
         match self {
-            Transaction::Deploy(deploy) => deploy
-                .gas_limit(chainspec)
-                .map_err(InvalidTransaction::from),
+            Transaction::Deploy(deploy) => {
+                match deploy
+                    .gas_limit(chainspec)
+                    .map_err(InvalidTransaction::from)
+                {
+                    Ok(gas) => {
+                        if gas.value() == crate::U512::zero() {
+                            Err(InvalidTransaction::Deploy(
+                                InvalidDeploy::InvalidPaymentAmount,
+                            ))
+                        } else {
+                            Ok(gas)
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
+            }
             Transaction::V1(v1) => {
+                if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
+                    // retro-compatibility for incentivized native transfer cost
+                    if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
+                        let gas = Gas::new(chainspec.system_costs_config.mint_costs().transfer);
+                        return Ok(gas);
+                    };
+                }
+
                 let pricing_mode = v1.pricing_mode();
-                pricing_mode
+                match pricing_mode
                     .gas_limit(chainspec, lane_id)
                     .map_err(InvalidTransaction::from)
+                {
+                    Ok(gas) => {
+                        // the transaction acceptor enforces this on an actual network,
+                        // rejecting 0 payment txn's right away.
+                        // however, direct tests don't engage the acceptor.
+                        // so, also checking here so those tests are consistent
+                        // and also defense in depth
+                        if gas.value() == crate::U512::zero() {
+                            Err(InvalidTransaction::V1(
+                                InvalidTransactionV1::InvalidPaymentAmount,
+                            ))
+                        } else {
+                            Ok(gas)
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
             }
         }
     }
@@ -390,6 +393,14 @@ impl Transaction {
                 .gas_cost(chainspec, gas_price)
                 .map_err(InvalidTransaction::from),
             Transaction::V1(v1) => {
+                if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
+                    // retro-compatibility for incentivized native transfer cost
+                    if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
+                        return Ok(Motes::new(
+                            chainspec.system_costs_config.mint_costs().transfer,
+                        ));
+                    };
+                }
                 let pricing_mode = v1.pricing_mode();
                 pricing_mode
                     .gas_cost(chainspec, lane_id, gas_price)

@@ -20,7 +20,7 @@ use casper_types::{
     AccessRights, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped, CLValue,
     ContractRuntimeTag, DeployHash, DeployInfo, EntityAddr, EntityEntryPoint, EntityVersionKey,
     EntityVersions, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPointValue, EraId,
-    Group, Groups, Key, Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey,
+    Group, Groups, Key, Package, PackageAddr, PackageStatus, Parameter, ProtocolVersion, PublicKey,
     SecretKey, StoredValue, TransferAddr, TransferV1, URef, U512,
 };
 use casper_validation::{
@@ -396,7 +396,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         let entity = AddressableEntity::new(
-            PackageHash::new([100; 32]),
+            PackageAddr::new([100; 32]),
             ByteCodeHash::new([101; 32]),
             ProtocolVersion::V1_0_0,
             URef::default(),

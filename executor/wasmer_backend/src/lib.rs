@@ -1,5 +1,6 @@
 pub(crate) mod imports;
 pub(crate) mod middleware;
+pub(crate) mod tunables;
 
 use std::{
     collections::BinaryHeap,
@@ -10,8 +11,8 @@ use bytes::Bytes;
 use casper_executor_wasm_common::error::TrapCode;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
-    executor::Executor, Caller, Config, ExportError, GasUsage, InterfaceVersion, MeteringPoints,
-    VMError, VMResult, WasmInstance, WasmPreparationError,
+    executor::Executor, Caller, Config, ExportError, FatalHostError, GasUsage, InterfaceVersion,
+    MeteringPoints, VMError, VMResult, WasmInstance, WasmPreparationError,
 };
 use casper_storage::global_state::GlobalStateReader;
 use middleware::{
@@ -19,12 +20,16 @@ use middleware::{
     gatekeeper::{Gatekeeper, GatekeeperConfig},
 };
 use regex::Regex;
+use tracing::error;
 use wasmer::{
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut,
-    Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
+    AsStoreMut, AsStoreRef, BaseTunables, CompilerConfig, Engine, Function, FunctionEnv,
+    FunctionEnvMut, Instance, Memory, MemoryType, MemoryView, Module, NativeEngineExt, Pages,
+    RuntimeError, Store, StoreMut, Table, Target, TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
+
+use crate::tunables::memory_limit::MemLimitTunables;
 
 fn from_wasmer_memory_access_error(error: wasmer::MemoryAccessError) -> VMError {
     let trap_code = match error {
@@ -51,9 +56,6 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
     match value {
         wasmer_types::TrapCode::StackOverflow => TrapCode::StackOverflow,
         wasmer_types::TrapCode::HeapAccessOutOfBounds => TrapCode::MemoryOutOfBounds,
-        wasmer_types::TrapCode::HeapMisaligned => {
-            unreachable!("Atomic operations are not supported")
-        }
         wasmer_types::TrapCode::TableAccessOutOfBounds => TrapCode::TableAccessOutOfBounds,
         wasmer_types::TrapCode::IndirectCallToNull => TrapCode::IndirectCallToNull,
         wasmer_types::TrapCode::BadSignature => TrapCode::BadSignature,
@@ -61,8 +63,8 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
         wasmer_types::TrapCode::IntegerDivisionByZero => TrapCode::IntegerDivisionByZero,
         wasmer_types::TrapCode::BadConversionToInteger => TrapCode::BadConversionToInteger,
         wasmer_types::TrapCode::UnreachableCodeReached => TrapCode::UnreachableCodeReached,
-        wasmer_types::TrapCode::UnalignedAtomic => {
-            todo!("Atomic memory extension is not supported")
+        wasmer_types::TrapCode::HeapMisaligned | wasmer_types::TrapCode::UnalignedAtomic => {
+            unreachable!("Trap from unsupported Wasm extension");
         }
     }
 }
@@ -86,15 +88,17 @@ impl WasmerEngine {
     pub fn instantiate<T: Into<Bytes>, S: GlobalStateReader + 'static, E: Executor + 'static>(
         &self,
         wasm_bytes: T,
-        context: Context<S, E>,
+        executor: E,
+        context: Context<S>,
         config: Config,
-    ) -> Result<impl WasmInstance<Context = Context<S, E>>, WasmPreparationError> {
-        WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)
+    ) -> Result<impl WasmInstance<Context = Context<S>>, WasmPreparationError> {
+        WasmerInstance::from_wasm_bytes(wasm_bytes, executor, context, config)
     }
 }
 
 struct WasmerEnv<S: GlobalStateReader, E: Executor> {
-    context: Context<S, E>,
+    context: Context<S>,
+    executor: E,
     instance: Weak<Instance>,
     bytecode: Bytes,
     exported_runtime: Option<ExportedRuntime>,
@@ -106,26 +110,35 @@ pub(crate) struct WasmerCaller<'a, S: GlobalStateReader, E: Executor> {
 }
 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, E> {
-    fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
-        let mem = &self.env.data().exported_runtime().memory;
+    fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> VMResult<T> {
+        let mem = &self.env.data().exported_runtime()?.memory;
         let binding = self.env.as_store_ref();
         let view = mem.view(&binding);
-        f(view)
+        Ok(f(view))
     }
 
-    fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> Ret {
-        let instance = self.env.data().instance.upgrade().expect("Valid instance");
-        f(&instance)
+    fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> VMResult<Ret> {
+        let instance = match self.env.data().instance.upgrade() {
+            Some(instance) => instance,
+            None => unreachable!("No env instance when running ffi!"),
+        };
+        Ok(f(&instance))
     }
 
-    fn with_store_and_instance<Ret>(&mut self, f: impl FnOnce(StoreMut, &Instance) -> Ret) -> Ret {
+    fn with_store_and_instance<Ret>(
+        &mut self,
+        f: impl FnOnce(StoreMut, &Instance) -> Ret,
+    ) -> VMResult<Ret> {
         let (data, store) = self.env.data_and_store_mut();
-        let instance = data.instance.upgrade().expect("Valid instance");
-        f(store, &instance)
+        let instance = match data.instance.upgrade() {
+            Some(instance) => instance,
+            None => unreachable!("No env instance when running ffi!"),
+        };
+        Ok(f(store, &instance))
     }
 
-    /// Returns the amount of gas used.
-    fn get_remaining_points(&mut self) -> MeteringPoints {
+    /// Returns the amount of gas remaining.
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints> {
         self.with_store_and_instance(|mut store, instance| {
             let metering_points = metering::get_remaining_points(&mut store, instance);
             match metering_points {
@@ -134,8 +147,8 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
             }
         })
     }
-    /// Set the amount of gas used.
-    fn set_remaining_points(&mut self, new_value: u64) {
+    /// Set the amount of gas remaining.
+    fn set_remaining_points(&mut self, new_value: u64) -> VMResult<()> {
         self.with_store_and_instance(|mut store, instance| {
             metering::set_remaining_points(&mut store, instance, new_value);
         })
@@ -143,23 +156,37 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, 
 }
 
 impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
-    type Context = Context<S, E>;
+    type Context = Context<S>;
+    type Executor = E;
 
-    fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.write(offset.into(), data))
+    fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.write(offset.into(), data))?
             .map_err(from_wasmer_memory_access_error)
     }
 
-    fn context(&self) -> &Context<S, E> {
+    fn context(&self) -> &Context<S> {
         &self.env.data().context
     }
 
-    fn context_mut(&mut self) -> &mut Context<S, E> {
+    fn context_mut(&mut self) -> &mut Context<S> {
         &mut self.env.data_mut().context
     }
 
-    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.read(offset.into(), output))
+    fn executor(&self) -> &Self::Executor {
+        &self.env.data().executor
+    }
+
+    fn bytecode(&self) -> Bytes {
+        self.env.data().bytecode.clone()
+    }
+
+    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
+        self.with_memory(|mem| mem.copy_range_to_vec(offset as u64..size as u64 + offset as u64))?
+            .map_err(from_wasmer_memory_access_error)
+    }
+
+    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()> {
+        self.with_memory(|mem| mem.read(offset.into(), output))?
             .map_err(from_wasmer_memory_access_error)
     }
 
@@ -168,45 +195,60 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
 
         let (data, mut store) = self.env.data_and_store_mut();
         let value = data
-            .exported_runtime()
+            .exported_runtime()?
             .exported_table
             .as_ref()
-            .expect("should have table exported") // TODO: if theres no table then no function pointer is stored in the wasm blob -
-            // probably safe
+            .ok_or(VMError::AllocError(
+                "Exported runtime has no exported table".to_owned(),
+            ))?
             .get(&mut store.as_store_mut(), idx)
-            .expect("has entry in the table"); // TODO: better error handling - pass 0 as nullptr?
-        let funcref = value.funcref().expect("is funcref");
-        let valid_funcref = funcref.as_ref().expect("valid funcref");
-        let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref
-            .typed(&store)
-            .unwrap_or_else(|error| panic!("{error:?}"));
+            .ok_or({
+                VMError::AllocError(format!(
+                    "Expected exported table entry with index {idx} to exist"
+                ))
+            })?;
+        let funcref = value.funcref().ok_or(VMError::AllocError(
+            "Expected value to be funcref".to_owned(),
+        ))?;
+        let valid_funcref = funcref.as_ref().ok_or(VMError::AllocError(
+            "Expected value to be a valid funcref".to_owned(),
+        ))?;
+        let alloc_callback: TypedFunction<(u32, u32), u32> = match valid_funcref.typed(&store) {
+            Ok(alloc_callback) => alloc_callback,
+            Err(_error) => {
+                return Err(VMError::AllocError(
+                    "Failed to convert funcref to typed function".to_owned(),
+                ));
+            }
+        };
+
+        let size_u32 = size
+            .try_into()
+            .map_err(|_err| VMError::AllocError("Failed to convert usize to u32".to_owned()))?;
+
         let ptr = alloc_callback
-            .call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)
+            .call(&mut store.as_store_mut(), size_u32, ctx)
             .map_err(handle_wasmer_runtime_error)?;
+
         Ok(ptr)
     }
 
-    fn bytecode(&self) -> Bytes {
-        self.env.data().bytecode.clone()
-    }
-
-    /// Returns the amount of gas used.
+    /// Returns the amount of gas remaining.
     #[inline]
-    fn gas_consumed(&mut self) -> MeteringPoints {
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints> {
         self.get_remaining_points()
     }
 
-    /// Set the amount of gas used.
+    /// Check for exhaustion, then deduct amount from remaining if able.
     ///
     /// This method will cause the VM engine to stop in case remaining gas points are depleted.
     fn consume_gas(&mut self, amount: u64) -> VMResult<()> {
-        let gas_consumed = self.gas_consumed();
-        match gas_consumed {
+        match self.get_remaining_points()? {
             MeteringPoints::Remaining(remaining_points) => {
                 let remaining_points = remaining_points
                     .checked_sub(amount)
                     .ok_or(VMError::OutOfGas)?;
-                self.set_remaining_points(remaining_points);
+                self.set_remaining_points(remaining_points)?;
                 Ok(())
             }
             MeteringPoints::Exhausted => Err(VMError::OutOfGas),
@@ -214,25 +256,33 @@ impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCal
     }
 
     #[inline]
-    fn has_export(&self, name: &str) -> bool {
+    fn has_export(&self, name: &str) -> VMResult<bool> {
         self.with_instance(|instance| instance.exports.contains(name))
     }
 }
 
 impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
-    fn new(context: Context<S, E>, code: Bytes, interface_version: InterfaceVersion) -> Self {
+    fn new(
+        context: Context<S>,
+        executor: E,
+        code: Bytes,
+        interface_version: InterfaceVersion,
+    ) -> Self {
         Self {
             context,
+            executor,
             instance: Weak::new(),
             exported_runtime: None,
             bytecode: code,
             interface_version,
         }
     }
-    pub(crate) fn exported_runtime(&self) -> &ExportedRuntime {
-        self.exported_runtime
-            .as_ref()
-            .expect("Valid instance of exported runtime")
+    pub(crate) fn exported_runtime(&self) -> VMResult<&ExportedRuntime> {
+        self.exported_runtime.as_ref().ok_or({
+            VMError::Fatal(FatalHostError::CorruptExecutionState(
+                "Valid instance of exported runtime".to_owned(),
+            ))
+        })
     }
 }
 
@@ -253,15 +303,18 @@ pub(crate) struct WasmerInstance<S: GlobalStateReader, E: Executor + 'static> {
 }
 
 fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
-    match error.downcast::<VMError>() {
-        Ok(vm_error) => vm_error,
-        Err(wasmer_runtime_error) => {
+    error
+        .downcast::<VMError>()
+        .unwrap_or_else(|wasmer_runtime_error| {
             // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
             // our code.
-            let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
+            let wasmer_trap_code = if let Some(trap_code) = wasmer_runtime_error.to_trap() {
+                trap_code
+            } else {
+                return VMError::Fatal(FatalHostError::TypeConversion);
+            };
             VMError::Trap(from_wasmer_trap_code(wasmer_trap_code))
-        }
-    }
+        })
 }
 
 impl<S, E> WasmerInstance<S, E>
@@ -269,7 +322,7 @@ where
     S: GlobalStateReader + 'static,
     E: Executor + 'static,
 {
-    pub(crate) fn call_export(&mut self, name: &str) -> Result<(), VMError> {
+    pub(crate) fn call_export(&mut self, name: &str) -> VMResult<()> {
         let exported_call_func: TypedFunction<(), ()> = self
             .instance
             .exports
@@ -284,35 +337,52 @@ where
 
     pub(crate) fn from_wasm_bytes<C: Into<Bytes>>(
         wasm_bytes: C,
-        context: Context<S, E>,
+        executor: E,
+        context: Context<S>,
         config: Config,
     ) -> Result<Self, WasmPreparationError> {
+        let wasm_bytes: Bytes = wasm_bytes.into();
+
         let engine = {
             let mut singlepass_compiler = Singlepass::new();
             let gatekeeper_config = GatekeeperConfig::default();
             singlepass_compiler.push_middleware(Arc::new(Gatekeeper::new(gatekeeper_config)));
+
             singlepass_compiler
                 .push_middleware(gas_metering::gas_metering_middleware(config.gas_limit()));
+
             singlepass_compiler
         };
 
-        let engine = Engine::from(engine);
+        let max_mem_pages = Pages(config.memory_limit());
 
-        let wasm_bytes: Bytes = wasm_bytes.into();
+        let base = BaseTunables::for_target(&Target::default());
+        let tunables = MemLimitTunables::new(base, max_mem_pages);
+        let mut engine = Engine::from(engine);
+        engine.set_tunables(tunables);
 
         let module = Module::new(&engine, &wasm_bytes)
             .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
 
+        let mem_import = module
+            .info()
+            .memories
+            .iter()
+            .next()
+            .map(|(_, mem_type)| *mem_type)
+            .ok_or(WasmPreparationError::Compile("missing memory".to_string()))?;
+
         let mut store = Store::new(engine);
 
-        let wasmer_env = WasmerEnv::new(context, wasm_bytes, InterfaceVersion::from(1u32));
+        let wasmer_env =
+            WasmerEnv::new(context, executor, wasm_bytes, InterfaceVersion::from(1u32));
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
 
         let memory = Memory::new(
             &mut store,
-            wasmer_types::MemoryType {
-                minimum: wasmer_types::Pages(17),
-                maximum: None,
+            MemoryType {
+                minimum: mem_import.minimum,
+                maximum: Some(max_mem_pages),
                 shared: false,
             },
         )
@@ -331,9 +401,6 @@ where
 
             imports
         };
-
-        // TODO: Deal with "start" section that executes actual Wasm - test, measure gas, etc. ->
-        // Instance::new may fail with RuntimError
 
         let instance = {
             let instance = Instance::new(&mut store, &module, &imports)
@@ -356,8 +423,12 @@ where
                 if import.module() == "env" {
                     if let Some(caps) = RE.captures(import.name()) {
                         let version = &caps["version"];
-                        let version: u32 = version.parse().expect("valid number"); // SAFETY: regex guarantees this is a number, and imports table guarantees
-                                                                                   // limited set of values.
+                        let version: u32 = version.parse().map_err(|err| {
+                            // SAFETY: regex guarantees this is a number, and imports table
+                            // guarantees limited set of values.
+                            error!("Couln't parse `version` parameter: {err}");
+                            WasmPreparationError::Internal(FatalHostError::TypeConversion)
+                        })?;
                         interface_versions.push(InterfaceVersion::from(version));
                     }
                 }
@@ -367,15 +438,20 @@ where
             interface_versions.pop()
         };
 
-        // TODO: get first export of type table as some compilers generate different names (i.e.
-        // rust __indirect_function_table, assemblyscript `table` etc). There's only one table
-        // allowed in a valid module.
-        let table = match instance.exports.get_table("__indirect_function_table") {
-            Ok(table) => Some(table.clone()),
-            Err(error @ wasmer::ExportError::IncompatibleType) => {
-                return Err(WasmPreparationError::MissingExport(error.to_string()))
-            }
-            Err(wasmer::ExportError::Missing(_)) => None,
+        let table_export_name = module.exports().find_map(|export| match export.ty() {
+            wasmer::ExternType::Table(_) => Some(export.name().to_string()),
+            _ => None,
+        });
+
+        let table = match table_export_name {
+            Some(name) => match instance.exports.get_table(&name) {
+                Ok(table) => Some(table.clone()),
+                Err(error @ wasmer::ExportError::IncompatibleType) => {
+                    return Err(WasmPreparationError::MissingExport(error.to_string()))
+                }
+                Err(wasmer::ExportError::Missing(_)) => None,
+            },
+            None => None,
         };
 
         {
@@ -404,9 +480,10 @@ where
     S: GlobalStateReader + 'static,
     E: Executor + 'static,
 {
-    type Context = Context<S, E>;
-    fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
+    type Context = Context<S>;
+    fn call_export(&mut self, name: &str) -> (VMResult<()>, GasUsage) {
         let vm_result = self.call_export(name);
+
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
             metering::MeteringPoints::Remaining(remaining_points) => {
@@ -421,7 +498,7 @@ where
     }
 
     /// Consume instance object and retrieve the [`Context`] object.
-    fn teardown(self) -> Context<S, E> {
+    fn teardown(self) -> Context<S> {
         let WasmerInstance { env, mut store, .. } = self;
 
         let mut env_mut = env.into_mut(&mut store);
@@ -436,15 +513,55 @@ where
             callee: data.context.callee,
             config: data.context.config,
             storage_costs: data.context.storage_costs,
+            baseline_motes_amount: data.context.baseline_motes_amount,
             transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
-            executor: data.context.executor.clone(),
             transaction_hash: data.context.transaction_hash,
             address_generator: Arc::clone(&data.context.address_generator),
             chain_name: data.context.chain_name.clone(),
             input: data.context.input.clone(),
             block_time: data.context.block_time,
             message_limits: data.context.message_limits,
+            sandboxed: data.context.sandboxed,
+            runtime_native_config: data.context.runtime_native_config.clone(),
+            parent_block_hash: data.context.parent_block_hash,
+            block_height: data.context.block_height,
+            authorization_keys: data.context.authorization_keys.clone(),
+            ffi_call_costs: data.context.ffi_call_costs.clone(),
+            execution_stack: Arc::clone(&data.context.execution_stack),
         }
     }
+}
+
+pub fn entry_point_names(
+    wasm_bytes: Bytes,
+    config: Config,
+) -> Result<Vec<String>, WasmPreparationError> {
+    let engine = {
+        let mut singlepass_compiler = Singlepass::new();
+        let gatekeeper_config = GatekeeperConfig::default();
+        singlepass_compiler.push_middleware(Arc::new(Gatekeeper::new(gatekeeper_config)));
+
+        singlepass_compiler
+            .push_middleware(gas_metering::gas_metering_middleware(config.gas_limit()));
+
+        singlepass_compiler
+    };
+
+    let max_mem_pages = Pages(config.memory_limit());
+
+    let base = BaseTunables::for_target(&Target::default());
+    let tunables = MemLimitTunables::new(base, max_mem_pages);
+    let mut engine = Engine::from(engine);
+    engine.set_tunables(tunables);
+
+    let module = Module::new(&engine, &wasm_bytes)
+        .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
+
+    let entry_point_names = module
+        .exports()
+        .map(|export| export.name().to_string())
+        .collect();
+
+    Ok(entry_point_names)
 }

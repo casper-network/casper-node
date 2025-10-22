@@ -91,7 +91,7 @@ impl Assertion for ExecResultCost {
 }
 
 pub(crate) struct TotalSupplyChange {
-    //It's an signed integer since we can expect either an increase or decrease.
+    //It's a signed integer since we can expect either an increase or decrease.
     total_supply_change: i64,
     at_block_height: u64,
 }
@@ -115,15 +115,22 @@ impl Assertion for TotalSupplyChange {
         let total_supply = self.total_supply_change;
         let expected = if total_supply > 0 {
             before_total_supply
-                .checked_add((total_supply.unsigned_abs()).into())
+                .checked_add(total_supply.unsigned_abs().into())
                 .unwrap()
         } else {
             before_total_supply
-                .checked_sub((total_supply.unsigned_abs()).into())
+                .checked_sub(total_supply.unsigned_abs().into())
                 .unwrap()
         };
         assert_eq!(expected, got);
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+/// An amount up or down.
+pub enum BalanceChange {
+    Up(U512),
+    Down(U512),
 }
 
 /// Assert that the account associated with the given public key has observed a change in balance.
@@ -131,17 +138,17 @@ impl Assertion for TotalSupplyChange {
 pub(crate) struct PublicKeyBalanceChange {
     /// public key of the account which needs to be queried
     public_key: PublicKey,
-    //It's an signed integer since we can expect either an increase or decrease.
-    total_balance_change: i64,
-    //It's an signed integer since we can expect either an increase or decrease.
-    available_balance_change: i64,
+    //It's a signed integer since we can expect either an increase or decrease.
+    total_balance_change: BalanceChange,
+    //It's a signed integer since we can expect either an increase or decrease.
+    available_balance_change: BalanceChange,
 }
 
 impl PublicKeyBalanceChange {
     pub(crate) fn new(
         public_key: PublicKey,
-        total_balance_change: i64,
-        available_balance_change: i64,
+        total_balance_change: BalanceChange,
+        available_balance_change: BalanceChange,
     ) -> Self {
         Self {
             public_key,
@@ -163,22 +170,37 @@ impl Assertion for PublicKeyBalanceChange {
             //There is a chance that the key we're asking for was not an account in
             // genesis, if that's true we don't expect it to be at height 0.
             .unwrap_or(&ZERO_BALANCE_AMOUNT);
-        let before_total = before_balance.total.as_u64();
-        let before_available = before_balance.available.as_u64();
-        let after_total = after.balances.get(&account_hash).unwrap().total.as_u64();
-        let after_available = after
-            .balances
-            .get(&account_hash)
-            .unwrap()
-            .available
-            .as_u64();
+
+        let before_total = before_balance.total;
+        let before_available = before_balance.available;
+        let after_total = after.balances.get(&account_hash).unwrap().total;
+        let after_available = after.balances.get(&account_hash).unwrap().available;
+
+        let expected = {
+            match self.total_balance_change {
+                BalanceChange::Up(val) => {
+                    before_total.checked_add(val).expect("should mod total up")
+                }
+                BalanceChange::Down(val) => before_total
+                    .checked_sub(val)
+                    .expect("should mod total down"),
+            }
+        };
+
+        assert_eq!(after_total, expected, "after_total should match expected");
+        let expected = {
+            match self.available_balance_change {
+                BalanceChange::Up(val) => before_available
+                    .checked_add(val)
+                    .expect("should mod available up"),
+                BalanceChange::Down(val) => before_available
+                    .checked_sub(val)
+                    .expect("should mod available down"),
+            }
+        };
         assert_eq!(
-            after_total as i64,
-            before_total as i64 + self.total_balance_change
-        );
-        assert_eq!(
-            after_available as i64,
-            before_available as i64 + self.available_balance_change
+            after_available, expected,
+            "after_available should match expected"
         );
     }
 }

@@ -1,8 +1,8 @@
 mod auction_costs;
 mod chainspec_registry;
 mod handle_payment_costs;
+mod host_ffi_function_costs;
 mod host_function_costs;
-mod host_function_costs_v2;
 mod message_limits;
 mod mint_costs;
 mod opcode_costs;
@@ -18,13 +18,13 @@ pub use auction_costs::AuctionCosts;
 pub use auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
 pub use chainspec_registry::ChainspecRegistry;
 pub use handle_payment_costs::HandlePaymentCosts;
+pub use host_ffi_function_costs::{HostFFIFunctionCost, HostFFIFunctionCosts};
 #[cfg(any(feature = "testing", test))]
 pub use host_function_costs::DEFAULT_NEW_DICTIONARY_COST;
 pub use host_function_costs::{
     Cost as HostFunctionCost, HostFunction, HostFunctionCostsV1,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
-pub use host_function_costs_v2::{HostFunctionCostsV2, HostFunctionV2};
 pub use message_limits::MessageLimits;
 pub use mint_costs::MintCosts;
 #[cfg(any(feature = "testing", test))]

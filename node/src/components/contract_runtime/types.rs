@@ -5,6 +5,7 @@ use casper_types::{InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
 
+use crate::contract_runtime::EngineStateError;
 use casper_execution_engine::engine_state::{
     Error, InvalidRequest as InvalidWasmV1Request, WasmV1Result,
 };
@@ -82,10 +83,17 @@ pub(crate) struct ExecutionArtifactBuilder {
     refund: U512,
     size_estimate: u64,
     min_cost: U512,
+    available: Option<U512>,
 }
 
 impl ExecutionArtifactBuilder {
-    pub fn new(transaction: &Transaction, min_cost: U512, current_price: u8) -> Self {
+    pub fn new(
+        transaction: &Transaction,
+        limit: Gas,
+        current_price: u8,
+        initial_cost: U512,
+        min_cost: U512,
+    ) -> Self {
         ExecutionArtifactBuilder {
             effects: Effects::new(),
             hash: transaction.hash(),
@@ -95,12 +103,37 @@ impl ExecutionArtifactBuilder {
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
             current_price,
+            cost: initial_cost,
+            limit,
+            consumed: Gas::zero(),
+            refund: U512::zero(),
+            size_estimate: transaction.size_estimate() as u64,
+            min_cost,
+            available: None,
+        }
+    }
+
+    pub fn pre_condition_failure(
+        transaction: &Transaction,
+        current_price: u8,
+        invalid_transaction: InvalidTransaction,
+    ) -> Self {
+        ExecutionArtifactBuilder {
+            effects: Effects::new(),
+            hash: transaction.hash(),
+            header: transaction.into(),
+            error_message: Some(format!("{}", invalid_transaction)),
+            transfers: vec![],
+            messages: Default::default(),
+            initiator: transaction.initiator_addr(),
+            current_price,
             cost: U512::zero(),
             limit: Gas::zero(),
             consumed: Gas::zero(),
             refund: U512::zero(),
             size_estimate: transaction.size_estimate() as u64,
-            min_cost,
+            min_cost: U512::zero(),
+            available: None,
         }
     }
 
@@ -108,19 +141,54 @@ impl ExecutionArtifactBuilder {
         self.error_message.clone()
     }
 
+    pub fn gas_limit(&self) -> Gas {
+        self.limit
+    }
+
+    pub fn limit(&self) -> U512 {
+        self.limit.value()
+    }
+
     pub fn consumed(&self) -> U512 {
         self.consumed.value()
+    }
+
+    pub fn available(&self) -> Option<U512> {
+        self.available
+    }
+
+    pub fn actual_cost(&self) -> U512 {
+        self.cost
     }
 
     pub fn cost_to_use(&self) -> U512 {
         // to prevent do-nothing exhaustion and other 0 cost scenarios,
         // we raise cost to min_cost if less than that
-        let cost = self.cost;
-        if cost < self.min_cost {
-            self.min_cost
-        } else {
-            cost
+
+        let cost = {
+            let cost = self.cost;
+            if cost < self.min_cost {
+                self.min_cost
+            } else {
+                cost
+            }
+        };
+
+        match self.available {
+            Some(available) => {
+                if available < self.cost {
+                    available
+                } else {
+                    cost
+                }
+            }
+            None => cost,
         }
+    }
+
+    pub fn consume_limit(&mut self) -> &mut Self {
+        self.consumed = self.consumed.saturating_add(self.limit);
+        self
     }
 
     pub fn with_added_consumed(&mut self, consumed: Gas) -> &mut Self {
@@ -279,11 +347,17 @@ impl ExecutionArtifactBuilder {
         if let HandleFeeResult::RootNotFound = handle_fee_result {
             return Err(());
         }
-        if let (None, HandleFeeResult::Failure(err)) = (&self.error_message, handle_fee_result) {
-            self.error_message = Some(format!("{}", err));
+        if let HandleFeeResult::Success {
+            effects, transfers, ..
+        } = handle_fee_result
+        {
+            self.with_appended_transfers(&mut transfers.clone())
+                .with_appended_effects(effects.clone());
+        }
+        if let (None, HandleFeeResult::Failure(_)) = (&self.error_message, handle_fee_result) {
+            self.error_message = handle_fee_result.error_message();
             return Ok(self);
         }
-        self.with_appended_effects(handle_fee_result.effects());
         Ok(self)
     }
 
@@ -294,41 +368,18 @@ impl ExecutionArtifactBuilder {
         if let BalanceHoldResult::RootNotFound = hold_result {
             return Err(());
         }
-        if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
-            self.error_message = Some(format!("{}", err));
+        if let BalanceHoldResult::Success { effects, .. } = hold_result {
+            self.with_appended_effects(*effects.clone());
+        }
+        if let (None, BalanceHoldResult::Failure(_)) = (&self.error_message, hold_result) {
+            self.error_message = hold_result.error_message();
             return Ok(self);
         }
-        self.with_appended_effects(hold_result.effects());
         Ok(self)
-    }
-
-    pub fn with_added_cost(&mut self, cost: U512) -> &mut Self {
-        self.cost = self.cost.saturating_add(cost);
-        self
-    }
-
-    pub fn with_min_cost(&mut self, min_cost: U512) -> &mut Self {
-        self.min_cost = min_cost;
-        self
-    }
-
-    pub fn with_gas_limit(&mut self, limit: Gas) -> &mut Self {
-        self.limit = limit;
-        self
     }
 
     pub fn with_refund_amount(&mut self, refund: U512) -> &mut Self {
         self.refund = refund;
-        self
-    }
-
-    pub fn with_invalid_transaction(
-        &mut self,
-        invalid_transaction: &InvalidTransaction,
-    ) -> &mut Self {
-        if self.error_message.is_none() {
-            self.error_message = Some(format!("{}", invalid_transaction));
-        }
         self
     }
 
@@ -410,6 +461,11 @@ impl ExecutionArtifactBuilder {
         self
     }
 
+    pub fn with_available(&mut self, available: Option<U512>) -> &mut Self {
+        self.available = available;
+        self
+    }
+
     pub(crate) fn build(self) -> ExecutionArtifact {
         let actual_cost = self.cost_to_use();
         let result = ExecutionResultV2 {
@@ -452,9 +508,15 @@ impl ExecutionArtifactBuilder {
 
     /// Adds the error message from a `WasmV2Error` to the artifact.
     #[inline]
-    pub(crate) fn with_wasm_v2_error(&mut self, error: WasmV2Error) -> &mut Self {
+    pub(crate) fn with_wasm_v2_error(
+        &mut self,
+        error: WasmV2Error,
+    ) -> Result<&mut Self, EngineStateError> {
+        if error.as_internal_host_error().is_some() {
+            return Err(EngineStateError::Catastrophic(error.to_string()));
+        }
         self.with_error_message(error.to_string());
-        self
+        Ok(self)
     }
 }
 

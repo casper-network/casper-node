@@ -164,7 +164,7 @@ pub enum GrantedAccess {
 }
 
 /// Access rights for a given runtime context.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ContextAccessRights {
     hash_addr: HashAddr,
     access_rights: BTreeMap<URefAddr, AccessRights>,

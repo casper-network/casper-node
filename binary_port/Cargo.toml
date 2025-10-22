@@ -1,6 +1,6 @@
 [package]
 name = "casper-binary-port"
-version = "1.1.1"
+version = "1.2.0"
 edition = "2018"
 description = "Types for the casper node binary port"
 documentation = "https://docs.rs/casper-binary-port"
@@ -13,7 +13,7 @@ exclude = ["proptest-regressions"]
 [dependencies]
 bincode = "1.3.3"
 bytes = "1.0.1"
-casper-types = { version = "6.0.1", path = "../types", features = ["datasize", "json-schema", "std"] }
+casper-types = { version = "7.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 once_cell = { version = "1.5.2" }

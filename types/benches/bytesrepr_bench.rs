@@ -15,7 +15,7 @@ use casper_types::{
     },
     AccessRights, ByteCodeHash, CLTyped, CLValue, ContractRuntimeTag, DeployHash, DeployInfo,
     EntityAddr, EntityVersionKey, EntityVersions, Gas, Group, Groups, InitiatorAddr, Key, Package,
-    PackageHash, PackageStatus, ProtocolVersion, PublicKey, SecretKey, TransactionHash,
+    PackageAddr, PackageStatus, ProtocolVersion, PublicKey, SecretKey, TransactionHash,
     TransactionV1Hash, TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128,
     U256, U512, UREF_ADDR_LENGTH,
 };
@@ -462,7 +462,7 @@ fn deserialize_contract(b: &mut Bencher) {
 
 fn sample_contract() -> AddressableEntity {
     AddressableEntity::new(
-        PackageHash::default(),
+        PackageAddr::default(),
         ByteCodeHash::default(),
         ProtocolVersion::default(),
         URef::default(),

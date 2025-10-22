@@ -11,7 +11,7 @@ use casper_types::{
 #[cfg(test)]
 use casper_types::{
     contracts::ProtocolVersionMajor, testing::TestRng, AddressableEntityHash, Approval,
-    CLValueError, EntityVersion, PackageHash, PublicKey, TransactionConfig,
+    CLValueError, EntityVersion, PackageAddr, PublicKey, TransactionConfig,
     TransactionInvocationTarget, TransferTarget, URef, U512,
 };
 use core::marker::PhantomData;
@@ -354,7 +354,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// package.
     #[cfg(test)]
     pub(crate) fn new_targeting_package<E: Into<String>>(
-        hash: PackageHash,
+        hash: PackageAddr,
         version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
@@ -372,7 +372,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// package.
     #[cfg(test)]
     pub(crate) fn new_targeting_package_with_runtime_args<E: Into<String>>(
-        hash: PackageHash,
+        hash: PackageAddr,
         version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
@@ -380,7 +380,7 @@ impl<'a> TransactionV1Builder<'a> {
         runtime_args: RuntimeArgs,
     ) -> Self {
         let id = TransactionInvocationTarget::ByPackageHash {
-            addr: hash.value(),
+            addr: hash,
             version,
             protocol_version_major,
         };
@@ -608,6 +608,13 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub fn with_transaction_args(mut self, args: TransactionArgs) -> Self {
         self.args = args;
+        self
+    }
+
+    /// Sets the transaction entry point.
+    #[cfg(test)]
+    pub fn with_entry_point(mut self, entry_point: TransactionEntryPoint) -> Self {
+        self.entry_point = entry_point;
         self
     }
 

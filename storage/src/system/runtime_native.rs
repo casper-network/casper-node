@@ -4,9 +4,9 @@ use crate::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, EntityAddr,
-    FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling, RuntimeFootprint,
-    StoredValue, TransactionHash, Transfer, URef, U512,
+    account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, CoreConfig,
+    EntityAddr, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
+    RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use num_rational::Ratio;
 use parking_lot::RwLock;
@@ -16,6 +16,7 @@ use tracing::error;
 /// Configuration settings.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
+    protocol_version: ProtocolVersion,
     transfer_config: TransferConfig,
     fee_handling: FeeHandling,
     refund_handling: RefundHandling,
@@ -25,10 +26,11 @@ pub struct Config {
     max_delegators_per_validator: u32,
     minimum_bid_amount: u64,
     minimum_delegation_amount: u64,
+    maximum_delegation_amount: u64,
     balance_hold_interval: u64,
     include_credits: bool,
     credit_cap: Ratio<U512>,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
     native_transfer_cost: u32,
 }
 
@@ -36,6 +38,7 @@ impl Config {
     /// Ctor.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
+        protocol_version: ProtocolVersion,
         transfer_config: TransferConfig,
         fee_handling: FeeHandling,
         refund_handling: RefundHandling,
@@ -45,13 +48,15 @@ impl Config {
         max_delegators_per_validator: u32,
         minimum_bid_amount: u64,
         minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
         balance_hold_interval: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
         native_transfer_cost: u32,
     ) -> Self {
         Config {
+            protocol_version,
             transfer_config,
             fee_handling,
             refund_handling,
@@ -61,34 +66,51 @@ impl Config {
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             native_transfer_cost,
         }
     }
 
     /// Ctor from chainspec.
     pub fn from_chainspec(chainspec: &Chainspec) -> Self {
-        let transfer_config = TransferConfig::from_chainspec(chainspec);
-        let fee_handling = chainspec.core_config.fee_handling;
-        let refund_handling = chainspec.core_config.refund_handling;
-        let vesting_schedule_period_millis = chainspec.core_config.vesting_schedule_period.millis();
-        let allow_auction_bids = chainspec.core_config.allow_auction_bids;
-        let compute_rewards = chainspec.core_config.compute_rewards;
-        let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
-        let minimum_bid_amount = chainspec.core_config.minimum_bid_amount;
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
-        let include_credits = chainspec.core_config.fee_handling == FeeHandling::NoFee;
-        let credit_cap = Ratio::new_raw(
-            U512::from(*chainspec.core_config.validator_credit_cap.numer()),
-            U512::from(*chainspec.core_config.validator_credit_cap.denom()),
-        );
-        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let protocol_version = chainspec.protocol_version();
         let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
+        Self::from_core_config(
+            &chainspec.core_config,
+            protocol_version,
+            native_transfer_cost,
+        )
+    }
+
+    /// Ctor from core_config.
+    pub fn from_core_config(
+        core_config: &CoreConfig,
+        protocol_version: ProtocolVersion,
+        native_transfer_cost: u32,
+    ) -> Self {
+        let transfer_config = TransferConfig::from_core_config(core_config);
+        let fee_handling = core_config.fee_handling;
+        let refund_handling = core_config.refund_handling;
+        let vesting_schedule_period_millis = core_config.vesting_schedule_period.millis();
+        let allow_auction_bids = core_config.allow_auction_bids;
+        let compute_rewards = core_config.compute_rewards;
+        let max_delegators_per_validator = core_config.max_delegators_per_validator;
+        let minimum_bid_amount = core_config.minimum_bid_amount;
+        let minimum_delegation_amount = core_config.minimum_delegation_amount;
+        let maximum_delegation_amount = core_config.maximum_delegation_amount;
+        let balance_hold_interval = core_config.gas_hold_interval.millis();
+        let include_credits = core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*core_config.validator_credit_cap.numer()),
+            U512::from(*core_config.validator_credit_cap.denom()),
+        );
+        let addressable_entity_enabled = core_config.addressable_entity_enabled;
         Config::new(
+            protocol_version,
             transfer_config,
             fee_handling,
             refund_handling,
@@ -98,12 +120,18 @@ impl Config {
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity,
+            addressable_entity_enabled,
             native_transfer_cost,
         )
+    }
+
+    /// Returns transfer config.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
     }
 
     /// Returns transfer config.
@@ -151,6 +179,11 @@ impl Config {
         self.minimum_delegation_amount
     }
 
+    /// Returns maximum delegation amount setting.
+    pub fn maximum_delegation_amount(&self) -> u64 {
+        self.maximum_delegation_amount
+    }
+
     /// Returns balance hold interval setting.
     pub fn balance_hold_interval(&self) -> u64 {
         self.balance_hold_interval
@@ -167,14 +200,15 @@ impl Config {
     }
 
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 
     /// Changes the transfer config.
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
         Config {
             transfer_config,
+            protocol_version: self.protocol_version,
             fee_handling: self.fee_handling,
             refund_handling: self.refund_handling,
             vesting_schedule_period_millis: self.vesting_schedule_period_millis,
@@ -182,11 +216,12 @@ impl Config {
             allow_auction_bids: self.allow_auction_bids,
             minimum_bid_amount: self.minimum_bid_amount,
             minimum_delegation_amount: self.minimum_delegation_amount,
+            maximum_delegation_amount: self.maximum_delegation_amount,
             compute_rewards: self.compute_rewards,
             balance_hold_interval: self.balance_hold_interval,
             include_credits: self.include_credits,
             credit_cap: self.credit_cap,
-            enable_addressable_entity: self.enable_addressable_entity,
+            addressable_entity_enabled: self.addressable_entity_enabled,
             native_transfer_cost: self.native_transfer_cost,
         }
     }
@@ -198,7 +233,7 @@ pub enum TransferConfig {
     /// Transfers are affected by the existence of administrative_accounts. This is a
     /// behavior specific to private or managed chains, not a public chain.
     Administered {
-        /// Retrusn the set of account hashes for all administrators.
+        /// Returns the set of account hashes for all administrators.
         administrative_accounts: BTreeSet<AccountHash>,
         /// If true, transfers are unrestricted.
         /// If false, the source and / or target of a transfer must be an administrative account.
@@ -228,13 +263,17 @@ impl TransferConfig {
 
     /// New instance from chainspec.
     pub fn from_chainspec(chainspec: &Chainspec) -> Self {
-        let administrative_accounts: BTreeSet<AccountHash> = chainspec
-            .core_config
+        Self::from_core_config(&chainspec.core_config)
+    }
+
+    /// New instance from core_config.
+    pub fn from_core_config(core_config: &CoreConfig) -> Self {
+        let administrative_accounts: BTreeSet<AccountHash> = core_config
             .administrators
             .iter()
             .map(|x| x.to_account_hash())
             .collect();
-        let allow_unrestricted_transfers = chainspec.core_config.allow_unrestricted_transfers;
+        let allow_unrestricted_transfers = core_config.allow_unrestricted_transfers;
         if administrative_accounts.is_empty() && allow_unrestricted_transfers {
             TransferConfig::Unadministered
         } else {
@@ -284,7 +323,7 @@ impl TransferConfig {
     }
 }
 
-/// Id for runtime processing.
+/// Identity for runtime processing.
 pub enum Id {
     /// Hash of current transaction.
     Transaction(TransactionHash),
@@ -308,7 +347,6 @@ pub struct RuntimeNative<S> {
 
     id: Id,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    protocol_version: ProtocolVersion,
 
     tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
     address: AccountHash,
@@ -328,7 +366,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -345,7 +382,6 @@ where
 
             id,
             address_generator,
-            protocol_version,
 
             tracking_copy,
             address,
@@ -361,7 +397,6 @@ where
     /// Creates a runtime with elevated permissions for systemic behaviors.
     pub fn new_system_runtime(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -370,9 +405,9 @@ where
         let transfers = vec![];
         let (entity_addr, runtime_footprint, access_rights) = tracking_copy
             .borrow_mut()
-            .system_entity_runtime_footprint(protocol_version)?;
+            .system_entity_runtime_footprint(config.protocol_version())?;
         let address = PublicKey::System.to_account_hash();
-        let context_key = if config.enable_addressable_entity {
+        let context_key = if config.addressable_entity_enabled {
             Key::AddressableEntity(entity_addr)
         } else {
             Key::Hash(entity_addr.value())
@@ -382,7 +417,6 @@ where
             config,
             id,
             address_generator,
-            protocol_version,
 
             tracking_copy,
             address,
@@ -398,7 +432,6 @@ where
     /// Creates a runtime context for a system contract.
     pub fn new_system_contract_runtime(
         config: Config,
-        protocol_version: ProtocolVersion,
         id: Id,
         address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -417,7 +450,7 @@ where
                 ));
             }
         };
-        let context_key = if config.enable_addressable_entity {
+        let context_key = if config.addressable_entity_enabled {
             Key::AddressableEntity(EntityAddr::System(hash))
         } else {
             Key::Hash(hash)
@@ -425,15 +458,13 @@ where
         let runtime_footprint = tracking_copy
             .borrow_mut()
             .runtime_footprint_by_hash_addr(hash)?;
-        let access_rights = runtime_footprint.extract_access_rights(hash);
+        let access_rights = runtime_footprint.extract_access_rights();
         let address = PublicKey::System.to_account_hash();
         let remaining_spending_limit = U512::MAX; // system has no spending limit
         Ok(RuntimeNative {
             config,
             id,
             address_generator,
-            protocol_version,
-
             tracking_copy,
             address,
             context_key,
@@ -462,7 +493,7 @@ where
 
     /// Returns protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns handle to tracking copy.

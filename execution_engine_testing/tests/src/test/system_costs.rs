@@ -15,8 +15,8 @@ use casper_types::{
         handle_payment, mint, AUCTION,
     },
     AuctionCosts, BrTableCost, ControlFlowCosts, CoreConfig, EraId, Gas, GenesisAccount,
-    GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCostsV1,
-    HostFunctionCostsV2, MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey,
+    GenesisValidator, HandlePaymentCosts, HostFFIFunctionCosts, HostFunction, HostFunctionCost,
+    HostFunctionCostsV1, MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey,
     RuntimeArgs, SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
     WasmV1Config, WasmV2Config, DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
@@ -849,7 +849,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let wasm_v2_config = WasmV2Config::new(
         DEFAULT_WASM_MAX_MEMORY,
         OpcodeCosts::default(),
-        HostFunctionCostsV2::default(),
+        HostFFIFunctionCosts::default(),
     );
     let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config);
 

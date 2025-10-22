@@ -11,6 +11,11 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
@@ -58,6 +63,21 @@ impl ValidatorBid {
     pub fn with_inactive(mut self, inactive: bool) -> Self {
         self.inactive = inactive;
         self
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_public_key(rng: &mut TestRng, validator_public_key: PublicKey) -> Self {
+        Self {
+            validator_public_key,
+            bonding_purse: rng.gen(),
+            staked_amount: rng.gen(),
+            delegation_rate: rng.gen(),
+            vesting_schedule: rng.gen(),
+            inactive: rng.gen(),
+            minimum_delegation_amount: rng.gen(),
+            maximum_delegation_amount: rng.gen(),
+            reserved_slots: rng.gen(),
+        }
     }
 }
 
@@ -223,21 +243,13 @@ impl ValidatorBid {
                 return Ok(updated_staked_amount);
             }
         };
-
-        match vesting_schedule.locked_amount(era_end_timestamp_millis) {
-            Some(locked_amount) if updated_staked_amount < locked_amount => {
-                Err(Error::ValidatorFundsLocked)
-            }
-            None => {
-                // If `None`, then the locked amounts table has yet to be initialized (likely
-                // pre-90 day mark)
-                Err(Error::ValidatorFundsLocked)
-            }
-            Some(_) => {
-                self.staked_amount = updated_staked_amount;
-                Ok(updated_staked_amount)
+        if let Some(locked_amount) = vesting_schedule.locked_amount(era_end_timestamp_millis) {
+            if updated_staked_amount < locked_amount {
+                return Err(Error::ValidatorFundsLocked);
             }
         }
+        self.staked_amount = updated_staked_amount;
+        Ok(updated_staked_amount)
     }
 
     /// Increases the stake of the provided bid

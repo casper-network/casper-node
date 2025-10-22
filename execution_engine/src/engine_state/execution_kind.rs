@@ -3,7 +3,7 @@
 use casper_types::{
     bytesrepr::Bytes,
     contracts::{NamedKeys, ProtocolVersionMajor},
-    AddressableEntityHash, EntityVersion, Key, PackageHash, TransactionInvocationTarget,
+    AddressableEntityHash, EntityVersion, Key, PackageAddr, TransactionInvocationTarget,
 };
 
 use super::{wasm_v1::SessionKind, Error, ExecutableItem};
@@ -30,7 +30,7 @@ pub(crate) enum ExecutionKind<'a> {
     Deploy(&'a Bytes),
     /// A call to an entity/contract in a package/contract package.
     VersionedCall {
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         entity_version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
         /// Entry point.
@@ -86,7 +86,7 @@ impl<'a> ExecutionKind<'a> {
                 version,
                 protocol_version_major,
             } => {
-                let package_hash = PackageHash::from(*addr);
+                let package_hash = *addr;
                 return Ok(Self::VersionedCall {
                     package_hash,
                     entity_version: *version,
@@ -104,7 +104,8 @@ impl<'a> ExecutionKind<'a> {
                     .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(name.to_string())))?;
 
                 let package_hash = match package_key {
-                    Key::Hash(hash) | Key::SmartContract(hash) => PackageHash::new(*hash),
+                    Key::Package(hash) => PackageAddr::new(hash.value()),
+                    Key::Hash(hash) => PackageAddr::new(*hash),
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
                 return Ok(Self::VersionedCall {

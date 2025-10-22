@@ -188,7 +188,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         bid_addr_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Unbond),
-        u8_slice_32().prop_map(Key::SmartContract),
+        u8_slice_32().prop_map(|slice| Key::Package(slice.into())),
         byte_code_addr_arb().prop_map(Key::ByteCode),
         entity_addr_arb().prop_map(Key::AddressableEntity),
         block_global_addr_arb().prop_map(Key::BlockGlobal),
@@ -340,46 +340,50 @@ pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
         Just(CLType::String),
         Just(CLType::Key),
         Just(CLType::URef),
+        Just(CLType::PublicKey),
+        Just(CLType::Any),
+        any::<u32>().prop_map(CLType::ByteArray),
     ]
 }
 
 pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
-    cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
-        prop_oneof![
-            // We want to produce basic types too
-            element.clone(),
-            // For complex type
-            element
-                .clone()
-                .prop_map(|val| CLType::Option(Box::new(val))),
-            element.clone().prop_map(|val| CLType::List(Box::new(val))),
-            // Realistic Result type generator: ok is anything recursive, err is simple type
-            (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
-                ok: Box::new(ok),
-                err: Box::new(err)
-            }),
-            // Realistic Map type generator: key is simple type, value is complex recursive type
-            (cl_simple_type_arb(), element.clone()).prop_map(|(key, value)| CLType::Map {
-                key: Box::new(key),
-                value: Box::new(value)
-            }),
-            // Various tuples
-            element
-                .clone()
-                .prop_map(|cl_type| CLType::Tuple1([Box::new(cl_type)])),
-            (element.clone(), element.clone()).prop_map(|(cl_type1, cl_type2)| CLType::Tuple2([
-                Box::new(cl_type1),
-                Box::new(cl_type2)
-            ])),
-            (element.clone(), element.clone(), element).prop_map(
-                |(cl_type1, cl_type2, cl_type3)| CLType::Tuple3([
-                    Box::new(cl_type1),
-                    Box::new(cl_type2),
-                    Box::new(cl_type3)
-                ])
-            ),
-        ]
-    })
+    prop_oneof![
+        cl_simple_type_arb(),
+        cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
+            prop_oneof![
+                // For complex type
+                element
+                    .clone()
+                    .prop_map(|val| CLType::Option(Box::new(val))),
+                element.clone().prop_map(|val| CLType::List(Box::new(val))),
+                // Realistic Result type generator: ok is anything recursive, err is simple type
+                (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
+                    ok: Box::new(ok),
+                    err: Box::new(err)
+                }),
+                // Realistic Map type generator: key is simple type, value is complex recursive
+                // type
+                (cl_simple_type_arb(), element.clone()).prop_map(|(key, value)| CLType::Map {
+                    key: Box::new(key),
+                    value: Box::new(value)
+                }),
+                // Various tuples
+                element
+                    .clone()
+                    .prop_map(|cl_type| CLType::Tuple1([Box::new(cl_type)])),
+                (element.clone(), element.clone()).prop_map(|(cl_type1, cl_type2)| CLType::Tuple2(
+                    [Box::new(cl_type1), Box::new(cl_type2)]
+                )),
+                (element.clone(), element.clone(), element).prop_map(
+                    |(cl_type1, cl_type2, cl_type3)| CLType::Tuple3([
+                        Box::new(cl_type1),
+                        Box::new(cl_type2),
+                        Box::new(cl_type3)
+                    ])
+                ),
+            ]
+        })
+    ]
 }
 
 pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
@@ -984,7 +988,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
-        collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -1010,7 +1013,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::NamedKey(_) => stored_value,
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
-                StoredValue::RawBytes(_) => stored_value,
         })
 }
 
@@ -1407,6 +1409,7 @@ pub fn transaction_arb() -> impl Strategy<Value = Transaction> {
 pub fn legal_transaction_arb() -> impl Strategy<Value = Transaction> {
     (legal_v1_transaction_arb()).prop_map(Transaction::V1)
 }
+
 pub fn example_u32_arb() -> impl Strategy<Value = u32> {
     prop_oneof![Just(0), Just(1), Just(u32::MAX / 2), Just(u32::MAX)]
 }

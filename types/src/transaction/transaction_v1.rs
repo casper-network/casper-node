@@ -6,32 +6,40 @@ mod transaction_args;
 mod transaction_v1_hash;
 pub mod transaction_v1_payload;
 
-#[cfg(any(feature = "std", feature = "testing", test))]
+#[cfg(any(feature = "testing", test))]
 use super::InitiatorAddrAndSecretKey;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::LARGE_WASM_LANE_ID;
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     crypto,
 };
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{testing::TestRng, TransactionConfig, LARGE_WASM_LANE_ID};
+#[cfg(feature = "json-schema")]
+use crate::{transaction::transaction_v1::fields_container::build_raw_payloads_map, PublicKey};
 #[cfg(any(feature = "std", test))]
 use crate::{
     TransactionEntryPoint, TransactionTarget, TransactionV1Config, AUCTION_LANE_ID,
     INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
-#[cfg(any(feature = "std", test, feature = "testing"))]
+#[cfg(feature = "json-schema")]
+use crate::{TransactionScheduling, URef};
+#[cfg(any(test, feature = "testing"))]
 use alloc::collections::BTreeMap;
 use alloc::{collections::BTreeSet, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use errors_v1::FieldDeserializationError;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "testing", test))]
 use fields_container::FieldsContainer;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use fields_container::{ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY};
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -48,7 +56,7 @@ use super::{
     serialization::{CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder},
     Approval, ApprovalsHash, InitiatorAddr, PricingMode,
 };
-#[cfg(any(feature = "std", feature = "testing", test))]
+#[cfg(any(feature = "testing", test))]
 use crate::bytesrepr::Bytes;
 use crate::{Digest, DisplayIter, SecretKey, TimeDiff, Timestamp};
 
@@ -69,6 +77,54 @@ use core::{
 const HASH_FIELD_INDEX: u16 = 0;
 const PAYLOAD_FIELD_INDEX: u16 = 1;
 const APPROVALS_FIELD_INDEX: u16 = 2;
+
+#[cfg(feature = "json-schema")]
+pub(super) static TRANSACTION_V1: Lazy<TransactionV1> = Lazy::new(|| {
+    let secret_key = SecretKey::example();
+    let source = URef::from_formatted_str(
+        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+    )
+    .unwrap();
+    let target = URef::from_formatted_str(
+        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+    )
+    .unwrap();
+    let id = Some(999);
+    let amount = 30_000_000_000_u64;
+    let args = arg_handling::new_transfer_args(amount, Some(source), target, id).unwrap();
+    let transaction_args = TransactionArgs::Named(args);
+    let transaction_target = TransactionTarget::Native;
+    let transaction_entry_point = TransactionEntryPoint::Transfer;
+    let transaction_scheduling = TransactionScheduling::Standard;
+    let pricing_mode = PricingMode::Fixed {
+        gas_price_tolerance: 5,
+        additional_computation_factor: 0,
+    };
+    let fields = build_raw_payloads_map(
+        &transaction_args,
+        &transaction_target,
+        &transaction_entry_point,
+        &transaction_scheduling,
+    )
+    .unwrap();
+    let initiator_addr = InitiatorAddr::PublicKey(PublicKey::from(secret_key));
+    let transaction_v1_payload = TransactionV1Payload::new(
+        "casper-example".to_owned(),
+        *Timestamp::example(),
+        TimeDiff::from_seconds(3_600),
+        pricing_mode,
+        initiator_addr,
+        fields,
+    );
+    let hash = Digest::hash(
+        transaction_v1_payload
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+    );
+    let mut transaction = TransactionV1::new(hash.into(), transaction_v1_payload, BTreeSet::new());
+    transaction.sign(secret_key);
+    transaction
+});
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -170,7 +226,7 @@ impl TransactionV1 {
         }
     }
 
-    #[cfg(any(feature = "std", test, feature = "testing"))]
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn build(
         chain_name: String,
         timestamp: Timestamp,
@@ -282,10 +338,10 @@ impl TransactionV1 {
     }
 
     /// Returns a random, valid but possibly expired transaction.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
-        let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
+        let ttl_millis = rng.gen_range(60_000..TimeDiff::from_seconds(2 * 60 * 60).millis());
         let timestamp = Timestamp::random(rng);
         let container = FieldsContainer::random(rng);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
@@ -313,7 +369,7 @@ impl TransactionV1 {
         let secret_key = SecretKey::random(rng);
         let timestamp = maybe_timestamp.unwrap_or_else(Timestamp::now);
         let ttl_millis = ttl.map_or(
-            rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
+            rng.gen_range(60_000..TimeDiff::from_seconds(2 * 60 * 60).millis()),
             |ttl| ttl.millis(),
         );
         let container = FieldsContainer::random_of_lane(rng, lane);
@@ -515,6 +571,13 @@ impl TransactionV1 {
                 0u8
             }
         }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TRANSACTION_V1
     }
 }
 

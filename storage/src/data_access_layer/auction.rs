@@ -16,9 +16,7 @@ use casper_types::{
     RuntimeArgs, TransactionEntryPoint, TransactionHash, Transfer, URefAddr, U512,
 };
 
-use crate::{
-    system::runtime_native::Config as NativeRuntimeConfig, tracking_copy::TrackingCopyError,
-};
+use crate::{tracking_copy::TrackingCopyError, RuntimeNativeConfig};
 
 /// An error returned when constructing an [`AuctionMethod`].
 #[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
@@ -55,6 +53,8 @@ pub enum AuctionMethod {
         delegation_rate: DelegationRate,
         /// Bid amount.
         amount: U512,
+        /// Vesting schedule period in milliseconds.
+        vesting_schedule_period_millis: u64,
         /// Minimum delegation amount for this validator bid.
         minimum_delegation_amount: u64,
         /// Maximum delegation amount for this validator bid.
@@ -147,6 +147,7 @@ impl AuctionMethod {
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
             TransactionEntryPoint::AddBid => Self::new_add_bid(
                 runtime_args,
+                chainspec.core_config.vesting_schedule_period.millis(),
                 chainspec.core_config.minimum_delegation_amount,
                 chainspec.core_config.maximum_delegation_amount,
                 chainspec.core_config.minimum_bid_amount,
@@ -178,6 +179,7 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
+        vesting_schedule_period_millis: u64,
         global_minimum_delegation: u64,
         global_maximum_delegation: u64,
         global_minimum_bid_amount: u64,
@@ -198,6 +200,7 @@ impl AuctionMethod {
             public_key,
             delegation_rate,
             amount,
+            vesting_schedule_period_millis,
             minimum_delegation_amount,
             maximum_delegation_amount,
             minimum_bid_amount: global_minimum_bid_amount,
@@ -335,11 +338,9 @@ impl AuctionMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BiddingRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// The protocol version.
-    pub(crate) protocol_version: ProtocolVersion,
     /// The auction method.
     pub(crate) auction_method: AuctionMethod,
     /// Transaction hash.
@@ -354,9 +355,8 @@ impl BiddingRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
@@ -365,7 +365,6 @@ impl BiddingRequest {
         Self {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             initiator,
             authorization_keys,
@@ -374,7 +373,7 @@ impl BiddingRequest {
     }
 
     /// Returns the config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 
@@ -385,7 +384,7 @@ impl BiddingRequest {
 
     /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns the auction method.

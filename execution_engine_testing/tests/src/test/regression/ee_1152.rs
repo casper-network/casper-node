@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate, INITIAL_ERA_ID},
-    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -142,7 +142,6 @@ fn should_run_ee_1152_regression_test() {
 
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
         // Next era id is used for returning future era validators, which we don't need to inspect
         // in this test.
         .with_next_era_id(era_id)

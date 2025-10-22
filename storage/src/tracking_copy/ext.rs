@@ -609,7 +609,7 @@ where
         let key = Key::Hash(hash_addr);
         match self.read(&key)? {
             Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package.into()),
-            Some(_) | None => match self.read(&Key::SmartContract(hash_addr))? {
+            Some(_) | None => match self.read(&Key::Package(hash_addr.into()))? {
                 Some(StoredValue::SmartContract(package)) => Ok(package),
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new(

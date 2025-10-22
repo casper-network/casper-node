@@ -70,6 +70,10 @@ impl MainReactor {
             // controlled shutdown for protocol upgrade.
             return KeepUpInstruction::ShutdownForUpgrade;
         }
+        if self.force_catchup {
+            self.force_catchup = false;
+            return KeepUpInstruction::CatchUp;
+        }
 
         // if there is instruction, return to start working on it
         // else fall thru with the current best available id for block syncing
@@ -471,9 +475,10 @@ impl MainReactor {
         offset: Duration,
     ) -> KeepUpInstruction {
         // we get a random sampling of peers to ask.
-        let peers_to_ask = self.net.fully_connected_peers_random(
+        let peers_to_ask = self.net.fully_connected_peers_random_include_known_addrs(
             rng,
             self.chainspec.core_config.simultaneous_peer_requests as usize,
+            1,
         );
         if peers_to_ask.is_empty() {
             return KeepUpInstruction::CheckLater(

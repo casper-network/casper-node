@@ -100,15 +100,21 @@ impl TestFixture {
         let stakes = secret_keys
             .iter()
             .zip(stake_values)
-            .map(|(secret_key, stake)| (PublicKey::from(secret_key.as_ref()), stake))
+            .map(|(secret_key, stake)| {
+                (
+                    PublicKey::from(secret_key.as_ref()),
+                    (U512::from(100_000_000_000_000_000u64), stake),
+                )
+            })
             .collect();
+
         Self::new_with_keys(rng, secret_keys, stakes, spec_override).await
     }
 
     pub(crate) async fn new_with_keys(
-        mut rng: TestRng,
+        rng: TestRng,
         secret_keys: Vec<Arc<SecretKey>>,
-        stakes: BTreeMap<PublicKey, U512>,
+        stakes: BTreeMap<PublicKey, (U512, U512)>,
         spec_override: Option<ConfigsOverride>,
     ) -> Self {
         testing::init_logging();
@@ -117,14 +123,10 @@ impl TestFixture {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let min_motes = 100_000_000_000_000_000u64;
-        let max_motes = min_motes * 100;
-        let balance = U512::from(rng.gen_range(min_motes..max_motes));
-
         // Override accounts with those generated from the keys.
         let accounts = stakes
             .into_iter()
-            .map(|(public_key, bonded_amount)| {
+            .map(|(public_key, (balance, bonded_amount))| {
                 let validator_config =
                     ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
                 AccountConfig::new(public_key, Motes::new(balance), Some(validator_config))
@@ -172,6 +174,7 @@ impl TestFixture {
             chain_name,
             gas_hold_balance_handling,
             transaction_v1_override,
+            vm_casper_v2,
             node_config_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
@@ -193,6 +196,7 @@ impl TestFixture {
         chainspec.vacancy_config.lower_threshold = lower_threshold;
         chainspec.transaction_config.block_gas_limit = block_gas_limit;
         chainspec.transaction_config.max_block_size = max_block_size;
+        chainspec.transaction_config.runtime_config.vm_casper_v2 = vm_casper_v2;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
@@ -389,6 +393,7 @@ impl TestFixture {
                 allow_request_get_all_values: true,
                 allow_request_get_trie: true,
                 allow_request_speculative_exec: true,
+                sandboxed_execution_allowed_ips: vec!["127.0.0.1".to_string()],
                 ..Default::default()
             },
             ..Default::default()
@@ -888,6 +893,28 @@ impl TestFixture {
         }
     }
 
+    /// Returns the execution results from storage.
+    /// Panics on error.
+    #[track_caller]
+    pub(crate) fn transaction_execution_result(
+        &self,
+        txn_hash: &TransactionHash,
+    ) -> ExecutionResult {
+        let node_0 = self
+            .node_contexts
+            .first()
+            .expect("should have at least one node")
+            .id;
+        self.network
+            .nodes()
+            .get(&node_0)
+            .expect("should have node 0")
+            .main_reactor()
+            .storage()
+            .read_execution_result(txn_hash)
+            .expect("node 0 should have given execution result")
+    }
+
     pub(crate) fn delete_block_utilization_score_by_block_hash_in_node(
         &mut self,
         node_public_key: &PublicKey,
@@ -1009,4 +1036,28 @@ impl TestFixture {
             )
         })
     }
+}
+
+pub(crate) fn standard_stakes(
+    alice_public_key: PublicKey,
+    bob_public_key: PublicKey,
+    charlie_public_key: Option<PublicKey>,
+) -> BTreeMap<PublicKey, (U512, U512)> {
+    let mut ret = BTreeMap::new();
+    ret.insert(
+        alice_public_key.clone(),
+        (
+            U512::from(100_000_000_000_000_000u64),
+            U512::from(u128::MAX),
+        ),
+    );
+    ret.insert(
+        bob_public_key.clone(),
+        (U512::from(100_000_000_000_000_000u64), U512::from(1)),
+    );
+
+    if let Some(pub_k) = charlie_public_key {
+        ret.insert(pub_k, (U512::from(u32::MAX - 1), U512::from(1)));
+    }
+    ret
 }

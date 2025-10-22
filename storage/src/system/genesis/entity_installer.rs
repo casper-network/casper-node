@@ -10,19 +10,24 @@ use std::{
 
 use crate::{
     global_state::state::StateProvider,
-    system::genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
-    AddressGenerator, TrackingCopy,
+    system::{
+        genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
+        protocol_upgrade::blake2b,
+    },
+    AddressGenerator, TrackingCopy, MESSAGING_CONTRACT_ADDR_TOPIC,
+    MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC, MESSAGING_CONTRACT_VERSION_TOPIC,
+    MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
     addressable_entity::{
         ActionThresholds, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
     },
+    contract_messages::MessageTopicSummary,
     contracts::NamedKeys,
     execution::Effects,
     system::{
-        auction,
         auction::{
-            BidAddr, BidKind, DelegatorBid, DelegatorKind, SeigniorageRecipient,
+            self, BidAddr, BidKind, DelegatorBid, DelegatorKind, SeigniorageRecipient,
             SeigniorageRecipientV2, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
             SeigniorageRecipientsSnapshotV2, SeigniorageRecipientsV2, Staking, ValidatorBid,
             AUCTION_DELAY_KEY, DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
@@ -31,19 +36,17 @@ use casper_types::{
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment,
-        handle_payment::ACCUMULATION_PURSE_KEY,
-        mint,
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{
-            ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY,
-            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+            self, ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY,
+            MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
-    ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry, Digest,
-    EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
-    GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry,
+    Digest, EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints,
+    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageAddr,
     PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, Tagged,
     URef, U512,
 };
@@ -674,15 +677,21 @@ where
                     AddressableEntityHash::new(account_hash.value())
                 }
             }
+            EntityKind::Package(_) => {
+                return Err(Box::new(GenesisError::InvalidEntityKind(entity_kind)))
+            }
         };
 
         let entity_addr = match entity_kind.tag() {
             EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
             EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
             EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
+            EntityKindTag::Package => {
+                return Err(Box::new(GenesisError::InvalidEntityKind(entity_kind)))
+            }
         };
 
-        let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let package_hash = PackageAddr::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
         let associated_keys = entity_kind.associated_keys();
@@ -871,6 +880,42 @@ where
         // Write block time to global state
         self.store_block_time()?;
 
+        // Create messaging topics
+        self.create_messaging_topics(BlockTime::new(self.config.genesis_timestamp_millis()))?;
+
+        Ok(())
+    }
+
+    fn create_messaging_topics(&self, block_time: BlockTime) -> Result<(), Box<GenesisError>> {
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
+        Ok(())
+    }
+
+    fn add_topic_to_system_account(
+        &self,
+        block_time: BlockTime,
+        topic_name: &str,
+    ) -> Result<(), Box<GenesisError>> {
+        let entity_addr = EntityAddr::new_account(PublicKey::System.to_account_hash().value());
+        let topic_name_hash = blake2b(topic_name.as_bytes()).into();
+        let topic_key = Key::message_topic(entity_addr, topic_name_hash);
+        let maybe_existing_topic = self
+            .tracking_copy
+            .borrow_mut()
+            .get(&topic_key)
+            .map_err(|err| Box::new(GenesisError::TrackingCopy(err)))?;
+        if maybe_existing_topic.is_some() {
+            return Ok(());
+        }
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            block_time,
+            topic_name.to_owned(),
+        ));
+        self.tracking_copy.borrow_mut().write(topic_key, summary);
         Ok(())
     }
 }

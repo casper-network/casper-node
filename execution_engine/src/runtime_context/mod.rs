@@ -16,8 +16,8 @@ use tracing::error;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{
-        AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt, TrackingCopyError,
-        TrackingCopyExt,
+        AddResult, MessageEmissionError, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt,
+        TrackingCopyError, TrackingCopyExt,
     },
     AddressGenerator,
 };
@@ -40,7 +40,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
     EntryPointValue, EntryPoints, Gas, GrantedAccess, HashAddr, Key, KeyTag, Motes, Package,
-    PackageHash, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue,
+    PackageAddr, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue,
     StoredValueTypeMismatch, SystemHashRegistry, TransactionHash, Transfer, URef, URefAddr,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
@@ -763,8 +763,7 @@ where
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
             | StoredValue::Prepayment(_)
-            | StoredValue::EntryPoint(_)
-            | StoredValue::RawBytes(_) => Ok(()),
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 
@@ -986,6 +985,7 @@ where
         block_message_count: u64,
         topic_message_count: u32,
         message: Message,
+        skip_charging: bool,
     ) -> Result<(), ExecError> {
         let topic_value = StoredValue::MessageTopic(MessageTopicSummary::new(
             topic_message_count,
@@ -998,11 +998,14 @@ where
         let block_message_count_value =
             StoredValue::CLValue(CLValue::from_t((block_time, block_message_count))?);
 
-        // Charge for amount as measured by serialized length
-        let bytes_count = topic_value.serialized_length()
-            + message_value.serialized_length()
-            + block_message_count_value.serialized_length();
-        self.charge_gas_storage(bytes_count)?;
+        // In case of "system" messages we want to be able to skip charging for the message
+        if !skip_charging {
+            // Charge for amount as measured by serialized length
+            let bytes_count = topic_value.serialized_length()
+                + message_value.serialized_length()
+                + block_message_count_value.serialized_length();
+            self.charge_gas_storage(bytes_count)?;
+        }
 
         self.tracking_copy.borrow_mut().emit_message(
             topic_key,
@@ -1412,12 +1415,12 @@ where
     /// Gets given contract package with its access_key validated against current context.
     pub(crate) fn get_validated_package(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
     ) -> Result<Package, ExecError> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package = if self.engine_config.enable_entity {
-            self.read_gs_typed::<Package>(&Key::SmartContract(package_hash.value()))?
+            self.read_gs_typed::<Package>(&Key::Package(package_hash))?
         } else {
             let cp = self.read_gs_typed::<ContractPackage>(&Key::Hash(package_hash.value()))?;
             cp.into()
@@ -1646,5 +1649,25 @@ where
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))
+    }
+
+    pub(crate) fn emit_messages_for_new_installed_version(
+        &self,
+        current_blocktime: BlockTime,
+        contract_package_key: Key,
+        contract_key: Key,
+        contract_wasm_key: Key,
+        version_major: u32,
+        version_minor: u32,
+    ) -> Result<(), MessageEmissionError> {
+        let mut tracking_copy = self.tracking_copy.borrow_mut();
+        tracking_copy.emit_messages_for_new_installed_version(
+            contract_package_key,
+            contract_key,
+            contract_wasm_key,
+            version_major,
+            version_minor,
+            current_blocktime,
+        )
     }
 }

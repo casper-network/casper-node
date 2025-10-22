@@ -1,37 +1,37 @@
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-#[cfg(any(feature = "std", feature = "testing", test))]
+#[cfg(any(feature = "json-schema", feature = "testing", test))]
 use crate::{
     bytesrepr::{Bytes, ToBytes},
     transaction::transaction_v1::*,
-    TransactionEntryPoint, TransactionScheduling, TransactionTarget,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{
-    PublicKey, RuntimeArgs, TransactionInvocationTarget, TransferTarget, AUCTION_LANE_ID,
-    INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
-};
-#[cfg(any(feature = "std", feature = "testing", test))]
+use crate::{PublicKey, RuntimeArgs, TransactionInvocationTarget, TransferTarget};
+#[cfg(any(feature = "testing", test))]
+use crate::{TransactionEntryPoint, TransactionScheduling, TransactionTarget};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::{AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID};
+#[cfg(any(feature = "json-schema", feature = "testing", test))]
 use alloc::collections::BTreeMap;
 #[cfg(any(feature = "testing", test))]
 use rand::{Rng, RngCore};
 
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "json-schema", feature = "testing", feature = "gens", test))]
 pub(crate) const ARGS_MAP_KEY: u16 = 0;
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "json-schema", feature = "testing", feature = "gens", test))]
 pub(crate) const TARGET_MAP_KEY: u16 = 1;
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "json-schema", feature = "testing", feature = "gens", test))]
 pub(crate) const ENTRY_POINT_MAP_KEY: u16 = 2;
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "json-schema", feature = "testing", feature = "gens", test))]
 pub(crate) const SCHEDULING_MAP_KEY: u16 = 3;
 
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum FieldsContainerError {
     CouldNotSerializeField { field_index: u16 },
 }
 
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) struct FieldsContainer {
     pub(super) args: TransactionArgs,
     pub(super) target: TransactionTarget,
@@ -39,7 +39,7 @@ pub(crate) struct FieldsContainer {
     pub(super) scheduling: TransactionScheduling,
 }
 
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 impl FieldsContainer {
     pub(crate) fn new(
         args: TransactionArgs,
@@ -56,40 +56,13 @@ impl FieldsContainer {
     }
 
     pub(crate) fn to_map(&self) -> Result<BTreeMap<u16, Bytes>, FieldsContainerError> {
-        let mut map: BTreeMap<u16, Bytes> = BTreeMap::new();
-        map.insert(
-            ARGS_MAP_KEY,
-            self.args.to_bytes().map(Into::into).map_err(|_| {
-                FieldsContainerError::CouldNotSerializeField {
-                    field_index: ARGS_MAP_KEY,
-                }
-            })?,
-        );
-        map.insert(
-            TARGET_MAP_KEY,
-            self.target.to_bytes().map(Into::into).map_err(|_| {
-                FieldsContainerError::CouldNotSerializeField {
-                    field_index: TARGET_MAP_KEY,
-                }
-            })?,
-        );
-        map.insert(
-            ENTRY_POINT_MAP_KEY,
-            self.entry_point.to_bytes().map(Into::into).map_err(|_| {
-                FieldsContainerError::CouldNotSerializeField {
-                    field_index: ENTRY_POINT_MAP_KEY,
-                }
-            })?,
-        );
-        map.insert(
-            SCHEDULING_MAP_KEY,
-            self.scheduling.to_bytes().map(Into::into).map_err(|_| {
-                FieldsContainerError::CouldNotSerializeField {
-                    field_index: SCHEDULING_MAP_KEY,
-                }
-            })?,
-        );
-        Ok(map)
+        build_raw_payloads_map(
+            &self.args,
+            &self.target,
+            &self.entry_point,
+            &self.scheduling,
+        )
+        .map_err(|field_index| FieldsContainerError::CouldNotSerializeField { field_index })
     }
 
     /// Returns a random `FieldsContainer`.
@@ -208,7 +181,7 @@ impl FieldsContainer {
     }
 
     /// Returns a random `FieldsContainer`.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random_of_lane(rng: &mut TestRng, lane_id: u8) -> Self {
         match lane_id {
             MINT_LANE_ID => Self::random_transfer(rng),
@@ -218,7 +191,7 @@ impl FieldsContainer {
         }
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_transfer(rng: &mut TestRng) -> Self {
         let amount = rng.gen_range(2_500_000_000..=u64::MAX);
         let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
@@ -233,7 +206,7 @@ impl FieldsContainer {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Session {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
@@ -248,7 +221,7 @@ impl FieldsContainer {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_staking(rng: &mut TestRng) -> Self {
         let public_key = PublicKey::random(rng);
         let delegation_rate = rng.gen();
@@ -287,4 +260,40 @@ impl FieldsContainer {
             TransactionScheduling::random(rng),
         )
     }
+}
+
+#[cfg(any(feature = "json-schema", feature = "testing", feature = "gens", test))]
+pub(crate) fn build_raw_payloads_map(
+    args: &TransactionArgs,
+    target: &TransactionTarget,
+    entry_point: &TransactionEntryPoint,
+    scheduling: &TransactionScheduling,
+) -> Result<BTreeMap<u16, Bytes>, u16> {
+    let mut map: BTreeMap<u16, Bytes> = BTreeMap::new();
+    map.insert(
+        ARGS_MAP_KEY,
+        args.to_bytes().map(Into::into).map_err(|_| ARGS_MAP_KEY)?,
+    );
+    map.insert(
+        TARGET_MAP_KEY,
+        target
+            .to_bytes()
+            .map(Into::into)
+            .map_err(|_| TARGET_MAP_KEY)?,
+    );
+    map.insert(
+        ENTRY_POINT_MAP_KEY,
+        entry_point
+            .to_bytes()
+            .map(Into::into)
+            .map_err(|_| ENTRY_POINT_MAP_KEY)?,
+    );
+    map.insert(
+        SCHEDULING_MAP_KEY,
+        scheduling
+            .to_bytes()
+            .map(Into::into)
+            .map_err(|_| SCHEDULING_MAP_KEY)?,
+    );
+    Ok(map)
 }

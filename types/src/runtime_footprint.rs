@@ -17,6 +17,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const NAME_FOR_V2_CONTRACT_MAIN_PURSE: &str = "__main_purse";
+
 /// Runtime Address.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -140,7 +142,7 @@ impl RuntimeFootprint {
         )
     }
 
-    pub fn new_contract_footprint(
+    pub fn new_vm1_contract_footprint(
         contract_hash: ContractHash,
         contract: Contract,
         system_entity_type: Option<SystemEntityType>,
@@ -178,6 +180,53 @@ impl RuntimeFootprint {
         )
     }
 
+    pub fn new_vm2_contract_footprint(
+        contract_hash: ContractHash,
+        contract: Contract,
+        system_entity_type: Option<SystemEntityType>,
+    ) -> Self {
+        let contract_package_hash = contract.contract_package_hash();
+        let contract_wasm_hash = contract.contract_wasm_hash();
+        let entry_points = contract.entry_points().clone().into();
+        let protocol_version = contract.protocol_version();
+        let mut named_keys = contract.take_named_keys();
+
+        let runtime_address = RuntimeAddress::new_stored_contract(
+            contract_hash.value(),
+            contract_package_hash.value(),
+            contract_wasm_hash.value(),
+            protocol_version,
+        );
+
+        let main_purse = {
+            match named_keys
+                .remove(NAME_FOR_V2_CONTRACT_MAIN_PURSE)
+                .map(|key| key.into_uref())
+            {
+                Some(Some(uref)) => Some(uref),
+                Some(_) | None => None,
+            }
+        };
+
+        let action_thresholds = BTreeMap::new();
+        let associated_keys = AssociatedKeys::empty_keys();
+
+        let entity_kind = match system_entity_type {
+            None => EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
+            Some(kind) => EntityKind::System(kind),
+        };
+
+        Self::new(
+            named_keys,
+            action_thresholds,
+            associated_keys,
+            entry_points,
+            entity_kind,
+            main_purse,
+            runtime_address,
+        )
+    }
+
     pub fn new_entity_footprint(
         entity_addr: EntityAddr,
         entity: AddressableEntity,
@@ -186,8 +235,8 @@ impl RuntimeFootprint {
     ) -> Self {
         let runtime_address = RuntimeAddress::new_stored_contract(
             entity_addr.value(),
-            entity.package_hash().value(),
-            entity.byte_code_hash().value(),
+            entity.package().value(),
+            entity.byte_code().value(),
             entity.protocol_version(),
         );
         let action_thresholds = {
@@ -328,7 +377,7 @@ impl RuntimeFootprint {
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(&self, hash_addr: HashAddr) -> ContextAccessRights {
+    pub fn extract_access_rights(&self) -> ContextAccessRights {
         match self.main_purse {
             Some(purse) => {
                 let urefs_iter = self
@@ -336,14 +385,14 @@ impl RuntimeFootprint {
                     .keys()
                     .filter_map(|key| key.as_uref().copied())
                     .chain(iter::once(purse));
-                ContextAccessRights::new(hash_addr, urefs_iter)
+                ContextAccessRights::new(self.hash_addr(), urefs_iter)
             }
             None => {
                 let urefs_iter = self
                     .named_keys
                     .keys()
                     .filter_map(|key| key.as_uref().copied());
-                ContextAccessRights::new(hash_addr, urefs_iter)
+                ContextAccessRights::new(self.hash_addr(), urefs_iter)
             }
         }
     }

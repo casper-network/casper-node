@@ -542,6 +542,17 @@ impl IndexedLmdbBlockStoreReadTransaction<'_> {
                     .block_signatures_exist(&self.txn, block_hash),
             })
     }
+
+    pub fn get_switch_block_height(&self, era_id: EraId) -> Result<Option<u64>, BlockStoreError> {
+        let index = LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(era_id));
+        match self.block_hash_from_index(index) {
+            Some(block_hash) => {
+                let maybe_header: Option<BlockHeader> = self.read(*block_hash)?;
+                Ok(maybe_header.map(|header| header.height()))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 impl BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'_> {

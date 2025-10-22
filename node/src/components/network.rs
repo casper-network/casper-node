@@ -40,6 +40,8 @@ mod message_pack_format;
 mod metrics;
 mod outgoing;
 mod symmetry;
+#[cfg(test)]
+pub(crate) use config::NetworkFlakinessConfig;
 pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
@@ -73,13 +75,13 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 #[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
 
-use casper_types::{EraId, PublicKey, SecretKey};
+use casper_types::{EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
 
 pub(crate) use self::{
     bincode_format::BincodeFormat,
@@ -139,7 +141,7 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Maximum time for a ping until it connections are severed.
+/// Maximum time for a ping until its connections are severed.
 ///
 /// If you are running a network under very extreme conditions, it may make sense to alter these
 /// values, but usually these values should require no changing.
@@ -160,6 +162,117 @@ pub(crate) struct OutgoingHandle<P> {
 impl<P> Display for OutgoingHandle<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "outgoing handle to {}", self.peer_addr)
+    }
+}
+
+/// Struct encapsulating state that is needed to
+/// perform a peer drop in the "network flakiness" test case
+#[derive(DataSize)]
+enum PeerDropData {
+    #[data_size(skip)]
+    IncomingOnly {
+        drop_on: Timestamp,
+        cancel_incoming: Vec<CancellationToken>,
+    },
+    #[data_size(skip)]
+    OutgoingOnly {
+        drop_on: Timestamp,
+        cancel_outgoing: Vec<CancellationToken>,
+    },
+    #[data_size(skip)]
+    IncomingAndOutgoing {
+        drop_on: Timestamp,
+        cancel_outgoing: Vec<CancellationToken>,
+        cancel_incoming: Vec<CancellationToken>,
+    },
+    #[data_size(skip)]
+    /// We keep track of the fact that the peer is
+    /// currently blocked so that we don't handle
+    /// new incoming/outgoing connections to that peer
+    CurrentlyBlocked,
+}
+
+impl PeerDropData {
+    fn add_outgoing_cancel(self, cancel_callback: CancellationToken) -> PeerDropData {
+        match self {
+            PeerDropData::OutgoingOnly {
+                drop_on,
+                mut cancel_outgoing,
+            } => {
+                cancel_outgoing.push(cancel_callback);
+                PeerDropData::OutgoingOnly {
+                    drop_on,
+                    cancel_outgoing,
+                }
+            }
+            PeerDropData::IncomingOnly {
+                drop_on,
+                cancel_incoming,
+            } => PeerDropData::IncomingAndOutgoing {
+                drop_on,
+                cancel_incoming,
+                cancel_outgoing: vec![cancel_callback],
+            },
+            PeerDropData::IncomingAndOutgoing {
+                drop_on,
+                mut cancel_outgoing,
+                cancel_incoming,
+            } => {
+                cancel_outgoing.push(cancel_callback);
+                PeerDropData::IncomingAndOutgoing {
+                    drop_on,
+                    cancel_outgoing,
+                    cancel_incoming,
+                }
+            }
+            PeerDropData::CurrentlyBlocked => {
+                //This means that the peer was already dropped,
+                // this generally shouldn't happen, because we
+                // shouldn't schedule a new drop if we didn't clear data from the last one
+                PeerDropData::CurrentlyBlocked
+            }
+        }
+    }
+
+    fn extend_with_incoming(self, cancel_callback: CancellationToken) -> PeerDropData {
+        match self {
+            PeerDropData::IncomingOnly {
+                drop_on,
+                mut cancel_incoming,
+            } => {
+                cancel_incoming.push(cancel_callback);
+                PeerDropData::IncomingOnly {
+                    drop_on,
+                    cancel_incoming,
+                }
+            }
+            PeerDropData::OutgoingOnly {
+                drop_on,
+                cancel_outgoing,
+            } => PeerDropData::IncomingAndOutgoing {
+                drop_on,
+                cancel_incoming: vec![cancel_callback],
+                cancel_outgoing,
+            },
+            PeerDropData::IncomingAndOutgoing {
+                drop_on,
+                cancel_outgoing,
+                mut cancel_incoming,
+            } => {
+                cancel_incoming.push(cancel_callback);
+                PeerDropData::IncomingAndOutgoing {
+                    drop_on,
+                    cancel_outgoing,
+                    cancel_incoming,
+                }
+            }
+            PeerDropData::CurrentlyBlocked => {
+                //This means that the peer was already dropped,
+                // this generally shouldn't happen, because we
+                // shouldn't schedule a new drop if we didn't clear data from the last one
+                PeerDropData::CurrentlyBlocked
+            }
+        }
     }
 }
 
@@ -203,6 +316,11 @@ where
 
     /// The state of this component.
     state: ComponentState,
+
+    peer_drop_handles: BTreeMap<NodeId, PeerDropData>,
+
+    /// Known address nodes.
+    known_address_nodes: Vec<NodeId>,
 }
 
 struct ChannelManagement {
@@ -303,6 +421,8 @@ where
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
+            peer_drop_handles: BTreeMap::new(),
+            known_address_nodes: Vec::new(),
         };
 
         Ok(component)
@@ -356,7 +476,7 @@ where
         let protocol_version = self.context.chain_info().protocol_version;
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
-        // which we need to shutdown cleanly later on.
+        // which we need to shut down cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
@@ -380,6 +500,15 @@ where
         };
 
         self.channel_management = Some(channel_management);
+
+        // keep track of known address node ids
+        let mut known_node_ids = vec![];
+        for known_addr in &known_addresses {
+            if let Some(node_id) = self.outgoing_manager.reverse_lookup(known_addr) {
+                known_node_ids.push(node_id);
+            }
+        }
+        self.known_address_nodes = known_node_ids;
 
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
@@ -515,8 +644,10 @@ where
 
     fn handle_incoming_connection(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         incoming: Box<IncomingConnection<P>>,
         span: Span,
+        rng: &mut NodeRng,
     ) -> Effects<Event<P>> {
         span.clone().in_scope(|| match *incoming {
             IncomingConnection::FailedEarly {
@@ -571,6 +702,14 @@ where
                     }
                 }
 
+                if self.cfg.flakiness.is_some() {
+                    if let Some(PeerDropData::CurrentlyBlocked) = self.peer_drop_handles.get(&peer_id) {
+                        //We don't want to accept new connections if the peer is simulated as flaky
+                        debug!(%public_addr, %peer_addr, %peer_id, "rejecting new incoming connection, due to the peer being currently banned");
+                        return Effects::new();
+                    }
+                }
+
                 info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
@@ -601,6 +740,21 @@ where
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
+                let maybe_token = if self.cfg.flakiness.is_some() {
+                    let token = CancellationToken::new();
+                    effects.extend(self.schedule_incoming_drop(
+                        effect_builder,
+                        peer_id,
+                        token.clone(),
+                        public_addr,
+                        peer_addr,
+                        rng,
+                    ));
+                    Some(token)
+                } else {
+                    None
+                };
+
                 effects.extend(
                     tasks::message_reader(
                         self.context.clone(),
@@ -610,6 +764,7 @@ where
                         self.channel_management().close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
+                        maybe_token,
                     )
                     .instrument(span)
                     .event(move |result| Event::IncomingClosed {
@@ -703,6 +858,7 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         outgoing: OutgoingConnection<P>,
         span: Span,
         rng: &mut NodeRng,
@@ -755,6 +911,11 @@ where
                 sink,
                 is_syncing,
             } => {
+                if let Some(PeerDropData::CurrentlyBlocked) = self.peer_drop_handles.get(&peer_id) {
+                    //We don't want to accept new connections if the peer is simulated as flaky
+                    debug!(%peer_addr, %peer_id, "rejecting new outgoing connection, due to the peer being currently banned");
+                    return Effects::new();
+                }
                 info!("new outgoing connection established");
 
                 let (sender, receiver) = mpsc::unbounded_channel();
@@ -781,6 +942,21 @@ where
                     self.connection_completed(peer_id);
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
+                let maybe_token = if self.cfg.flakiness.is_some() {
+                    let token = CancellationToken::new();
+                    effects.extend(self.schedule_outgoing_drop(
+                        effect_builder,
+                        peer_id,
+                        token.clone(),
+                        peer_addr,
+                        peer_addr,
+                        rng,
+                    ));
+                    Some(token)
+                } else {
+                    None
+                };
+
                 effects.extend(
                     tasks::message_sender(
                         receiver,
@@ -788,6 +964,7 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
+                        maybe_token,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -897,7 +1074,7 @@ where
                         }),
                 ),
                 DialRequest::Disconnect { handle: _, span } => {
-                    // Dropping the `handle` is enough to signal the connection to shutdown.
+                    // Dropping the `handle` is enough to signal the connection to shut down.
                     span.in_scope(|| {
                         debug!("dropping connection, as requested");
                     });
@@ -1003,6 +1180,63 @@ where
         ret
     }
 
+    pub(crate) fn fully_connected_peers_random_include_known_addrs(
+        &self,
+        rng: &mut NodeRng,
+        total_count: usize,
+        known_addr_count: usize,
+    ) -> Vec<NodeId> {
+        let fully_connected: Vec<NodeId> = self
+            .connection_symmetries
+            .iter()
+            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .map(|(node_id, _)| *node_id)
+            .collect();
+
+        if known_addr_count == 0 || self.known_address_nodes.is_empty() {
+            // short circuit if no known addrs are asked for
+            // or if there are no captured known addresses
+            return fully_connected
+                .into_iter()
+                .choose_multiple(rng, total_count);
+        }
+
+        let peers: Vec<NodeId> = {
+            let mut ret: Vec<NodeId> = vec![];
+            let x = fully_connected.iter().copied().collect::<HashSet<NodeId>>();
+            let y = self.known_address_nodes.iter().copied().collect();
+
+            let known: Vec<NodeId> = x
+                .intersection(&y)
+                .to_owned()
+                .choose_multiple(rng, known_addr_count)
+                .iter()
+                .map(|n| **n)
+                .collect();
+
+            ret.extend(known);
+
+            let selection_count = ret.len();
+            let remaining = total_count.saturating_sub(selection_count);
+
+            if remaining > 0 {
+                // pick up additional nodes up to total count - known addr count (if able)
+                // filtering out already selected items for this backfill
+                let z = ret.iter().copied().collect();
+                let diff: Vec<NodeId> = x
+                    .difference(&z)
+                    .to_owned()
+                    .choose_multiple(rng, remaining)
+                    .iter()
+                    .map(|n| **n)
+                    .collect();
+                ret.extend(diff);
+            }
+            ret
+        };
+        peers
+    }
+
     pub(crate) fn fully_connected_peers_random(
         &self,
         rng: &mut NodeRng,
@@ -1012,6 +1246,22 @@ where
             .iter()
             .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
             .map(|(node_id, _)| *node_id)
+            .choose_multiple(rng, count)
+    }
+
+    pub(crate) fn fully_connected_validators_random(
+        &self,
+        rng: &mut NodeRng,
+        count: usize,
+        era_id: EraId,
+    ) -> Vec<NodeId> {
+        let is_validator_in_era =
+            |era: EraId, peer_id: &NodeId| self.outgoing_limiter.is_validator_in_era(era, peer_id);
+        self.connection_symmetries
+            .iter()
+            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .map(|(node_id, _)| *node_id)
+            .filter(|node_id| is_validator_in_era(era_id, node_id))
             .choose_multiple(rng, count)
     }
 
@@ -1027,6 +1277,157 @@ where
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {
         self.context.our_id()
+    }
+
+    fn drop_peer(&mut self, peer_id: NodeId, drop_for: Duration) -> Effects<Event<P>> {
+        debug!("In drop_peer: {peer_id}");
+        let mut requests = Vec::new();
+        let (cancel_incomings, cancel_outgoings) = match self.peer_drop_handles.remove(&peer_id) {
+            Some(data) => match data {
+                PeerDropData::IncomingOnly {
+                    cancel_incoming, ..
+                } => (cancel_incoming, vec![]),
+                PeerDropData::OutgoingOnly {
+                    cancel_outgoing, ..
+                } => (vec![], cancel_outgoing),
+                PeerDropData::IncomingAndOutgoing {
+                    cancel_incoming,
+                    cancel_outgoing,
+                    ..
+                } => (cancel_incoming, cancel_outgoing),
+                PeerDropData::CurrentlyBlocked => {
+                    //This means that the peer was already dropped,
+                    // this generally shouldn't happen, because we
+                    // shouldn't schedule a new drop if we didn't clear data from the last one
+                    (vec![], vec![])
+                }
+            },
+            None => {
+                //We are setting two timeouts (on incoming and outgoing), so
+                // the second one will likely miss the handle, but that's OK
+                // since we dropped both connections on first timeout
+                (vec![], vec![])
+            }
+        };
+        for cancel_incoming in cancel_incomings {
+            cancel_incoming.cancel();
+        }
+        if !cancel_outgoings.is_empty() {
+            if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
+                let maybe_requests = self.outgoing_manager.block_addr_for_duration(
+                    addr,
+                    Instant::now(),
+                    BlocklistJustification::FlakyNetworkForcedMode,
+                    drop_for,
+                );
+                if let Some(r) = maybe_requests {
+                    requests.push(r)
+                }
+            }
+        }
+        for cancel_outgoing in cancel_outgoings {
+            cancel_outgoing.cancel();
+        }
+        self.peer_drop_handles
+            .insert(peer_id, PeerDropData::CurrentlyBlocked);
+        self.process_dial_requests(requests)
+    }
+
+    fn schedule_incoming_drop(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        peer_id: NodeId,
+        close_this_reader_sender: CancellationToken,
+        public_addr: SocketAddr,
+        peer_addr: SocketAddr,
+        rng: &mut NodeRng,
+    ) -> Effects<Event<P>> {
+        if let Some(flakiness_config) = &self.cfg.flakiness {
+            let mut results = Effects::new();
+            if let Some(data) = self.peer_drop_handles.remove(&peer_id) {
+                self.peer_drop_handles
+                    .insert(peer_id, data.extend_with_incoming(close_this_reader_sender));
+            } else {
+                let min: Duration = flakiness_config.drop_peer_after_min.into();
+                let max: Duration = flakiness_config.drop_peer_after_max.into();
+                let sleep_for: Duration = rng.gen_range(min..=max);
+                let now = Timestamp::now();
+                let drop_on = now + TimeDiff::from_millis(sleep_for.as_millis() as u64);
+                debug!(
+                    "Scheduling incoming drop to: {}, peer: {} after: {}",
+                    drop_on.to_string(),
+                    peer_id,
+                    sleep_for.as_secs()
+                );
+                results.extend(effect_builder.set_timeout(sleep_for).event(move |_| {
+                    Event::TimedPeerDrop {
+                        peer_id: Box::new(peer_id),
+                        drop_on,
+                        public_addr: Box::new(public_addr),
+                        peer_addr: Box::new(peer_addr),
+                    }
+                }));
+                self.peer_drop_handles.insert(
+                    peer_id,
+                    PeerDropData::IncomingOnly {
+                        drop_on,
+                        cancel_incoming: vec![close_this_reader_sender],
+                    },
+                );
+            }
+            results
+        } else {
+            Effects::new()
+        }
+    }
+
+    fn schedule_outgoing_drop(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        peer_id: NodeId,
+        cancel_callback: CancellationToken,
+        peer_addr: SocketAddr,
+        public_addr: SocketAddr,
+        rng: &mut NodeRng,
+    ) -> Effects<Event<P>> {
+        if let Some(flakiness_config) = &self.cfg.flakiness {
+            let mut results = Effects::new();
+            if let Some(data) = self.peer_drop_handles.remove(&peer_id) {
+                self.peer_drop_handles
+                    .insert(peer_id, data.add_outgoing_cancel(cancel_callback));
+            } else {
+                let min: Duration = flakiness_config.drop_peer_after_min.into();
+                let max: Duration = flakiness_config.drop_peer_after_max.into();
+                let sleep_for: Duration = rng.gen_range(min..=max);
+                let now = Timestamp::now();
+                let drop_on = now + TimeDiff::from_millis(sleep_for.as_millis() as u64);
+                debug!(
+                    "Scheduling outgoing drop to: {}, peer: {} after: {}",
+                    drop_on.to_string(),
+                    peer_id,
+                    sleep_for.as_secs()
+                );
+
+                results.extend(effect_builder.set_timeout(sleep_for).event(move |_| {
+                    Event::TimedPeerDrop {
+                        peer_id: Box::new(peer_id),
+                        peer_addr: Box::new(peer_addr),
+                        public_addr: Box::new(public_addr),
+                        drop_on,
+                    }
+                }));
+                self.peer_drop_handles.insert(
+                    peer_id,
+                    PeerDropData::OutgoingOnly {
+                        drop_on,
+                        cancel_outgoing: vec![cancel_callback],
+                    },
+                );
+            }
+            results
+        } else {
+            Effects::new()
+        }
     }
 }
 
@@ -1176,7 +1577,8 @@ where
                 | Event::GossipOurAddress
                 | Event::PeerAddressReceived(_)
                 | Event::SweepOutgoing
-                | Event::BlocklistAnnouncement(_) => {
+                | Event::BlocklistAnnouncement(_)
+                | Event::TimedPeerDrop { .. } => {
                     warn!(
                         ?event,
                         name = <Self as Component<REv>>::name(self),
@@ -1195,7 +1597,7 @@ where
                     Effects::new()
                 }
                 Event::IncomingConnection { incoming, span } => {
-                    self.handle_incoming_connection(incoming, span)
+                    self.handle_incoming_connection(effect_builder, incoming, span, rng)
                 }
                 Event::IncomingMessage { peer_id, msg, span } => {
                     self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
@@ -1207,7 +1609,7 @@ where
                     span,
                 } => self.handle_incoming_closed(result, *peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
-                    self.handle_outgoing_connection(*outgoing, span, rng)
+                    self.handle_outgoing_connection(effect_builder, *outgoing, span, rng)
                 }
                 Event::OutgoingDropped { peer_id, peer_addr } => {
                     self.handle_outgoing_dropped(*peer_id, peer_addr)
@@ -1221,6 +1623,24 @@ where
                     }
                     NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
                         .respond(self.fully_connected_peers_random(rng, count))
+                        .ignore(),
+                    NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                        total_count,
+                        known_addr_count,
+                        responder,
+                    } => responder
+                        .respond(self.fully_connected_peers_random_include_known_addrs(
+                            rng,
+                            total_count,
+                            known_addr_count,
+                        ))
+                        .ignore(),
+                    NetworkInfoRequest::FullyConnectedValidators {
+                        count,
+                        era_id,
+                        responder,
+                    } => responder
+                        .respond(self.fully_connected_validators_random(rng, count, era_id))
                         .ignore(),
                     NetworkInfoRequest::Insight { responder } => responder
                         .respond(NetworkInsights::collect_from_component(self))
@@ -1253,7 +1673,11 @@ where
                 }
                 Event::SweepOutgoing => {
                     let now = Instant::now();
-                    let requests = self.outgoing_manager.perform_housekeeping(rng, now);
+                    let (requests, unblocked_peers) =
+                        self.outgoing_manager.perform_housekeeping(rng, now);
+                    for unblocked_peer in unblocked_peers {
+                        self.peer_drop_handles.remove(&unblocked_peer);
+                    }
 
                     let mut effects = self.process_dial_requests(requests);
 
@@ -1288,6 +1712,35 @@ where
                         }
                     }
                 },
+                Event::TimedPeerDrop {
+                    peer_id,
+                    public_addr,
+                    peer_addr,
+                    drop_on,
+                } => {
+                    let now = Timestamp::now();
+                    if now >= drop_on {
+                        if let Some(flakiness_config) = &self.cfg.flakiness {
+                            let min: Duration = flakiness_config.block_peer_after_drop_min.into();
+                            let max: Duration = flakiness_config.block_peer_after_drop_max.into();
+                            let block_for: Duration = rng.gen_range(min..=max);
+
+                            debug!(
+                                %public_addr,
+                                %peer_addr,
+                                %peer_id,
+                                "Dropping peer. Blocking for: {} [ms]",
+                                block_for.as_millis()
+                            );
+
+                            self.drop_peer(*peer_id, block_for)
+                        } else {
+                            Effects::new()
+                        }
+                    } else {
+                        Effects::new()
+                    }
+                }
             },
         }
     }
@@ -1332,9 +1785,10 @@ pub(crate) type FullTransport<P> = tokio_serde::Framed<
 
 pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
 
-/// Constructs a new full transport on a stream.
+/// Constructs a new full transport instance on a stream.
 ///
-/// A full transport contains the framing as well as the encoding scheme used to send messages.
+/// A full transport instance contains the framing as well as the encoding scheme used to
+/// send messages.
 fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,

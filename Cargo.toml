@@ -16,10 +16,9 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
-    "smart_contracts/sdk",
-    "smart_contracts/sdk_codegen",
-    "smart_contracts/sdk_sys",
-    "smart_contracts/macros",
+    "smart_contracts/vm2/sdk",
+    "smart_contracts/vm2/sdk_sys",
+    "smart_contracts/vm2/macros",
     "vm2_cargo_casper",
     # "utils/highway-rewards-analysis",
     # "utils/highway-state-grapher",
@@ -27,7 +26,7 @@ members = [
     "executor/wasm_interface",
     "executor/wasm_host",
     "executor/wasmer_backend",
-    "executor/wasm",
+    "executor/wasm", "smart_contracts/vm2/sdk_contrib",
 ]
 
 default-members = [
@@ -41,10 +40,9 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
-    "smart_contracts/sdk",
-    "smart_contracts/sdk_sys",
-    "smart_contracts/sdk_codegen",
-    "smart_contracts/macros",
+    "smart_contracts/vm2/sdk",
+    "smart_contracts/vm2/sdk_sys",
+    "smart_contracts/vm2/macros",
     # "utils/highway-rewards-analysis",
     # "utils/highway-state-grapher",
 ]

@@ -164,6 +164,19 @@ impl Display for UnexecutedBlockAnnouncement {
     }
 }
 
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct NonExecutableBlockAnnouncement(pub(crate) u64);
+
+impl Display for NonExecutableBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "announcement for a block that couldn't be executed at height {}",
+            self.0,
+        )
+    }
+}
+
 /// Queue dump format with handler.
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {

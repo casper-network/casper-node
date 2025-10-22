@@ -27,8 +27,10 @@ use casper_types::{
     system::{
         self,
         auction::{
-            SeigniorageRecipientsSnapshot, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+            BidAddrTag, BidKind, DelegatorBid, DelegatorKind, SeigniorageRecipientsSnapshot,
+            Unbond, UnbondEra, UnbondKind, UnbondingPurse, ERA_END_TIMESTAMP_MILLIS_KEY,
+            ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
         },
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
@@ -49,6 +51,9 @@ use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
         balance::BalanceHandling,
+        bids::{
+            DelegatorBidRequest, DelegatorBidsResult, ValidatorBidRequest, ValidatorBidsResult,
+        },
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{
@@ -98,6 +103,29 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
     AddressGenerator,
 };
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS: &[BidAddrTag] = &[
+    BidAddrTag::Validator,
+    BidAddrTag::DelegatedAccount,
+    BidAddrTag::DelegatedPurse,
+    BidAddrTag::Credit,
+    BidAddrTag::ReservedDelegationAccount,
+    BidAddrTag::ReservedDelegationPurse,
+    BidAddrTag::UnbondAccount,
+    BidAddrTag::UnbondPurse,
+];
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT: &[BidAddrTag] = &[
+    BidAddrTag::DelegatedAccount,
+    BidAddrTag::ReservedDelegationAccount,
+    BidAddrTag::UnbondAccount,
+];
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE: &[BidAddrTag] = &[
+    BidAddrTag::DelegatedPurse,
+    BidAddrTag::ReservedDelegationPurse,
+    BidAddrTag::UnbondPurse,
+];
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K = Key, V = StoredValue>: Sized + Send + Sync {
@@ -323,7 +351,6 @@ pub trait CommitProvider: StateProvider {
         let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -427,7 +454,6 @@ pub trait CommitProvider: StateProvider {
 
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -513,7 +539,6 @@ pub trait CommitProvider: StateProvider {
         let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            protocol_version,
             seed,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1081,10 +1106,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_snapshot_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_snapshot_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ SeigniorageRecipientsResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -1138,13 +1163,86 @@ pub trait StateProvider: Send + Sync + Sized {
         BidsResult::Success { bids }
     }
 
+    /// Fetches the validator bids.
+    /// This will return either:
+    /// * All BidKind state entries which were stored under a key relevant to the validator
+    /// * All Bids wrapped in BidKind::Unified which keys match [KeyTag::Bid,
+    ///   account_hash_of_public_key_bytes] if no bids were found in step 1
+    fn validator_bids(&self, request: ValidatorBidRequest) -> ValidatorBidsResult {
+        let state_hash = request.state_root_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return ValidatorBidsResult::RootNotFound,
+            Err(err) => return ValidatorBidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let account_hash = request.validator_key().to_account_hash();
+
+        let result = find_contemporary_validator_bids(&mut tc, &account_hash);
+        match result {
+            ValidatorBidsResult::RootNotFound => ValidatorBidsResult::RootNotFound,
+            ValidatorBidsResult::Success { bids } => {
+                if bids.is_empty() {
+                    find_historic_validator_bids(&mut tc, &account_hash)
+                } else {
+                    ValidatorBidsResult::Success { bids }
+                }
+            }
+            ValidatorBidsResult::Failure(error) => ValidatorBidsResult::Failure(error),
+        }
+    }
+
+    /// Fetches the bids relevant to a delegator in scope of a validator.
+    /// This will return either:
+    /// * All BidKind state entries which were stored under a key relevant to the delegator in scope
+    ///   of a validator
+    /// * If step 1 yielded no data - we will attempt to retrofit 1.x data into the new schema by:
+    ///     * if the request delegator is not of DelegatorKind::PublicKey variant - return empty
+    ///     * fetch the Bid entry relevant to the given delegator
+    ///     * find the Bid delegators map entry relevant to the public key of the given delegator
+    ///     * remap the [`DelegatorBidRequest`] structure to BidKind::Delegator(delegator)
+    fn delegator_bids(&self, request: DelegatorBidRequest) -> DelegatorBidsResult {
+        let state_hash = request.state_root_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return DelegatorBidsResult::RootNotFound,
+            Err(err) => return DelegatorBidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let validator_public_key = request.validator_key();
+        let account_hash = validator_public_key.to_account_hash();
+        let delegator_kind = request.delegator();
+        match find_contemporary_delegator_bids(&mut tc, &account_hash, delegator_kind) {
+            Ok(bids) => {
+                if bids.is_empty() {
+                    match delegator_kind {
+                        DelegatorKind::PublicKey(delegator_public_key) => {
+                            match find_historic_delegator_bids(
+                                &mut tc,
+                                validator_public_key,
+                                delegator_public_key,
+                            ) {
+                                Ok(bids) => DelegatorBidsResult::Success { bids },
+                                Err(err) => DelegatorBidsResult::Failure(err),
+                            }
+                        }
+                        DelegatorKind::Purse(_) => {
+                            /* Cannot retrofit purse */
+                            DelegatorBidsResult::Success { bids: vec![] }
+                        }
+                    }
+                } else {
+                    DelegatorBidsResult::Success { bids }
+                }
+            }
+            Err(err) => DelegatorBidsResult::Failure(err),
+        }
+    }
+
     /// Direct auction interaction for all variations of bid management.
     fn bidding(
         &self,
         BiddingRequest {
             config,
             state_hash,
-            protocol_version,
             auction_method,
             transaction_hash,
             initiator,
@@ -1161,7 +1259,7 @@ pub trait StateProvider: Send + Sync + Sized {
         let (entity_addr, mut footprint, mut entity_access_rights) = match tc
             .borrow_mut()
             .authorized_runtime_footprint_with_access_rights(
-                protocol_version,
+                config.protocol_version(),
                 source_account_hash,
                 &authorization_keys,
                 &BTreeSet::default(),
@@ -1227,7 +1325,6 @@ pub trait StateProvider: Send + Sync + Sized {
         let minimum_bid_amount = config.minimum_bid_amount();
         let mut runtime = RuntimeNative::new(
             config,
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1250,6 +1347,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 public_key,
                 delegation_rate,
                 amount,
+                vesting_schedule_period_millis,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
                 minimum_bid_amount,
@@ -1259,6 +1357,7 @@ pub trait StateProvider: Send + Sync + Sized {
                     public_key,
                     delegation_rate,
                     amount,
+                    vesting_schedule_period_millis,
                     minimum_delegation_amount,
                     maximum_delegation_amount,
                     minimum_bid_amount,
@@ -1372,7 +1471,6 @@ pub trait StateProvider: Send + Sync + Sized {
                 // this runtime uses the system's context
                 match RuntimeNative::new_system_runtime(
                     config,
-                    protocol_version,
                     id,
                     address_generator,
                     Rc::clone(&tc),
@@ -1388,7 +1486,6 @@ pub trait StateProvider: Send + Sync + Sized {
                 // this runtime uses the handle payment contract's context
                 match RuntimeNative::new_system_contract_runtime(
                     config,
-                    protocol_version,
                     id,
                     address_generator,
                     Rc::clone(&tc),
@@ -1411,21 +1508,12 @@ pub trait StateProvider: Send + Sync + Sized {
                 gas_price,
                 consumed,
                 ratio,
-                source,
+                available,
             } => {
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
-                };
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => Some(refund),
                     Err(hpe) => {
@@ -1445,6 +1533,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 ratio,
                 source,
                 target,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1453,12 +1542,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1493,20 +1577,35 @@ pub trait StateProvider: Send + Sync + Sized {
                 cost,
                 gas_price,
             } => {
-                let source = BalanceIdentifier::Payment;
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleRefundResult::Failure(tce),
+                let balance_result = self.balance(BalanceRequest::new(
+                    state_hash,
+                    protocol_version,
+                    BalanceIdentifier::Payment,
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
+                ));
+                let available_balance = match balance_result {
+                    BalanceResult::RootNotFound => {
+                        return HandleRefundResult::RootNotFound;
+                    }
+                    BalanceResult::Failure(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                    BalanceResult::Success {
+                        available_balance, ..
+                    } => available_balance,
                 };
+
                 let consumed = U512::zero();
                 let ratio = Ratio::new_raw(U512::one(), U512::one());
+
                 let refund_amount = match runtime.calculate_overpayment_and_fee(
                     limit,
                     gas_price,
                     cost,
                     consumed,
-                    source_purse,
                     ratio,
+                    available_balance,
                 ) {
                     Ok((refund, _)) => refund,
                     Err(hpe) => {
@@ -1515,8 +1614,15 @@ pub trait StateProvider: Send + Sync + Sized {
                         ));
                     }
                 };
-                let target = BalanceIdentifier::Refund;
-                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                let source_purse = match BalanceIdentifier::Payment
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let target_purse = match BalanceIdentifier::Refund
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
                     Ok(value) => value,
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
@@ -1542,6 +1648,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 consumed,
                 source,
                 ratio,
+                available,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1550,12 +1657,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 let (numer, denom) = ratio.into();
                 let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
                 let burn_amount = match runtime.calculate_overpayment_and_fee(
-                    limit,
-                    gas_price,
-                    cost,
-                    consumed,
-                    source_purse,
-                    ratio,
+                    limit, gas_price, cost, consumed, ratio, available,
                 ) {
                     Ok((amount, _)) => Some(amount),
                     Err(hpe) => {
@@ -1610,7 +1712,6 @@ pub trait StateProvider: Send + Sync + Sized {
         HandleFeeRequest {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             handle_fee_mode,
         }: HandleFeeRequest,
@@ -1626,10 +1727,9 @@ pub trait StateProvider: Send + Sync + Sized {
         let id = Id::Transaction(transaction_hash);
         let phase = Phase::FinalizePayment;
         let address_generator = AddressGenerator::new(&id.seed(), phase);
-
+        let protocol_version = config.protocol_version();
         let mut runtime = match RuntimeNative::new_system_runtime(
             config,
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -1640,6 +1740,14 @@ pub trait StateProvider: Send + Sync + Sized {
                 return HandleFeeResult::Failure(tce);
             }
         };
+
+        if let Some(source) = handle_fee_mode.maybe_source() {
+            let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                Ok(source_purse) => source_purse,
+                Err(tce) => return HandleFeeResult::Failure(tce),
+            };
+            runtime.extend_access_rights(&[source_purse]);
+        }
 
         let result = match handle_fee_mode {
             HandleFeeMode::Credit {
@@ -1658,6 +1766,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 source,
                 target,
             } => {
+                let protocol_version = runtime.protocol_version();
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
@@ -1679,6 +1788,7 @@ pub trait StateProvider: Send + Sync + Sized {
                     })
             }
             HandleFeeMode::Burn { source, amount } => {
+                let protocol_version = runtime.protocol_version();
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
@@ -1854,7 +1964,7 @@ pub trait StateProvider: Send + Sync + Sized {
             },
             SystemEntityRegistrySelector::ByName(name) => match reg.get(name).copied() {
                 Some(entity_hash) => {
-                    let key = if !request.enable_addressable_entity() {
+                    let key = if !request.addressable_entity_enabled() {
                         Key::Hash(entity_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(entity_hash))
@@ -1973,10 +2083,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return TotalSupplyResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_total_supply_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_total_supply_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ TotalSupplyResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2011,10 +2121,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return RoundSeigniorageRateResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
-        match get_round_seigniorage_rate_data(self, &scr, state_hash, enable_addressable_entity) {
+        let addressable_entity_enabled = tc.addressable_entity_enabled();
+        match get_round_seigniorage_rate_data(self, &scr, state_hash, addressable_entity_enabled) {
             not_found @ RoundSeigniorageRateResult::ValueNotFound(_) => {
-                if enable_addressable_entity {
+                if addressable_entity_enabled {
                     //There is a chance that, when looking for systemic data, we could be using a
                     // state root hash from before the AddressableEntity
                     // migration boundary. In such a case, we should attempt to look up the data
@@ -2153,11 +2263,13 @@ pub trait StateProvider: Send + Sync + Sized {
                 return TransferResult::Failure(TransferError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
-                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::System(hash)
+                | EntityAddr::SmartContract(hash)
+                | EntityAddr::Package(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
             }
         };
@@ -2167,7 +2279,6 @@ pub trait StateProvider: Send + Sync + Sized {
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             config.clone(),
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -2281,12 +2392,13 @@ pub trait StateProvider: Send + Sync + Sized {
                 return BurnResult::Failure(BurnError::TrackingCopy(tce));
             }
         };
-        let entity_key = if config.enable_addressable_entity() {
+        let entity_key = if config.addressable_entity_enabled() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
                 EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+                EntityAddr::Package(hash_addr) => Key::Hash(hash_addr),
             }
         };
 
@@ -2326,7 +2438,6 @@ pub trait StateProvider: Send + Sync + Sized {
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             config.clone(),
-            protocol_version,
             id,
             Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
@@ -2424,11 +2535,11 @@ fn get_round_seigniorage_rate_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> RoundSeigniorageRateResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2472,11 +2583,11 @@ fn get_total_supply_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> TotalSupplyResult {
     let query_request = match scr.get(MINT).copied() {
         Some(mint_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(mint_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2515,10 +2626,10 @@ fn get_snapshot_data<T: StateProvider>(
     state_provider: &T,
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> SeigniorageRecipientsResult {
     let (snapshot_query_request, snapshot_version_query_request) =
-        match build_query_requests(scr, state_hash, enable_addressable_entity) {
+        match build_query_requests(scr, state_hash, addressable_entity_enabled) {
             Ok(res) => res,
             Err(res) => return res,
         };
@@ -2630,11 +2741,11 @@ fn query_snapshot_version<T: StateProvider>(
 fn build_query_requests(
     scr: &SystemHashRegistry,
     state_hash: Digest,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 ) -> Result<(QueryRequest, QueryRequest), SeigniorageRecipientsResult> {
     match scr.get(AUCTION).copied() {
         Some(auction_hash) => {
-            let key = if !enable_addressable_entity {
+            let key = if !addressable_entity_enabled {
                 Key::Hash(auction_hash)
             } else {
                 Key::AddressableEntity(EntityAddr::System(auction_hash))
@@ -2719,6 +2830,10 @@ where
         let instruction = match (read_result, kind) {
             (_, TransformKindV2::Identity) => {
                 // effectively a noop.
+                continue;
+            }
+            (_, TransformKindV2::Ret(_)) => {
+                // Ret transforms are not committed to global state.
                 continue;
             }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {
@@ -2808,4 +2923,362 @@ where
     txn.commit()?;
 
     Ok(state_root)
+}
+
+fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    validator_public_key: &PublicKey,
+    delegator_public_key: &PublicKey,
+) -> Result<Vec<BidKind>, TrackingCopyError> {
+    let validator_account_hash = validator_public_key.to_account_hash();
+    let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+    };
+    let bid_key_bytes = [
+        vec![KeyTag::Bid as u8],
+        validator_account_hash_bytes.clone(),
+    ]
+    .concat();
+    let keys = tc.get_by_byte_prefix(&bid_key_bytes)?;
+    let mut bids = vec![];
+    for key in keys {
+        match tc.get(&key)? {
+            Some(StoredValue::Bid(bid)) => {
+                if let Some(delegator) = bid.delegators().get(delegator_public_key) {
+                    let delegator_kind = match bid.vesting_schedule() {
+                        Some(vesting_schedule) => {
+                            let mut delegator_bid = DelegatorBid::locked(
+                                DelegatorKind::PublicKey(delegator_public_key.clone()),
+                                delegator.staked_amount(),
+                                *delegator.bonding_purse(),
+                                validator_public_key.clone(),
+                                vesting_schedule.initial_release_timestamp_millis(),
+                            );
+                            if let Some(output_vesting_schedule) =
+                                delegator_bid.vesting_schedule_mut()
+                            {
+                                *output_vesting_schedule = vesting_schedule.clone();
+                            }
+                            delegator_bid
+                        }
+                        None => DelegatorBid::unlocked(
+                            DelegatorKind::PublicKey(delegator_public_key.clone()),
+                            delegator.staked_amount(),
+                            *delegator.bonding_purse(),
+                            validator_public_key.clone(),
+                        ),
+                    };
+
+                    let bid_kind = BidKind::Delegator(Box::new(delegator_kind));
+                    bids.push(bid_kind);
+                }
+            }
+            Some(_) => {
+                return Err(TrackingCopyError::UnexpectedStoredValueVariant);
+            }
+            None => {
+                return Err(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )));
+            }
+        }
+    }
+    Ok(bids)
+}
+
+fn find_contemporary_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    validator_account_hash: &AccountHash,
+    delegator_kind: &DelegatorKind,
+) -> Result<Vec<BidKind>, TrackingCopyError> {
+    let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let mut keys = BTreeSet::new();
+    match delegator_kind {
+        DelegatorKind::PublicKey(public_key) => {
+            let delegator_account_hash = public_key.to_account_hash();
+            let delegator_account_hash_bytes = match delegator_account_hash.to_bytes() {
+                Ok(delegator_account_hash_bytes) => delegator_account_hash_bytes,
+                Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+            };
+
+            for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT {
+                let key_bytes = [
+                    vec![KeyTag::BidAddr as u8, (*infix) as u8],
+                    validator_account_hash_bytes.clone(),
+                    delegator_account_hash_bytes.clone(),
+                ]
+                .concat();
+                match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(mut k) => {
+                        keys.append(&mut k);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        DelegatorKind::Purse(purse) => {
+            for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE {
+                let validator_bytes = validator_account_hash_bytes.clone();
+                let key_bytes = [
+                    vec![KeyTag::BidAddr as u8, (*infix) as u8],
+                    validator_bytes,
+                    purse.to_vec(),
+                ]
+                .concat();
+                match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(mut k) => {
+                        keys.append(&mut k);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+    }
+
+    for key in keys {
+        match tc.get(&key)? {
+            Some(StoredValue::BidKind(bid_kind)) => {
+                bids.push(bid_kind);
+            }
+            Some(_) => {
+                return Err(TrackingCopyError::UnexpectedStoredValueVariant);
+            }
+            None => {
+                return Err(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )));
+            }
+        }
+    }
+    Ok(bids)
+}
+
+fn find_contemporary_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    account_hash: &AccountHash,
+) -> ValidatorBidsResult {
+    let account_hash_bytes = match account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return ValidatorBidsResult::Failure(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let mut keys = BTreeSet::new();
+    for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS {
+        let key_bytes = [
+            vec![KeyTag::BidAddr as u8, (*infix) as u8],
+            account_hash_bytes.clone(),
+        ]
+        .concat();
+        match tc.get_by_byte_prefix(&key_bytes) {
+            Ok(mut k) => {
+                keys.append(&mut k);
+            }
+            Err(e) => return ValidatorBidsResult::Failure(e),
+        }
+    }
+    for key in keys {
+        match tc.get(&key) {
+            Ok(Some(StoredValue::BidKind(bid_kind))) => {
+                bids.push(bid_kind);
+            }
+            Ok(Some(_)) => {
+                return ValidatorBidsResult::Failure(
+                    TrackingCopyError::UnexpectedStoredValueVariant,
+                );
+            }
+            Ok(None) => {
+                return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )))
+            }
+            Err(error) => return ValidatorBidsResult::Failure(error),
+        }
+    }
+    ValidatorBidsResult::Success { bids }
+}
+
+fn find_historic_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    account_hash: &AccountHash,
+) -> ValidatorBidsResult {
+    let account_hash_bytes = match account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return ValidatorBidsResult::Failure(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let key_bytes = [vec![KeyTag::Bid as u8], account_hash_bytes.clone()].concat();
+    let keys = match tc.get_by_byte_prefix(&key_bytes) {
+        Ok(keys) => keys,
+        Err(e) => return ValidatorBidsResult::Failure(e),
+    };
+
+    for key in keys {
+        //Technically there should never be more than one key here
+        match tc.get(&key) {
+            Ok(Some(StoredValue::Bid(bid))) => {
+                let validator_bid = BidKind::Unified(bid);
+                bids.push(validator_bid);
+                let key_bytes = [vec![KeyTag::Unbond as u8], account_hash_bytes.clone()].concat();
+                let unbond_keys = match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(keys) => keys,
+                    Err(e) => return ValidatorBidsResult::Failure(e),
+                };
+                for unbond_key in unbond_keys {
+                    match tc.get(&unbond_key) {
+                        Ok(Some(StoredValue::Unbonding(unbonding_purses))) => {
+                            match try_rewrap_unbonding_purses(unbonding_purses) {
+                                Ok(mut unbonding_bid_kinds) => bids.append(&mut unbonding_bid_kinds),
+                                Err(UnbondingRewrapError::AmbiguousValidatorKey) => {
+                                    return ValidatorBidsResult::Failure(
+                                        TrackingCopyError::ErrorWhenRewraping("Could not map historical Unbonding records due to ambiguous validator keys".to_owned()),
+                                    )
+                                }
+                            }
+                        }
+                        Ok(Some(_)) => {
+                            return ValidatorBidsResult::Failure(
+                                TrackingCopyError::UnexpectedStoredValueVariant,
+                            );
+                        }
+                        Ok(None) => {
+                            return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(
+                                format!("Unbonding entry with key {} not found", unbond_key),
+                            ))
+                        }
+                        Err(err) => return ValidatorBidsResult::Failure(err),
+                    }
+                }
+            }
+            Ok(Some(_)) => {
+                return ValidatorBidsResult::Failure(
+                    TrackingCopyError::UnexpectedStoredValueVariant,
+                );
+            }
+            Ok(None) => {
+                return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(format!(
+                    "Bid entry with key {} not found",
+                    key
+                )))
+            }
+            Err(error) => return ValidatorBidsResult::Failure(error),
+        }
+    }
+
+    ValidatorBidsResult::Success { bids }
+}
+
+enum UnbondingRewrapError {
+    AmbiguousValidatorKey,
+}
+fn try_rewrap_unbonding_purses(
+    unbonding_purses: Vec<UnbondingPurse>,
+) -> Result<Vec<BidKind>, UnbondingRewrapError> {
+    let base_validator_public_key = match unbonding_purses.first() {
+        None => return Ok(vec![]),
+        Some(purse) => purse.validator_public_key().clone(),
+    };
+    let mut unbonding_purses_map: BTreeMap<UnbondKind, Vec<UnbondingPurse>> = BTreeMap::new();
+
+    for unbonding_purse in unbonding_purses {
+        if !unbonding_purse
+            .validator_public_key()
+            .eq(&base_validator_public_key)
+        {
+            return Err(UnbondingRewrapError::AmbiguousValidatorKey);
+        }
+        let unbond_kind =
+            if unbonding_purse.validator_public_key() == unbonding_purse.unbonder_public_key() {
+                UnbondKind::Validator(unbonding_purse.validator_public_key().clone())
+            } else {
+                UnbondKind::DelegatedPublicKey(unbonding_purse.unbonder_public_key().clone())
+            };
+
+        match unbonding_purses_map.entry(unbond_kind) {
+            std::collections::btree_map::Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(vec![unbonding_purse]);
+            }
+            std::collections::btree_map::Entry::Occupied(occupied_entry) => {
+                occupied_entry.into_mut().push(unbonding_purse);
+            }
+        }
+    }
+    let mut bid_kinds = vec![];
+    for (unbonding_kind, purses) in unbonding_purses_map {
+        if let Some(purse) = purses.first() {
+            let validator_key = purse.validator_public_key().clone();
+            let mut eras = vec![];
+            for unbonding_purse in purses {
+                eras.push(UnbondEra::new(
+                    *unbonding_purse.bonding_purse(),
+                    unbonding_purse.era_of_creation(),
+                    *unbonding_purse.amount(),
+                    unbonding_purse.new_validator().clone(),
+                ));
+            }
+            let unbond = Unbond::new(validator_key, unbonding_kind, eras);
+            bid_kinds.push(BidKind::Unbond(Box::new(unbond)));
+        }
+    }
+    Ok(bid_kinds)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::global_state::state::{
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT,
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE,
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS,
+    };
+    use casper_types::system::auction::BidAddrTag;
+    use strum::IntoEnumIterator;
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_validators() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS constant should contain
+        // all the tags that can be found by using a validator account hash prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Validator entity. If a new BidAddrTag variant is added
+        // this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS.len(), 8);
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_delegators_account() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT constant should contain
+        // all the tags that can be found by using validator+delegator_public_key prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Delegator entity that is of DelegatorKind::PublicKey. If a new BidAddrTag
+        // variant is added this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(
+            BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT.len(),
+            3
+        );
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_delegators_purse() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE constant should contain
+        // all the tags that can be found by using validator+purse_uref prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Delegator entity that is of DelegatorKind::Purse. If a new BidAddrTag
+        // variant is added this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(
+            BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE.len(),
+            3
+        );
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
 }

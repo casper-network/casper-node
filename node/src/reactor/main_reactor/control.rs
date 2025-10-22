@@ -8,9 +8,9 @@ use crate::{
     components::{
         binary_port,
         block_synchronizer::{self, BlockSynchronizerProgress},
-        contract_runtime::ExecutionPreState,
         diagnostics_port, event_stream_server, network, rest_server, upgrade_watcher,
     },
+    contract_runtime::ExecutionPreState,
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::main_reactor::{
@@ -188,6 +188,9 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::Validate(effects) => {
+                    if let Err(msg) = self.refresh_contract_runtime() {
+                        return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
+                    }
                     info!("KeepUp: switch to Validate");
                     // purge to avoid polluting the status endpoints w/ stale state
                     self.block_synchronizer.purge();
@@ -548,7 +551,8 @@ impl MainReactor {
             parent_hash,
             parent_seed,
         );
-        self.contract_runtime.set_initial_state(initial_pre_state);
+        self.contract_runtime
+            .set_execution_pre_state(initial_pre_state);
     }
 
     pub(super) fn update_last_progress(

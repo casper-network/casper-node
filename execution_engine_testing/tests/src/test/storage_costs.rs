@@ -17,7 +17,7 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
-    HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits, OpcodeCosts, ProtocolVersion,
+    HostFFIFunctionCosts, HostFunctionCostsV1, Key, MessageLimits, OpcodeCosts, ProtocolVersion,
     RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, WasmV1Config, WasmV2Config,
     DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
@@ -85,7 +85,8 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
 };
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCostsV1> = Lazy::new(HostFunctionCostsV1::zero);
-static NEW_HOST_FUNCTION_COSTS_V2: Lazy<HostFunctionCostsV2> = Lazy::new(HostFunctionCostsV2::zero);
+static NEW_HOST_FUNCTION_COSTS_V2: Lazy<HostFFIFunctionCosts> =
+    Lazy::new(HostFFIFunctionCosts::zero);
 static NO_COSTS_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(|| {
     let wasm_v1_config = WasmV1Config::new(
         DEFAULT_WASM_MAX_MEMORY,
@@ -814,7 +815,7 @@ fn should_verify_remove_key_is_not_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    if builder.chainspec().core_config.enable_addressable_entity {
+    if builder.chainspec().core_config.addressable_entity_enabled {
         assert_eq!(
             // should charge zero, because we do not charge for storage when removing a key
             builder.last_exec_gas_consumed(),

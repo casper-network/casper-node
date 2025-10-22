@@ -10,6 +10,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{
@@ -18,6 +20,8 @@ use crate::{
     },
     CLType, CLTyped, PublicKey, URef, U512,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,20 +141,13 @@ impl DelegatorBid {
             }
         };
 
-        match vesting_schedule.locked_amount(era_end_timestamp_millis) {
-            Some(locked_amount) if updated_staked_amount < locked_amount => {
-                Err(Error::DelegatorFundsLocked)
-            }
-            None => {
-                // If `None`, then the locked amounts table has yet to be initialized (likely
-                // pre-90 day mark)
-                Err(Error::DelegatorFundsLocked)
-            }
-            Some(_) => {
-                self.staked_amount = updated_staked_amount;
-                Ok(updated_staked_amount)
+        if let Some(locked_amount) = vesting_schedule.locked_amount(era_end_timestamp_millis) {
+            if updated_staked_amount < locked_amount {
+                return Err(Error::DelegatorFundsLocked);
             }
         }
+        self.staked_amount = updated_staked_amount;
+        Ok(updated_staked_amount)
     }
 
     /// Increases the stake of the provided bid
@@ -219,6 +216,21 @@ impl DelegatorBid {
         match &self.delegator_kind {
             DelegatorKind::PublicKey(pk) => UnbondKind::DelegatedPublicKey(pk.clone()),
             DelegatorKind::Purse(addr) => UnbondKind::DelegatedPurse(*addr),
+        }
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_validator_and_delegator(
+        rng: &mut TestRng,
+        validator_public_key: PublicKey,
+        delegator_kind: DelegatorKind,
+    ) -> Self {
+        Self {
+            delegator_kind,
+            staked_amount: rng.gen(),
+            bonding_purse: rng.gen(),
+            validator_public_key,
+            vesting_schedule: rng.gen(),
         }
     }
 }
