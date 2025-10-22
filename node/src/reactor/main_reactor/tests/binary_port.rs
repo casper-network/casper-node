@@ -1451,6 +1451,7 @@ async fn binary_port_sandboxed_execution_request() {
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value: 0,
                 seed: None,
+                bundle_data: None,
             },
         )
         .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))

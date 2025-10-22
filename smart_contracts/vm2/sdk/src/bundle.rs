@@ -209,6 +209,18 @@ pub struct BundleV1 {
 }
 
 impl BundleV1 {
+    pub fn new(
+        definitions: BTreeMap<Uid, BundleDefinition>,
+        entry_points: Vec<BundleEntryPoint>,
+        messages: Vec<BundleMessage>,
+    ) -> Self {
+        Self {
+            definitions,
+            entry_points,
+            messages,
+        }
+    }
+
     pub fn entry_points(&self) -> &[BundleEntryPoint] {
         &self.entry_points
     }

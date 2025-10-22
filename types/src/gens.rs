@@ -1187,6 +1187,13 @@ fn seed_arb() -> impl Strategy<Value = Option<[u8; 32]>> {
     option::of(array::uniform32(any::<u8>()))
 }
 
+fn bundle_data_arb() -> impl Strategy<Value = Option<Bytes>> {
+    prop_oneof![
+        Just(None),
+        prop::collection::vec(any::<u8>(), 0..100).prop_map(|bytes| Some(Bytes::from(bytes)))
+    ]
+}
+
 pub fn session_transaction_target() -> impl Strategy<Value = TransactionTarget> {
     (
         any::<bool>(),
@@ -1210,6 +1217,7 @@ pub(crate) fn transaction_stored_runtime_params_arb(
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed: None,
+                bundle_data: None,
             }
         }),
     ]
@@ -1219,12 +1227,15 @@ pub(crate) fn transaction_session_runtime_params_arb(
 ) -> impl Strategy<Value = TransactionRuntimeParams> {
     prop_oneof![
         Just(TransactionRuntimeParams::VmCasperV1),
-        (transferred_value_arb(), seed_arb()).prop_map(|(transferred_value, seed)| {
-            TransactionRuntimeParams::VmCasperV2 {
-                transferred_value,
-                seed,
+        (transferred_value_arb(), seed_arb(), bundle_data_arb()).prop_map(
+            |(transferred_value, seed, bundle_data)| {
+                TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value,
+                    seed,
+                    bundle_data,
+                }
             }
-        })
+        )
     ]
 }
 

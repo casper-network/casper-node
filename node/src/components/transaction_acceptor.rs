@@ -553,15 +553,28 @@ impl TransactionAcceptor {
                     runtime,
                     ..
                 } => {
-                    if *is_install_upgrade && txn.is_v2_wasm() && runtime.seed().is_none() {
-                        return self.reject_transaction(
-                            effect_builder,
-                            *event_metadata,
-                            Error::InvalidTransaction(InvalidTransaction::V1(
-                                InvalidTransactionV1::MissingSeed,
-                            )),
-                        );
+                    if *is_install_upgrade && txn.is_v2_wasm() {
+                        if runtime.seed().is_none() {
+                            return self.reject_transaction(
+                                effect_builder,
+                                *event_metadata,
+                                Error::InvalidTransaction(InvalidTransaction::V1(
+                                    InvalidTransactionV1::MissingSeed,
+                                )),
+                            );
+                        }
+
+                        if runtime.bundle_data().is_none() {
+                            return self.reject_transaction(
+                                effect_builder,
+                                *event_metadata,
+                                Error::InvalidTransaction(InvalidTransaction::V1(
+                                    InvalidTransactionV1::MissingBundleData,
+                                )),
+                            );
+                        }
                     }
+
                     NextStep::CryptoValidation
                 }
                 TransactionTarget::Native => NextStep::CryptoValidation,

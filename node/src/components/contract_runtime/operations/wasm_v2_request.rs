@@ -170,6 +170,7 @@ impl WasmV2Request {
                 entry_point: String,
                 transferred_value: u64,
                 seed: Option<[u8; 32]>,
+                bundle_data: Option<Bytes>,
             },
             Session {
                 module_bytes: Bytes,
@@ -204,6 +205,7 @@ impl WasmV2Request {
                     TransactionRuntimeParams::VmCasperV2 {
                         transferred_value,
                         seed,
+                        bundle_data,
                     },
                 is_install_upgrade: _, // TODO: Handle this
             } => match transaction.entry_point() {
@@ -215,6 +217,7 @@ impl WasmV2Request {
                     entry_point: entry_point.to_string(),
                     transferred_value,
                     seed,
+                    bundle_data: bundle_data.map(|bytes| bytes.take_inner().into()),
                 },
                 _ => todo!(),
             },
@@ -228,6 +231,7 @@ impl WasmV2Request {
                 entry_point,
                 transferred_value,
                 seed,
+                bundle_data,
             } => {
                 let mut builder = InstallContractRequestBuilder::default();
 
@@ -249,6 +253,10 @@ impl WasmV2Request {
 
                 if let Some(seed) = seed {
                     builder = builder.with_seed(seed);
+                }
+
+                if let Some(bundle_data) = bundle_data {
+                    builder = builder.with_bundle_data(bundle_data);
                 }
 
                 // Value is expected to be the same as transferred value, it's just taken through

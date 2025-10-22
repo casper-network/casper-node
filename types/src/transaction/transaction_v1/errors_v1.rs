@@ -282,6 +282,8 @@ pub enum InvalidTransaction {
     UnsupportedInvocationTarget {
         id: Option<TransactionInvocationTarget>,
     },
+    /// Missing bundle data in V2 transaction.
+    MissingBundleData,
 }
 
 impl Display for InvalidTransaction {
@@ -524,11 +526,18 @@ impl Display for InvalidTransaction {
                             "the transaction invocation target is unsupported under V2 runtime",
                         )
                     }
-
+            InvalidTransaction::MissingBundleData => {
+                        write!(
+                            formatter,
+                            "missing bundle data in V2 transaction",
+                        )
+                    }
                     _ => {
                         // This may involve deprecated variants, so we can't list them
                                                 write!(formatter, "deprecated")
                                             }
+
+
         }
     }
 }
@@ -591,9 +600,9 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidReservedSlots { .. }
             | InvalidTransaction::InvalidDelegationAmount { .. }
             | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
-
             #[allow(deprecated)]
             InvalidTransaction::MissingSeed => None,
+            InvalidTransaction::MissingBundleData => None,
         }
     }
 }

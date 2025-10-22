@@ -83,6 +83,7 @@ impl CalltableSerializationEnvelopeBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct CalltableSerializationEnvelope {
     fields: Vec<Field>,
     bytes: Bytes,
@@ -137,6 +138,7 @@ impl CalltableSerializationEnvelope {
     }
 }
 
+#[derive(Debug)]
 pub struct CalltableFieldsIterator<'a> {
     index_in_fields_vec: usize,
     expected_size: usize,

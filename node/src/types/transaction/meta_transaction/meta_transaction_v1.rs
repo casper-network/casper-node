@@ -804,6 +804,7 @@ impl MetaTransactionV1 {
                 TransactionRuntimeParams::VmCasperV2 {
                     transferred_value,
                     seed: _,
+                    bundle_data: _,
                 } => *transferred_value,
             },
         }
