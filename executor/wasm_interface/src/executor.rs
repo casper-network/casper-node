@@ -560,8 +560,6 @@ pub enum ExecuteError {
     InvalidKeyForPurse(Key),
     #[error("attempt to call a non-existent ffi option {0}")]
     InvalidFFIOption(u32),
-    #[error("attempted writing in restricted mode")]
-    AttemptWriteInRestricted,
 }
 
 #[derive(Debug, Error)]
