@@ -5,7 +5,9 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 use crate::abi::{CasperABI, Declaration, Definition, Definitions, StructField};

@@ -1,7 +1,9 @@
 use crate::prelude::marker::PhantomData;
 
 use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 

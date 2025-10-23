@@ -3,7 +3,9 @@ use crate::prelude::{marker::PhantomData, *};
 use crate::types::HashAlgorithm;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
 use const_fnv1a_hash::fnv1a_hash_64;
 
 use crate::casper::{self, read_into_vec};

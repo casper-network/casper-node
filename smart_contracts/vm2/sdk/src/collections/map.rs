@@ -5,7 +5,9 @@ use crate::{
     prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
