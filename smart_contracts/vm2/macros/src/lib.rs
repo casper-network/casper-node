@@ -549,12 +549,12 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 let handle_call = if receiver_exists {
                     if receiver_is_ref {
                         quote! {
-                            let mut instance: #struct_name = #struct_name::__read_state_from_fields().unwrap();
+                            let mut instance: #struct_name = #struct_name::read_state_from_fields().unwrap();
                             let _ret = instance.#func_name(#(args.#arg_names,)*);
                         }
                     } else {
                         quote! {
-                            let _ret = #struct_name::__read_state_from_fields().unwrap().#func_name(#(args.#arg_names,)*);
+                            let _ret = #struct_name::read_state_from_fields().unwrap().#func_name(#(args.#arg_names,)*);
                         }
                     }
                 } else if method_attribute.constructor {
@@ -575,7 +575,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
 
                 let persist_after_call_tokens = if receiver_is_ref && receiver_is_mut {
-                    quote! { let _ = instance.__write_state_to_fields().unwrap(); }
+                    quote! { let _ = instance.write_state_to_fields().unwrap(); }
                 } else {
                     quote! {}
                 };
@@ -1232,7 +1232,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 }
 
                                 let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
-                                let mut instance: T = T::__read_state_from_fields().unwrap();
+                                let mut instance: T = T::read_state_from_fields().unwrap();
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = {
                                     match #resolve_abi_convention {
@@ -1262,7 +1262,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 let _ret = instance.#func_name(#(args.#arg_names,)*);
 
-                                if #is_by_ref && #is_mut { let _ = instance.__write_state_to_fields().unwrap(); }
+                                if #is_by_ref && #is_mut { let _ = instance.write_state_to_fields().unwrap(); }
 
                                 #handle_ret
                             }
@@ -1706,17 +1706,14 @@ fn process_casper_contract_state_for_struct(
             }
         }
 
-        // Internal per-field storage helpers and state read/write
         impl #struct_name {
-            /// Read state using field-scoped storage.
-            pub fn __read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
+            pub fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
                 #default_destructure
                 #(#read_bindings)*
                 Ok(Self { #(#init_fields)* })
             }
 
-            /// Write state using field-scoped storage.
-            pub fn __write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
+            pub fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
                 #(#write_statements)*
                 Ok(())
             }
@@ -1724,12 +1721,12 @@ fn process_casper_contract_state_for_struct(
         }
 
         impl #crate_path::FieldStateAccess for #struct_name {
-            fn __read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
-                Self::__read_state_from_fields()
+            fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
+                Self::read_state_from_fields()
             }
 
-            fn __write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
-                self.__write_state_to_fields()
+            fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
+                self.write_state_to_fields()
             }
         }
     }

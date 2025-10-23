@@ -322,12 +322,12 @@ pub fn write_state<T: BorshSerialize>(
 
 /// Read full contract state using macro-generated field methods
 pub fn read_contract_state<T: FieldStateAccess>() -> Result<T, HostResult> {
-    T::__read_state_from_fields()
+    T::read_state_from_fields()
 }
 
 /// Write full contract state using macro-generated field methods
 pub fn write_contract_state<T: FieldStateAccess>(state: &T) -> Result<(), HostResult> {
-    state.__write_state_to_fields()
+    state.write_state_to_fields()
 }
 
 #[derive(Debug)]

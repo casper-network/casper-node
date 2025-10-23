@@ -64,10 +64,9 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
 
 // Trait implemented by #[casper(contract_state)] structs to enable state reads
 pub trait FieldStateAccess: Sized {
-    fn __read_state_from_fields() -> Result<Self, casper_executor_wasm_common::error::HostResult>;
+    fn read_state_from_fields() -> Result<Self, casper_executor_wasm_common::error::HostResult>;
 
-    fn __write_state_to_fields(&self)
-        -> Result<(), casper_executor_wasm_common::error::HostResult>;
+    fn write_state_to_fields(&self) -> Result<(), casper_executor_wasm_common::error::HostResult>;
 }
 
 pub trait ContractRef {

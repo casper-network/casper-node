@@ -64,7 +64,6 @@ pub struct CollectionAddrInner {
 }
 
 impl CollectionAddrInner {
-    #[inline]
     pub fn new(
         entity_addr: [u8; 32],
         collection_type_tag: CollectionTypeTag,
