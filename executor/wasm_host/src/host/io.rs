@@ -45,6 +45,20 @@ pub(crate) fn host_return<S: GlobalStateReader + 'static>(
     Err(VMError::Return { flags, data })
 }
 
+pub(crate) fn host_revert<S: GlobalStateReader + 'static>(
+    _caller: &mut impl Caller<Context = Context<S>>,
+    input: Bytes,
+) -> VMResult<u32> {
+    let (data,) = match bytesrepr::deserialize_from_slice::<_, (bytesrepr::Bytes,)>(&input) {
+        Ok(res) => res,
+        Err(_) => {
+            return Ok(HOST_ERROR_INVALID_INPUT);
+        }
+    };
+    let revert_message = String::from_utf8_lossy(&data);
+    Err(VMError::Revert(revert_message.into_owned()))
+}
+
 pub(crate) fn host_copy_input<S: GlobalStateReader + 'static>(
     caller: &mut impl Caller<Context = Context<S>>,
 ) -> VMResult<(Option<Bytes>, u32)> {

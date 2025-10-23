@@ -117,7 +117,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
                 .expect("Should call");
 
             let call_result = contract_handle
-                .try_call(|harness| harness.emit_revert_with_data())
+                .try_call(|harness| harness.emit_rollback_with_data())
                 .expect("Call succeed");
 
             assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
@@ -133,7 +133,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         log!("Revert with data success");
 
         let call_result = contract_handle
-            .try_call(|harness| harness.emit_revert_without_data())
+            .try_call(|harness| harness.emit_rollback_without_data())
             .expect("Call succeed");
         assert_eq!(call_result.result, Err(CallError::CalleeRolledBack));
         assert_eq!(call_result.data, None);
@@ -141,7 +141,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         log!("Revert without data success");
 
         let call_result = contract_handle
-            .try_call(|harness| harness.should_revert_on_error(false))
+            .try_call(|harness| harness.should_rollback_on_error(false))
             .expect("Call succeed");
         assert!(!call_result.did_rollback());
         assert_eq!(call_result.into_result().unwrap(), Ok(()));
@@ -149,7 +149,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         log!("Revert on error success (ok case)");
 
         let call_result = contract_handle
-            .try_call(|harness| harness.should_revert_on_error(true))
+            .try_call(|harness| harness.should_rollback_on_error(true))
             .expect("Call succeed");
         assert!(call_result.did_rollback());
         assert_eq!(

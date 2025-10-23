@@ -8,8 +8,8 @@ use include_dir::{Dir, DirEntry};
 
 pub mod build;
 pub mod build_schema;
-pub mod new;
 pub mod error;
+pub mod new;
 
 /// Convenience result alias for CLI operations.
 pub type Result<T> = std::result::Result<T, error::CliError>;

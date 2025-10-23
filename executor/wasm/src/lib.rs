@@ -1385,22 +1385,15 @@ impl ExecutorV2 {
                 cache: final_tracking_copy.cache(),
                 messages: final_tracking_copy.messages(),
             }),
+            Err(VMError::Revert(error)) => Ok(ExecuteResult {
+                host_error: Some(CallError::Revert(error)),
+                output: None,
+                gas_usage,
+                effects: initial_tracking_copy.effects(),
+                cache: initial_tracking_copy.cache(),
+                messages: initial_tracking_copy.messages(),
+            }),
             Err(VMError::Return { flags, data }) => {
-                if flags.contains(ReturnFlags::REVERT) {
-                    let message = data
-                        .as_ref()
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
-                        .unwrap_or_default();
-                    return Ok(ExecuteResult {
-                        host_error: Some(CallError::Api(message)),
-                        output: None,
-                        gas_usage,
-                        effects: initial_tracking_copy.effects(),
-                        cache: initial_tracking_copy.cache(),
-                        messages: initial_tracking_copy.messages(),
-                    });
-                }
-
                 let host_error = if flags.contains(ReturnFlags::ROLLBACK) {
                     // The contract has rolled back.
                     Some(CallError::CalleeRolledBack)
@@ -1550,6 +1543,7 @@ impl ExecutorV2 {
                     FFIMenu::IO(iomethods) => match iomethods {
                         IOMethods::Return => config.wasm_config.host_ffi_opt_costs().ret,
                         IOMethods::CopyInput => config.wasm_config.host_ffi_opt_costs().copy_input,
+                        IOMethods::Revert => config.wasm_config.host_ffi_opt_costs().revert,
                     },
                 };
                 (ffi_opt.into(), ffi_function_cost)
@@ -1798,7 +1792,7 @@ impl Executor for ExecutorV2 {
                     CallError::CodeNotFound => SandboxedExecutionError::CodeNotFound,
                     CallError::EntityNotFound => SandboxedExecutionError::EntityNotFound,
                     CallError::LockedPackage => SandboxedExecutionError::LockedPackage,
-                    CallError::Api(api_error) => SandboxedExecutionError::Api(api_error),
+                    CallError::Revert(api_error) => SandboxedExecutionError::Api(api_error),
                     CallError::InputInvalid => SandboxedExecutionError::InputInvalid,
                 }),
             output: output_bytes.map(|x| x.into()),

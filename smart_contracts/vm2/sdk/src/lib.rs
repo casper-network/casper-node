@@ -107,7 +107,6 @@ macro_rules! log {
 macro_rules! rollback {
     () => {{
         $crate::casper::ret($crate::common::flags::ReturnFlags::ROLLBACK, None);
-        unreachable!()
     }};
     ($arg:expr) => {{
         let value = $arg;
@@ -117,8 +116,6 @@ macro_rules! rollback {
             $crate::common::flags::ReturnFlags::ROLLBACK,
             Some(data.as_slice()),
         );
-        #[allow(unreachable_code)]
-        value
     }};
 }
 
@@ -136,41 +133,23 @@ macro_rules! ret {
     }};
 }
 
-#[macro_export]
-macro_rules! revert {
-    () => {{
-        $crate::casper::ret($crate::common::flags::ReturnFlags::REVERT, None);
-        unreachable!()
-    }};
-    ($msg:expr) => {{
-        let msg: &str = $msg;
-        let bytes = msg.as_bytes();
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            Some(bytes),
-        );
-        unreachable!()
-    }};
-}
-
-pub trait UnwrapOrRevert<T> {
+pub trait UnwrapOrRollback<T> {
     /// Unwraps the value into its inner type or calls [`crate::casper::ret`] with a
     /// predetermined error code on failure.
-    fn unwrap_or_revert(self) -> T;
+    fn unwrap_or_rollback(self) -> T;
 }
 
-impl<T, E> UnwrapOrRevert<T> for Result<T, E>
+impl<T, E> UnwrapOrRollback<T> for Result<T, E>
 where
     E: BorshSerialize,
 {
-    fn unwrap_or_revert(self) -> T {
+    fn unwrap_or_rollback(self) -> T {
         self.unwrap_or_else(|error| {
-            let error_data = borsh::to_vec(&error).expect("Revert value should serialize");
+            let error_data = borsh::to_vec(&error).expect("Rollback value should serialize");
             casper::ret(
                 casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
                 Some(error_data.as_slice()),
             );
-            unreachable!("Support for unwrap_or_revert")
         })
     }
 }

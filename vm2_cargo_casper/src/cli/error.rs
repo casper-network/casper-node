@@ -5,9 +5,11 @@ use crate::utils::command_runner;
 /// Common CLI error type for this crate.
 #[derive(Debug, Error)]
 pub enum CliError {
-    /// This variant is reported whenever a Cargo.toml file does not have necessary dependencies to be considered a valid smart contract.
+    /// This variant is reported whenever a Cargo.toml file does not have necessary dependencies to
+    /// be considered a valid smart contract.
     ///
-    /// This will cause a plain wasm32 build without the necessary information to provide a JSON schema and bundle.
+    /// This will cause a plain wasm32 build without the necessary information to provide a JSON
+    /// schema and bundle.
     #[error("Missing feature set specification")]
     MissingRequiredFeatureSet,
 

@@ -68,7 +68,6 @@ fn main() -> anyhow::Result<()> {
             println!("WASM built at: {}", build_result.wasm.display());
             if let Some(schema_path) = build_result.schema {
                 println!("Schema built at: {}", schema_path.display());
-
             }
             if let Some(bundle_path) = build_result.bundle {
                 println!("Bundle built at: {}", bundle_path.display());

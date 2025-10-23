@@ -68,13 +68,21 @@ pub fn copy_input() -> Vec<u8> {
 }
 
 /// Return from the contract.
-pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
+pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
     let args = (flags.bits(), data);
     let arg_bytes = borsh::to_vec(&args).expect("Expected borsh to work");
 
     let _ = casper_ffi(IOFunctionOption::Return.into(), &arg_bytes);
-    // Calling ret should stop the stack execution
-    #[cfg(target_arch = "wasm32")]
+
+    unreachable!()
+}
+
+pub fn revert(message: &str) -> ! {
+    let message_bytes = message.as_bytes();
+    let arg_bytes = borsh::to_vec(&(message_bytes)).expect("Expected borsh to work");
+
+    let _ = casper_ffi(IOFunctionOption::Revert.into(), &arg_bytes);
+
     unreachable!()
 }
 

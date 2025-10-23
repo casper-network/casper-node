@@ -11,8 +11,6 @@ use syn::{
     ItemUnion, LitStr, Type,
 };
 
-use casper_executor_wasm_common::flags::EntryPointFlags;
-
 #[derive(Debug, FromAttributes)]
 #[darling(attributes(casper))]
 struct MethodAttribute {
@@ -22,7 +20,7 @@ struct MethodAttribute {
     #[darling(default)]
     ignore_state: bool,
     #[darling(default)]
-    revert_on_error: bool,
+    rollback_on_error: bool,
     /// Explicitly mark method as private so it's not externally callable.
     #[darling(default)]
     private: bool,
@@ -379,7 +377,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
     for entry_point in &mut entry_points.items {
         let method_attribute;
-        let mut flag_value = EntryPointFlags::empty();
 
         match entry_point {
             syn::ImplItem::Const(_) => todo!("Const"),
@@ -590,7 +587,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         _ if method_attribute.constructor => {
                             // Constructor does not return serialized state but is expected to save
                             // state, or explicitly revert.
-                            // TODO: Add support for Result<Self, Error> and revert_on_error if
+                            // TODO: Add support for Result<Self, Error> and rollback_on_error if
                             // possible.
 
                             ret_ty = Some(quote! { #struct_name });
@@ -683,7 +680,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     });
                 }
 
-                let handle_err = if !never_returns && method_attribute.revert_on_error {
+                let handle_err = if !never_returns && method_attribute.rollback_on_error {
                     if let syn::ReturnType::Default = func.sig.output {
                         panic!("Cannot revert on error if there is no return value");
                     }
@@ -691,7 +688,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     quote! {
                         let _ret: &Result<_, _> = &_ret;
                         if _ret.is_err() {
-                            flags |= casper_contract_sdk::common::flags::ReturnFlags::REVERT;
+                            flags |= casper_contract_sdk::common::flags::ReturnFlags::ROLLBACK;
                         }
 
                     }
@@ -713,11 +710,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
                     }
                 };
-                if method_attribute.constructor {
-                    flag_value |= EntryPointFlags::CONSTRUCTOR;
-                }
-
-                let _bits = flag_value.bits();
 
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
 
@@ -1196,10 +1188,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     })
                     .collect();
 
-                let flags = EntryPointFlags::empty();
-
-                let _flags = flags.bits();
-
                 let trait_ref = format_ident!("{}Ref", trait_name);
                 let resolve_abi_convention = match method_attribute.abi_convention.as_ref() {
                     Some(ref convention) => {
@@ -1256,7 +1244,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         _ if method_attribute.constructor => {
                             // Constructor does not return serialized state but is expected to save
                             // state, or explicitly revert.
-                            // TODO: Add support for Result<Self, Error> and revert_on_error if
+                            // TODO: Add support for Result<Self, Error> and rollback_on_error if
                             // possible.
                             ret_ty = quote! { Self };
 

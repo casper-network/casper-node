@@ -11,7 +11,13 @@ use casper_contract_sdk::{
     serializers::borsh,
 };
 
-use crate::{cli::{self, error::{self, CliError}}, compilation::CompileJob};
+use crate::{
+    cli::{
+        self,
+        error::{self, CliError},
+    },
+    compilation::CompileJob,
+};
 
 /// The `build-schema` subcommand flow. The schema is written to the specified
 /// [`Write`] implementer.
@@ -79,8 +85,7 @@ pub fn build_schema_impl<W: Write>(
         return Err(CliError::MissingRequiredFeatureSet);
     }
 
-    let build_result = compilation
-        .dispatch(env!("TARGET"), &features)?;
+    let build_result = compilation.dispatch(env!("TARGET"), &features)?;
 
     // Extract ABI information from the built contract
     let artifact_path = build_result

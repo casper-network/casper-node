@@ -6,7 +6,10 @@ use std::{
 
 use anyhow::{anyhow, Result};
 
-use crate::{cli, utils::command_runner::{self, DEFAULT_MAX_LINES}};
+use crate::{
+    cli,
+    utils::command_runner::{self, DEFAULT_MAX_LINES},
+};
 
 /// Represents a job to compile a Cargo project.
 pub(crate) struct CompileJob<'a> {

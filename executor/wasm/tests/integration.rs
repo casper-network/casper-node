@@ -174,7 +174,7 @@ fn vm2_rollback_should_return_to_caller_with_data() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
             address: contract_hash.value(),
-            entry_point: "emit_revert_with_data".to_string(),
+            entry_point: "emit_rollback_with_data".to_string(),
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -238,7 +238,7 @@ fn vm2_revert_should_abort_whole_stack() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
             address: contract_hash.value(),
-            entry_point: "emit_revert_without_data".to_string(),
+            entry_point: "emit_revert".to_string(),
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -255,8 +255,8 @@ fn vm2_revert_should_abort_whole_stack() {
         .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect("exec ok");
     match result.host_error {
-        Some(CallError::Api(_)) => {}
-        Some(other) => panic!("expected Api(_) got {other:?}"),
+        Some(CallError::Revert(_)) => {}
+        Some(other) => panic!("expected Revert(_) got {other:?}"),
         None => panic!("expected error"),
     }
 }

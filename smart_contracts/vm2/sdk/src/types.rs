@@ -193,7 +193,7 @@ pub enum CallError {
     InputInvalid = 3,
     CalleeGasDepleted = 4,
     NotCallable = 5,
-    Api = 6,
+    CalleeReverted = 6,
     NoActiveContract = 7,
     CodeNotFound = 8,
     EntityNotFound = 9,
@@ -209,7 +209,7 @@ impl fmt::Display for CallError {
             CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
             CallError::NotCallable => write!(f, "not callable"),
             CallError::InputInvalid => write!(f, "input invalid"),
-            CallError::Api => write!(f, "api"),
+            CallError::CalleeReverted => write!(f, "api"),
             CallError::NoActiveContract => write!(f, "no active contract"),
             CallError::CodeNotFound => write!(f, "code not found"),
             CallError::EntityNotFound => write!(f, "entity not found"),
@@ -229,7 +229,7 @@ impl TryFrom<u32> for CallError {
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
             CALLEE_INPUT_INVALID => Ok(Self::InputInvalid),
-            CALLEE_API_ERROR => Ok(Self::Api),
+            CALLEE_API_ERROR => Ok(Self::CalleeReverted),
             _ => Err(()),
         }
     }
@@ -402,6 +402,7 @@ impl TryFrom<u32> for ControlFunctionOption {
 pub enum IOFunctionOption {
     Return = 600,
     CopyInput = 601,
+    Revert = 602,
 }
 
 impl From<IOFunctionOption> for u32 {
@@ -417,6 +418,7 @@ impl TryFrom<u32> for IOFunctionOption {
         Ok(match value {
             600 => IOFunctionOption::Return,
             601 => IOFunctionOption::CopyInput,
+            602 => IOFunctionOption::Revert,
             _ => return Err(()),
         })
     }

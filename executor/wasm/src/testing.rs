@@ -370,6 +370,7 @@ pub fn call_dummy_host_fn_by_name(
                 remove: HostFFIFunctionCost::fixed(1),
                 copy_input: HostFFIFunctionCost::fixed(1),
                 ret: HostFFIFunctionCost::fixed(1),
+                revert: HostFFIFunctionCost::fixed(1),
                 create: HostFFIFunctionCost::fixed(1),
                 transfer: HostFFIFunctionCost::fixed(1),
                 env_balance: HostFFIFunctionCost::fixed(1),

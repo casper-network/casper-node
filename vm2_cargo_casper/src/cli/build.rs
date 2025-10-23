@@ -33,7 +33,9 @@ pub fn build_impl(
             &mut bundle_buffer,
         ) {
             Ok(_) => {}
-            Err(crate::cli::error::CliError::MissingRequiredFeatureSet) if allow_skipping_abi_schema => {
+            Err(crate::cli::error::CliError::MissingRequiredFeatureSet)
+                if allow_skipping_abi_schema =>
+            {
                 eprintln!(
                     "🤷 Skipping ABI schema because the project doesn't have necessary dependencies..."
                 );

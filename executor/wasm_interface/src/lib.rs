@@ -136,6 +136,9 @@ pub enum VMError {
     #[error("Fatal host error: {0}")]
     Fatal(#[from] FatalHostError),
 
+    #[error("Revert: {0}")]
+    Revert(String),
+
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,

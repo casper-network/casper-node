@@ -8,7 +8,7 @@ extern crate core;
 use core::arch::wasm32;
 use core::{ffi::c_void, ptr};
 
-const REVERT_FLAGS: u32 = 0x0000_0001;
+const ROLLBACK_FLAGS: u32 = 0x0000_0001;
 const MAX_MEMORY_PAGES: usize = 64;
 const GROW_MARGIN: usize = 2;
 
@@ -44,7 +44,7 @@ fn revert(value: ApiError) -> u32 {
             // Return shouldn't have any output data and should not return anything
             ptr::null_mut()
         }
-        let rev_flag = REVERT_FLAGS.to_le_bytes();
+        let rev_flag = ROLLBACK_FLAGS.to_le_bytes();
         write(&mut return_data[0..4], &rev_flag);
         write(&mut return_data[4..5], &[1_u8]);
         let data_bytes = (value as u32).to_le_bytes();

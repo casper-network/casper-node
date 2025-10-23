@@ -326,6 +326,7 @@ mod tests {
             alt_bn128_add: HostFFIFunctionCost::new(117, 16),
             alt_bn128_mul: HostFFIFunctionCost::new(118, 17),
             alt_bn128_pairing: HostFFIFunctionCost::new(119, 18),
+            revert: HostFFIFunctionCost::new(120, 18),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         let wasm_v1_config = WasmV1Config::new(
