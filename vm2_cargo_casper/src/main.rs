@@ -3,6 +3,8 @@ use std::{fs::File, io::Write};
 use clap::Parser;
 use cli::{Cli, Command};
 
+use crate::cli::error::CliError;
+
 pub(crate) mod cli;
 pub(crate) mod compilation;
 pub mod utils;
@@ -31,12 +33,22 @@ fn main() -> anyhow::Result<()> {
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build_schema::build_schema_impl(
+            match cli::build_schema::build_schema_impl(
                 package_name,
                 &mut schema_writer,
                 &mut bundle_writer,
-                allow_skipping_abi_schema,
-            )?
+            ) {
+                Ok(_) => {}
+                Err(CliError::MissingRequiredFeatureSet) if allow_skipping_abi_schema => {
+                    eprintln!(
+                        "🤷 Skipping ABI schema because the project doesn't have necessary dependencies..."
+                    );
+                    std::process::exit(1);
+                }
+                Err(other_error) => {
+                    return Err(other_error.into());
+                }
+            }
         }
         Command::Build {
             output,
@@ -47,12 +59,20 @@ fn main() -> anyhow::Result<()> {
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build::build_impl(
+            let build_result = cli::build::build_impl(
                 package_name,
                 output,
                 embed_schema.unwrap_or(true),
                 allow_skipping_abi_schema,
-            )?
+            )?;
+            println!("WASM built at: {}", build_result.wasm.display());
+            if let Some(schema_path) = build_result.schema {
+                println!("Schema built at: {}", schema_path.display());
+
+            }
+            if let Some(bundle_path) = build_result.bundle {
+                println!("Bundle built at: {}", bundle_path.display());
+            }
         }
         Command::New { name } => cli::new::new_impl(&name)?,
     }

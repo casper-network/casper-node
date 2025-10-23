@@ -9,6 +9,10 @@ use include_dir::{Dir, DirEntry};
 pub mod build;
 pub mod build_schema;
 pub mod new;
+pub mod error;
+
+/// Convenience result alias for CLI operations.
+pub type Result<T> = std::result::Result<T, error::CliError>;
 
 /// Writes the binary-embedded directory into a filesystem directory.
 /// Returns the path to the extracted dir.

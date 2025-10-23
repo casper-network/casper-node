@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 
-use crate::utils::command_runner::{self, DEFAULT_MAX_LINES};
+use crate::{cli, utils::command_runner::{self, DEFAULT_MAX_LINES}};
 
 /// Represents a job to compile a Cargo project.
 pub(crate) struct CompileJob<'a> {
@@ -34,7 +34,7 @@ impl<'a> CompileJob<'a> {
 
     /// Dispatches the compilation job. This builds the Cargo project into a temporary target
     /// directory.
-    pub fn dispatch<T, I, S>(&self, target: T, extra_features: I) -> Result<CompilationResults>
+    pub fn dispatch<T, I, S>(&self, target: T, extra_features: I) -> cli::Result<CompilationResults>
     where
         T: Into<String>,
         I: IntoIterator<Item = S>,
@@ -59,7 +59,7 @@ impl<'a> CompileJob<'a> {
             target.as_str(),
             "--features",
             &features_str,
-            "--lib",
+            // "--lib",
             "--release",
             "--color=always",
             "--message-format=json-diagnostic-rendered-ansi",
@@ -120,20 +120,7 @@ impl<'a> CompileJob<'a> {
             }
         }
 
-        match handle.wait() {
-            Ok(()) => {
-                // Process completed successfully.
-            }
-            Err(command_runner::Outcome::Io(error)) => {
-                return Err(anyhow!("Cargo build failed with error code: {error}"));
-            }
-            Err(command_runner::Outcome::ErrorCode(code)) => {
-                return Err(anyhow!("Cargo build failed with error code: {code}"));
-            }
-            Err(command_runner::Outcome::Signal(signal)) => {
-                return Err(anyhow!("Cargo build was terminated by signal: {signal}"));
-            }
-        }
+        handle.wait()?;
 
         Ok(CompilationResults { artifacts })
     }

@@ -4,13 +4,19 @@ use anyhow::Context;
 
 use crate::compilation::CompileJob;
 
+pub struct BuildResult {
+    pub(crate) wasm: PathBuf,
+    pub(crate) schema: Option<PathBuf>,
+    pub(crate) bundle: Option<PathBuf>,
+}
+
 /// The `build` subcommand flow.
 pub fn build_impl(
     package_name: Option<&str>,
     output_dir: Option<PathBuf>,
     embed_schema: bool,
     allow_skipping_abi_schema: bool,
-) -> Result<(), anyhow::Error> {
+) -> Result<BuildResult, anyhow::Error> {
     // Build the contract package targetting wasm32-unknown-unknown without
     // extra feature flags - this is the production contract wasm file.
     //
@@ -20,13 +26,35 @@ pub fn build_impl(
         // Build the schema first
         let mut schema_buffer = Cursor::new(Vec::new());
         let mut bundle_buffer = Cursor::new(Vec::new());
-        super::build_schema::build_schema_impl(
+
+        match super::build_schema::build_schema_impl(
             package_name,
             &mut schema_buffer,
             &mut bundle_buffer,
-            allow_skipping_abi_schema,
-        )
-        .context("Failed to build contract schema")?;
+        ) {
+            Ok(_) => {}
+            Err(crate::cli::error::CliError::MissingRequiredFeatureSet) if allow_skipping_abi_schema => {
+                eprintln!(
+                    "🤷 Skipping ABI schema because the project doesn't have necessary dependencies..."
+                );
+                // Compile and move to specified output directory
+                eprintln!("🔨 Fallback: Building contract WASM without ABI awareness...");
+                let production_wasm_path = CompileJob::new(package_name, None, vec![])
+                    .dispatch("wasm32-unknown-unknown", Option::<String>::None)
+                    .context("Failed to compile user wasm")?
+                    .get_artifact_by_extension("wasm")
+                    .context("Failed extracting build artifacts to directory")?;
+
+                return Ok(BuildResult {
+                    wasm: production_wasm_path,
+                    schema: None,
+                    bundle: None,
+                });
+            }
+            Err(other_error) => {
+                return Err(other_error.into());
+            }
+        }
 
         let contract_schema = String::from_utf8(schema_buffer.into_inner())
             .context("Failed to read contract schema")?;
@@ -100,15 +128,11 @@ pub fn build_impl(
         .context("Couldn't write to the specified output directory.")?;
 
     // Report paths
-    eprintln!("✅ Completed. Build artifacts:");
-    eprintln!("{:?}", out_wasm_path.canonicalize()?);
-    if let Some(schema_path) = out_schema_path {
-        eprintln!("{:?}", schema_path.canonicalize()?);
-    }
+    eprintln!("✅ Completed.");
 
-    if let Some(bundle_path) = out_bundle_path {
-        eprintln!("{:?}", bundle_path.canonicalize()?);
-    }
-
-    Ok(())
+    Ok(BuildResult {
+        wasm: out_wasm_path.canonicalize()?,
+        schema: out_schema_path,
+        bundle: out_bundle_path,
+    })
 }

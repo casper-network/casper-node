@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![allow(internal_features)]
-#![feature(lang_items)]
 
 extern crate core;
 
@@ -95,9 +94,6 @@ pub fn panic(_info: &::core::panic::PanicInfo) -> ! {
     revert(ApiError::OutOfMemory);
     loop {}
 }
-
-#[lang = "eh_personality"]
-extern "C" fn eh_personality() {}
 
 #[no_mangle]
 pub extern "C" fn call() {

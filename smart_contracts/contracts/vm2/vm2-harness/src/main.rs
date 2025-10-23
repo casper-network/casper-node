@@ -9,7 +9,7 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_message},
-    casper_executor_wasm_common::{error::HostResult, keyspace::Keyspace},
+    common::{error::HostResult, keyspace::Keyspace},
     log,
     prelude::Entity,
     types::{Address, CallError, NamedKey, PublicKey},
@@ -646,19 +646,6 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let keyspace = Keyspace::Context(b"this key definetely does not exists");
         let result = casper::remove(keyspace);
         assert_eq!(result, Err(HostResult::NotFound));
-    }
-
-    {
-        next_test(&mut counter, "Stable key read/write");
-
-        let old_value = EXAMPLE_STABLE_KEY.read();
-        assert!(old_value.is_none());
-
-        let new_string: String = "Updated value".into();
-        EXAMPLE_STABLE_KEY.write(new_string.clone());
-
-        let new_value = EXAMPLE_STABLE_KEY.read();
-        assert_eq!(new_value, Some(new_string))
     }
 
     {

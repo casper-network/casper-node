@@ -11,7 +11,7 @@ use casper_contract_sdk::{
     serializers::borsh,
 };
 
-use crate::compilation::CompileJob;
+use crate::{cli::{self, error::{self, CliError}}, compilation::CompileJob};
 
 /// The `build-schema` subcommand flow. The schema is written to the specified
 /// [`Write`] implementer.
@@ -19,8 +19,7 @@ pub fn build_schema_impl<W: Write>(
     package_name: Option<&str>,
     schema_writer: &mut W,
     bundle_writer: &mut W,
-    allow_skipping_abi_schema: bool,
-) -> Result<(), anyhow::Error> {
+) -> cli::Result<()> {
     // Compile contract package to a native library with extra code that will
     // produce ABI information including entrypoints, types, etc.
     eprintln!("🔨 Step 1: Building contract schema...");
@@ -46,14 +45,14 @@ pub fn build_schema_impl<W: Write>(
                 .packages
                 .iter()
                 .find(|p| p.name == package_name)
-                .context("Root package not found in metadata")?,
+                .ok_or(CliError::RootPackageNotFound)?,
             None => {
                 let manifest_path_target = PathBuf::from("./Cargo.toml").canonicalize()?;
                 metadata
                     .packages
                     .iter()
                     .find(|p| p.manifest_path.canonicalize().unwrap() == manifest_path_target)
-                    .context("Root package not found in metadata")?
+                    .ok_or(CliError::RootPackageNotFound)?
             }
         };
 
@@ -75,30 +74,28 @@ pub fn build_schema_impl<W: Write>(
     if dependencies.contains(&"casper-contract-macros".into()) {
         features.push("casper-contract-macros/__abi_generator".to_owned());
     }
-    if allow_skipping_abi_schema && features.is_empty() {
-        eprintln!(
-            "🤷 Skipping ABI schema because the project doesn't have necessary dependencies..."
-        );
-        return Ok(());
+
+    if features.is_empty() {
+        return Err(CliError::MissingRequiredFeatureSet);
     }
+
     let build_result = compilation
-        .dispatch(env!("TARGET"), &features)
-        .context("ABI-rich wasm compilation failure")?;
+        .dispatch(env!("TARGET"), &features)?;
 
     // Extract ABI information from the built contract
     let artifact_path = build_result
         .artifacts()
         .iter()
         .find(|x| x.extension() == Some(OsStr::new(DLL_EXTENSION)))
-        .context("Failed loading the built contract")?;
+        .ok_or(CliError::NoCompiledArtifactFound)?;
 
-    let artifact = Artifact::from_path(artifact_path).context("Load library")?;
-    let collected = artifact.collect_schema().context("Collect schema")?;
-    let schema: Schema = serde_json::from_value(collected.clone()).context("Deserialize schema")?;
+    let artifact = Artifact::from_path(artifact_path)?;
+    let collected = artifact.collect_schema()?;
+    let schema: Schema = serde_json::from_value(collected.clone())?;
     let bundle_v1: BundleV1 = schema.into();
     let bundle = Bundle::V1(bundle_v1);
 
-    serde_json::to_writer(schema_writer, &collected).context("Serialize collected schema")?;
-    borsh::to_writer(bundle_writer, &bundle).context("Write bundle")?;
+    serde_json::to_writer(schema_writer, &collected)?;
+    borsh::to_writer(bundle_writer, &bundle)?;
     Ok(())
 }
