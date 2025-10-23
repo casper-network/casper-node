@@ -23,7 +23,7 @@ use casper_contract_sdk_sys::{CreateResult, EnvInfo};
 use casper_executor_wasm_common::{
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
-    keyspace::{Keyspace, KeyspaceTag},
+    keyspace::Keyspace,
 };
 
 /// Print a message.
@@ -91,12 +91,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     key: Keyspace,
     f: F,
 ) -> Result<Option<()>, HostResult> {
-    let (key_space, key_bytes) = match key {
-        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
-        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
-        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
-    };
+    let input_data = key.to_host_input_data().expect("Expected borsh to work");
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         len: usize,
@@ -112,7 +107,6 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 
     let ctx = &Some(f) as *const _ as *mut _;
 
-    let input_data = borsh::to_vec(&(key_space, key_bytes)).expect("Expected borsh to work");
     let ret = unsafe {
         casper_contract_sdk_sys::casper_ffi(
             GlobalStateFunctionOption::Read.into(),
@@ -123,28 +117,18 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         )
     };
 
-    log!("ret {:?}", ret);
-
     match result_from_code(ret) {
         Ok(()) => Ok(Some(())),
         Err(HostResult::NotFound) => Ok(None),
-        Err(err) => {
-            log!("casper_system result_code {:?}", err);
-            Err(err)
-        }
+        Err(err) => Err(err),
     }
 }
 
 /// Write to the global state.
 pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
-    let (key_space, key_bytes) = match key {
-        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
-        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
-        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
-    };
+    let mut input_data = key.to_host_input_data().expect("Expected borsh to work");
+    borsh::to_writer(&mut input_data, value).expect("Expected borsh to work");
 
-    let input_data = borsh::to_vec(&(key_space, key_bytes, value)).expect("Expected borsh to work");
     extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
         // Write shouldn't have any output data and should not return anything
         ptr::null_mut()
@@ -165,13 +149,8 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
 
 /// Remove from the global state.
 pub fn remove(key: Keyspace) -> Result<(), HostResult> {
-    let (key_space, key_bytes) = match key {
-        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
-        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
-        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::AllNamedKeys => (KeyspaceTag::AllNamedKeys as u64, &[][..]),
-    };
-    let input_data = borsh::to_vec(&(key_space, key_bytes)).expect("Expected borsh to work");
+    let input_data = key.to_host_input_data().expect("Expected borsh to work");
+
     extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
         // Write shouldn't have any output data and should not return anything
         ptr::null_mut()

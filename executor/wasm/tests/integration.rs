@@ -261,6 +261,7 @@ fn vm2_revert_should_abort_whole_stack() {
     }
 }
 
+#[test]
 fn harness() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");

@@ -84,7 +84,6 @@ pub fn build_schema_impl<W: Write>(
     if features.is_empty() {
         return Err(CliError::MissingRequiredFeatureSet);
     }
-
     let build_result = compilation.dispatch(env!("TARGET"), &features)?;
 
     // Extract ABI information from the built contract

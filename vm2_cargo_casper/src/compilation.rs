@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 
 use crate::{
     cli,
@@ -62,7 +62,6 @@ impl<'a> CompileJob<'a> {
             target.as_str(),
             "--features",
             &features_str,
-            // "--lib",
             "--release",
             "--color=always",
             "--message-format=json-diagnostic-rendered-ansi",

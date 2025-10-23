@@ -1,12 +1,11 @@
 use crate::{
     prelude::collections::BTreeMap,
-    schema::Schema,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
 use casper_executor_wasm_common::type_uid::Uid;
 
-use crate::{abi::Definition, compat::types::CLType};
+use crate::compat::types::CLType;
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub enum BundlePrimitive {
@@ -26,6 +25,7 @@ pub enum BundlePrimitive {
     Bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<crate::abi::Primitive> for BundlePrimitive {
     fn from(value: crate::abi::Primitive) -> Self {
         match value {
@@ -102,28 +102,31 @@ pub enum BundleTypeDefinition {
     },
 }
 
-impl From<Definition> for BundleTypeDefinition {
-    fn from(value: Definition) -> Self {
+#[cfg(not(target_arch = "wasm32"))]
+impl From<crate::abi::Definition> for BundleTypeDefinition {
+    fn from(value: crate::abi::Definition) -> Self {
         match value {
-            Definition::Primitive(p) => BundleTypeDefinition::Primitive(p.into()),
-            Definition::Mapping { key, value } => BundleTypeDefinition::Mapping {
+            crate::abi::Definition::Primitive(p) => BundleTypeDefinition::Primitive(p.into()),
+            crate::abi::Definition::Mapping { key, value } => BundleTypeDefinition::Mapping {
                 key: key.as_uid(),
                 value: value.as_uid(),
             },
-            Definition::Sequence { decl } => BundleTypeDefinition::Sequence {
+            crate::abi::Definition::Sequence { decl } => BundleTypeDefinition::Sequence {
                 decl: decl.as_uid(),
             },
-            Definition::FixedSequence { length, decl } => BundleTypeDefinition::FixedSequence {
-                length,
-                decl: decl.as_uid(),
-            },
-            Definition::Tuple { items } => BundleTypeDefinition::Tuple {
+            crate::abi::Definition::FixedSequence { length, decl } => {
+                BundleTypeDefinition::FixedSequence {
+                    length,
+                    decl: decl.as_uid(),
+                }
+            }
+            crate::abi::Definition::Tuple { items } => BundleTypeDefinition::Tuple {
                 items: items
                     .into_iter()
                     .map(|schema_uid| schema_uid.as_uid())
                     .collect(),
             },
-            Definition::Enum { items } => BundleTypeDefinition::Enum {
+            crate::abi::Definition::Enum { items } => BundleTypeDefinition::Enum {
                 items: items
                     .into_iter()
                     .map(|v| BundleEnumVariant {
@@ -132,7 +135,7 @@ impl From<Definition> for BundleTypeDefinition {
                     })
                     .collect(),
             },
-            Definition::Struct { items } => BundleTypeDefinition::Struct {
+            crate::abi::Definition::Struct { items } => BundleTypeDefinition::Struct {
                 items: items
                     .into_iter()
                     .map(|f| BundleStructField {
@@ -234,9 +237,10 @@ impl BundleV1 {
     }
 }
 
-impl From<Schema> for BundleV1 {
-    fn from(schema: Schema) -> Self {
-        let Schema {
+#[cfg(not(target_arch = "wasm32"))]
+impl From<crate::schema::Schema> for BundleV1 {
+    fn from(schema: crate::schema::Schema) -> Self {
+        let crate::schema::Schema {
             definitions,
             metadata: _,
             type_: _,

@@ -12,6 +12,7 @@ use casper_executor_wasm_common::{
         HOST_ERROR_INVALID_INPUT, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
     },
     keyspace::{Keyspace, KeyspaceTag},
+    type_uid::Uid,
 };
 use casper_executor_wasm_interface::{
     executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
@@ -25,8 +26,8 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractPackageHash, EntryPoints},
     AccessRights, AddressableEntity, BlockHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
     CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
-    EntityKind, EntryPointPayment, EntryPointValue, HashAddr, Key, NamedKeys, Package, PackageAddr,
-    ProtocolVersion, StoredValue, URef,
+    EntityKind, EntryPointAddr, EntryPointPayment, EntryPointValue, HashAddr, Key, NamedKeys,
+    Package, PackageAddr, ProtocolVersion, StoredValue, TypeUid, URef,
 };
 use either::Either;
 use num_traits::FromPrimitive;
@@ -73,6 +74,20 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
             Keyspace::NamedKey(key_name)
         }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
+        KeyspaceTag::TypeDef => match <[u8; 4]>::try_from(key_payload_bytes.as_slice()) {
+            Ok(array) => {
+                let u32_value = u32::from_le_bytes(array);
+                let uid = Uid::new_raw(u32_value);
+                Keyspace::TypeDef(uid)
+            }
+            Err(_) => {
+                error!("Invalid TypeDef Uid bytes length");
+                return Ok((None, HOST_ERROR_INVALID_DATA));
+            }
+        },
+        KeyspaceTag::EntryPoint => Keyspace::EntryPoint(
+            std::str::from_utf8(&key_payload_bytes).map_err(|_| FatalHostError::TypeConversion)?,
+        ),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -175,6 +190,12 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
                 EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
             }
         }
+        Ok(Some(StoredValue::TypeDef(type_definition))) => {
+            match bytesrepr::serialize(type_definition) {
+                Ok(bytes) => Cow::Owned(bytes),
+                Err(_) => return Ok((None, HOST_ERROR_INVALID_INPUT)),
+            }
+        }
         Ok(Some(stored_value)) => {
             // TODO: Backwards compatibility with old EE, although it's not clear if we should
             // do it at the storage level. Since new VM has storage isolated
@@ -240,6 +261,14 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
             Keyspace::NamedKey(key_name)
         }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
+        KeyspaceTag::TypeDef => {
+            // Writing to typedef keyspace only allowed at a contract installation point.
+            return Ok(HOST_ERROR_INVALID_INPUT);
+        }
+        KeyspaceTag::EntryPoint => {
+            // Writing to entrypoint keyspace is not allowed.
+            return Ok(HOST_ERROR_INVALID_INPUT);
+        }
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -333,6 +362,8 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
             stored_value
         }
         Keyspace::AllNamedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
+        Keyspace::TypeDef(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+        Keyspace::EntryPoint(_) => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
     metered_write(caller, global_state_key, stored_value)?;
@@ -382,6 +413,21 @@ pub(crate) fn host_remove<S: GlobalStateReader + 'static>(
             Keyspace::NamedKey(key_name)
         }
         KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
+        KeyspaceTag::TypeDef => {
+            let u32_value = if key_payload_bytes.len() != 4 {
+                error!("Invalid TypeDef Uid bytes length");
+                return Ok(HOST_ERROR_INVALID_DATA);
+            } else {
+                let mut array = [0u8; 4];
+                array.copy_from_slice(&key_payload_bytes[..4]);
+                u32::from_le_bytes(array)
+            };
+            let uid = Uid::new_raw(u32_value);
+            Keyspace::TypeDef(uid)
+        }
+        KeyspaceTag::EntryPoint => Keyspace::EntryPoint(
+            std::str::from_utf8(&key_payload_bytes).map_err(|_| FatalHostError::TypeConversion)?,
+        ),
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -929,5 +975,13 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
                 }
             }
         }
+        Keyspace::TypeDef(typedef) => {
+            let digest = typedef.into_raw();
+            Some(Key::TypeDef(TypeUid::new(digest)))
+        }
+        Keyspace::EntryPoint(entry_point_name) => Some(Key::EntryPoint(
+            EntryPointAddr::new_v2_entry_point_addr(entity_addr, entry_point_name)
+                .expect("Hashing entry point name failed"),
+        )),
     }
 }
