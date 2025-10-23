@@ -1,19 +1,36 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.  The format is based on [Keep a Changelog].
+All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog].
 
-[comment]: <> (Added:      new features)
-[comment]: <> (Changed:    changes in existing functionality)
+[comment]: <> (Added: new features)
+
+[comment]: <> (Changed: changes in existing functionality)
+
 [comment]: <> (Deprecated: soon-to-be removed features)
-[comment]: <> (Removed:    now removed features)
-[comment]: <> (Fixed:      any bug fixes)
-[comment]: <> (Security:   in case of vulnerabilities)
 
+[comment]: <> (Removed: now removed features)
 
+[comment]: <> (Fixed: any bug fixes)
 
-## [Unreleased] (node 2.0)
+[comment]: <> (Security: in case of vulnerabilities)
 
-## [Unreleased] (node 2.0)
+## [Unreleased]
+
+### Added
+
+- A VM1 contract version install (both new and upgrade) will now produce a native message to system-owned topics:
+  - in case `addressable_entity` is turned off:
+    - `contract_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::Contract` value
+    - `package_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractPackage` value
+    - `bytecode_key` topic will receive string-formatted `Key::Hash` containing the address of the new `StoredValue::ContractWasm` value
+    - `contract_version` topic will receive a string containing the major contract and minor installed contract version (for example "2.1")
+  - in case `addressable_entity` is turned on:
+    - `contract_key` topic will receive string-formatted `Key::AddressableEntity` containing the address of the new `AddressableEntity` of kind `SmartContract` value
+    - `package_key` topic will receive string-formatted `Key::SmartContract` containing the address of the new `SmartContract::Package` value
+    - `bytecode_key` topic will receive string-formatted `Key::ByteCode` containing the address of the new `StoredValue::ByteCode` value
+    - `contract_version` topic will receive a string containing the major contract and minor installed contract version (for example "2.1")
+
+## 8.0.0
 
 ### Added
 
@@ -22,7 +39,8 @@ All notable changes to this project will be documented in this file.  The format
 - struct casper_execution_engine::engine_state::engine_config::EngineConfigBuilder
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_ALLOW_AUCTION_BIDS: bool
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool
-- const casper_execution_engine::engine_state::engine_config::DEFAULT_BALANCE_HOLD_INTERVAL: casper_types::timestamp::TimeDiff
+- const casper_execution_engine::engine_state::engine_config::DEFAULT_BALANCE_HOLD_INTERVAL: casper_types::timestamp::
+  TimeDiff
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_COMPUTE_REWARDS: bool
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY: bool
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64
@@ -32,7 +50,8 @@ All notable changes to this project will be documented in this file.  The format
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_MAX_STORED_VALUE_SIZE: u32
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64
-- const casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION: casper_types::protocol_version::ProtocolVersion
+- const casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION: casper_types::protocol_version::
+  ProtocolVersion
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_STRICT_ARGUMENT_CHECKING: bool
 - const casper_execution_engine::engine_state::engine_config::DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64
 - enum casper_execution_engine::engine_state::Error
@@ -71,8 +90,11 @@ All notable changes to this project will be documented in this file.  The format
 - const casper_execution_engine::runtime::DEFAULT_MAX_GLOBALS: u32
 - const casper_execution_engine::runtime::DEFAULT_MAX_PARAMETER_COUNT: u32
 - const casper_execution_engine::runtime::DEFAULT_MAX_TABLE_SIZE: u32
-- fn casper_execution_engine::runtime::cycles_for_instruction(instruction: &casper_wasm::elements::ops::Instruction) -> u32
-- fn casper_execution_engine::runtime::preprocess(wasm_config: casper_types::chainspec::vm_config::wasm_config::WasmConfig, module_bytes: &[u8]) -> core::result::Result<casper_wasm::elements::module::Module, casper_execution_engine::runtime::PreprocessingError>
+- fn casper_execution_engine::runtime::cycles_for_instruction(instruction: &casper_wasm::elements::ops::Instruction) ->
+  u32
+- fn casper_execution_engine::runtime::preprocess(wasm_config: casper_types::chainspec::vm_config::wasm_config::
+  WasmConfig, module_bytes: &[u8]) -> core::result::Result<casper_wasm::elements::module::Module,
+  casper_execution_engine::runtime::PreprocessingError>
 - type casper_execution_engine::runtime::RuntimeStackFrame = casper_types::system::caller::Caller
 - enum casper_execution_engine::runtime_context::AllowInstallUpgrade
 - struct casper_execution_engine::runtime_context::RuntimeContext<'a, R>
@@ -115,7 +137,8 @@ All notable changes to this project will be documented in this file.  The format
 - enum casper_execution_engine::core::engine_state::execution_result::ExecutionResult
 - enum casper_execution_engine::core::engine_state::execution_result::ForcedTransferResult
 - struct casper_execution_engine::core::engine_state::execution_result::ExecutionResultBuilder
-- type casper_execution_engine::core::engine_state::execution_result::ExecutionResults = alloc::collections::vec_deque::VecDeque<casper_execution_engine::core::engine_state::execution_result::ExecutionResult>
+- type casper_execution_engine::core::engine_state::execution_result::ExecutionResults = alloc::collections::vec_deque::
+  VecDeque<casper_execution_engine::core::engine_state::execution_result::ExecutionResult>
 - enum casper_execution_engine::core::engine_state::genesis::GenesisAccount
 - enum casper_execution_engine::core::engine_state::genesis::GenesisError
 - struct casper_execution_engine::core::engine_state::genesis::AdministratorAccount
@@ -188,29 +211,46 @@ All notable changes to this project will be documented in this file.  The format
 - const casper_execution_engine::core::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32
 - const casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT: u64
 - const casper_execution_engine::core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64
-- static casper_execution_engine::core::engine_state::MAX_PAYMENT: once_cell::sync::Lazy<casper_types::uint::macro_code::U512>
+- static casper_execution_engine::core::engine_state::MAX_PAYMENT: once_cell::sync::Lazy<casper_types::uint::
+  macro_code::U512>
 - enum casper_execution_engine::core::execution::Error
 - enum casper_execution_engine::core::resolvers::error::ResolverError
 - trait casper_execution_engine::core::resolvers::memory_resolver::MemoryResolver
 - struct casper_execution_engine::core::runtime::stack::RuntimeStack
 - struct casper_execution_engine::core::runtime::stack::RuntimeStackOverflow
-- type casper_execution_engine::core::runtime::stack::RuntimeStackFrame = casper_types::system::call_stack_element::CallStackElement
+- type casper_execution_engine::core::runtime::stack::RuntimeStackFrame = casper_types::system::call_stack_element::
+  CallStackElement
 - struct casper_execution_engine::core::runtime::Runtime<'a, R>
 - struct casper_execution_engine::core::runtime_context::RuntimeContext<'a, R>
 - const casper_execution_engine::core::runtime_context::RANDOM_BYTES_COUNT: usize
-- fn casper_execution_engine::core::runtime_context::validate_group_membership(contract_package: &casper_types::contracts::ContractPackage, access: &casper_types::contracts::EntryPointAccess, validator: impl core::ops::function::Fn(&casper_types::uref::URef) -> bool) -> core::result::Result<(), casper_execution_engine::core::engine_state::ExecError>
+- fn casper_execution_engine::core::runtime_context::validate_group_membership(contract_package: &casper_types::
+  contracts::ContractPackage, access: &casper_types::contracts::EntryPointAccess, validator: impl core::ops::function::
+  Fn(&casper_types::uref::URef) -> bool) -> core::result::Result<(), casper_execution_engine::core::engine_state::
+  ExecError>
 - enum casper_execution_engine::core::tracking_copy::AddResult
 - enum casper_execution_engine::core::tracking_copy::TrackingCopyQueryResult
 - enum casper_execution_engine::core::tracking_copy::ValidationError
 - struct casper_execution_engine::core::tracking_copy::TrackingCopy<R>
 - struct casper_execution_engine::core::tracking_copy::TrackingCopyCache<M>
 - trait casper_execution_engine::core::tracking_copy::TrackingCopyExt<R>
-- fn casper_execution_engine::core::tracking_copy::validate_balance_proof(hash: &casper_hashing::Digest, balance_proof: &casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>, expected_purse_key: casper_types::key::Key, expected_motes: &casper_types::uint::macro_code::U512) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
-- fn casper_execution_engine::core::tracking_copy::validate_query_proof(hash: &casper_hashing::Digest, proofs: &[casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>], expected_first_key: &casper_types::key::Key, path: &[alloc::string::String], expected_value: &casper_types::stored_value::StoredValue) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
+- fn casper_execution_engine::core::tracking_copy::validate_balance_proof(hash: &casper_hashing::Digest, balance_proof:
+  &casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::
+  stored_value::StoredValue>, expected_purse_key: casper_types::key::Key, expected_motes: &casper_types::uint::
+  macro_code::U512) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
+- fn casper_execution_engine::core::tracking_copy::validate_query_proof(hash: &casper_hashing::Digest,
+  proofs: &[casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>],
+  expected_first_key: &casper_types::key::Key, path: &[alloc::string::String], expected_value: &casper_types::
+  stored_value::StoredValue) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
 - enum casper_execution_engine::core::ValidationError
 - const casper_execution_engine::core::ADDRESS_LENGTH: usize
-- fn casper_execution_engine::core::validate_balance_proof(hash: &casper_hashing::Digest, balance_proof: &casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>, expected_purse_key: casper_types::key::Key, expected_motes: &casper_types::uint::macro_code::U512) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
-- fn casper_execution_engine::core::validate_query_proof(hash: &casper_hashing::Digest, proofs: &[casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>], expected_first_key: &casper_types::key::Key, path: &[alloc::string::String], expected_value: &casper_types::stored_value::StoredValue) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
+- fn casper_execution_engine::core::validate_balance_proof(hash: &casper_hashing::Digest, balance_proof:
+  &casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::
+  stored_value::StoredValue>, expected_purse_key: casper_types::key::Key, expected_motes: &casper_types::uint::
+  macro_code::U512) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
+- fn casper_execution_engine::core::validate_query_proof(hash: &casper_hashing::Digest,
+  proofs: &[casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<casper_types::key::Key, casper_types::stored_value::StoredValue>],
+  expected_first_key: &casper_types::key::Key, path: &[alloc::string::String], expected_value: &casper_types::
+  stored_value::StoredValue) -> core::result::Result<(), casper_execution_engine::core::tracking_copy::ValidationError>
 - type casper_execution_engine::core::Address = [u8; 32]
 - struct casper_execution_engine::shared::additive_map::AdditiveMap<K, V, S>
 - struct casper_execution_engine::shared::execution_journal::ExecutionJournal
@@ -219,9 +259,12 @@ All notable changes to this project will be documented in this file.  The format
 - type casper_execution_engine::shared::host_function_costs::Cost = u32
 - enum casper_execution_engine::shared::logging::Style
 - struct casper_execution_engine::shared::logging::Settings
-- fn casper_execution_engine::shared::logging::initialize(settings: casper_execution_engine::shared::logging::Settings) -> core::result::Result<(), log::SetLoggerError>
-- fn casper_execution_engine::shared::logging::log_details(\_log_level: log::Level, \_message_format: alloc::string::String, \_properties: alloc::collections::btree::map::BTreeMap<&str, alloc::string::String>)
-- fn casper_execution_engine::shared::logging::log_host_function_metrics(\_host_function: &str, \_properties: alloc::collections::btree::map::BTreeMap<&str, alloc::string::String>)
+- fn casper_execution_engine::shared::logging::initialize(settings: casper_execution_engine::shared::logging::
+  Settings) -> core::result::Result<(), log::SetLoggerError>
+- fn casper_execution_engine::shared::logging::log_details(\_log_level: log::Level, \_message_format: alloc::string::
+  String, \_properties: alloc::collections::btree::map::BTreeMap<&str, alloc::string::String>)
+- fn casper_execution_engine::shared::logging::log_host_function_metrics(\_host_function: &str, \_properties: alloc::
+  collections::btree::map::BTreeMap<&str, alloc::string::String>)
 - struct casper_execution_engine::shared::newtypes::CorrelationId
 - struct casper_execution_engine::shared::opcode_costs::BrTableCost
 - struct casper_execution_engine::shared::opcode_costs::ControlFlowCosts
@@ -288,12 +331,14 @@ All notable changes to this project will be documented in this file.  The format
 - struct casper_execution_engine::shared::system_config::standard_payment_costs::StandardPaymentCosts
 - struct casper_execution_engine::shared::system_config::SystemConfig
 - const casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST: u32
-- fn casper_execution_engine::shared::test_utils::mocked_account(account_hash: casper_types::account::account_hash::AccountHash) -> alloc::vec::Vec<(casper_types::key::Key, casper_types::stored_value::StoredValue)>
+- fn casper_execution_engine::shared::test_utils::mocked_account(account_hash: casper_types::account::account_hash::
+  AccountHash) -> alloc::vec::Vec<(casper_types::key::Key, casper_types::stored_value::StoredValue)>
 - enum casper_execution_engine::shared::transform::Error
 - enum casper_execution_engine::shared::transform::Transform
 - static casper_execution_engine::shared::utils::OS_PAGE_SIZE: once_cell::sync::Lazy<usize>
 - fn casper_execution_engine::shared::utils::check_multiple_of_page_size(value: usize)
-- fn casper_execution_engine::shared::utils::jsonify<T>(value: T, pretty_print: bool) -> alloc::string::String where T: serde::ser::Serialize
+- fn casper_execution_engine::shared::utils::jsonify<T>(value: T, pretty_print: bool) -> alloc::string::String where T:
+  serde::ser::Serialize
 - struct casper_execution_engine::shared::wasm_config::WasmConfig
 - const casper_execution_engine::shared::wasm_config::DEFAULT_MAX_STACK_HEIGHT: u32
 - const casper_execution_engine::shared::wasm_config::DEFAULT_WASM_MAX_MEMORY: u32
@@ -303,9 +348,14 @@ All notable changes to this project will be documented in this file.  The format
 - const casper_execution_engine::shared::wasm_prep::DEFAULT_MAX_GLOBALS: u32
 - const casper_execution_engine::shared::wasm_prep::DEFAULT_MAX_PARAMETER_COUNT: u32
 - const casper_execution_engine::shared::wasm_prep::DEFAULT_MAX_TABLE_SIZE: u32
-- fn casper_execution_engine::shared::wasm_prep::deserialize(module_bytes: &[u8]) -> core::result::Result<casper_wasm::elements::module::Module, casper_execution_engine::shared::wasm_prep::PreprocessingError>
-- fn casper_execution_engine::shared::wasm_prep::get_module_from_entry_points(entry_point_names: alloc::vec::Vec<&str>, module: casper_wasm::elements::module::Module) -> core::result::Result<alloc::vec::Vec<u8>, casper_execution_engine::core::engine_state::ExecError>
-- fn casper_execution_engine::shared::wasm_prep::preprocess(wasm_config: casper_execution_engine::shared::wasm_config::WasmConfig, module_bytes: &[u8]) -> core::result::Result<casper_wasm::elements::module::Module, casper_execution_engine::shared::wasm_prep::PreprocessingError>
+- fn casper_execution_engine::shared::wasm_prep::deserialize(module_bytes: &[u8]) -> core::result::Result<casper_wasm::
+  elements::module::Module, casper_execution_engine::shared::wasm_prep::PreprocessingError>
+- fn casper_execution_engine::shared::wasm_prep::get_module_from_entry_points(entry_point_names: alloc::vec::Vec<&str>,
+  module: casper_wasm::elements::module::Module) -> core::result::Result<alloc::vec::Vec<u8>, casper_execution_engine::
+  core::engine_state::ExecError>
+- fn casper_execution_engine::shared::wasm_prep::preprocess(wasm_config: casper_execution_engine::shared::wasm_config::
+  WasmConfig, module_bytes: &[u8]) -> core::result::Result<casper_wasm::elements::module::Module,
+  casper_execution_engine::shared::wasm_prep::PreprocessingError>
 - enum casper_execution_engine::storage::error::in_memory::Error
 - enum casper_execution_engine::storage::error::lmdb::Error
 - enum casper_execution_engine::storage::error::Error
@@ -313,24 +363,50 @@ All notable changes to this project will be documented in this file.  The format
 - struct casper_execution_engine::storage::global_state::lmdb::LmdbGlobalState
 - struct casper_execution_engine::storage::global_state::scratch::ScratchGlobalState
 - enum casper_execution_engine::storage::global_state::CommitError
-- trait casper_execution_engine::storage::global_state::CommitProvider: casper_execution_engine::storage::global_state::StateProvider
+- trait casper_execution_engine::storage::global_state::CommitProvider: casper_execution_engine::storage::global_state::
+  StateProvider
 - trait casper_execution_engine::storage::global_state::StateProvider
 - trait casper_execution_engine::storage::global_state::StateReader<K, V>
-- fn casper_execution_engine::storage::global_state::commit<'a, R, S, H, E>(environment: &'a R, store: &S, correlation_id: casper_execution_engine::shared::newtypes::CorrelationId, prestate_hash: casper_hashing::Digest, effects: casper_execution_engine::shared::additive_map::AdditiveMap<casper_types::key::Key, casper_execution_engine::shared::transform::Transform, H>) -> core::result::Result<casper_hashing::Digest, E> where R: casper_execution_engine::storage::transaction_source::TransactionSource<'a, Handle = <S as casper_execution_engine::storage::store::Store>::Handle>, S: casper_execution_engine::storage::trie_store::TrieStore<casper_types::key::Key, casper_types::stored_value::StoredValue>, <S as casper_execution_engine::storage::store::Store>::Error: core::convert::From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error>, E: core::convert::From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error> + core::convert::From<<S as casper_execution_engine::storage::store::Store>::Error> + core::convert::From<casper_types::bytesrepr::Error> + core::convert::From<casper_execution_engine::storage::global_state::CommitError>, H: core::hash::BuildHasher
-- fn casper_execution_engine::storage::global_state::put_stored_values<'a, R, S, E>(environment: &'a R, store: &S, correlation_id: casper_execution_engine::shared::newtypes::CorrelationId, prestate_hash: casper_hashing::Digest, stored_values: std::collections::hash::map::HashMap<casper_types::key::Key, casper_types::stored_value::StoredValue>) -> core::result::Result<casper_hashing::Digest, E> where R: casper_execution_engine::storage::transaction_source::TransactionSource<'a, Handle = <S as casper_execution_engine::storage::store::Store>::Handle>, S: casper_execution_engine::storage::trie_store::TrieStore<casper_types::key::Key, casper_types::stored_value::StoredValue>, <S as casper_execution_engine::storage::store::Store>::Error: core::convert::From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error>, E: core::convert::From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error> + core::convert::From<<S as casper_execution_engine::storage::store::Store>::Error> + core::convert::From<casper_types::bytesrepr::Error> + core::convert::From<casper_execution_engine::storage::global_state::CommitError>
+- fn casper_execution_engine::storage::global_state::commit<'a, R, S, H, E>(environment: &'a R, store: &S,
+  correlation_id: casper_execution_engine::shared::newtypes::CorrelationId, prestate_hash: casper_hashing::Digest,
+  effects: casper_execution_engine::shared::additive_map::AdditiveMap<casper_types::key::Key, casper_execution_engine::
+  shared::transform::Transform, H>) -> core::result::Result<casper_hashing::Digest, E> where R:
+  casper_execution_engine::storage::transaction_source::TransactionSource<'a,
+  Handle = <S as casper_execution_engine::storage::store::Store>::Handle>, S: casper_execution_engine::storage::
+  trie_store::TrieStore<casper_types::key::Key, casper_types::stored_value::
+  StoredValue>, <S as casper_execution_engine::storage::store::Store>::Error: core::convert::
+  From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error>, E: core::convert::
+  From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error> + core::convert::
+  From<<S as casper_execution_engine::storage::store::Store>::Error> + core::convert::From<casper_types::bytesrepr::
+  Error> + core::convert::From<casper_execution_engine::storage::global_state::CommitError>, H: core::hash::BuildHasher
+- fn casper_execution_engine::storage::global_state::put_stored_values<'a, R, S, E>(environment: &'a R, store: &S,
+  correlation_id: casper_execution_engine::shared::newtypes::CorrelationId, prestate_hash: casper_hashing::Digest,
+  stored_values: std::collections::hash::map::HashMap<casper_types::key::Key, casper_types::stored_value::
+  StoredValue>) -> core::result::Result<casper_hashing::Digest, E> where R: casper_execution_engine::storage::
+  transaction_source::TransactionSource<'a, Handle = <S as casper_execution_engine::storage::store::Store>::Handle>, S:
+  casper_execution_engine::storage::trie_store::TrieStore<casper_types::key::Key, casper_types::stored_value::
+  StoredValue>, <S as casper_execution_engine::storage::store::Store>::Error: core::convert::
+  From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error>, E: core::convert::
+  From<<R as casper_execution_engine::storage::transaction_source::TransactionSource>::Error> + core::convert::
+  From<<S as casper_execution_engine::storage::store::Store>::Error> + core::convert::From<casper_types::bytesrepr::
+  Error> + core::convert::From<casper_execution_engine::storage::global_state::CommitError>
 - trait casper_execution_engine::storage::store::Store<K, V>
 - trait casper_execution_engine::storage::store::StoreExt<K, V>: casper_execution_engine::storage::store::Store<K, V>
 - struct casper_execution_engine::storage::transaction_source::in_memory::InMemoryEnvironment
 - struct casper_execution_engine::storage::transaction_source::in_memory::InMemoryReadTransaction
 - struct casper_execution_engine::storage::transaction_source::in_memory::InMemoryReadWriteTransaction<'a>
 - struct casper_execution_engine::storage::transaction_source::lmdb::LmdbEnvironment
-- trait casper_execution_engine::storage::transaction_source::Readable: casper_execution_engine::storage::transaction_source::Transaction
+- trait casper_execution_engine::storage::transaction_source::Readable: casper_execution_engine::storage::
+  transaction_source::Transaction
 - trait casper_execution_engine::storage::transaction_source::Transaction: core::marker::Sized
 - trait casper_execution_engine::storage::transaction_source::TransactionSource<'a>
-- trait casper_execution_engine::storage::transaction_source::Writable: casper_execution_engine::storage::transaction_source::Transaction
-- fn casper_execution_engine::storage::transaction_source::Writable::write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> core::result::Result<(), Self::Error>
+- trait casper_execution_engine::storage::transaction_source::Writable: casper_execution_engine::storage::
+  transaction_source::Transaction
+- fn casper_execution_engine::storage::transaction_source::Writable::write(&mut self, handle: Self::Handle, key: &[u8],
+  value: &[u8]) -> core::result::Result<(), Self::Error>
 - impl<'a> casper_execution_engine::storage::transaction_source::Writable for lmdb::transaction::RwTransaction<'a>
-- fn lmdb::transaction::RwTransaction<'a>::write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> core::result::Result<(), Self::Error>
+- fn lmdb::transaction::RwTransaction<'a>::write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> core::
+  result::Result<(), Self::Error>
 - enum casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProofStep
 - struct casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof<K, V>
 - enum casper_execution_engine::storage::trie::DescendantsIterator<'a>
@@ -338,253 +414,273 @@ All notable changes to this project will be documented in this file.  The format
 - enum casper_execution_engine::storage::trie::Trie<K, V>
 - struct casper_execution_engine::storage::trie::PointerBlock
 - struct casper_execution_engine::storage::trie::TrieRaw
-- type casper_execution_engine::storage::trie::Parents<K, V> = alloc::vec::Vec<(u8, casper_execution_engine::storage::trie::Trie<K, V>)>
-- type casper_execution_engine::storage::trie::PointerBlockArray = [casper_execution_engine::storage::trie::PointerBlockValue; 256]
-- type casper_execution_engine::storage::trie::PointerBlockValue = core::option::Option<casper_execution_engine::storage::trie::Pointer>
+- type casper_execution_engine::storage::trie::Parents<K, V> = alloc::vec::Vec<(u8, casper_execution_engine::storage::
+  trie::Trie<K, V>)>
+- type casper_execution_engine::storage::trie::
+  PointerBlockArray = [casper_execution_engine::storage::trie::PointerBlockValue; 256]
+- type casper_execution_engine::storage::trie::PointerBlockValue = core::option::Option<casper_execution_engine::
+  storage::trie::Pointer>
 - struct casper_execution_engine::storage::trie_store::in_memory::InMemoryTrieStore
 - struct casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore
-- trait casper_execution_engine::storage::trie_store::TrieStore<K, V>: casper_execution_engine::storage::store::Store<casper_hashing::Digest, casper_execution_engine::storage::trie::Trie<K, V>>
+- trait casper_execution_engine::storage::trie_store::TrieStore<K, V>: casper_execution_engine::storage::store::Store<
+  casper_hashing::Digest, casper_execution_engine::storage::trie::Trie<K, V>>
 - macro casper_execution_engine::make_array_newtype!
-
 
 ## 7.0.1
 
 ### Changed
-* Change the cost of `wasm.storage_costs.gas_per_byte` and `shared::storage_costs::DEFAULT_GAS_PER_BYTE_COST` from `630_000` to `1_117_587`.
-* Change the cost of the host function `casper_add_associated_key` from `9_000` to `1_200_000`.
-* Change the cost of the argument `entry_points_size` of host function `casper_add_contract_version` from `0` to `120_000`.
-* Change the cost of the host function `casper_blake2b`and its argument `in_size` from `200` and `0` respectively to `1_200_000` to `120_000`.
-* Change the cost of the host function `casper_call_contract` and its arguments `entry_point_name_size` and `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_call_versioned_contract` and the arguments `entry_point_name_size` and `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_get_balance` from `3_800` to `3_000_000`.
-* Change the cost of arguments `name_size` and `dest_size` of host function `casper_get_named_arg` from `0` to `120_000`.
-* Change the cost of the host function `casper_put_key` and its arguments `name_size` and `key_size` from `38_000`, `1_100` and `0` respectively to `100_000_000`, `120_000` and `120_000`.
-* Change the cost of the host function `casper_read_value` and its argument `key_size` from `6_000` and `0` respectively to `60_000` and `120_000`.
-* Change the cost of the argument `urefs_size` of host function `casper_remove_contract_user_group_urefs` from `0` to `120_000`.
-* Change the cost of the host function `casper_transfer_from_purse_to_purse` from `82_000` to `82_000_000`.
 
-
+- Change the cost of `wasm.storage_costs.gas_per_byte` and `shared::storage_costs::DEFAULT_GAS_PER_BYTE_COST` from
+  `630_000` to `1_117_587`.
+- Change the cost of the host function `casper_add_associated_key` from `9_000` to `1_200_000`.
+- Change the cost of the argument `entry_points_size` of host function `casper_add_contract_version` from `0` to
+  `120_000`.
+- Change the cost of the host function `casper_blake2b`and its argument `in_size` from `200` and `0` respectively to
+  `1_200_000` to `120_000`.
+- Change the cost of the host function `casper_call_contract` and its arguments `entry_point_name_size` and
+  `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
+- Change the cost of the host function `casper_call_versioned_contract` and the arguments `entry_point_name_size` and
+  `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
+- Change the cost of the host function `casper_get_balance` from `3_800` to `3_000_000`.
+- Change the cost of arguments `name_size` and `dest_size` of host function `casper_get_named_arg` from `0` to
+  `120_000`.
+- Change the cost of the host function `casper_put_key` and its arguments `name_size` and `key_size` from `38_000`,
+  `1_100` and `0` respectively to `100_000_000`, `120_000` and `120_000`.
+- Change the cost of the host function `casper_read_value` and its argument `key_size` from `6_000` and `0` respectively
+  to `60_000` and `120_000`.
+- Change the cost of the argument `urefs_size` of host function `casper_remove_contract_user_group_urefs` from `0` to
+  `120_000`.
+- Change the cost of the host function `casper_transfer_from_purse_to_purse` from `82_000` to `82_000_000`.
 
 ## [Unreleased] (node 1.5.4)
+
 ## 7.0.0
 
 ### Added
-* Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
-* Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid` to operate. Disabling this option makes sense only for private chains.
-* Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option makes sense only for private chains.
-* Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
-* Add chainspec option `core.fee_handling` that specifies how transaction fees are handled.
-* Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes sense only for private chains.
-* Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
+
+- Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two
+  peers. Disabling this option makes sense only for private chains.
+- Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid`
+  to operate. Disabling this option makes sense only for private chains.
+- Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option
+  makes sense only for private chains.
+- Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
+- Add chainspec option `core.fee_handling` that specifies how transaction fees are handled.
+- Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes
+  sense only for private chains.
+- Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
 
 ### Changed
-* `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
-* Tweak upgrade logic transforming withdraw purses to early exit if possible.
-* Lower the default gas costs of opcodes.
+
+- `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
+- Tweak upgrade logic transforming withdraw purses to early exit if possible.
+- Lower the default gas costs of opcodes.
   - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
   - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
-* Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain current seigniorage rate (per unit of time).
-* Refund ratio is changed from 0% to 99%.
-
-
+- Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain
+  current seigniorage rate (per unit of time).
+- Refund ratio is changed from 0% to 99%.
 
 ## 6.0.0
 
 ### Changed
-* Default value for `max_stack_height` is increased to 500.
-* Replace usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
+
+- Default value for `max_stack_height` is increased to 500.
+- Replace usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
 
 ### Fixed
-* Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
-* Fix issue with one-time code used for migrating data to support redelegations.
+
+- Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
+- Fix issue with one-time code used for migrating data to support redelegations.
 
 ### Security
-* Fix unbounded memory allocation issue while parsing Wasm.
 
-
+- Fix unbounded memory allocation issue while parsing Wasm.
 
 ## 5.0.0
 
 ### Added
-* Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
-* Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
-* Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+
+- Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another
+  validator without having to unbond. The function signature for the entrypoint is:
+  `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
+- Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the
+  hashes for `accounts.toml` and `global_state.toml`.
+- Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and
+  of the correct `CLType`.
 
 ### Changed
-* Fix some integer casts.
-* Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
-* Lift the temporary limit of the size of individual values stored in global state.
-* Providing incorrect Wasm for execution will cause the default 2.5CSPR to be charged.
-* Update the default `control_flow` opcode cost from `440` to `440_000`.
 
-
+- Fix some integer casts.
+- Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
+- Lift the temporary limit of the size of individual values stored in global state.
+- Providing incorrect Wasm for execution will cause the default 2.5 token to be charged.
+- Update the default `control_flow` opcode cost from `440` to `440_000`.
 
 ## 4.0.0
 
 ### Changed
-* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
 
-
+- Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version
+  bump here).
 
 ## 3.1.1
 
 ### Changed
-* Update the following constant values to match settings in production chainspec:
-  * `DEFAULT_RET_VALUE_SIZE_WEIGHT`
-  * `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
-  * `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
-  * `DEFAULT_GAS_PER_BYTE_COST`
-  * `DEFAULT_ADD_BID_COST`
-  * `DEFAULT_WITHDRAW_BID_COST`
-  * `DEFAULT_DELEGATE_COST`
-  * `DEFAULT_UNDELEGATE_COST`
-  * `DEFAULT_MAX_STACK_HEIGHT`
 
-
+- Update the following constant values to match settings in production chainspec:
+  - `DEFAULT_RET_VALUE_SIZE_WEIGHT`
+  - `DEFAULT_CONTROL_FLOW_CALL_OPCODE`
+  - `DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE`
+  - `DEFAULT_GAS_PER_BYTE_COST`
+  - `DEFAULT_ADD_BID_COST`
+  - `DEFAULT_WITHDRAW_BID_COST`
+  - `DEFAULT_DELEGATE_COST`
+  - `DEFAULT_UNDELEGATE_COST`
+  - `DEFAULT_MAX_STACK_HEIGHT`
 
 ## 3.1.0
 
 ### Added
-* Add `commit_prune` functionality to support pruning of entries in global storage.
+
+- Add `commit_prune` functionality to support pruning of entries in global storage.
 
 ### Changed
-* Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
 
-
+- Update to use `casper-wasm-utils`; a patched fork of the archived `wasm-utils`.
 
 ## 3.0.0
 
 ### Changed
-* Implement more precise control over opcode costs that lowers the gas cost.
-* Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5CSPR.
 
-
+- Implement more precise control over opcode costs that lowers the gas cost.
+- Increase cost of `withdraw_bid` and `undelegate` auction entry points to 2.5 token.
 
 ## 2.0.1
 
 ### Security
-* Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
-* Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
-* Implement checks before preprocessing Wasm to avoid possibility to import internal host functions.
 
+- Implement checks before preprocessing Wasm to avoid potential OOM when initializing table section.
+- Implement checks before preprocessing Wasm to avoid references to undeclared functions or globals.
+- Implement checks before preprocessing Wasm to avoid possibility to import internal host functions.
 
 ## 2.0.0 - 2022-05-11
 
 ### Changed
-* Change contract runtime to allow caching global state changes during execution of a single block, also avoiding writing interstitial data to global state.
 
-
+- Change contract runtime to allow caching global state changes during execution of a single block, also avoiding
+  writing interstitial data to global state.
 
 ## 1.5.0 - 2022-04-05
 
 ### Changed
-* Temporarily limit the size of individual values stored in global state.
+
+- Temporarily limit the size of individual values stored in global state.
 
 ### Security
-* `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an upper limit on all tokens being transferred within the transaction.
-* Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on removing alternate execution paths where unintended escalation of privilege was possible.
-* Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime argument.
-* Fix a potential panic during Wasm preprocessing.
-* `get_era_validators` performs a query rather than execution.
 
-
+- `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an
+  upper limit on all tokens being transferred within the transaction.
+- Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on
+  removing alternate execution paths where unintended escalation of privilege was possible.
+- Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime
+  argument.
+- Fix a potential panic during Wasm preprocessing.
+- `get_era_validators` performs a query rather than execution.
 
 ## 1.4.4 - 2021-12-29
 
 ### Changed
-* No longer checksum-hex encode hash digest and address types.
 
-
+- No longer checksum-hex encode hash digest and address types.
 
 ## 1.4.3 - 2021-12-06
 
 ### Changed
-* Auction contract now handles minting into an existing purse.
-* Default maximum stack size in `WasmConfig` changed to 188.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+
+- Auction contract now handles minting into an existing purse.
+- Default maximum stack size in `WasmConfig` changed to 188.
+- Default behavior of LMDB changed to use [
+  `NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
 ### Fixed
-* Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for a non-genesis validator with higher stake.
 
-
+- Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for
+  a non-genesis validator with higher stake.
 
 ## [1.4.2] - 2021-11-11
 
 ### Changed
-* Execution transforms are returned in their insertion order.
+
+- Execution transforms are returned in their insertion order.
 
 ### Removed
-* Removed `SystemContractCache` as it was not being used anymore
+
+- Removed `SystemContractCache` as it was not being used anymore
 
 ## [1.4.0] - 2021-10-04
 
 ### Added
-* Added genesis validation step to ensure there are more genesis validators than validator slots.
-* Added a support for passing a public key as a `target` argument in native transfers.
-* Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
+
+- Added genesis validation step to ensure there are more genesis validators than validator slots.
+- Added a support for passing a public key as a `target` argument in native transfers.
+- Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
 
 ### Changed
-* Documented `storage` module and children.
-* Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
-* Support building and testing using stable Rust.
-* Increase price of `create_purse` to 2.5CSPR.
-* Increase price of native transfer to 100 million motes (0.1 CSPR).
-* Improve doc comments to clarify behavior of the bidding functionality.
-* Document `core` and `shared` modules and their children.
-* Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
+
+- Documented `storage` module and children.
+- Reduced visibility to `pub(crate)` in several areas, allowing some dead code to be noticed and pruned.
+- Support building and testing using stable Rust.
+- Increase price of `create_purse` to 2.5 token.
+- Increase price of native transfer to 100 million motes (0.1 token).
+- Improve doc comments to clarify behavior of the bidding functionality.
+- Document `core` and `shared` modules and their children.
+- Change parameters to `LmdbEnvironment`'s constructor enabling manual flushing to disk.
 
 ### Fixed
-* Fix a case where user could potentially supply a refund purse as a payment purse.
 
-
+- Fix a case where user could potentially supply a refund purse as a payment purse.
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
-* Update pinned version of Rust to `nightly-2021-06-17`.
 
-
+- Update pinned version of Rust to `nightly-2021-06-17`.
 
 ## [1.2.0] - 2021-05-27
 
 ### Added
-* Add validation that the delegated amount of each genesis account is non-zero.
-* Add `activate-bid` client contract.
-* Add a check in `Mint::transfer` that the source has `Read` permissions.
+
+- Add validation that the delegated amount of each genesis account is non-zero.
+- Add `activate-bid` client contract.
+- Add a check in `Mint::transfer` that the source has `Read` permissions.
 
 ### Changed
-* Change to Apache 2.0 license.
-* Remove the strict expectation that minor and patch protocol versions must always increase by 1.
+
+- Change to Apache 2.0 license.
+- Remove the strict expectation that minor and patch protocol versions must always increase by 1.
 
 ### Removed
-* Remove `RootNotFound` error struct.
 
-
+- Remove `RootNotFound` error struct.
 
 ## [1.1.1] - 2021-04-19
 
 No changes.
 
-
-
 ## [1.1.0] - 2021-04-13 [YANKED]
 
 No changes.
-
-
 
 ## [1.0.1] - 2021-04-08
 
 No changes.
 
-
-
 ## [1.0.0] - 2021-03-30
 
 ### Added
-* Initial release of execution engine for Casper mainnet.
 
-
+- Initial release of execution engine for Casper mainnet.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
 [unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev

@@ -17,7 +17,7 @@ use core::convert::TryInto;
 use casper_types::{
     addressable_entity::{EntityEntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
     contracts::NamedKeys,
-    CLType, CLTyped, EntryPointPayment, Key, PackageHash, Parameter, URef,
+    CLType, CLTyped, EntryPointPayment, Key, PackageAddr, Parameter, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -51,7 +51,7 @@ pub extern "C" fn call() {
         entry_points
     };
 
-    let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+    let do_nothing_package_hash: PackageAddr = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
         .into_hash_addr()
         .unwrap_or_revert()

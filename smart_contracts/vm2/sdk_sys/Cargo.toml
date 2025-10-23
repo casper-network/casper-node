@@ -1,0 +1,13 @@
+[package]
+name = "casper-contract-sdk-sys"
+version = "1.0.0"
+edition = "2021"
+description = "Casper contract sdk sys package"
+authors = ["Michał Papierski <michal@casper.network>"]
+documentation = "https://docs.rs/casper-contract-sdk-sys"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/smart_contracts/sdk_sys"
+license = "Apache-2.0"
+
+[dependencies]
+borsh = { version = "1.5", features = ["derive", "bytes"] }

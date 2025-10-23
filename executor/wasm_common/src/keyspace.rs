@@ -13,8 +13,8 @@ pub enum KeyspaceTag {
     Context = 1,
     /// Used for a named key based storage which usually involves named keys.
     NamedKey = 2,
-    /// Used for a payment info based storage which usually involves payment information.
-    PaymentInfo = 3,
+    /// Used for getting all named keys
+    AllNamedKeys = 4,
 }
 
 #[repr(u64)]
@@ -29,8 +29,10 @@ pub enum Keyspace<'a> {
     Context(&'a [u8]),
     /// Stores contract's named keys.
     NamedKey(&'a str),
-    /// Entry point payment info.
-    PaymentInfo(&'a str),
+    /// All the named keys for the given contract
+    ///
+    /// No additional info as the contracts address will be used as the base.
+    AllNamedKeys,
 }
 
 impl Keyspace<'_> {
@@ -40,7 +42,7 @@ impl Keyspace<'_> {
             Keyspace::State => KeyspaceTag::State,
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
-            Keyspace::PaymentInfo(_) => KeyspaceTag::PaymentInfo,
+            Keyspace::AllNamedKeys => KeyspaceTag::AllNamedKeys,
         }
     }
 
@@ -92,12 +94,5 @@ mod tests {
         let name = "my_key";
         let keyspace = Keyspace::NamedKey(name);
         assert_eq!(keyspace.as_u64(), 2);
-    }
-
-    #[test]
-    fn test_as_u64_payment_info() {
-        let name = "entry_point";
-        let keyspace: Keyspace = Keyspace::PaymentInfo(name);
-        assert_eq!(keyspace.as_u64(), 3);
     }
 }

@@ -9,7 +9,7 @@ const DO_NOTHING_CONTRACT: &str = "do_nothing_stored.wasm";
 #[ignore]
 #[test]
 fn should_correctly_install_and_add_contract_version_with_ae_turned_on() {
-    let chainspec = ChainspecConfig::default().with_enable_addressable_entity(true);
+    let chainspec = ChainspecConfig::default().with_addressable_entity_enabled(true);
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec.clone());
     builder

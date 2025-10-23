@@ -1,0 +1,19 @@
+[package]
+name = "vm2-altbn128"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+casper-contract-sdk = { path = "../../../vm2/sdk" }
+base16 = { version = "0.2.1", default-features = false, features = [] }
+bn = { version = "0.5", package = "zeropool-bn", default-features = false, optional = true }
+
+[features]
+default = []
+wasm_add_test = ["bn"]
+wasm_mul_test = ["bn"]
+wasm_pairing_test = ["bn"]

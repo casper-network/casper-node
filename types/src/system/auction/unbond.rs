@@ -6,10 +6,14 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 
 use super::{BidAddr, DelegatorKind, UnbondingPurse, WithdrawPurse};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex, CLType, CLTyped, EraId, PublicKey, URef, URefAddr, U512,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_helpers::{HumanReadableUnbondKind, NonHumanReadableUnbondKind};
 
@@ -151,6 +155,18 @@ impl Serialize for UnbondKind {
             HumanReadableUnbondKind::from(self).serialize(serializer)
         } else {
             NonHumanReadableUnbondKind::from(self).serialize(serializer)
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<UnbondKind> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> UnbondKind {
+        match rng.gen_range(1..4) {
+            1 => UnbondKind::Validator(rng.gen()),
+            2 => UnbondKind::DelegatedPublicKey(rng.gen()),
+            3 => UnbondKind::DelegatedPurse(rng.gen()),
+            x => panic!("Unexpected variant for randomizing UnbondKind: {}", x),
         }
     }
 }
@@ -360,6 +376,22 @@ impl Unbond {
             .iter_mut()
             .max_by(|x, y| x.era_of_creation().cmp(&y.era_of_creation()))
     }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let unbond_kind = rng.gen();
+        let num_of_eras = rng.gen_range(1..10);
+        let mut eras = vec![];
+        for _ in 0..num_of_eras {
+            eras.push(UnbondEra::random(rng))
+        }
+
+        Self {
+            validator_public_key: rng.gen(),
+            unbond_kind,
+            eras,
+        }
+    }
 }
 
 impl ToBytes for Unbond {
@@ -514,6 +546,16 @@ impl UnbondEra {
     /// Sets amount to provided value.
     pub fn with_amount(&mut self, amount: U512) {
         self.amount = amount;
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> UnbondEra {
+        Self {
+            bonding_purse: rng.gen(),
+            era_of_creation: EraId::new(rng.gen()),
+            amount: rng.gen(),
+            new_validator: rng.gen(),
+        }
     }
 }
 

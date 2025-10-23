@@ -159,8 +159,8 @@ pub enum ErrorCode {
     /// The transaction sent to the network had an insufficient transfer amount
     #[error("the transaction sent to the network had an insufficient transfer amount")]
     InvalidTransactionInsufficientTransferAmount = 47,
-    /// The transaction sent to the network had a custom entry point when it should have a non
-    /// custom entry point.
+    /// The transaction sent to the network had a custom entry point when it should have a
+    /// non-custom entry point.
     #[error("the native transaction sent to the network should not have a custom entry point")]
     InvalidTransactionEntryPointCannotBeCustom = 48,
     /// The transaction sent to the network had a standard entry point when it must be custom.
@@ -298,7 +298,7 @@ pub enum ErrorCode {
     #[error("not enough bytes to read version of the binary request header")]
     TooLittleBytesForRequestHeaderVersion = 92,
     /// Malformed command header version
-    #[error("malformed commnd header version")]
+    #[error("malformed command header version")]
     MalformedCommandHeaderVersion = 93,
     /// Malformed header
     #[error("malformed command header")]
@@ -370,6 +370,8 @@ pub enum ErrorCode {
     InvalidDelegationAmount = 116,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget = 117,
+    #[error("Sandboxed execution failed")]
+    SandboxedExecutionFailed = 118,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -541,7 +543,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::ExpectedBytesArguments => {
                 ErrorCode::InvalidTransactionExpectedBytesArguments
             }
-            InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
+
             InvalidTransactionV1::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
             InvalidTransactionV1::InsufficientBurnAmount { .. } => {
                 ErrorCode::InvalidTransactionInsufficientBurnAmount
@@ -571,6 +573,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
                 ErrorCode::UnsupportedInvocationTarget
             }
+            InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
             _other => ErrorCode::InvalidTransactionUnspecified,
         }
     }

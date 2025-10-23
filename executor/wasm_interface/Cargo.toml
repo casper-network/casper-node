@@ -1,6 +1,6 @@
 [package]
 name = "casper-executor-wasm-interface"
-version = "0.1.3"
+version = "1.0.0"
 edition = "2021"
 authors = ["Michał Papierski <michal@casper.network>"]
 description = "Casper executor interface package"
@@ -11,8 +11,13 @@ license = "Apache-2.0"
 [dependencies]
 bytes = "1.10"
 borsh = { version = "1.5", features = ["derive"] }
-casper-executor-wasm-common = { version = "0.1.3", path = "../wasm_common" }
-casper-storage = { version = "2.1.1", path = "../../storage" }
-casper-types = { version = "6.0.1", path = "../../types" }
+casper-executor-wasm-common = { version = "1.0.0", path = "../wasm_common" }
+casper-storage = { version = "4.0.0", path = "../../storage" }
+casper-types = { version = "8.0.0", path = "../../types" }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
 parking_lot = "0.12"
+serde = { version = "1.0.219", features = ["derive"] }
+strum = "0.27"
+strum_macros = "0.27"
 thiserror = "2"

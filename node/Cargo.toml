@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "2.0.4" # when updating, also update 'html_root_url' in lib.rs
+version = "2.1.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Ed Hastings <ed@casper.network>", "Karan Dhareshwar <karan@casper.network>"]
 edition = "2021"
 description = "The Casper blockchain node"
@@ -17,14 +17,14 @@ ansi_term = "0.12.1"
 anyhow = "1"
 aquamarine = "0.1.12"
 async-trait = "0.1.50"
-backtrace = "0.3.50"
+backtrace = "0.3"
 base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-binary-port = { version = "1.1.1", path = "../binary_port" }
-casper-storage = { version = "2.1.1", path = "../storage" }
-casper-types = { version = "6.0.1", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
+casper-binary-port = { version = "2.0.0", path = "../binary_port" }
+casper-storage = { version = "4.0.0", path = "../storage" }
+casper-types = { version = "8.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 casper-execution-engine = { version = "8.1.1", path = "../execution_engine" }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -93,12 +93,13 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
 
-casper-executor-wasm = { version = "0.1.3", path = "../executor/wasm" }
-casper-executor-wasm-interface = { version = "0.1.3", path = "../executor/wasm_interface" }
+casper-executor-wasm = { version = "1.0.0", path = "../executor/wasm" }
+casper-executor-wasm-interface = { version = "1.0.0", path = "../executor/wasm_interface" }
 fs_extra = "1.3.0"
 
 [dev-dependencies]
-casper-binary-port = { version = "1.1.1", path = "../binary_port", features = ["testing"] }
+casper-binary-port = { version = "2.0.0", path = "../binary_port", features = ["testing"] }
+casper-executor-wasm-common = { version = "1.0.0", path = "../executor/wasm_common" }
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std-fs-io", "testing"] }

@@ -30,7 +30,6 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{BlockExecutionResultsOrChunkId, ValueOrChunk},
     utils,
 };
 
@@ -500,10 +499,11 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
         // Explicitly verify the two effects are indeed asking networking and accumulator for peers.
         assert_matches!(
             events[0],
-            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-                count,
+            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+                total_count,
+                known_addr_count,
                 ..
-            }) if count == MAX_SIMULTANEOUS_PEERS as usize
+            }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
         );
         assert_matches!(
             events[1],
@@ -783,10 +783,11 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
     // for the block that is being synchronized.
     assert_matches!(
         events[0],
-        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
-            count,
+        MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeersIncludingKnownAddresses {
+            total_count,
+            known_addr_count,
             ..
-        }) if count == MAX_SIMULTANEOUS_PEERS as usize
+        }) if total_count == MAX_SIMULTANEOUS_PEERS as usize + known_addr_count && known_addr_count == 1
     );
 
     assert_matches!(
@@ -817,14 +818,17 @@ async fn fwd_sync_gets_peers_only_from_accumulator() {
         &mut rng,
         Event::Request(BlockSynchronizerRequest::NeedNext),
     );
-    assert_eq!(effects.len(), 1);
+    // the count should be 2 bcs the block synchronizer will also ask for 1 known addr in addition
+    // to the normal ask
+    assert_eq!(effects.len(), 2);
     let events = mock_reactor.process_effects(effects).await;
 
     // The first thing the synchronizer should do is get peers.
     // For the forward flow, the synchronizer will ask the accumulator to provide peers
     // from which it has received information for the block that is being synchronized.
+
     assert_matches!(
-        events[0],
+        events[1],
         MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
             block_hash,
             ..
@@ -2360,13 +2364,15 @@ fn historical_state(block_synchronizer: &BlockSynchronizer) -> &BlockAcquisition
         .block_acquisition_state()
 }
 
-/// When there is no deploy, the state goes from `HaveGlobalState` to `HaveStrictFinalitySignature`
-/// directly, skipping `HaveAllExecutionResults`, `HaveApprovalsHashes` and `HaveAllDeploys`.
+/// Even if a block has no transaction it needs to go through "the regular" states becasue in those
+/// states we calculate utilization tracking for the block (even if it's empty we still need to
+/// calculate it's utilization).
 #[tokio::test]
-async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
+async fn historical_sync_does_not_skip_exec_results_if_block_empty() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env = TestEnv::random(rng);
+    let test_env =
+        TestEnv::random(rng).with_block(TestBlockBuilder::new().era(1).build(rng).into());
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -2380,8 +2386,6 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.forward.is_none());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
-
-    // Skip steps HaveBlockHeader, HaveWeakFinalitySignature, HaveBlock
 
     let historical_builder = block_synchronizer
         .historical
@@ -2422,23 +2426,23 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
     );
 
-    // ----- HaveBlock -----
-    assert_matches!(
-        historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveBlock { .. }
-    );
-
     // Those effects are handled directly and not through the reactor:
-    let events = effects
-        .try_one()
-        .expect("there should be only one effect")
-        .await;
+    let events = effects.one().await;
     assert_matches!(
         events.try_one(),
         Some(Event::GlobalStateSynchronizer(
             GlobalStateSynchronizerEvent::GetPeers(_)
         ))
     );
+
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
+    // Let's not test the detail of the global synchronization event,
+    // since it is already tested in its unit tests.
 
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
@@ -2457,11 +2461,115 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         historical_state(&block_synchronizer),
         BlockAcquisitionState::HaveGlobalState { .. }
     );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    match events.try_one() {
+        Some(MockReactorEvent::ContractRuntimeRequest(
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
+        other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: ExecutionResultsChecksumResult::Success {
+                checksum: Digest::SENTINEL_NONE,
+            },
+        },
+    );
     let events = mock_reactor.process_effects(effects).await;
 
     for event in events {
-        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(..));
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
     }
+
+    let execution_results = BlockExecutionResultsOrChunk::new_empty_value(*block.hash());
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
+        },
+    );
+
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    assert_matches!(
+        events.remove(0),
+        MockReactorEvent::StorageRequest(StorageRequest::PutExecutionResults { .. })
+    );
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+    // ----- HaveAllExecutionResults -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum) if checksum.is_checkable()
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
+            ApprovalsHashes::new(*block.hash(), vec![], dummy_merkle_proof()),
+        )))),
+    );
+    // ----- HaveApprovalsHashes -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+    assert!(!events.is_empty());
+    // Since the block doesn't have any transactions,
+    // the next step should be to fetch the finality signatures for strict finality.
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                id,
+                peer,
+                ..
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
+        );
+    }
+
+    // The rest would be fetching finality signatures which is covered by other tests
 }
 
 #[tokio::test]
@@ -2672,15 +2780,15 @@ async fn historical_sync_no_legacy_block() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn)))),
         },
     );
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
@@ -2874,15 +2982,15 @@ async fn historical_sync_legacy_block_strict_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
     );
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
@@ -3076,7 +3184,7 @@ async fn historical_sync_legacy_block_weak_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
@@ -3289,7 +3397,7 @@ async fn historical_sync_legacy_block_any_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
@@ -3353,12 +3461,16 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::Request(BlockSynchronizerRequest::NeedNext),
         );
-        assert_eq!(effects.len(), 1);
+
+        // with the tweaks made on this fork, the count should be 2
+        // bcs the block synchronizer will also ask for 1 known addr in addition
+        // to the normal ask
+        assert_eq!(effects.len(), 2);
 
         // First, the synchronizer should get peers.
         let events = mock_reactor.process_effects(effects).await;
         assert_matches!(
-            events[0],
+            events[1],
             MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
                 block_hash,
                 ..
@@ -3688,13 +3800,13 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive a deploy. This would make the synchronizer switch to HaveAllDeploys and continue
+    // Receive a deploy. This would make the synchronizer switch to HaveAllTransactions and continue
     // asking for more finality signatures in order to reach strict finality.
     {
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
@@ -3731,7 +3843,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
@@ -3958,7 +4070,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
         },
@@ -3986,7 +4098,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
         },
@@ -4028,7 +4140,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
             },
@@ -4048,7 +4160,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
             },
@@ -4066,16 +4178,16 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(third_txn.clone())))),
         },
     );
 
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
@@ -4087,7 +4199,6 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
 #[tokio::test]
 async fn historical_sync_latch_should_not_decrement_for_old_execution_results() {
     let rng = &mut TestRng::new();
-    let mock_reactor = MockReactor::new();
     let first_txn = Transaction::random(rng);
     let second_txn = Transaction::random(rng);
     let third_txn = Transaction::random(rng);
@@ -4131,6 +4242,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         .register_block(block.clone(), None)
         .is_ok());
 
+    let mock_reactor = MockReactor::new();
     let _effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
@@ -4159,11 +4271,12 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         BlockExecutionResultsOrChunk::new_mock_value_with_multiple_random_results(
             rng,
             *block.hash(),
-            100000, // Lots of results to achieve chunking.
+            10_000, // Lots of results to achieve chunking.
         );
+
     let checksum = assert_matches!(
         execution_results.value(),
-        ValueOrChunk::ChunkWithProof(chunk) => chunk.proof().root_hash()
+        crate::types::ValueOrChunk::ChunkWithProof(chunk) => chunk.proof().root_hash()
     );
 
     let effects = block_synchronizer.handle_event(
@@ -4249,7 +4362,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
             result: Err(FetcherError::Absent {
-                id: Box::new(BlockExecutionResultsOrChunkId::new(*block.hash())),
+                id: Box::new(crate::types::BlockExecutionResultsOrChunkId::new(
+                    *block.hash(),
+                )),
                 peer: peers[0],
             }),
         },

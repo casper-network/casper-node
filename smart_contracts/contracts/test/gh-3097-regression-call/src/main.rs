@@ -42,7 +42,7 @@ pub extern "C" fn call() {
             .unwrap_or_revert()
             .into_package_addr()
             .ok_or(ApiError::UnexpectedKeyVariant)
-            .map(ContractPackageHash::new)
+            .map(|package_addr| ContractPackageHash::new(package_addr.value()))
             .unwrap_or_revert();
 
         let major_version = runtime::get_named_arg(ARG_MAJOR_VERSION);

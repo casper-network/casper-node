@@ -17,7 +17,6 @@ use crate::{
 pub struct BlockRewardsRequest {
     config: Config,
     state_hash: Digest,
-    protocol_version: ProtocolVersion,
     rewards: BTreeMap<PublicKey, Vec<U512>>,
     block_time: BlockTime,
 }
@@ -27,14 +26,12 @@ impl BlockRewardsRequest {
     pub fn new(
         config: Config,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         block_time: BlockTime,
         rewards: BTreeMap<PublicKey, Vec<U512>>,
     ) -> Self {
         BlockRewardsRequest {
             config,
             state_hash,
-            protocol_version,
             rewards,
             block_time,
         }
@@ -52,7 +49,7 @@ impl BlockRewardsRequest {
 
     /// Returns protocol_version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns rewards.

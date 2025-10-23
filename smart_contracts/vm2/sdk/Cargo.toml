@@ -1,0 +1,46 @@
+[package]
+name = "casper-contract-sdk"
+version = "1.0.0"
+edition = "2021"
+description = "Casper contract sdk package"
+authors = ["Michał Papierski <michal@casper.network>"]
+documentation = "https://docs.rs/casper-contract-sdk"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/smart_contracts/sdk"
+license = "Apache-2.0"
+
+[dependencies]
+base16 = "0.2.1"
+bitflags = "2.9"
+bnum = { version = "0.13.0", features = ["borsh", "num-integer", "num-traits"] }
+borsh = { version = "1.5", features = ["derive", "bytes"] }
+bytes = "1.10"
+casper-contract-macros = { version = "1.0.0", path = "../macros" }
+casper-contract-sdk-sys = { version = "1.0.0", path = "../sdk_sys" }
+casper-executor-wasm-common = { version = "1.0.0", path = "../../../executor/wasm_common" }
+cfg-if = "1.0.0"
+clap = { version = "4", optional = true, features = ["derive"] }
+const-fnv1a-hash = "1.1.0"
+impl-trait-for-tuples = "0.2.2"
+num-traits = "0.2.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = { version = "2", optional = true }
+hashbrown = { version = "0.16", optional = true }
+
+[dev-dependencies]
+casper-types = { path = "../../../types", features = ["std", "testing", "gens"] }
+proptest = { version = "1.7" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rand = "0.8.5"
+once_cell = "1.19.0"
+linkme = "=0.3.29"
+
+[features]
+default = ["std"]
+std = []
+
+cli = ["clap", "thiserror"]
+__abi_generator = ["casper-contract-macros/__abi_generator"]
+__embed_schema = ["casper-contract-macros/__embed_schema"]

@@ -1,22 +1,33 @@
-use std::sync::Arc;
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, GlobalStateReader},
     tracking_copy::TrackingCopyCache,
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash, contract_messages::Messages, execution::Effects, BlockHash, BlockTime,
     Digest, HashAddr, Key, TransactionHash,
 };
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use parking_lot::RwLock;
 use thiserror::Error;
 
-use crate::{CallError, GasUsage, InternalHostError, WasmPreparationError};
+use crate::{
+    CallError, FatalHostError, GasUsage, SandboxedExecutionRequest, SandboxedExecutionResult,
+    WasmPreparationError,
+};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 /// Request to execute a Wasm contract.
+#[derive(Debug)]
 pub struct ExecuteRequest {
     /// Initiator's address.
     pub initiator: AccountHash,
@@ -51,6 +62,17 @@ pub struct ExecuteRequest {
     pub parent_block_hash: BlockHash,
     /// Block height.
     pub block_height: u64,
+    /// Whether the execution is in sandboxed mode.
+    ///
+    /// In sandboxed mode, the contract cannot make state changes, call other contracts, emit
+    /// messages, etc. No gas is charged for the execution.
+    pub sandboxed: bool,
+    /// Runtime native config.
+    pub runtime_native_config: RuntimeNativeConfig,
+    /// Authorization keys for this execution.
+    pub authorization_keys: BTreeSet<AccountHash>,
+    /// Shared execution stack across nested calls.
+    pub execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -69,6 +91,10 @@ pub struct ExecuteRequestBuilder {
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
+    sandboxed: Option<bool>,
+    runtime_native_config: Option<RuntimeNativeConfig>,
+    authorization_keys: Option<BTreeSet<AccountHash>>,
+    execution_stack: Option<Arc<RwLock<VecDeque<ExecutionKind>>>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -95,7 +121,7 @@ impl ExecuteRequestBuilder {
 
     /// Set the target for execution.
     #[must_use]
-    pub fn with_target(mut self, target: ExecutionKind) -> Self {
+    pub fn with_execution_kind(mut self, target: ExecutionKind) -> Self {
         self.target = Some(target);
         self
     }
@@ -108,12 +134,11 @@ impl ExecuteRequestBuilder {
     }
 
     /// Pass input data that can be serialized.
-    #[must_use]
-    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Self {
+    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Result<Self, ExecuteError> {
         let input = borsh::to_vec(&input)
             .map(Bytes::from)
-            .expect("should serialize input");
-        self.with_input(input)
+            .map_err(|_| ExecuteError::Fatal(FatalHostError::TypeConversion))?;
+        Ok(self.with_input(input))
     }
 
     /// Pass value to be sent to the contract.
@@ -188,25 +213,66 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the sandboxed mode.
+    #[must_use]
+    pub fn with_sandboxed(mut self, sandboxed: bool) -> Self {
+        self.sandboxed = Some(sandboxed);
+        self
+    }
+
+    /// Set the runtime native config.
+    pub fn with_runtime_native_config(
+        mut self,
+        runtime_native_config: RuntimeNativeConfig,
+    ) -> Self {
+        self.runtime_native_config = Some(runtime_native_config);
+        self
+    }
+
+    /// Set the authorization keys.
+    pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
+        self.authorization_keys = Some(authorization_keys);
+        self
+    }
+
+    /// Set the shared execution stack used to track nested calls.
+    pub fn with_execution_stack(
+        mut self,
+        execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
+    ) -> Self {
+        self.execution_stack = Some(execution_stack);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
         let caller_key = self.caller_key.ok_or("Caller is not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
-        let input = self.input.ok_or("Input is not set")?;
-        let transferred_value = self.value.ok_or("Value is not set")?;
+        let input = self.input.unwrap_or_default();
+        let transferred_value = self.value.unwrap_or_default();
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash is not set")?;
         let address_generator = self
             .address_generator
             .ok_or("Address generator is not set")?;
-        let chain_name = self.chain_name.ok_or("Chain name is not set")?;
-        let block_time = self.block_time.ok_or("Block time is not set")?;
+        let chain_name = self.chain_name.unwrap_or(Arc::from("casper-test"));
+        let block_time = self.block_time.unwrap_or_default();
         let state_hash = self.state_hash.ok_or("State hash is not set")?;
         let parent_block_hash = self
             .parent_block_hash
             .ok_or("Parent block hash is not set")?;
-        let block_height = self.block_height.ok_or("Block height is not set")?;
+        let block_height = self.block_height.unwrap_or_default();
+        let sandboxed = self.sandboxed.unwrap_or(false);
+        let runtime_native_config = self
+            .runtime_native_config
+            .ok_or("Runtime native config not set")?;
+        let authorization_keys = self
+            .authorization_keys
+            .ok_or("Authorization keys are not set")?;
+        let execution_stack = self
+            .execution_stack
+            .unwrap_or_else(|| Arc::new(RwLock::new(VecDeque::new())));
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -221,6 +287,10 @@ impl ExecuteRequestBuilder {
             state_hash,
             parent_block_hash,
             block_height,
+            sandboxed,
+            runtime_native_config,
+            authorization_keys,
+            execution_stack,
         })
     }
 }
@@ -324,6 +394,162 @@ impl ExecuteWithProviderResult {
     }
 }
 
+/// Available options for interacting with the emitting functions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmitMethods {
+    PrintStd,
+    Native,
+}
+
+/// Available options for interacting with functions manipulating
+/// and fetching data from global state
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlobalStateMethods {
+    Read,
+    Write,
+    Remove,
+    GetBalance,
+    GetInfo,
+    Create,
+}
+
+/// Available options for interacting with functions interacting
+/// with other contracts and control flow
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlMethods {
+    Call,
+    Upgrade,
+}
+
+/// Available options for interacting with the system mint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MintMethods {
+    Burn,
+    Transfer,
+    TransferPurse,
+}
+
+/// Available options for interacting with the system auction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuctionMethods {
+    Activate,
+    Bid,
+    Withdraw,
+    Delegate,
+    Undelegate,
+    Redelegate,
+    AddReservation,
+    CancelReservation,
+    ChangePublicKey,
+}
+
+/// Available options for interacting with host-side cryptographic functions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CryptoMethods {
+    AltBn128Add,
+    AltBn128Multiply,
+    AltBn128Pairing,
+    GenericHash,
+    RecoverSecp256K1,
+}
+
+/// Available options for interacting with host-side cryptographic functions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IOMethods {
+    Return,
+    CopyInput,
+}
+
+/// Specific subsection of FFIMenu actions that will be executed as system contract calls
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SystemContractMenu {
+    Mint(MintMethods),
+    Auction(AuctionMethods),
+}
+
+/// Available options for interacting with the host ffi.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FFIMenu {
+    Mint(MintMethods),
+    Auction(AuctionMethods),
+    Crypto(CryptoMethods),
+    Emit(EmitMethods),
+    GlobalState(GlobalStateMethods),
+    Control(ControlMethods),
+    IO(IOMethods),
+}
+
+impl FFIMenu {
+    pub fn allowed_in_sandbox(&self) -> bool {
+        match self {
+            FFIMenu::Mint(mint_methods) => match mint_methods {
+                MintMethods::Burn => false,
+                MintMethods::Transfer => false,
+                MintMethods::TransferPurse => false,
+            },
+            FFIMenu::Auction(auction_methods) => match auction_methods {
+                AuctionMethods::Activate => false,
+                AuctionMethods::Bid => false,
+                AuctionMethods::Withdraw => false,
+                AuctionMethods::Delegate => false,
+                AuctionMethods::Undelegate => false,
+                AuctionMethods::Redelegate => false,
+                AuctionMethods::AddReservation => false,
+                AuctionMethods::CancelReservation => false,
+                AuctionMethods::ChangePublicKey => false,
+            },
+            FFIMenu::Crypto(crypto_methods) => match crypto_methods {
+                CryptoMethods::AltBn128Add => true,
+                CryptoMethods::AltBn128Multiply => true,
+                CryptoMethods::AltBn128Pairing => true,
+                CryptoMethods::GenericHash => true,
+                CryptoMethods::RecoverSecp256K1 => true,
+            },
+            FFIMenu::Emit(emit_methods) => match emit_methods {
+                EmitMethods::PrintStd => true,
+                EmitMethods::Native => false,
+            },
+            FFIMenu::GlobalState(global_state_methods) => match global_state_methods {
+                GlobalStateMethods::Read => true,
+                GlobalStateMethods::Write => false,
+                GlobalStateMethods::Remove => false,
+                GlobalStateMethods::GetBalance => true,
+                GlobalStateMethods::GetInfo => true,
+                GlobalStateMethods::Create => false,
+            },
+            FFIMenu::Control(control_methods) => match control_methods {
+                ControlMethods::Call => false,
+                ControlMethods::Upgrade => false,
+            },
+            FFIMenu::IO(iomethods) => match iomethods {
+                IOMethods::Return => true,
+                IOMethods::CopyInput => true,
+            },
+        }
+    }
+
+    pub fn all_ffi_options() -> impl Iterator<Item = FFIMenu> {
+        FFIPrimitiveValue::iter().map(|raw| FFIMenu::from(&raw))
+    }
+}
+
+impl TryFrom<u32> for FFIMenu {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match FFIPrimitiveValue::from_u32(value) {
+            Some(primitive) => Ok((&primitive).into()),
+            None => Err(()),
+        }
+    }
+}
+
+impl From<FFIMenu> for u32 {
+    fn from(value: FFIMenu) -> u32 {
+        FFIPrimitiveValue::from(&value) as u32
+    }
+}
+
 /// Target for Wasm execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
@@ -331,11 +557,23 @@ pub enum ExecutionKind {
     SessionBytes(Bytes),
     /// Execute a stored contract by its address.
     Stored {
-        /// Address of the contract.
+        /// Address of the contract's package.
         address: HashAddr,
         /// Entry point to call.
         entry_point: String,
     },
+    /// Interact with the system.
+    System(SystemContractMenu),
+}
+
+impl ExecutionKind {
+    /// Returns system menu selection if relevant.
+    pub fn ffi_selection(&self) -> Option<SystemContractMenu> {
+        match self {
+            ExecutionKind::SessionBytes(_) | ExecutionKind::Stored { .. } => None,
+            ExecutionKind::System(menu) => Some(menu.clone()),
+        }
+    }
 }
 
 /// Error that can occur during execution, before the Wasm virtual machine is involved.
@@ -351,9 +589,27 @@ pub enum ExecuteError {
     WasmPreparation(#[from] WasmPreparationError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     #[error("Internal host error: {0}")]
-    InternalHost(#[from] InternalHostError),
-    #[error("Code not found")]
-    CodeNotFound(HashAddr),
+    Fatal(#[from] FatalHostError),
+    #[error("Argument size ({argument_size}) exceeds VM memory limit ({memory_limit})")]
+    ArgumentSizeExceedsMemory {
+        argument_size: usize,
+        memory_limit: u32,
+    },
+    // Wasm attempted to return flags that are not supported
+    #[error("Return flags are not supported: {0}")]
+    ReturnFlagsNotSupported(u32),
+    #[error("Api error: {0}")]
+    Api(String),
+    #[error("sandboxed system contract call")]
+    SandboxedSystemContractCall,
+    #[error("unable to find main purse for v2 contract {0}")]
+    MainPurseNotFound(Key),
+    #[error("unable to convert key into uref {0}")]
+    InvalidKeyForPurse(Key),
+    #[error("attempt to call a non-existent ffi option {0}")]
+    InvalidFFIOption(u32),
+    #[error("attempted writing in restricted mode")]
+    AttemptWriteInRestricted,
 }
 
 #[derive(Debug, Error)]
@@ -378,4 +634,156 @@ pub trait Executor: Clone + Send {
         tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
+
+    /// Execute a contract in sandboxed mode.
+    ///
+    /// This method executes a smart contract in a sandbox that cannot call or message outward,
+    /// or mutate state.
+    fn execute_sandbox<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        runtime_native_config: RuntimeNativeConfig,
+        request: SandboxedExecutionRequest,
+    ) -> Result<SandboxedExecutionResult, ExecuteError>;
+}
+
+#[repr(u32)]
+#[derive(EnumIter, FromPrimitive)]
+enum FFIPrimitiveValue {
+    /* Mint values */
+    MintTransfer = 0,
+    MintTransferPurse = 1,
+    MintBurn = 2,
+    /* Auction values */
+    AuctionActivate = 100,
+    AuctionBid = 101,
+    AuctionWithdraw = 102,
+    AuctionDelegate = 103,
+    AuctionUndelegate = 104,
+    AuctionRedelegate = 105,
+    AuctionAddReservation = 106,
+    AuctionCancelReservation = 107,
+    AuctionChangePublicKey = 108,
+    /* Crypto values */
+    CryptoAltBn128Add = 200,
+    CryptoAltBn128Multiply = 201,
+    CryptoAltBn128Pairing = 202,
+    CryptoGenericHash = 203,
+    CryptoRecoverSecp256K1 = 204,
+    /* Emit values */
+    EmitPrintStd = 300,
+    EmitNative = 301,
+    /* Global state values */
+    GlobalStateRead = 400,
+    GlobalStateWrite = 401,
+    GlobalStateRemove = 402,
+    GlobalStateGetBalance = 403,
+    GlobalStateGetInfo = 404,
+    GlobalStateCreate = 405,
+    /* Control values */
+    ControlCall = 500,
+    ControlUpgrade = 501,
+    /* IO values */
+    IOReturn = 600,
+    IOCopyInput = 601,
+}
+
+impl From<&FFIPrimitiveValue> for FFIMenu {
+    fn from(value: &FFIPrimitiveValue) -> Self {
+        match value {
+            FFIPrimitiveValue::MintTransfer => Self::Mint(MintMethods::Transfer),
+            FFIPrimitiveValue::MintTransferPurse => Self::Mint(MintMethods::TransferPurse),
+            FFIPrimitiveValue::MintBurn => Self::Mint(MintMethods::Burn),
+            FFIPrimitiveValue::AuctionActivate => Self::Auction(AuctionMethods::Activate),
+            FFIPrimitiveValue::AuctionBid => Self::Auction(AuctionMethods::Bid),
+            FFIPrimitiveValue::AuctionWithdraw => Self::Auction(AuctionMethods::Withdraw),
+            FFIPrimitiveValue::AuctionDelegate => Self::Auction(AuctionMethods::Delegate),
+            FFIPrimitiveValue::AuctionUndelegate => Self::Auction(AuctionMethods::Undelegate),
+            FFIPrimitiveValue::AuctionRedelegate => Self::Auction(AuctionMethods::Redelegate),
+            FFIPrimitiveValue::AuctionAddReservation => {
+                Self::Auction(AuctionMethods::AddReservation)
+            }
+            FFIPrimitiveValue::AuctionCancelReservation => {
+                Self::Auction(AuctionMethods::CancelReservation)
+            }
+            FFIPrimitiveValue::AuctionChangePublicKey => {
+                Self::Auction(AuctionMethods::ChangePublicKey)
+            }
+            FFIPrimitiveValue::CryptoAltBn128Add => Self::Crypto(CryptoMethods::AltBn128Add),
+            FFIPrimitiveValue::CryptoAltBn128Multiply => {
+                Self::Crypto(CryptoMethods::AltBn128Multiply)
+            }
+            FFIPrimitiveValue::CryptoAltBn128Pairing => {
+                Self::Crypto(CryptoMethods::AltBn128Pairing)
+            }
+            FFIPrimitiveValue::CryptoGenericHash => Self::Crypto(CryptoMethods::GenericHash),
+            FFIPrimitiveValue::CryptoRecoverSecp256K1 => {
+                Self::Crypto(CryptoMethods::RecoverSecp256K1)
+            }
+            FFIPrimitiveValue::EmitPrintStd => Self::Emit(EmitMethods::PrintStd),
+            FFIPrimitiveValue::EmitNative => Self::Emit(EmitMethods::Native),
+            FFIPrimitiveValue::GlobalStateRead => Self::GlobalState(GlobalStateMethods::Read),
+            FFIPrimitiveValue::GlobalStateWrite => Self::GlobalState(GlobalStateMethods::Write),
+            FFIPrimitiveValue::GlobalStateRemove => Self::GlobalState(GlobalStateMethods::Remove),
+            FFIPrimitiveValue::GlobalStateGetBalance => {
+                Self::GlobalState(GlobalStateMethods::GetBalance)
+            }
+            FFIPrimitiveValue::GlobalStateGetInfo => Self::GlobalState(GlobalStateMethods::GetInfo),
+            FFIPrimitiveValue::GlobalStateCreate => Self::GlobalState(GlobalStateMethods::Create),
+            FFIPrimitiveValue::ControlCall => Self::Control(ControlMethods::Call),
+            FFIPrimitiveValue::ControlUpgrade => Self::Control(ControlMethods::Upgrade),
+            FFIPrimitiveValue::IOReturn => Self::IO(IOMethods::Return),
+            FFIPrimitiveValue::IOCopyInput => Self::IO(IOMethods::CopyInput),
+        }
+    }
+}
+
+impl From<&FFIMenu> for FFIPrimitiveValue {
+    fn from(value: &FFIMenu) -> Self {
+        match value {
+            FFIMenu::Mint(mint_methods) => match mint_methods {
+                MintMethods::Burn => Self::MintBurn,
+                MintMethods::Transfer => Self::MintTransfer,
+                MintMethods::TransferPurse => Self::MintTransferPurse,
+            },
+            FFIMenu::Auction(auction_methods) => match auction_methods {
+                AuctionMethods::Activate => Self::AuctionActivate,
+                AuctionMethods::Bid => Self::AuctionBid,
+                AuctionMethods::Withdraw => Self::AuctionWithdraw,
+                AuctionMethods::Delegate => Self::AuctionDelegate,
+                AuctionMethods::Undelegate => Self::AuctionUndelegate,
+                AuctionMethods::Redelegate => Self::AuctionRedelegate,
+                AuctionMethods::AddReservation => Self::AuctionAddReservation,
+                AuctionMethods::CancelReservation => Self::AuctionCancelReservation,
+                AuctionMethods::ChangePublicKey => Self::AuctionChangePublicKey,
+            },
+            FFIMenu::Crypto(crypto_methods) => match crypto_methods {
+                CryptoMethods::AltBn128Add => Self::CryptoAltBn128Add,
+                CryptoMethods::AltBn128Multiply => Self::CryptoAltBn128Multiply,
+                CryptoMethods::AltBn128Pairing => Self::CryptoAltBn128Pairing,
+                CryptoMethods::GenericHash => Self::CryptoGenericHash,
+                CryptoMethods::RecoverSecp256K1 => Self::CryptoRecoverSecp256K1,
+            },
+            FFIMenu::Emit(emit_methods) => match emit_methods {
+                EmitMethods::PrintStd => Self::EmitPrintStd,
+                EmitMethods::Native => Self::EmitNative,
+            },
+            FFIMenu::GlobalState(global_state_methods) => match global_state_methods {
+                GlobalStateMethods::Read => Self::GlobalStateRead,
+                GlobalStateMethods::Write => Self::GlobalStateWrite,
+                GlobalStateMethods::Remove => Self::GlobalStateRemove,
+                GlobalStateMethods::GetBalance => Self::GlobalStateGetBalance,
+                GlobalStateMethods::GetInfo => Self::GlobalStateGetInfo,
+                GlobalStateMethods::Create => Self::GlobalStateCreate,
+            },
+            FFIMenu::Control(control_methods) => match control_methods {
+                ControlMethods::Call => Self::ControlCall,
+                ControlMethods::Upgrade => Self::ControlUpgrade,
+            },
+            FFIMenu::IO(iomethods) => match iomethods {
+                IOMethods::Return => Self::IOReturn,
+                IOMethods::CopyInput => Self::IOCopyInput,
+            },
+        }
+    }
 }

@@ -16,10 +16,15 @@ use crate::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
+        rewards,
+        types::{BlockAndExecutionArtifacts, ExecutionPreState, StepOutcome},
+        BlockExecutionError,
     },
     effect::{
-        announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
+            NonExecutableBlockAnnouncement,
+        },
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder,
     },
@@ -75,7 +80,7 @@ enum EraEndInstruction {
     ExecNonSwitch,
     // Is a switch block, and we can calc next era gas price, thus we can exec.
     ExecSwitch { next_gas_price: u8 },
-    // Is a switch block, but we cannot calc a new gas price.
+    // Is a switch block, but we cannot execute.
     NoExec,
     // Fatal with error string.
     Fatal(String),
@@ -154,7 +159,6 @@ where
                 ));
             }
         };
-
     // BLOCKING CALL
     match effect_builder
         .get_era_utilization(era_id, block_height, executable_block_utilization_score)
@@ -162,6 +166,8 @@ where
     {
         Some((utilization, block_count, total_block_count)) => {
             if block_count != total_block_count {
+                // The node needs awareness of all of the blocks for the era for which it tries to
+                // produce the switch block.
                 return EraEndInstruction::NoExec;
             }
 
@@ -210,6 +216,7 @@ pub(super) async fn exec_and_check_next<REv>(
         + From<StorageRequest>
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
+        + From<NonExecutableBlockAnnouncement>
         + Send,
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
@@ -249,11 +256,17 @@ pub(super) async fn exec_and_check_next<REv>(
         EraEndInstruction::ExecNonSwitch => None,
         EraEndInstruction::ExecSwitch { next_gas_price } => Some(next_gas_price),
         EraEndInstruction::NoExec => {
-            info!("ContractRuntime: unable to execute - try again later");
-            exec_queue.insert(QueueItem {
-                meta_block_state,
-                executable_block,
-            });
+            // This means that we don't have enough data to calculate the era_end field
+            // The best thing we can do here is force the node to CatchUp with the hope
+            // that it will either acquire the missing state or the network will progress
+            // and we will move past this point.
+            info!(
+                block_height = executable_block.height,
+                "ContractRuntime: not enough data to execute switch block. Abandoning the execution."
+            );
+            effect_builder
+                .announce_not_executing_block(executable_block.height)
+                .await;
             return;
         }
         EraEndInstruction::Fatal(msg) => {
@@ -296,7 +309,7 @@ pub(super) async fn exec_and_check_next<REv>(
     let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
     {
         // The `shared_pre_state` could have been set to a block we just fully synced after
-        // doing a sync leap (via a call to `set_initial_state`).  We should not allow a block
+        // doing a sync leap (via a call to `set_execution_pre_state`).  We should not allow a block
         // which completed execution just after this to set the `shared_pre_state` back to an
         // earlier block height.
         let mut shared_pre_state = shared_pre_state.lock().unwrap();

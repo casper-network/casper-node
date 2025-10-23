@@ -204,7 +204,7 @@ fn remove_requests_to_random(
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg: SyncRequest<ClContext> = match outcome {
-            ProtocolOutcome::CreatedRequestToRandomPeer(msg) => msg.deserialize_expect(),
+            ProtocolOutcome::CreatedRequestToRandomValidator(msg) => msg.deserialize_expect(),
             _ => return true,
         };
         assert_eq!(msg.instance_id, expected_instance_id);
@@ -892,7 +892,7 @@ fn zug_handles_sync_request() {
     for _ in 0..2 {
         let mut outcomes = zug2.handle_timer(timestamp, timestamp, TIMER_ID_SYNC_PEER, &mut rng);
         let msg = loop {
-            if let ProtocolOutcome::CreatedRequestToRandomPeer(payload) =
+            if let ProtocolOutcome::CreatedRequestToRandomValidator(payload) =
                 outcomes.pop().expect("expected request to random peer")
             {
                 break payload;

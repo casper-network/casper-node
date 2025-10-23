@@ -10,7 +10,11 @@ pub mod utils;
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::BuildSchema { output, workspace } => {
+        Command::BuildSchema {
+            output,
+            workspace,
+            allow_skipping_abi_schema,
+        } => {
             // If user specified an output path, write there.
             // Otherwise print to standard output.
             let mut schema_writer: Box<dyn Write> = match output {
@@ -21,17 +25,27 @@ fn main() -> anyhow::Result<()> {
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build_schema::build_schema_impl(package_name, &mut schema_writer)?
+            cli::build_schema::build_schema_impl(
+                package_name,
+                &mut schema_writer,
+                allow_skipping_abi_schema,
+            )?
         }
         Command::Build {
             output,
             embed_schema,
             workspace,
+            allow_skipping_abi_schema,
         } => {
             // Select the package to build
             let package_name = workspace.package.first().map(|x| x.as_str());
 
-            cli::build::build_impl(package_name, output, embed_schema.unwrap_or(true))?
+            cli::build::build_impl(
+                package_name,
+                output,
+                embed_schema.unwrap_or(true),
+                allow_skipping_abi_schema,
+            )?
         }
         Command::New { name } => cli::new::new_impl(&name)?,
     }

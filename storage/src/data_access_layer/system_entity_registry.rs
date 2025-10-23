@@ -52,7 +52,7 @@ pub struct SystemEntityRegistryRequest {
     protocol_version: ProtocolVersion,
     /// Selector.
     selector: SystemEntityRegistrySelector,
-    enable_addressable_entity: bool,
+    addressable_entity_enabled: bool,
 }
 
 impl SystemEntityRegistryRequest {
@@ -61,13 +61,13 @@ impl SystemEntityRegistryRequest {
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         selector: SystemEntityRegistrySelector,
-        enable_addressable_entity: bool,
+        addressable_entity_enabled: bool,
     ) -> Self {
         SystemEntityRegistryRequest {
             state_hash,
             protocol_version,
             selector,
-            enable_addressable_entity,
+            addressable_entity_enabled,
         }
     }
 
@@ -87,8 +87,8 @@ impl SystemEntityRegistryRequest {
     }
 
     /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
+    pub fn addressable_entity_enabled(&self) -> bool {
+        self.addressable_entity_enabled
     }
 }
 

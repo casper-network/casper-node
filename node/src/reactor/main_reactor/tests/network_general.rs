@@ -32,7 +32,7 @@ use crate::{
                 fixture::TestFixture,
                 initial_stakes::InitialStakes,
                 node_has_lowest_available_block_at_or_below_height, Nodes, ERA_ONE, ERA_THREE,
-                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS,
+                ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS, TWO_MIN,
             },
             MainEvent, MainReactor, ReactorState,
         },
@@ -61,7 +61,7 @@ async fn historical_sync_with_era_height_1() {
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
 
     // Wait for all nodes to reach era 3.
-    fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
+    fixture.run_until_consensus_in_era(ERA_THREE, TWO_MIN).await;
 
     // Create a joiner node.
     let secret_key = SecretKey::random(&mut fixture.rng);
@@ -463,7 +463,7 @@ async fn network_should_recover_from_stall() {
 async fn node_should_rejoin_after_ejection() {
     let initial_stakes = InitialStakes::AllEqual {
         count: 5,
-        stake: 1_000_000_000,
+        stake: 10_000_000_000,
     };
     let minimum_era_height = 4;
     let configs_override = ConfigsOverride {
@@ -505,7 +505,9 @@ async fn node_should_rejoin_after_ejection() {
         fixture.chainspec.network_config.name.clone(),
         fixture.system_contract_hash(AUCTION),
         stopped_public_key.clone(),
-        100_000_000_000_000_000_u64.into(),
+        //by default, validators in this flow have an account balance of
+        // 100_000_000_000_000_000u64
+        99_000_000_000_000_000_u64.into(),
         10,
         Timestamp::now(),
         TimeDiff::from_seconds(60),

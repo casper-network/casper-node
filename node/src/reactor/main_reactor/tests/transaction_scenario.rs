@@ -13,6 +13,7 @@ use utils::{build_wasm_transction, RunUntilCondition, TestScenarioBuilder};
 
 use crate::{
     reactor::main_reactor::tests::{
+        transaction_scenario::asertions::BalanceChange,
         transactions::{
             invalid_wasm_txn, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY, BOB_SECRET_KEY,
             CHARLIE_PUBLIC_KEY, MIN_GAS_PRICE,
@@ -29,9 +30,10 @@ async fn should_accept_transfer_without_id() {
     let builder = TestScenarioBuilder::new();
     let mut test_scenario = builder.build(&mut rng).await;
 
-    let transfer_amount = 2_500_000_001_u64; //This should be
-                                             //1 mote more than the native_transfer_minimum_motes in local
-                                             // chainspec that we use for tests
+    //This should be 1 mote more than the native_transfer_minimum_motes in local
+    // chainspec that we use for tests
+    let transfer_amount = 2_500_000_001_u64;
+
     let chain_name = test_scenario.chain_name();
     test_scenario.setup().await.unwrap();
 
@@ -98,19 +100,25 @@ async fn should_native_transfer_nofee_norefund_fixed() {
             Gas::new(expected_transfer_gas),
         ))
         .await;
+
+    let transfer_amount = U512::from(TRANSFER_AMOUNT);
+    let transfer_amount_and_gas: U512 = transfer_amount
+        .checked_add(expected_transfer_gas)
+        .expect("should math");
+
     test_scenario
         .assert(PublicKeyBalanceChange::new(
             ALICE_PUBLIC_KEY.clone(),
-            -(TRANSFER_AMOUNT as i64),
-            -((TRANSFER_AMOUNT + expected_transfer_gas.as_u64()) as i64),
+            BalanceChange::Down(transfer_amount),
+            BalanceChange::Down(transfer_amount_and_gas),
         ))
         .await;
     //Charlie should have the transfer amount at his disposal
     test_scenario
         .assert(PublicKeyBalanceChange::new(
             CHARLIE_PUBLIC_KEY.clone(),
-            TRANSFER_AMOUNT as i64,
-            TRANSFER_AMOUNT as i64,
+            BalanceChange::Up(transfer_amount),
+            BalanceChange::Up(transfer_amount),
         ))
         .await;
     // Check if the hold is released.
@@ -190,11 +198,17 @@ async fn erroneous_native_transfer_nofee_norefund_fixed() {
         .await;
     // Even though the transaction failed, a hold must still be in place for the transfer cost.
     // The hold will show up in "available" being smaller than "total"
+
+    let transfer_amount_x = U512::from(transfer_amount);
+    let transfer_amount_y = transfer_amount_x
+        .checked_sub(U512::from(expected_transfer_cost))
+        .expect("should sub transfer from transfer amount");
+
     test_scenario
         .assert(PublicKeyBalanceChange::new(
             CHARLIE_PUBLIC_KEY.clone(),
-            transfer_amount as i64,
-            (transfer_amount - expected_transfer_cost) as i64,
+            BalanceChange::Up(transfer_amount_x),
+            BalanceChange::Up(transfer_amount_y),
         ))
         .await;
 }
@@ -233,24 +247,20 @@ async fn should_cancel_refund_for_erroneous_wasm() {
         ))
         .await;
 
-    test_scenario.assert(TransactionFailure::new(hash)).await; // transaction should have failed.
-                                                               // Bob gets no refund because the wasm errored
+    // transaction should have failed.
+    test_scenario.assert(TransactionFailure::new(hash)).await;
+
+    let x = BalanceChange::Down(U512::from(expected_transaction_cost));
+    // Bob gets no refund because the wasm errored
     test_scenario
-        .assert(PublicKeyBalanceChange::new(
-            BOB_PUBLIC_KEY.clone(),
-            -(expected_transaction_cost as i64),
-            -(expected_transaction_cost as i64),
-        ))
+        .assert(PublicKeyBalanceChange::new(BOB_PUBLIC_KEY.clone(), x, x))
         .await;
 
-    // Alice should get the all the fee since it's set to pay to proposer
+    let y = BalanceChange::Up(U512::from(expected_transaction_cost));
+    // Alice should get all the fee since it's set to pay to proposer
     // AND Bob didn't get a refund
     test_scenario
-        .assert(PublicKeyBalanceChange::new(
-            ALICE_PUBLIC_KEY.clone(),
-            expected_transaction_cost as i64,
-            expected_transaction_cost as i64,
-        ))
+        .assert(PublicKeyBalanceChange::new(ALICE_PUBLIC_KEY.clone(), y, y))
         .await;
 }
 
@@ -291,19 +301,21 @@ async fn should_not_refund_erroneous_wasm_burn_fixed() {
     // Bobs transaction was invalid. He should get NO refund. But also -
     // since no refund is calculated nothing will be burned (despite
     // RefundHandling::Burn - we don't calculate refunds for erroneous wasms)
+    let gas_limit_x = BalanceChange::Down(U512::from(gas_limit));
     test_scenario
         .assert(PublicKeyBalanceChange::new(
             BOB_PUBLIC_KEY.clone(),
-            -(gas_limit as i64),
-            -(gas_limit as i64),
+            gas_limit_x,
+            gas_limit_x,
         ))
         .await;
+    let gas_limit_y = BalanceChange::Up(U512::from(gas_limit));
     // Alice gets payed for executing the transaction since it's set to pay to proposer
     test_scenario
         .assert(PublicKeyBalanceChange::new(
             ALICE_PUBLIC_KEY.clone(),
-            gas_limit as i64,
-            gas_limit as i64,
+            gas_limit_y,
+            gas_limit_y,
         ))
         .await;
 }

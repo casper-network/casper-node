@@ -35,6 +35,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT,
         ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
         ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE,
+        VESTING_SCHEDULE_LENGTH_MILLIS,
     },
     EntityAddr, EraId, GenesisAccount, GenesisValidator, HoldBalanceHandling, Key, Motes,
     ProtocolVersion, PublicKey, SecretKey, TransactionHash, DEFAULT_MINIMUM_BID_AMOUNT, U256, U512,
@@ -949,8 +950,9 @@ fn should_not_allow_delegator_stake_range_during_vesting() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
+    let chainspec_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(VESTING_SCHEDULE_LENGTH_MILLIS);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
     builder.run_genesis(run_genesis_request);
     // need to step past genesis era
     builder.advance_era();
@@ -1408,11 +1410,10 @@ fn should_release_founder_stake() {
         )
     };
 
-    let chainspec = ChainspecConfig::default()
+    let chainspec_config = ChainspecConfig::default()
         .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
         .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
-
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
 
     builder.run_genesis(run_genesis_request);
 
@@ -1443,11 +1444,10 @@ fn should_release_founder_stake() {
         assert!(locked_amounts.is_none());
     }
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS, Vec::new());
+    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
 
     {
-        // Attempt unbond of one mote
-        expect_unbond_failure(&mut builder, u64::one());
+        expect_unbond_failure(&mut builder, 100_000u64);
     }
 
     builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
@@ -3069,9 +3069,12 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = LmdbWasmTestBuilder::default();
+    let chainspec_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(VESTING_SCHEDULE_LENGTH_MILLIS);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
 
     builder.run_genesis(run_genesis_request);
+    builder.advance_eras_by(7);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3138,10 +3141,12 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     };
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    let mut builder = LmdbWasmTestBuilder::default();
+    let chainspec_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(VESTING_SCHEDULE_LENGTH_MILLIS);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
 
     builder.run_genesis(run_genesis_request);
+    builder.advance_eras_by(7);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3317,7 +3322,6 @@ fn should_release_vfta_holder_stake() {
         (DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT) / 14;
     const DELEGATOR_VFTA_STAKE: u64 = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const EXPECTED_REMAINDER: u64 = 12;
-    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
     const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
         1392858, 1285716, 1178574, 1071432, 964290, 857148, 750006, 642864, 535722, 428580, 321438,
         214296, 107154, 0,
@@ -3398,7 +3402,7 @@ fn should_release_vfta_holder_stake() {
     };
 
     let run_genesis_request = {
-        let genesis_config = GenesisConfigBuilder::default()
+        let exec_config = GenesisConfigBuilder::default()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
             .build();
@@ -3406,14 +3410,12 @@ fn should_release_vfta_holder_stake() {
         GenesisRequest::new(
             DEFAULT_GENESIS_CONFIG_HASH,
             DEFAULT_PROTOCOL_VERSION,
-            genesis_config,
+            exec_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )
     };
-
     let chainspec = ChainspecConfig::default()
-        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT);
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
 
@@ -3467,11 +3469,10 @@ fn should_release_vfta_holder_stake() {
         assert!(locked_amounts.is_none());
     }
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS, Vec::new());
+    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
 
     {
-        // Attempt unbond of one mote
-        expect_undelegate_failure(&mut builder, u64::one());
+        expect_undelegate_failure(&mut builder, 100_000_000u64);
     }
 
     builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
@@ -4248,7 +4249,6 @@ fn should_enforce_minimum_delegation_amount() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4269,7 +4269,7 @@ fn should_enforce_minimum_delegation_amount() {
     )
     .build();
 
-    // The delegation amount is below the default value of 500 CSPR,
+    // The delegation amount is below the default value of 500 token,
     // therefore the delegation should not succeed.
     builder.exec(delegation_request_1).expect_failure();
 
@@ -4343,7 +4343,6 @@ fn should_allow_delegations_with_minimal_floor_amount() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4365,7 +4364,7 @@ fn should_allow_delegations_with_minimal_floor_amount() {
     )
     .build();
 
-    // The delegation amount is below the default value of 500 CSPR,
+    // The delegation amount is below the default value of 500 token,
     // therefore the delegation should not succeed.
     builder.exec(delegation_request_1).expect_failure();
 
@@ -4467,7 +4466,6 @@ fn should_enforce_max_delegators_per_validator_cap() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -4952,7 +4950,6 @@ fn should_increase_existing_delegation_when_limit_exceeded() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();

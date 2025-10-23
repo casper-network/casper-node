@@ -2,6 +2,8 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,8 @@ const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 const DAYS_IN_WEEK: usize = 7;
 const WEEK_MILLIS: usize = DAYS_IN_WEEK * DAY_MILLIS;
 
+/// Locked funds period in milliseconds.
+pub const LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS as u64;
 /// Length of total vesting schedule in days.
 const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
 /// Length of total vesting schedule expressed in days.
@@ -135,6 +139,9 @@ impl VestingSchedule {
         timestamp_millis: u64,
         vesting_schedule_period_millis: u64,
     ) -> bool {
+        if vesting_schedule_period_millis == 0 {
+            return false;
+        }
         let vested_period = match self.locked_amounts() {
             Some(locked_amounts) => {
                 let vesting_weeks = locked_amounts
@@ -155,6 +162,18 @@ impl VestingSchedule {
             }
         };
         timestamp_millis < vested_period
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<VestingSchedule> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> VestingSchedule {
+        let initial_release_timestamp_millis = rng.gen();
+        let mut schedule = VestingSchedule::new(initial_release_timestamp_millis);
+        let staked_amount = rng.gen();
+        let period = rng.gen_range(1..6048000000); // between 1 ms and 10 weeks in ms
+        schedule.initialize_with_schedule(staked_amount, period);
+        schedule
     }
 }
 

@@ -1,21 +1,29 @@
-use safe_transmute::TriviallyTransmutable;
+use borsh::BorshSerialize;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct ReadInfo {
-    /// Allocated pointer.
-    pub(crate) data: u32,
-    /// Size in bytes.
-    pub(crate) data_size: u32,
-}
-
-unsafe impl TriviallyTransmutable for ReadInfo {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, BorshSerialize)]
 
 pub(crate) struct CreateResult {
-    pub(crate) package_address: [u8; 32],
+    pub(crate) package_addr: [u8; 32],
 }
 
-unsafe impl TriviallyTransmutable for CreateResult {}
+const _: () = assert!(
+    std::mem::size_of::<CreateResult>() == 32,
+    "CreateResult must be 32 bytes"
+);
+
+#[derive(Clone, Copy, BorshSerialize, Debug, PartialEq)]
+#[repr(C)]
+pub struct EnvInfo {
+    pub protocol_version_major: u32,
+    pub protocol_version_minor: u32,
+    pub protocol_version_patch: u32,
+    pub block_height: u64,
+    pub block_time: u64,
+    pub parent_block_hash: [u8; 32],
+    pub transferred_value: u64,
+    pub caller_addr: [u8; 32],
+    pub caller_kind: u32,
+    pub callee_addr: [u8; 32],
+    pub callee_kind: u32,
+}

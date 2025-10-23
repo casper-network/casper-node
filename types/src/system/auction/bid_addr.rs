@@ -17,6 +17,8 @@ use rand::{
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "testing", test))]
+use strum::EnumIter;
 
 const UNIFIED_TAG: u8 = 0;
 const VALIDATOR_TAG: u8 = 1;
@@ -34,6 +36,7 @@ const VALIDATOR_REV_PURSE_TAG: u8 = 9;
     Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
 )]
 #[repr(u8)]
+#[cfg_attr(any(feature = "testing", test), derive(EnumIter))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum BidAddrTag {

@@ -314,7 +314,7 @@ pub mod smart_contracts_sdk_sys {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "smart_contracts/sdk_sys/Cargo.toml",
+                "smart_contracts/vm2/sdk_sys/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             ),
@@ -329,12 +329,12 @@ pub mod smart_contracts_sdk_sys {
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 SMART_CONTRACTS_SDK_SYS_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 SMART_CONTRACTS_SDK_SYS_VERSION_REGEX.clone(),
                 replacement,
             ),
@@ -346,44 +346,26 @@ pub mod smart_contracts_sdk {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-            DependentFile::new(
-                "smart_contracts/sdk_codegen/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-contract-sdk = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-        ]
-    });
-}
-
-pub mod smart_contracts_sdk_codegen {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![DependentFile::new(
-            "smart_contracts/sdk_codegen/Cargo.toml",
+            "smart_contracts/vm2/sdk/Cargo.toml",
             MANIFEST_VERSION_REGEX.clone(),
             replacement,
         )]
     });
 }
+
 pub mod smart_contracts_macros {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-contract-macros = \{[^\}]*version = )"(?:[^"]+)"#)
                     .unwrap(),
                 replacement,
@@ -426,12 +408,12 @@ pub mod executor_wasm_common {
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 EXECUTOR_WASM_COMMON_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 EXECUTOR_WASM_COMMON_VERSION_REGEX.clone(),
                 replacement,
             ),

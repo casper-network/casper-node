@@ -2,8 +2,7 @@ use casper_contract_sdk::prelude::*;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper::{self, Entity},
-    log, revert,
+    casper, log, revert,
     types::{Address, CallError},
     ContractHandle,
 };
@@ -26,11 +25,10 @@ impl From<CallError> for TokenOwnerError {
     }
 }
 
-pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support
-                         // this in the macro
+pub type Data = Vec<u8>;
 
-#[casper]
 #[derive(Debug, Default, PartialEq)]
+#[casper]
 pub enum FallbackHandler {
     /// Accept tokens and do nothing.
     #[default]
@@ -163,7 +161,7 @@ impl Deposit for TokenOwnerContract {
             }
             FallbackHandler::RejectWithData(data) => {
                 // This will cause a revert with data.
-                revert!(data);
+                rollback!(data);
             }
         }
     }

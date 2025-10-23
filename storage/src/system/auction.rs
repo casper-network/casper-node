@@ -73,6 +73,7 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        vesting_schedule_period_millis: u64,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
         minimum_bid_amount: u64,
@@ -117,6 +118,7 @@ pub trait Auction:
             process_updated_delegator_stake_boundaries(
                 self,
                 &mut validator_bid,
+                vesting_schedule_period_millis,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
             )?;
@@ -193,15 +195,20 @@ pub trait Auction:
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
         let staked_amount = validator_bid.staked_amount();
 
-        // An attempt to unbond more than is staked results in unbonding the staked amount.
-        let unbonding_amount = U512::min(amount, validator_bid.staked_amount());
+        if amount > staked_amount {
+            // An attempt to unbond more than is staked results in an error.
+            // We've gone back and forth on this behavior.
+            // * In 1.x it was an error.
+            // * In 2.0 it was changed to interpret it as "up to amount" and not error, by request.
+            // * In 2.1 it is restored to the original 1.x behavior, also by request.
+            return Err(Error::UnbondTooLarge);
+        }
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
-        let updated_stake =
-            validator_bid.decrease_stake(unbonding_amount, era_end_timestamp_millis)?;
+        let updated_stake = validator_bid.decrease_stake(amount, era_end_timestamp_millis)?;
 
         debug!(
-            "withdrawing bid for {validator_bid_addr} reducing {staked_amount} by {unbonding_amount} to {updated_stake}",
+            "withdrawing bid for {validator_bid_addr} reducing {staked_amount} by {amount} to {updated_stake}",
         );
         // if validator stake is less than minimum_bid_amount, unbond fully and prune validator bid
         if updated_stake < U512::from(minimum_bid_amount) {
@@ -241,7 +248,7 @@ pub trait Auction:
                 public_key.clone(),
                 UnbondKind::Validator(public_key.clone()), // validator is the unbonder
                 *validator_bid.bonding_purse(),
-                unbonding_amount,
+                amount,
                 None,
             )?;
             self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
@@ -361,6 +368,16 @@ pub trait Auction:
         }
 
         for reservation in reservations {
+            if reservation.validator_public_key().is_system() {
+                warn!("attempt to reserve using system identity as validator");
+                return Err(Error::InvalidPublicKey);
+            }
+            if let Some(del_pub_key) = reservation.delegator_kind().maybe_public_key() {
+                if del_pub_key.is_system() {
+                    warn!("attempt to reserve using system identity as delegator");
+                    return Err(Error::InvalidPublicKey);
+                }
+            }
             if !self
                 .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
             {

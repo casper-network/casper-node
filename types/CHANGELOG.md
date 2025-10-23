@@ -9,9 +9,37 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
-## [UNRELEASED] casper-types 6.0.0
+## casper-types 7.0.0
 
-### Added 
+### Added
+
+- in struct AddressableEntity:
+  - function `byte_code_addr`
+- in struct `WasmV2Config`:
+  - field `host_ffi_opt_costs` (replacing `host_function_costs`)
+- type `HostFFIFunctionCosts` (which replaces `HostFunctionCostsV2`)
+
+### Changed
+
+- functions `Block::block_utilization` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
+- functions `Block::has_hit_slot_capacity` first argument now is a `&TransactionConfig` instead of `TransactionConfig`
+- renamed `package::PackageHash` to `package::PackageAddr`
+- renamed `package::TryFromSliceForPackageHashError` to `package::TryFromSliceForPackageAddrError`
+- in struct `AddressableEntity`:
+  - field `package_hash` renamed to `package`
+  - field `byte_code_hash` renamed to `byte_code`
+
+### Removed
+
+- type `key::PackageAddr`. It's usages will be replaced with `package::PackageAddr`
+- in struct `WasmV2Config`:
+   - field `host_function_costs`
+- type `HostFunctionCostsV2`
+
+## casper-types 6.0.0
+
+### Added
+
 - TransactionInvocationTarget::ByPackageHash::protocol_version_major field
 - TransactionInvocationTarget::ByPackageName::protocol_version_major field
 - New variant PackageIdentifier::HashWithVersion

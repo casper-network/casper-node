@@ -15,7 +15,7 @@ use casper_types::{
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
     CLValueDictionary, CLValueError, ContractRuntimeTag, EntityAddr, EntityKind, HashAddr, Key,
-    KeyTag, PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
+    KeyTag, PackageAddr, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
@@ -593,7 +593,7 @@ proptest! {
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let entity = AddressableEntity::new(
-            PackageHash::new([1u8;32]),
+            PackageAddr::new([1u8;32]),
             ByteCodeHash::default(),
             ProtocolVersion::V1_0_0,
             purse,
@@ -797,7 +797,7 @@ fn query_for_circular_references_should_fail() {
 fn validate_query_proof_should_work() {
     let a_e_key = Key::AddressableEntity(EntityAddr::Account([30; 32]));
     let a_e = StoredValue::AddressableEntity(AddressableEntity::new(
-        PackageHash::new([20; 32]),
+        PackageAddr::new([20; 32]),
         ByteCodeHash::default(),
         ProtocolVersion::V1_0_0,
         URef::default(),

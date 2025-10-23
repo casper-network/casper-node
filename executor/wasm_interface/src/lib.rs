@@ -1,17 +1,26 @@
 pub mod executor;
+pub mod sandboxed_execution;
 
 use bytes::Bytes;
 use executor::ExecuteError;
+use serde::Serialize;
 use thiserror::Error;
 
 use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
 };
+use casper_types::bytesrepr::Error as BytesreprError;
+
+#[cfg(test)]
+pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
+pub use sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+};
 
 /// Interface version for the Wasm host functions.
 ///
-/// This defines behavior of the Wasm execution environment i.e. the host behavior, serialiation,
+/// This defines behavior of the Wasm execution environment i.e. the host behavior, serialization,
 /// etc.
 ///
 /// Only the highest `interface_version_X` is taken from the imports table which means Wasm has to
@@ -27,7 +36,7 @@ impl From<u32> for InterfaceVersion {
 
 pub type HostResult = Result<(), CallError>;
 
-/// Converts a host result into a u32.
+/// Converts a host result into the corresponding u32 value.
 #[must_use]
 pub fn u32_from_host_result(result: HostResult) -> u32 {
     match result {
@@ -71,17 +80,17 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
-#[derive(Error, Debug)]
 /// Represents a catastrophic internal host error.
-pub enum InternalHostError {
+#[derive(Error, Debug, Clone, Serialize)]
+pub enum FatalHostError {
     #[error("type conversion failure")]
     TypeConversion,
     #[error("contract already exists")]
     ContractAlreadyExists,
     #[error("tracking copy error")]
     TrackingCopy,
-    #[error("failed building execution request")]
-    ExecuteRequestBuildFailure,
+    #[error("failed building execution request: {0}")]
+    ExecuteRequestBuildFailure(&'static str),
     #[error("unexpected entity kind")]
     UnexpectedEntityKind,
     #[error("failed reading total balance")]
@@ -90,10 +99,32 @@ pub enum InternalHostError {
     TotalBalanceOverflow,
     #[error("remaining gas exceeded the gas limit")]
     RemainingGasExceedsGasLimit,
-    #[error("account not found under key")]
-    AccountRecordNotFound,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
+    #[error("missing system contract")]
+    MissingSystemContract,
+    #[error("dispatching system contract failed")]
+    DispatchSystemContract,
+    #[error("incompatible type: expected {expected}, found {found}")]
+    UnexpectedStoredValueVariant { expected: String, found: String },
+    #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
+    Bytesrepr(BytesreprError),
+    #[error(
+        "Successfull execution of VM1 contract returned an output which is undefined behavior"
+    )]
+    UnexpectedOutput,
+    #[error("Executor in a state that made in unable to proceed. Details: {0}")]
+    CorruptExecutionState(String),
+    #[error("Error when creating config: {0}")]
+    ConfigBuilderError(String),
+    #[error("invalid public key")]
+    InvalidPublicKey,
+    #[error("invalid entity address")]
+    InvalidEntityAddr,
+    #[error("serialization failure")]
+    Serialization,
+    #[error("Unable to determine the cost of ffi call")]
+    UnableToValueFFICall,
 }
 
 /// The outcome of a call.
@@ -101,6 +132,10 @@ pub enum InternalHostError {
 /// type.
 #[derive(Debug, Error)]
 pub enum VMError {
+    /// NOTE: This will kill the node.
+    #[error("Fatal host error: {0}")]
+    Fatal(#[from] FatalHostError),
+
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,
@@ -108,6 +143,8 @@ pub enum VMError {
     },
     #[error("export: {0}")]
     Export(ExportError),
+    #[error("missing table entry: {0}")]
+    AllocError(String),
     #[error("Out of gas")]
     OutOfGas,
     /// Error while executing Wasm: traps, memory access errors, etc.
@@ -116,8 +153,6 @@ pub enum VMError {
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Trap: {0}")]
     Trap(TrapCode),
-    #[error("Internal host error")]
-    Internal(#[from] InternalHostError),
     #[error("Execute error: {0}")]
     Execute(#[from] ExecuteError),
 }
@@ -184,17 +219,25 @@ impl ConfigBuilder {
     }
 
     /// Build the configuration.
-    #[must_use]
-    pub fn build(self) -> Config {
-        let gas_limit = self.gas_limit.expect("Required field missing: gas_limit");
+    pub fn build(self) -> Result<Config, ConfigBuilderError> {
+        let gas_limit = self
+            .gas_limit
+            .ok_or(ConfigBuilderError::MissingField("gas_limit".to_owned()))?;
         let memory_limit = self
             .memory_limit
-            .expect("Required field missing: memory_limit");
-        Config {
+            .ok_or(ConfigBuilderError::MissingField("memory_limit".to_owned()))?;
+        Ok(Config {
             gas_limit,
             memory_limit,
-        }
+        })
     }
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ConfigBuilderError {
+    #[error("Could not build config. Missing field: {0}")]
+    MissingField(String),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -219,6 +262,7 @@ impl MeteringPoints {
 /// instance, wasm linear memory access, etc.
 pub trait Caller {
     type Context;
+    type Executor: crate::executor::Executor;
 
     fn context(&self) -> &Self::Context;
     fn context_mut(&mut self) -> &mut Self::Context;
@@ -226,23 +270,21 @@ pub trait Caller {
     fn bytecode(&self) -> Bytes;
 
     /// Check if an export is present in the module.
-    fn has_export(&self, name: &str) -> bool;
+    fn has_export(&self, name: &str) -> VMResult<bool>;
 
-    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
-        let mut vec = vec![0; size];
-        self.memory_read_into(offset, &mut vec)?;
-        Ok(vec)
-    }
+    fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>>;
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> VMResult<()>;
     fn memory_write(&self, offset: u32, data: &[u8]) -> VMResult<()>;
     /// Allocates memory inside the Wasm VM by calling an export.
     ///
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32>;
-    /// Returns the amount of gas used.
-    fn gas_consumed(&mut self) -> MeteringPoints;
-    /// Set the amount of gas used.
+    /// Returns the amount of gas remaining.
+    fn get_remaining_points(&mut self) -> VMResult<MeteringPoints>;
+    /// Check for gas exhaustion, then reduce remaining by amount if able.
     fn consume_gas(&mut self, value: u64) -> VMResult<()>;
+    /// Returns a reference to the executor used by the current instance.
+    fn executor(&self) -> &Self::Executor;
 }
 
 #[derive(Debug, Error)]
@@ -255,6 +297,8 @@ pub enum WasmPreparationError {
     Memory(String),
     #[error("Instantiation error: {0}")]
     Instantiation(String),
+    #[error("Internal host error {0}")]
+    Internal(#[from] FatalHostError),
 }
 
 #[derive(Debug)]
@@ -288,6 +332,11 @@ impl GasUsage {
     #[must_use]
     pub fn remaining_points(&self) -> u64 {
         self.remaining_points
+    }
+
+    /// Spend a given amount of gas. If the amount exceeds the remaining gas, it will be set to 0.
+    pub fn spend(&mut self, amount: u64) {
+        self.remaining_points = self.remaining_points.saturating_sub(amount);
     }
 }
 

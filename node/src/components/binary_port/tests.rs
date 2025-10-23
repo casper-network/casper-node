@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    net::{IpAddr, Ipv4Addr},
+};
 
 use derive_more::From;
 use either::Either;
@@ -7,6 +10,7 @@ use serde::Serialize;
 
 use casper_binary_port::{
     BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest, RecordId,
+    SandboxedExecutionRequest,
 };
 
 use casper_types::{
@@ -51,11 +55,13 @@ use super::{BinaryPort, Metrics as BinaryPortMetrics};
 
 const ENABLED: bool = true;
 const DISABLED: bool = false;
+const WHITELIST_EMPTY: Vec<String> = Vec::new();
 
 struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
     allow_request_speculative_exec: bool,
+    sandboxed_execution_allowed_ips: Vec<String>,
     request_generator: Either<fn(&mut TestRng) -> Command, Command>,
 }
 
@@ -67,6 +73,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: ENABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -74,6 +81,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: ENABLED,
         allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -81,13 +89,23 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: ENABLED,
+        sandboxed_execution_allowed_ips: WHITELIST_EMPTY,
         request_generator: Either::Left(try_speculative_exec_request),
+    };
+
+    let try_restricted_execution_enabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: vec!["127.0.0.1".to_string()],
+        request_generator: Either::Left(try_sandboxed_execution),
     };
 
     for test_case in [
         get_all_values_enabled,
         get_trie_enabled,
         try_speculative_exec_enabled,
+        try_restricted_execution_enabled,
     ] {
         let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -111,6 +129,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: DISABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -118,6 +137,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: DISABLED,
         allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -125,13 +145,23 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: DISABLED,
+        sandboxed_execution_allowed_ips: Vec::new(),
         request_generator: Either::Left(try_speculative_exec_request),
+    };
+
+    let try_restricted_execution_disabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: rng.gen(),
+        sandboxed_execution_allowed_ips: Vec::new(),
+        request_generator: Either::Left(try_sandboxed_execution),
     };
 
     for test_case in [
         get_all_values_disabled,
         get_trie_disabled,
         try_speculative_exec_disabled,
+        try_restricted_execution_disabled,
     ] {
         let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -159,6 +189,7 @@ async fn should_return_empty_response_when_fetching_empty_key() {
             allow_request_get_all_values: DISABLED,
             allow_request_get_trie: DISABLED,
             allow_request_speculative_exec: DISABLED,
+            sandboxed_execution_allowed_ips: Vec::new(),
             request_generator: Either::Right(request),
         })
         .collect();
@@ -186,6 +217,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
+        sandboxed_execution_allowed_ips,
         request_generator,
     }: TestCase,
     rng: &mut TestRng,
@@ -198,6 +230,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
+        sandboxed_execution_allowed_ips,
         max_message_size_bytes: 1024,
         max_connections: 2,
         ..Default::default()
@@ -231,6 +264,7 @@ async fn run_test_case(
     };
     let event = BinaryPortEvent::HandleRequest {
         request,
+        peer_ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         responder: Responder::without_shutdown(sender),
     };
 
@@ -448,6 +482,24 @@ fn trie_request() -> Command {
 fn try_speculative_exec_request(rng: &mut TestRng) -> Command {
     Command::TrySpeculativeExec {
         transaction: Transaction::V1(TransactionV1::random(rng)),
+    }
+}
+
+fn try_sandboxed_execution(_rng: &mut TestRng) -> Command {
+    use casper_types::{account::AccountHash, BlockHash, BlockTime, Digest};
+    Command::TrySandboxedExecution {
+        request: SandboxedExecutionRequest {
+            initiator: AccountHash::new([0; 32]),
+            contract_address: [0; 32],
+            entry_point: "test".to_string(),
+            input: vec![].into(),
+            gas_limit: 100000,
+            block_time: BlockTime::new(0),
+            state_hash: Digest::from([0; 32]),
+            parent_block_hash: BlockHash::new(Digest::from([0; 32])),
+            block_height: 0,
+            chain_name: "test".to_string(),
+        },
     }
 }
 

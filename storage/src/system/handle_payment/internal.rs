@@ -88,6 +88,9 @@ pub fn calculate_overpayment_and_fee(
                 that incurs any additional costs need to use actual discrete variables for each value
                 and not assume limit * price == cost
     */
+    if limit > available_balance && available_balance <= cost {
+        return Ok((U512::zero(), available_balance));
+    }
     if available_balance < cost {
         return Ok((U512::zero(), available_balance));
     }
@@ -95,6 +98,7 @@ pub fn calculate_overpayment_and_fee(
         return Ok((U512::zero(), cost));
     }
     let unspent = limit.saturating_sub(consumed);
+
     if unspent == U512::zero() {
         return Ok((U512::zero(), cost));
     }

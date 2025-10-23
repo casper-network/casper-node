@@ -32,6 +32,36 @@ pub(crate) mod raw_32_byte_array {
     }
 }
 
+pub(crate) mod package_addr_as_raw_32_byte_array {
+    use crate::{HashAddr, PackageAddr};
+
+    use super::*;
+
+    pub(crate) fn serialize<S: Serializer>(
+        package_hash: &PackageAddr,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            base16::encode_lower(&package_hash.value()).serialize(serializer)
+        } else {
+            package_hash.serialize(serializer)
+        }
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<PackageAddr, D::Error> {
+        if deserializer.is_human_readable() {
+            let hex_string = String::deserialize(deserializer)?;
+            let bytes = base16::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            let hash_addr = <HashAddr>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?;
+            Ok(PackageAddr::new(hash_addr))
+        } else {
+            <PackageAddr>::deserialize(deserializer)
+        }
+    }
+}
+
 pub(crate) mod contract_hash_as_digest {
     use super::*;
     use crate::contracts::ContractHash;

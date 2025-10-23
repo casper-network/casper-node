@@ -6,6 +6,18 @@ use std::{
     time::Duration,
 };
 
+use crate::{
+    components::block_accumulator,
+    reactor::{
+        main_reactor::{tests::configs_override::ConfigsOverride, MainEvent, MainReactor},
+        Runner,
+    },
+    testing::{
+        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
+    },
+    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    utils::RESOURCES_PATH,
+};
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
@@ -14,13 +26,14 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    Uptime, ValueWithProof,
+    SandboxedExecutionRequest, Uptime, ValueWithProof,
 };
+use casper_executor_wasm_common::chain_utils;
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
-    bytesrepr::{Bytes, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::{Effects, TransformKindV2, TransformV2},
     system::auction::DelegatorKind,
@@ -29,22 +42,14 @@ use casper_types::{
     BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
     ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
-    EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, Transfer, URef, U512,
+    EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
+    PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction,
+    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::codec::Framed;
-
-use crate::{
-    reactor::{main_reactor::MainReactor, Runner},
-    testing::{
-        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
-    },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
-};
 
 use crate::reactor::main_reactor::tests::{
     fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE,
@@ -200,7 +205,10 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     let post_migration_contract_hash = ContractHash::new(rng.gen());
     let wasm_hash = ContractWasmHash::new(rng.gen());
 
-    let package_addr: PackageAddr = rng.gen();
+    let package_addr: PackageAddr = {
+        let addr: [u8; 32] = rng.gen();
+        PackageAddr::new(addr)
+    };
     let package_access_key: URef = rng.gen();
     let entity_addr: EntityAddr = rng.gen();
     let entity_bytecode_hash: ByteCodeHash = ByteCodeHash::new(rng.gen());
@@ -270,7 +278,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     effects.push(TransformV2::new(
         Key::Hash(post_migration_contract_package_hash.value()),
         TransformKindV2::Write(StoredValue::CLValue(
-            CLValue::from_t((Key::SmartContract(package_addr), package_access_key))
+            CLValue::from_t((Key::Package(package_addr), package_access_key))
                 .expect("should create CLValue"),
         )),
     ));
@@ -300,7 +308,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     ));
 
     effects.push(TransformV2::new(
-        Key::SmartContract(package_addr),
+        Key::Package(package_addr),
         TransformKindV2::Write(StoredValue::SmartContract(Package::new(
             EntityVersions::default(),
             Default::default(),
@@ -311,7 +319,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     effects.push(TransformV2::new(
         Key::AddressableEntity(entity_addr),
         TransformKindV2::Write(StoredValue::AddressableEntity(AddressableEntity::new(
-            PackageHash::new(package_addr),
+            package_addr,
             entity_bytecode_hash,
             ProtocolVersion::V2_0_0,
             main_purse,
@@ -1324,7 +1332,7 @@ fn try_accept_transaction(key: &SecretKey) -> TestCase {
         TransactionV1Builder::new_targeting_invocable_entity_via_alias(
             "Test",
             "call",
-            casper_types::TransactionRuntimeParams::VmCasperV1,
+            TransactionRuntimeParams::VmCasperV1,
         )
         .with_secret_key(key)
         .with_chain_name("casper-example")
@@ -1354,6 +1362,194 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
         request: Command::TrySpeculativeExec { transaction },
         asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
+}
+
+#[tokio::test]
+async fn binary_port_sandboxed_execution_request() {
+    testing::init_logging();
+
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let bob_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    let stakes = vec![
+        (
+            alice_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(u128::MAX)),
+        ),
+        (
+            bob_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(1)),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    let rng = TestRng::new();
+    let mut fixture = TestFixture::new_with_keys(
+        rng,
+        vec![alice_secret_key.clone(), bob_secret_key.clone()],
+        stakes,
+        Some(ConfigsOverride {
+            vm_casper_v2: true,
+            ..Default::default()
+        }),
+    )
+    .await;
+
+    let chain_name = fixture.chainspec.network_config.name.clone();
+    let mut rng = fixture.rng_mut().create_child();
+
+    let node_0 = fixture
+        .node_contexts
+        .first()
+        .expect("should have at least one node")
+        .id;
+
+    // Wait for network to start storing blocks
+    fixture
+        .network_mut()
+        .crank_all_until(
+            &node_0,
+            &mut rng,
+            |e| {
+                matches!(
+                    e,
+                    MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
+                        maybe_block_signatures: _,
+                        maybe_meta_block: _,
+                    })
+                )
+            },
+            Duration::from_secs(30),
+        )
+        .await;
+
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("vm2_flipper.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&module_bytes);
+    let contract_address: HashAddr = chain_utils::compute_predictable_address(
+        chain_name.as_bytes(),
+        EntityAddr::new_account(alice_public_key.to_account_hash().value()).value(),
+        bytecode_hash,
+        None,
+    );
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+        .with_chain_name(chain_name.clone())
+        .with_initiator_addr(alice_public_key.to_owned())
+        .with_entry_point(TransactionEntryPoint::Custom("default".into()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&alice_secret_key);
+    let txn_hash = txn.hash();
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, Duration::from_secs(30))
+        .await;
+
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    // Create a VM read request to call the get method
+    let (latest_block, state_root_hash) = {
+        let (_, runner) = fixture.network.nodes().iter().next().unwrap();
+        let storage = runner.main_reactor().storage();
+
+        let latest_block = storage
+            .read_highest_block()
+            .expect("Should have blocks after settling on block production");
+        let state_root_hash = *latest_block.state_root_hash();
+        (latest_block, state_root_hash)
+    };
+
+    let request = SandboxedExecutionRequest {
+        initiator: alice_public_key.to_account_hash(),
+        contract_address,
+        entry_point: "get".to_string(),
+        input: Bytes::new(),
+        gas_limit: 100_000_000,
+        block_time: latest_block.timestamp().into(),
+        state_hash: state_root_hash,
+        parent_block_hash: *latest_block.parent_hash(),
+        block_height: latest_block.height(),
+        chain_name: chain_name.clone(),
+    };
+
+    // Connect to binary port (1st node)
+    let (_, first_node) = fixture.network.nodes().iter().next().unwrap();
+    let binary_port_addr = first_node
+        .main_reactor()
+        .binary_port
+        .bind_address()
+        .expect("should be bound");
+    let address = format!("localhost:{}", binary_port_addr.port());
+
+    let stream = TcpStream::connect(address.clone())
+        .await
+        .expect("should create stream");
+    let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
+
+    // Let the network run in the background while we wait for the request to be processed
+    let finish_cranking = fixture.run_until_stopped(rng.create_child());
+    // Create and send the command
+    let request = Command::TrySandboxedExecution { request };
+    let request_bytes = {
+        let header = CommandHeader::new(request.tag(), 16);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+        let request_bytes = ToBytes::to_bytes(&request).expect("should serialize");
+
+        [header_bytes, request_bytes].concat()
+    };
+    let binary_message = BinaryMessage::new(request_bytes);
+
+    client
+        .send(binary_message)
+        .await
+        .expect("Failed to send VM read request");
+
+    // Receive and verify response
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("VM read request should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have response"))
+        .unwrap_or_else(|err| panic!("should have ok response: {}", err));
+
+    let binary_response_and_request: BinaryResponseAndRequest =
+        bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
+    let response_obj = binary_response_and_request.response();
+    assert!(response_obj.is_success());
+
+    // The get entrypoint in flipper should return a single boolean value
+    let (flipper_state, remainder) =
+        bool::from_bytes(response_obj.payload()).expect("should deserialize");
+    assert!(remainder.is_empty());
+    assert!(!flipper_state);
+
+    finish_cranking.await;
 }
 
 #[tokio::test]

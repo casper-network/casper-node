@@ -50,6 +50,8 @@ pub mod step;
 mod system_entity_registry;
 /// Tagged values provider.
 pub mod tagged_values;
+#[cfg(test)]
+pub mod tests;
 mod total_supply;
 mod trie;
 
@@ -117,8 +119,9 @@ pub struct DataAccessLayer<S> {
     pub state: S,
     /// Max query depth.
     pub max_query_depth: u64,
-    /// Enable the addressable entity capability.
-    pub enable_addressable_entity: bool,
+    /// Flag indicating whether the addressable-entity capability is enabled (true) or disabled
+    /// (false).
+    pub addressable_entity_enabled: bool,
 }
 
 impl<S> DataAccessLayer<S> {
@@ -173,7 +176,7 @@ where
             Some(reader) => Ok(Some(TrackingCopy::new(
                 reader,
                 self.max_query_depth,
-                self.enable_addressable_entity,
+                self.addressable_entity_enabled,
             ))),
             None => Ok(None),
         }

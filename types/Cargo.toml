@@ -1,6 +1,6 @@
 [package]
 name = "casper-types"
-version = "6.0.1" # when updating, also update 'html_root_url' in lib.rs
+version = "8.0.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Ed Hastings <ed@casper.network>"]
 edition = "2021"
 description = "Types shared by many casper crates for use on the Casper network."
@@ -68,6 +68,7 @@ rand_pcg = "0.3.0"
 serde_json = "1"
 serde_test = "1"
 strum = { version = "0.27", features = ["derive"] }
+strum_macros = "0.27"
 tempfile = "3.4.0"
 thiserror = "1"
 untrusted = "0.7.1"

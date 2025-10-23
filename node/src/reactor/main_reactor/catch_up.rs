@@ -9,8 +9,7 @@ use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        sync_leaper,
-        sync_leaper::{LeapActivityError, LeapState},
+        sync_leaper::{self, LeapActivityError, LeapState},
         ValidatorBoundComponent,
     },
     effect::{requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, Effects},
@@ -322,9 +321,10 @@ impl MainReactor {
         block_hash: BlockHash,
     ) -> CatchUpInstruction {
         // we get a random sampling of peers to ask.
-        let peers_to_ask = self.net.fully_connected_peers_random(
+        let peers_to_ask = self.net.fully_connected_peers_random_include_known_addrs(
             rng,
             self.chainspec.core_config.simultaneous_peer_requests as usize,
+            1,
         );
         if peers_to_ask.is_empty() {
             return CatchUpInstruction::CheckLater(

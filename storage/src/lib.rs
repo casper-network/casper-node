@@ -1,6 +1,6 @@
 //! Storage for a node on the Casper network.
 
-#![doc(html_root_url = "https://docs.rs/casper-storage/2.1.1")]
+#![doc(html_root_url = "https://docs.rs/casper-storage/4.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png"
@@ -31,3 +31,9 @@ pub use block_store::{
     lmdb::{DbTableId, UnknownDbTableId},
     DbRawBytesSpec,
 };
+
+pub use system::runtime_native::Config as RuntimeNativeConfig;
+const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_key";
+const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_key";
+const MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC: &str = "bytecode_key";
+const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";

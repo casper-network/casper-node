@@ -3,7 +3,6 @@ mod block_acquisition_action;
 mod block_builder;
 mod block_synchronizer_progress;
 mod config;
-mod deploy_acquisition;
 mod error;
 mod event;
 mod execution_results_acquisition;
@@ -12,6 +11,7 @@ mod metrics;
 mod need_next;
 mod peer_list;
 mod signature_acquisition;
+mod transaction_acquisition;
 mod trie_accumulator;
 
 #[cfg(test)]
@@ -264,7 +264,7 @@ impl BlockSynchronizer {
 
         let (block_header, maybe_sigs) = sync_leap.highest_block_header_and_signatures();
         if let Some(builder) = self.get_builder(block_header.block_hash(), true) {
-            debug!(%builder, "BlockSynchronizer: register_sync_leap update builder");
+            info!(%builder, "BlockSynchronizer: register_sync_leap update builder");
             apply_sigs(builder, maybe_sigs);
             builder.register_peers(peers);
         } else {
@@ -283,6 +283,7 @@ impl BlockSynchronizer {
                         .core_config
                         .start_protocol_version_with_strict_finality_signatures_required,
                 );
+                debug!(%builder, "BlockSynchronizer: register_sync_leap create new builder");
                 apply_sigs(&mut builder, maybe_sigs);
                 if should_fetch_execution_state {
                     self.historical = Some(builder);
@@ -588,7 +589,7 @@ impl BlockSynchronizer {
                                 node_id,
                                 Box::new(EmptyValidationMetadata),
                             )
-                            .event(move |result| Event::DeployFetched {
+                            .event(move |result| Event::TransactionFetched {
                                 block_hash,
                                 result: Either::Left(result),
                             })
@@ -603,7 +604,7 @@ impl BlockSynchronizer {
                                 node_id,
                                 Box::new(EmptyValidationMetadata),
                             )
-                            .event(move |result| Event::DeployFetched {
+                            .event(move |result| Event::TransactionFetched {
                                 block_hash,
                                 result: Either::Right(result),
                             })
@@ -649,16 +650,30 @@ impl BlockSynchronizer {
                     }
                 }
                 NeedNext::Peers(block_hash) => {
-                    if builder.should_fetch_execution_state() {
-                        builder.latch();
-                        // the accumulator may or may not have peers for an older block,
-                        // so we're going to also get a random sampling from networking
-                        results.extend(
-                            effect_builder
-                                .get_fully_connected_peers(max_simultaneous_peers as usize)
-                                .event(move |peers| Event::NetworkPeers(block_hash, peers)),
-                        )
-                    }
+                    const KNOWN_ADDR_COUNT: usize = 1;
+                    let total_count = if builder.should_fetch_execution_state() {
+                        max_simultaneous_peers as usize + KNOWN_ADDR_COUNT
+                    } else {
+                        KNOWN_ADDR_COUNT
+                    };
+
+                    // latch for each self event being added to effects...
+                    // the latch count will be decremented when the event comes back in from the
+                    // event loop (in get_builder with decrement latch == true)
+
+                    builder.latch();
+                    // the accumulator may or may not have peers for an older block,
+                    // so we're going to also get a random sampling from networking
+                    // plus 1 known address
+                    results.extend(
+                        effect_builder
+                            .get_fully_connected_peers_with_known_addresses(
+                                KNOWN_ADDR_COUNT,
+                                total_count,
+                            )
+                            .event(move |peers| Event::NetworkPeers(block_hash, peers)),
+                    );
+
                     builder.latch();
                     results.extend(
                         effect_builder
@@ -1186,8 +1201,8 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if let Err(error) = builder.register_deploy(txn.fetch_id(), maybe_peer) {
-                error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
+            if let Err(error) = builder.register_transaction(txn.fetch_id(), maybe_peer) {
+                error!(%block_hash, %error, "BlockSynchronizer: failed to apply transaction");
             }
         }
     }
@@ -1362,7 +1377,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     | Event::SyncLeapFetched(_)
                     | Event::GlobalStateSynced { .. }
                     | Event::GotExecutionResultsChecksum { .. }
-                    | Event::DeployFetched { .. }
+                    | Event::TransactionFetched { .. }
                     | Event::ExecutionResultsFetched { .. }
                     | Event::ExecutionResultsStored(_)
                     | Event::AccumulatedPeers(_, _)
@@ -1507,13 +1522,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.block_fetched(result);
                     self.need_next(effect_builder, rng)
                 }
-                // for both historical and forward sync, a finality signature has been fetched
                 Event::FinalitySignatureFetched(result) => {
                     self.finality_signature_fetched(result);
                     self.need_next(effect_builder, rng)
                 }
                 // for both historical and forward sync, post-1.4 blocks track approvals hashes
-                // for the deploys they contain
+                // for the transactions they contain
                 Event::ApprovalsHashesFetched(result) => {
                     self.approvals_hashes_fetched(result);
                     self.need_next(effect_builder, rng)
@@ -1545,9 +1559,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                     self.execution_results_stored(block_hash);
                     self.need_next(effect_builder, rng)
                 }
-                // for pre-1.5 blocks we use the legacy deploy fetcher, otherwise we use the deploy
-                // fetcher but the results of both are forwarded to this handler
-                Event::DeployFetched { block_hash, result } => {
+                // for pre-1.5 blocks we use the legacy deploy fetcher, otherwise we use the
+                // transaction fetcher but the results of both are forwarded to this
+                // handler
+                Event::TransactionFetched { block_hash, result } => {
                     match result {
                         Either::Left(Ok(fetched_legacy_deploy)) => {
                             let deploy_id = fetched_legacy_deploy.id();
@@ -1561,7 +1576,7 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         }
                         Either::Left(Err(error)) => {
                             if let Some(builder) = self.get_builder(block_hash, false) {
-                                if builder.waiting_for_deploys() {
+                                if builder.waiting_for_transactions() {
                                     builder.latch_decrement();
                                 }
                             }
@@ -1570,12 +1585,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         }
                         Either::Right(Err(error)) => {
                             if let Some(builder) = self.get_builder(block_hash, false) {
-                                if builder.waiting_for_deploys() {
+                                if builder.waiting_for_transactions() {
                                     builder.latch_decrement();
                                 }
                             }
 
-                            debug!(%error, "BlockSynchronizer: failed to fetch deploy");
+                            debug!(%error, "BlockSynchronizer: failed to fetch transaction");
                         }
                     };
                     self.need_next(effect_builder, rng)

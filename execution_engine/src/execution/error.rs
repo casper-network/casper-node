@@ -9,7 +9,8 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    ContractRuntimeTag, EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
+    ContractRuntimeTag, EntityKind, EntityVersionKey, Key, PackageAddr, StoredValueTypeMismatch,
+    URef,
 };
 use casper_wasm::elements;
 
@@ -113,7 +114,7 @@ pub enum Error {
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveEntityVersions(PackageHash),
+    NoActiveEntityVersions(PackageAddr),
     /// Invalid entity version supplied.
     #[error("Invalid entity version: {}", _0)]
     InvalidEntityVersion(EntityVersionKey),
@@ -137,7 +138,7 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedEntity(PackageHash),
+    LockedEntity(PackageAddr),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidEntity(AddressableEntityHash),
@@ -198,6 +199,21 @@ pub enum Error {
     /// Ambiguous entity version and unable to determine entity version key.
     #[error("Ambiguous entity version")]
     AmbiguousEntityVersion,
+    /// Unable to find main purse of entity.
+    #[error("Main purse for entity not found")]
+    MainPurseForEntityNotFound,
+    /// Error when casting types.
+    #[error("Couldn't cast types {0}")]
+    TypeCast(&'static str),
+    /// Unexpected entity addr.
+    #[error("Unexpected entity kind variant: {0}")]
+    UnexpectedEntityKind(EntityKind),
+    /// Tried to add messages to a topic but it's full
+    #[error("Couldn't add messages to topic with key: {0} becuase it's full")]
+    TopicFull(Key),
+    /// No more messages in block allowed
+    #[error("No more messages in block allowed")]
+    MaxMessagesPerBlockExceeded,
 }
 
 impl From<PreprocessingError> for Error {

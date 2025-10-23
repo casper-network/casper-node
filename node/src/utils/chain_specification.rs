@@ -49,13 +49,13 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             );
             return false;
         }
-        match chainspec.highway_config.is_valid() {
-            Ok(_) => return true,
+        return match chainspec.highway_config.is_valid() {
+            Ok(_) => true,
             Err(msg) => {
                 error!(msg);
-                return false;
+                false
             }
-        }
+        };
     }
 
     // We don't support lookback by more than one era in the rewards scheme.
@@ -194,11 +194,11 @@ mod tests {
 
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
-        CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCostsV1,
-        HostFunctionCostsV2, HostFunctionV2, MessageLimits, Motes, OpcodeCosts, ProtocolConfig,
-        ProtocolVersion, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig,
-        TransactionLaneDefinition, TransactionV1Config, WasmConfig, WasmV1Config, WasmV2Config,
-        MINT_LANE_ID,
+        CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFFIFunctionCost,
+        HostFFIFunctionCosts, HostFunction, HostFunctionCostsV1, MessageLimits, Motes, OpcodeCosts,
+        ProtocolConfig, ProtocolVersion, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
+        TransactionConfig, TransactionLaneDefinition, TransactionV1Config, WasmConfig,
+        WasmV1Config, WasmV2Config, MINT_LANE_ID,
     };
 
     use super::*;
@@ -306,21 +306,26 @@ mod tests {
             verify_signature: HostFunction::new(332, [0, 1, 2, 3, 4, 5]),
             call_package_version: HostFunction::new(105, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
         });
-    static EXPECTED_GENESIS_HOST_FUNCTION_COSTS_V2: Lazy<HostFunctionCostsV2> =
-        Lazy::new(|| HostFunctionCostsV2 {
-            read: HostFunctionV2::new(100, [0, 1, 2, 3, 4, 5]),
-            write: HostFunctionV2::new(101, [0, 1, 2, 3, 4]),
-            remove: HostFunctionV2::new(114, [0, 1, 2]),
-            copy_input: HostFunctionV2::new(102, [0, 1]),
-            ret: HostFunctionV2::new(103, [0, 1]),
-            create: HostFunctionV2::new(104, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            transfer: HostFunctionV2::new(108, [0, 1, 2]),
-            env_balance: HostFunctionV2::new(109, [0, 1, 2, 3]),
-            upgrade: HostFunctionV2::new(110, [0, 1, 2, 3, 4, 5]),
-            call: HostFunctionV2::new(111, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
-            print: HostFunctionV2::new(112, [0, 1]),
-            emit: HostFunctionV2::new(113, [0, 1, 2, 3]),
-            env_info: HostFunctionV2::new(114, [0, 1]),
+    static EXPECTED_GENESIS_HOST_FFI_FUNCTION_COSTS: Lazy<HostFFIFunctionCosts> =
+        Lazy::new(|| HostFFIFunctionCosts {
+            read: HostFFIFunctionCost::new(100, 1),
+            write: HostFFIFunctionCost::new(101, 2),
+            remove: HostFFIFunctionCost::new(114, 3),
+            copy_input: HostFFIFunctionCost::new(102, 4),
+            ret: HostFFIFunctionCost::new(103, 5),
+            create: HostFFIFunctionCost::new(104, 6),
+            transfer: HostFFIFunctionCost::new(108, 7),
+            env_balance: HostFFIFunctionCost::new(109, 8),
+            upgrade: HostFFIFunctionCost::new(110, 9),
+            call: HostFFIFunctionCost::new(111, 10),
+            print: HostFFIFunctionCost::new(112, 11),
+            emit: HostFFIFunctionCost::new(113, 12),
+            env_info: HostFFIFunctionCost::new(114, 13),
+            generic_hash: HostFFIFunctionCost::new(115, 14),
+            recover_secp256k1: HostFFIFunctionCost::new(116, 15),
+            alt_bn128_add: HostFFIFunctionCost::new(117, 16),
+            alt_bn128_mul: HostFFIFunctionCost::new(118, 17),
+            alt_bn128_pairing: HostFFIFunctionCost::new(119, 18),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         let wasm_v1_config = WasmV1Config::new(
@@ -332,7 +337,7 @@ mod tests {
         let wasm_v2_config = WasmV2Config::new(
             17, // initial_memory
             EXPECTED_GENESIS_COSTS,
-            *EXPECTED_GENESIS_HOST_FUNCTION_COSTS_V2,
+            *EXPECTED_GENESIS_HOST_FFI_FUNCTION_COSTS,
         );
         WasmConfig::new(MessageLimits::default(), wasm_v1_config, wasm_v2_config)
     });
@@ -820,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_when_wasm_lanes_have_reseved_ids() {
+    fn should_fail_when_wasm_lanes_have_reserved_ids() {
         fail_validation_with_lane_id(MINT_LANE_ID);
         fail_validation_with_lane_id(AUCTION_LANE_ID);
         fail_validation_with_lane_id(INSTALL_UPGRADE_LANE_ID);

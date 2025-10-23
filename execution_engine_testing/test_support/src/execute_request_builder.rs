@@ -6,7 +6,7 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     contracts::ProtocolVersionMajor, runtime_args, AddressableEntityHash, BlockHash, BlockTime,
-    Digest, EntityVersion, Gas, InitiatorAddr, PackageHash, Phase, PricingMode, ProtocolVersion,
+    Digest, EntityVersion, Gas, InitiatorAddr, PackageAddr, Phase, PricingMode, ProtocolVersion,
     RuntimeArgs, TransactionEntryPoint, TransactionHash, TransactionInvocationTarget,
     TransactionRuntimeParams, TransactionTarget, TransactionV1Hash,
 };
@@ -296,7 +296,7 @@ impl ExecuteRequestBuilder {
     /// versioned stored contract by hash.
     pub fn contract_call_by_hash_versioned_with_major(
         sender: AccountHash,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         version: Option<EntityVersion>,
         protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point_name: &str,
@@ -305,7 +305,7 @@ impl ExecuteRequestBuilder {
         let initiator_addr = InitiatorAddr::AccountHash(sender);
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::ByPackageHash {
-                addr: contract_package_hash.value(),
+                addr: contract_package_hash,
                 version,
                 protocol_version_major,
             },
@@ -340,7 +340,7 @@ impl ExecuteRequestBuilder {
     /// versioned stored contract by hash.
     pub fn versioned_contract_call_by_hash(
         sender: AccountHash,
-        contract_package_hash: PackageHash,
+        contract_package_hash: PackageAddr,
         version: Option<EntityVersion>,
         entry_point_name: &str,
         args: RuntimeArgs,

@@ -20,6 +20,7 @@ mod node_status;
 mod purse_identifier;
 pub mod record_id;
 mod response_type;
+mod sandboxed_execution;
 mod speculative_execution_result;
 mod state_request;
 mod type_wrappers;
@@ -46,10 +47,14 @@ pub use node_status::NodeStatus;
 pub use purse_identifier::PurseIdentifier;
 pub use record_id::{RecordId, UnknownRecordId};
 pub use response_type::{PayloadEntity, ResponseType};
+pub use sandboxed_execution::{
+    SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    AccountInformation, AddressableEntityInformation, ConsensusStatus, ConsensusValidatorChanges,
-    ContractInformation, DictionaryQueryResult, GetTrieFullResult, LastProgress, NetworkName,
-    ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime, ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BidsInformation, ConsensusStatus,
+    ConsensusValidatorChanges, ContractInformation, DictionaryQueryResult, GetTrieFullResult,
+    LastProgress, NetworkName, ReactorStateName, RewardResponse, TransactionWithExecutionInfo,
+    Uptime, ValueWithProof,
 };

@@ -16,7 +16,7 @@ use casper_types::{
         ContractPackageHash, EntryPoints as ContractEntryPoints, NamedKeys, ProtocolVersionMajor,
     },
     AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HashAlgorithm, HostFunction,
-    HostFunctionCost, Key, PackageHash, PackageStatus, PublicKey, Signature, StoredValue, URef,
+    HostFunctionCost, Key, PackageAddr, PackageStatus, PublicKey, Signature, StoredValue, URef,
     U512, UREF_SERIALIZED_LENGTH,
 };
 
@@ -588,7 +588,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: PackageHash =
+                let contract_package_hash: PackageAddr =
                     self.t_from_mem(package_key_ptr, package_key_size)?;
                 let label: String = self.t_from_mem(label_ptr, label_size)?;
                 let existing_urefs: BTreeSet<URef> =
@@ -644,7 +644,7 @@ where
 
                 let contract_package_hash: ContractPackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
-                let package_hash = PackageHash::new(contract_package_hash.value());
+                let package_hash = PackageAddr::new(contract_package_hash.value());
                 let entry_points: EntryPoints = {
                     let contract_entry_points: ContractEntryPoints =
                         self.t_from_mem(entry_points_ptr, entry_points_size)?;
@@ -718,7 +718,7 @@ where
                     )))));
                 }
 
-                let package_hash: PackageHash =
+                let package_hash: PackageAddr =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
@@ -805,7 +805,7 @@ where
                     )))));
                 }
 
-                let package_hash: PackageHash =
+                let package_hash: PackageAddr =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
@@ -949,7 +949,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: PackageHash =
+                let contract_package_hash: PackageAddr =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let contract_version: Option<EntityVersion> =
                     self.t_from_mem(contract_version_ptr, contract_package_size)?;
@@ -1408,6 +1408,7 @@ where
                             HashAlgorithm::Blake2b => cryptography::blake2b(input),
                             HashAlgorithm::Blake3 => cryptography::blake3(input),
                             HashAlgorithm::Sha256 => cryptography::sha256(input),
+                            HashAlgorithm::Keccak256 => cryptography::keccak256(input),
                         }
                     })?;
 
@@ -1577,7 +1578,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: PackageHash =
+                let contract_package_hash: PackageAddr =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let contract_version: Option<EntityVersion> =
                     self.t_from_mem(contract_version_ptr, contract_version_size)?;

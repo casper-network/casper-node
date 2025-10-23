@@ -1,11 +1,9 @@
-use casper_contract_sdk::{
-    contrib::access_control::{AccessControl, AccessControlExt, AccessControlState},
-    prelude::*,
-    types::U256,
-};
-
-use casper_contract_sdk::contrib::cep18::{
-    Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
+use casper_contract_sdk::{prelude::*, types::U256};
+use casper_contract_sdk_contrib::{
+    access_control::{AccessControl, AccessControlExt, AccessControlState},
+    cep18::{
+        Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
+    },
 };
 
 #[casper(contract_state)]
@@ -25,8 +23,6 @@ impl Default for TokenContract {
 impl TokenContract {
     #[casper(constructor)]
     pub fn new(token_name: String) -> Self {
-        // TODO: If argument has same name as another entrypoint there's a compile error for some
-        // reason, so can't use "name"
         let mut state = CEP18State::new(&token_name, "Default symbol", 8, U256::from(0u64));
         state.enable_mint_burn = true;
 
@@ -52,7 +48,7 @@ impl TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl CEP18 for TokenContract {
     fn state(&self) -> &CEP18State {
         &self.state
@@ -63,7 +59,7 @@ impl CEP18 for TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::access_control)]
+#[casper(path = casper_contract_sdk_contrib::access_control)]
 impl AccessControl for TokenContract {
     fn state(&self) -> &AccessControlState {
         &self.access_control
@@ -74,10 +70,10 @@ impl AccessControl for TokenContract {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl Mintable for TokenContract {}
 
-#[casper(path = casper_contract_sdk::contrib::cep18)]
+#[casper(path = casper_contract_sdk_contrib::cep18)]
 impl Burnable for TokenContract {}
 
 #[cfg(test)]
@@ -137,13 +133,11 @@ mod tests {
     fn e2e() {
         // let db = casper::native::Container::default();
         // let env = Environment::new(db.clone(), DEFAULT_ADDRESS);
-
         let result = casper::native::dispatch(move || {
             assert_eq!(casper::get_caller(), DEFAULT_ADDRESS);
 
             let constructor = TokenContractRef::new("Foo Token".to_string());
 
-            // casper_call(address, value, selector!("nme"), ());
             let ctor_input_data = constructor.input_data();
             let create_result = casper::create(
                 None,

@@ -1,4 +1,8 @@
 //! Support for applying upgrades on the execution engine.
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
 use num_rational::Ratio;
 use std::{
     cell::RefCell,
@@ -14,6 +18,7 @@ use casper_types::{
         ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, Weight,
     },
     bytesrepr::{self, ToBytes},
+    contract_messages::MessageTopicSummary,
     contracts::{ContractHash, ContractPackageStatus, NamedKeys},
     system::{
         auction::{
@@ -31,17 +36,18 @@ use casper_types::{
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersionKey,
-    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling, Groups, HashAddr,
-    Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
+    EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling,
+    Groups, HashAddr, Key, KeyTag, Motes, Package, PackageAddr, PackageStatus, Phase,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator,
+    AddressGenerator, MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC,
+    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 
 const NO_CARRY_FORWARD: bool = false;
@@ -86,6 +92,9 @@ pub enum ProtocolUpgradeError {
     /// Tracking copy error.
     #[error("{0}")]
     TrackingCopy(crate::tracking_copy::TrackingCopyError),
+    /// Protocol upgrade applied on empty chain
+    #[error("Protocol upgrade applied on empty chain")]
+    EmptyChain,
 }
 
 impl From<CLValueError> for ProtocolUpgradeError {
@@ -182,7 +191,7 @@ where
         self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_hashes()?;
 
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             self.migrate_system_account(pre_state_hash)?;
             self.create_accumulation_purse_if_required(
                 &system_entity_addresses.handle_payment(),
@@ -283,6 +292,8 @@ where
             error!("Missing system handle payment entity hash");
             ProtocolUpgradeError::MissingSystemEntityHash(HANDLE_PAYMENT.to_string())
         })?;
+        let block_time = self.tracking_copy.get_block_time()?.unwrap_or_default();
+        self.create_messaging_topics(block_time)?;
         if let Some(standard_payment_hash) = registry.remove_standard_payment() {
             // Write the chainspec registry to global state
             let cl_value_chainspec_registry = CLValue::from_t(registry)
@@ -309,6 +320,17 @@ where
         let system_hash_addresses = SystemHashAddresses::new(mint, auction, handle_payment);
 
         Ok(system_hash_addresses)
+    }
+
+    fn create_messaging_topics(
+        &mut self,
+        block_time: BlockTime,
+    ) -> Result<(), ProtocolUpgradeError> {
+        self.add_topic_to_system_account(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
+        self.add_topic_to_system_account(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
+        Ok(())
     }
 
     /// Bump major version and/or update the entry points for system contracts.
@@ -373,8 +395,7 @@ where
                 }
             };
 
-        let mut package =
-            self.retrieve_system_package(entity.package_hash(), system_entity_type)?;
+        let mut package = self.retrieve_system_package(entity.package(), system_entity_type)?;
 
         let entity_hash = AddressableEntityHash::new(hash_addr);
         let entity_addr = EntityAddr::new_system(entity_hash.value());
@@ -385,7 +406,7 @@ where
         entity.set_protocol_version(self.config.new_protocol_version());
 
         let new_entity = AddressableEntity::new(
-            entity.package_hash(),
+            entity.package(),
             ByteCodeHash::default(),
             self.config.new_protocol_version(),
             URef::default(),
@@ -438,23 +459,23 @@ where
         );
 
         self.tracking_copy.write(
-            Key::SmartContract(entity.package_hash().value()),
+            Key::Package(entity.package().value().into()),
             StoredValue::SmartContract(package),
         );
 
         if must_carry_forward {
             // carry forward
-            let package_key = Key::SmartContract(entity.package_hash().value());
+            let package_key = Key::Package(entity.package().value().into());
             let uref = URef::default();
             let indirection = CLValue::from_t((package_key, uref))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
 
             self.tracking_copy.write(
-                Key::Hash(entity.package_hash().value()),
+                Key::Hash(entity.package().value()),
                 StoredValue::CLValue(indirection),
             );
 
-            let contract_wasm_key = Key::Hash(entity.byte_code_hash().value());
+            let contract_wasm_key = Key::Hash(entity.byte_code().value());
             let contract_wasm_indirection = CLValue::from_t(Key::ByteCode(ByteCodeAddr::Empty))
                 .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
             self.tracking_copy.write(
@@ -476,13 +497,13 @@ where
 
     fn retrieve_system_package(
         &mut self,
-        package_hash: PackageHash,
+        package_hash: PackageAddr,
         system_contract_type: SystemEntityType,
     ) -> Result<Package, ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system package");
         if let Some(StoredValue::SmartContract(system_entity)) = self
             .tracking_copy
-            .read(&Key::SmartContract(package_hash.value()))
+            .read(&Key::Package(package_hash.value().into()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     system_contract_type.to_string(),
@@ -698,7 +719,7 @@ where
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
         let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
-        let package_hash = PackageHash::new(address_generator.new_hash_address());
+        let package_hash = PackageAddr::new(address_generator.new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 
@@ -910,7 +931,7 @@ where
         &mut self,
         contract_hash: HashAddr,
     ) -> Result<NamedKeys, ProtocolUpgradeError> {
-        if self.config.enable_addressable_entity() {
+        if self.config.addressable_entity_enabled() {
             let named_keys = self
                 .tracking_copy
                 .get_named_keys(EntityAddr::System(contract_hash))?;
@@ -1420,4 +1441,43 @@ where
             self.tracking_copy.write(*key, value.clone());
         }
     }
+
+    fn add_topic_to_system_account(
+        &mut self,
+        block_time: BlockTime,
+        topic_name: &str,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let entity_addr = EntityAddr::new_account(PublicKey::System.to_account_hash().value());
+        let topic_name_hash = blake2b(topic_name.as_bytes()).into();
+        let topic_key = Key::message_topic(entity_addr, topic_name_hash);
+        let maybe_existing_topic = self
+            .tracking_copy
+            .get(&topic_key)
+            .map_err(ProtocolUpgradeError::TrackingCopy)?;
+        if maybe_existing_topic.is_some() {
+            return Ok(());
+        }
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            block_time,
+            topic_name.to_owned(),
+        ));
+        self.tracking_copy.write(topic_key, summary);
+        Ok(())
+    }
+}
+
+const DIGEST_LENGTH: usize = 32;
+/// The 32-byte digest blake2b hash function
+pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
+    let mut result = [0; DIGEST_LENGTH];
+    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
+    let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+
+    hasher.update(data.as_ref());
+
+    // NOTE: This should never fail, because result is exactly DIGEST_LENGTH long
+    hasher.finalize_variable(&mut result).ok();
+
+    result
 }

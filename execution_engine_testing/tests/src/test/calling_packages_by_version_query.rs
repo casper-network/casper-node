@@ -13,7 +13,7 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     contracts::ProtocolVersionMajor, runtime_args, AddressableEntityHash, ChainspecRegistry,
     EntityVersion, EntityVersionKey, EraId, HashAddr, HoldBalanceHandling, Key, NamedKeys,
-    PackageHash, PricingMode, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp,
+    PackageAddr, PricingMode, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp,
     TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntimeParams,
     TransactionTarget, TransactionV1Hash,
 };
@@ -335,7 +335,7 @@ fn when_disamiguous_calls_are_disabled_then_ambiguous_call_by_hash_will_fail() {
 
     let package_hash = get_package_hash(&mut builder);
     let target = TransactionInvocationTarget::ByPackageHash {
-        addr: package_hash,
+        addr: package_hash.into(),
         version: Some(1),
         protocol_version_major: None,
     };
@@ -567,7 +567,7 @@ fn get_contract_hash_for_specific_version(
         }
     };
     let package = builder
-        .get_package(PackageHash::new(*package_hash))
+        .get_package(PackageAddr::new(*package_hash))
         .unwrap();
     let key = EntityVersionKey::new(protocol_version_major, version);
     package.versions().get(&key).map(|x| x.value())
@@ -601,7 +601,7 @@ fn exec_put_key_by_package_hash(
 ) {
     let package_hash = get_package_hash(builder);
     let target = TransactionInvocationTarget::ByPackageHash {
-        addr: package_hash,
+        addr: package_hash.into(),
         version,
         protocol_version_major,
     };
@@ -634,7 +634,7 @@ fn upgrade_version(
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_addressable_entity_enabled(false)
         .build();
     let config = EngineConfigBuilder::new()
         .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
