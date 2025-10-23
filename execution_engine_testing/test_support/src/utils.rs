@@ -152,7 +152,7 @@ pub fn create_genesis_config_with_chainspec(
         .with_unbonding_delay(chainspec.core_config.unbonding_delay)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
         .with_storage_costs(chainspec.storage_costs)
-        .with_enable_addressable_entity(chainspec.core_config.enable_addressable_entity)
+        .with_addressable_entity_enabled(chainspec.core_config.addressable_entity_enabled)
         .build()
 }
 
