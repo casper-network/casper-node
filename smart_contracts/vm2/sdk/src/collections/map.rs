@@ -5,7 +5,7 @@ use crate::{
     prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
@@ -42,7 +42,7 @@ where
         key.serialize(&mut context_key).unwrap();
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            0,
+            CollectionTypeTag::Map,
             [0u8; 8],
             casper::generic_hash(&context_key, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
@@ -57,7 +57,7 @@ where
         let prefix_bytes = self.compute_prefix_for_key(key);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            0,
+            CollectionTypeTag::Map,
             [0u8; 8],
             casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
@@ -69,7 +69,7 @@ where
         key.serialize(&mut key_bytes).unwrap();
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            0,
+            CollectionTypeTag::Map,
             [0u8; 8],
             casper::generic_hash(&key_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );

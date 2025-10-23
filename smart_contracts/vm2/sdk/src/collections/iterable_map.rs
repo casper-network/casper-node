@@ -3,7 +3,7 @@ use crate::prelude::{marker::PhantomData, *};
 use crate::types::HashAlgorithm;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
 use const_fnv1a_hash::fnv1a_hash_64;
 
 use crate::casper::{self, read_into_vec};
@@ -142,7 +142,7 @@ where
         let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
         let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
             *casper::get_callee().address(),
-            3,
+            CollectionTypeTag::IterableMap,
             [0u8; 8],
             tail,
         )));
@@ -170,7 +170,7 @@ where
             casper::generic_hash(&to_remove_prefix, HashAlgorithm::Blake2b).unwrap();
         let to_remove_context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
             *casper::get_callee().address(),
-            3,
+            CollectionTypeTag::IterableMap,
             [0u8; 8],
             to_remove_tail,
         )));
@@ -186,7 +186,7 @@ where
         let to_remove_ptr_child_keyspace =
             Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                 *casper::get_callee().address(),
-                3,
+                CollectionTypeTag::IterableMap,
                 [0u8; 8],
                 to_remove_ptr_child_tail,
             )));
@@ -224,7 +224,7 @@ where
             let current_context_key =
                 Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                     *casper::get_callee().address(),
-                    3,
+                    CollectionTypeTag::IterableMap,
                     [0u8; 8],
                     current_tail,
                 )));
@@ -255,7 +255,7 @@ where
                 let current_context_key =
                     Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                         *casper::get_callee().address(),
-                        3,
+                        CollectionTypeTag::IterableMap,
                         [0u8; 8],
                         current_tail,
                     )));
@@ -278,7 +278,7 @@ where
             let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
             let key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                 *casper::get_callee().address(),
-                3,
+                CollectionTypeTag::IterableMap,
                 [0u8; 8],
                 tail,
             )));
@@ -338,7 +338,7 @@ where
             let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
             let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                 *casper::get_callee().address(),
-                3,
+                CollectionTypeTag::IterableMap,
                 [0u8; 8],
                 tail,
             )));
@@ -373,7 +373,7 @@ where
             let tail = casper::generic_hash(&prefix, HashAlgorithm::Blake2b).unwrap();
             let keyspace = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
                 *casper::get_callee().address(),
-                3,
+                CollectionTypeTag::IterableMap,
                 [0u8; 8],
                 tail,
             )));
@@ -489,7 +489,7 @@ where
         let tail = casper::generic_hash(&key_bytes, HashAlgorithm::Blake2b).unwrap();
         let context_key = Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
             *casper::get_callee().address(),
-            3,
+            CollectionTypeTag::IterableMap,
             [0u8; 8],
             tail,
         )));

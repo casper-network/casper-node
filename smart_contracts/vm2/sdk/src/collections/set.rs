@@ -1,7 +1,7 @@
 use crate::prelude::marker::PhantomData;
 
 use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace};
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
@@ -33,7 +33,7 @@ where
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            1,
+            CollectionTypeTag::Set,
             [0u8; 8],
             casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
                 .unwrap(),
@@ -45,7 +45,7 @@ where
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            1,
+            CollectionTypeTag::Set,
             [0u8; 8],
             casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
                 .unwrap(),
