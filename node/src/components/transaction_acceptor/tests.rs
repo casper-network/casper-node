@@ -982,8 +982,7 @@ impl TestScenario {
     fn is_v2_casper_vm(&self) -> bool {
         matches!(
             self,
-            TestScenario::VmCasperV2ByPackageHash
-                | TestScenario::VmCasperV2MissingSeedValue
+            TestScenario::VmCasperV2ByPackageHash | TestScenario::VmCasperV2MissingSeedValue
         )
     }
 }
