@@ -132,7 +132,7 @@ impl MinimalHostWrapper {
     }
 
     pub fn create(&self) {
-        casper::create(None, 0, None, None, None).ok();
+        casper::create(None, 0, None, None, None, None).ok();
     }
 
     pub fn print(&self) {

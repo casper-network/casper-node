@@ -149,6 +149,7 @@ mod tests {
                 Some(constructor.entry_point()),
                 ctor_input_data.as_ref().map(|data| data.as_slice()),
                 None,
+                None,
             )
             .expect("Should create");
 

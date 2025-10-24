@@ -20,6 +20,7 @@ use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
+    install::{InstallContractError, InstallContractRequest, InstallContractResult},
     CallError, FatalHostError, GasUsage, SandboxedExecutionRequest, SandboxedExecutionResult,
     WasmPreparationError,
 };
@@ -648,6 +649,12 @@ pub trait Executor: Clone + Send {
         runtime_native_config: RuntimeNativeConfig,
         request: SandboxedExecutionRequest,
     ) -> Result<SandboxedExecutionResult, ExecuteError>;
+
+    fn install_contract<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        install_request: InstallContractRequest,
+    ) -> Result<InstallContractResult, InstallContractError>;
 }
 
 #[repr(u32)]

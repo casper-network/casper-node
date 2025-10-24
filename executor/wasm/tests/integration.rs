@@ -8,7 +8,6 @@ use std::{
 use bytes::Bytes;
 use casper_execution_engine::runtime::cryptography;
 use casper_executor_wasm::{
-    install::{InstallContractError, InstallContractRequest},
     testing::{
         base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
         expect_successful_execution, make_address_generator, make_executor,
@@ -24,9 +23,12 @@ use casper_executor_wasm::{
     testing::DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY,
 };
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind, FFIMenu,
-    MintMethods,
+use casper_executor_wasm_interface::{
+    executor::{
+        AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind,
+        FFIMenu, MintMethods,
+    },
+    install::{InstallContractError, InstallContractRequest},
 };
 
 use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY};
@@ -1187,7 +1189,7 @@ fn upgradable() {
             address: upgradable_address,
             entry_point: "perform_upgrade".to_string(),
         })
-        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -1735,7 +1737,7 @@ fn should_not_fail_without_account() {
 
     let _create_result = {
         executor
-            .install_contract(state_root_hash, &global_state, create_request)
+            .install_contract_with_provider(state_root_hash, &global_state, create_request)
             .expect_err("Succeed")
     };
 }
@@ -1971,7 +1973,7 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
             address: upgradable_address,
             entry_point: "perform_upgrade".to_string(),
         })
-        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))

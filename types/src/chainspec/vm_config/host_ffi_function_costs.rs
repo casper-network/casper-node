@@ -287,6 +287,7 @@ impl ToBytes for HostFFIFunctionCosts {
         ret.append(&mut self.remove.to_bytes()?);
         ret.append(&mut self.copy_input.to_bytes()?);
         ret.append(&mut self.ret.to_bytes()?);
+        ret.append(&mut self.revert.to_bytes()?);
         ret.append(&mut self.create.to_bytes()?);
         ret.append(&mut self.transfer.to_bytes()?);
         ret.append(&mut self.env_balance.to_bytes()?);
@@ -307,6 +308,7 @@ impl ToBytes for HostFFIFunctionCosts {
         self.read.serialized_length()
             + self.write.serialized_length()
             + self.remove.serialized_length()
+            + self.revert.serialized_length()
             + self.copy_input.serialized_length()
             + self.ret.serialized_length()
             + self.create.serialized_length()

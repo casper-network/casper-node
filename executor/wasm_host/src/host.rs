@@ -235,7 +235,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             cb_ctx
         };
         if out_ptr != 0 {
-            caller.memory_write(out_ptr.wrapped_try_into()?, &output)?;
+            caller.memory_write(out_ptr, &output)?;
         }
     }
     Ok(exit_code)

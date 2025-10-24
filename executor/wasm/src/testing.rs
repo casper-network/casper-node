@@ -7,8 +7,15 @@ use std::{
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
-use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
+use casper_executor_wasm_interface::{
+    executor::{
+        ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
+        Executor,
+    },
+    install::{
+        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
+        InstallContractResult, InstallContractWithProviderResult,
+    },
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -28,14 +35,7 @@ use casper_types::{
 };
 use num_rational::Ratio;
 
-use crate::{
-    chainspec_config::ChainspecConfig,
-    install::{
-        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
-        InstallContractResult,
-    },
-    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
-};
+use crate::{chainspec_config::ChainspecConfig, ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
 use casper_storage::system::runtime_native::{Config, TransferConfig};
 use casper_types::system::auction::DelegationRate;
 use once_cell::sync::Lazy;
@@ -319,9 +319,9 @@ pub fn run_create_contract(
     global_state: &LmdbGlobalState,
     pre_state_hash: Digest,
     install_contract_request: InstallContractRequest,
-) -> InstallContractResult {
+) -> InstallContractWithProviderResult {
     executor
-        .install_contract(pre_state_hash, global_state, install_contract_request)
+        .install_contract_with_provider(pre_state_hash, global_state, install_contract_request)
         .expect("run_create_contract should succeed")
 }
 
@@ -357,7 +357,7 @@ pub fn call_dummy_host_fn_by_name(
     chainspec_config: &ChainspecConfig,
     host_function_name: &str,
     gas_limit: u64,
-) -> Result<InstallContractResult, InstallContractError> {
+) -> Result<InstallContractWithProviderResult, InstallContractError> {
     let executor = {
         let execution_engine_v1 = ExecutionEngineV1::default();
         let default_wasm_config = WasmV2Config::default();
@@ -428,5 +428,5 @@ pub fn call_dummy_host_fn_by_name(
         .build()
         .expect("should build");
 
-    executor.install_contract(state_root_hash, &global_state, create_request)
+    executor.install_contract_with_provider(state_root_hash, &global_state, create_request)
 }

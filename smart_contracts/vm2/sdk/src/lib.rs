@@ -281,6 +281,7 @@ pub struct ContractBuilder<'a, T: ContractRef> {
     transferred_value: Option<u64>,
     code: Option<&'a [u8]>,
     seed: Option<&'a [u8; 32]>,
+    bundle_data: Option<&'a [u8]>,
     marker: PhantomData<T>,
 }
 
@@ -298,6 +299,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
             code: None,
             seed: None,
             marker: PhantomData,
+            bundle_data: None,
         }
     }
 
@@ -319,6 +321,12 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
         self
     }
 
+    #[must_use]
+    pub fn with_bundle_data(mut self, bundle_data: &'a [u8]) -> Self {
+        self.bundle_data = Some(bundle_data);
+        self
+    }
+
     pub fn create<CallData: ToCallData>(
         &self,
         func: impl FnOnce() -> CallData,
@@ -330,12 +338,14 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
         let call_data = func();
         let input_data = call_data.input_data();
         let seed = self.seed;
+        let bundle_data = self.bundle_data;
         let create_result = casper::create(
             self.code,
             value,
             Some(call_data.entry_point()),
             input_data.as_deref(),
             seed,
+            bundle_data,
         )?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }
@@ -347,7 +357,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
 
         let value = self.transferred_value.unwrap_or(0);
         let seed = self.seed;
-        let create_result = casper::create(self.code, value, None, None, seed)?;
+        let create_result = casper::create(self.code, value, None, None, seed, self.bundle_data)?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }
 }

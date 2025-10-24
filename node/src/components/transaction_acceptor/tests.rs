@@ -251,7 +251,6 @@ enum TestScenario {
     ),
     VmCasperV2ByPackageHash,
     VmCasperV2MissingSeedValue,
-    VmCasperV2MissingBundleData,
 }
 
 impl TestScenario {
@@ -308,8 +307,7 @@ impl TestScenario {
             | TestScenario::DelegateExceedingMaximumDelegation
             | TestScenario::VmCasperV2ByPackageHash
             | TestScenario::V1ByPackage(..)
-            | TestScenario::VmCasperV2MissingSeedValue
-            | TestScenario::VmCasperV2MissingBundleData => Source::Client,
+            | TestScenario::VmCasperV2MissingSeedValue => Source::Client,
         }
     }
 
@@ -880,22 +878,6 @@ impl TestScenario {
                         .unwrap();
                 Transaction::from(txn)
             }
-
-            TestScenario::VmCasperV2MissingBundleData => {
-                let transaction_runtime = TransactionRuntimeParams::VmCasperV2 {
-                    transferred_value: 3_000_000_000u64,
-                    seed: Some([42; 32]),
-                    bundle_data: None,
-                };
-                let module_bytes = Bytes::from(vec![1]);
-                let txn =
-                    TransactionV1Builder::new_session(true, module_bytes, transaction_runtime)
-                        .with_chain_name("casper-example")
-                        .with_secret_key(&secret_key)
-                        .build()
-                        .unwrap();
-                Transaction::from(txn)
-            }
         }
     }
 
@@ -974,7 +956,6 @@ impl TestScenario {
                 }
             },
             TestScenario::VmCasperV2MissingSeedValue => false,
-            TestScenario::VmCasperV2MissingBundleData => false,
         }
     }
 
@@ -1003,7 +984,6 @@ impl TestScenario {
             self,
             TestScenario::VmCasperV2ByPackageHash
                 | TestScenario::VmCasperV2MissingSeedValue
-                | TestScenario::VmCasperV2MissingBundleData
         )
     }
 }
@@ -1736,14 +1716,6 @@ async fn run_transaction_acceptor_without_timeout(
                 })
             ),
             TestScenario::VmCasperV2MissingSeedValue => {
-                matches!(
-                    event,
-                    Event::TransactionAcceptorAnnouncement(
-                        TransactionAcceptorAnnouncement::InvalidTransaction { .. }
-                    )
-                )
-            }
-            TestScenario::VmCasperV2MissingBundleData => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -3131,20 +3103,6 @@ async fn should_reject_vm2_installs_without_seed_value() {
             result,
             Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
                 InvalidTransactionV1::MissingSeed
-            )))
-        ),
-        "{result:?}"
-    );
-}
-
-#[tokio::test]
-async fn should_reject_vm2_installs_without_bundle_data() {
-    let result = run_transaction_acceptor(TestScenario::VmCasperV2MissingBundleData).await;
-    assert!(
-        matches!(
-            result,
-            Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-                InvalidTransactionV1::MissingBundleData
             )))
         ),
         "{result:?}"

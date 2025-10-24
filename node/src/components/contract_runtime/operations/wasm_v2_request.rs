@@ -2,17 +2,15 @@ use std::sync::Arc;
 
 use super::MetaTransaction;
 use bytes::Bytes;
-use casper_executor_wasm::{
-    install::{
-        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
-        InstallContractResult,
-    },
-    ExecutorV2,
-};
+use casper_executor_wasm::ExecutorV2;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
         ExecuteWithProviderResult, ExecutionKind,
+    },
+    install::{
+        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
+        InstallContractWithProviderResult,
     },
     FatalHostError, GasUsage,
 };
@@ -42,7 +40,7 @@ pub(crate) enum WasmV2Request {
 /// The result of executing a Wasm contract.
 pub(crate) enum WasmV2Result {
     /// The result of installing a Wasm contract.
-    Install(InstallContractResult),
+    Install(InstallContractWithProviderResult),
     /// The result of executing a Wasm contract.
     Execute(ExecuteWithProviderResult),
 }
@@ -344,7 +342,11 @@ impl WasmV2Request {
     {
         match self {
             WasmV2Request::Install(install_request) => {
-                match engine.install_contract(state_root_hash, state_provider, install_request) {
+                match engine.install_contract_with_provider(
+                    state_root_hash,
+                    state_provider,
+                    install_request,
+                ) {
                     Ok(result) => Ok(WasmV2Result::Install(result)),
                     Err(error) => Err(WasmV2Error::Install(error)),
                 }

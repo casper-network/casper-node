@@ -176,9 +176,17 @@ pub fn create(
     constructor: Option<&str>,
     constructor_data: Option<&[u8]>,
     seed: Option<&[u8; 32]>,
+    bundle_data: Option<&[u8]>,
 ) -> Result<CreateResult, CallError> {
-    let input_data = borsh::to_vec(&(transferred_value, code, seed, constructor, constructor_data))
-        .expect("Expected borsh to work");
+    let input_data = borsh::to_vec(&(
+        transferred_value,
+        code,
+        seed,
+        constructor,
+        constructor_data,
+        bundle_data,
+    ))
+    .expect("Expected borsh to work");
     let (output, exit_code) = casper_ffi(GlobalStateFunctionOption::Create.into(), &input_data);
     match exit_code {
         HOST_ERROR_SUCCESS => match output {

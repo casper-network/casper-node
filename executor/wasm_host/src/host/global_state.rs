@@ -2,32 +2,29 @@ use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use bytes::Bytes;
 use casper_executor_wasm_common::{
-    chain_utils::{self, compute_next_contract_hash_version},
     entry_point::{
         ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY,
         ENTRY_POINT_PAYMENT_SELF_ONWARD,
     },
     error::{
-        CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_CL_VALUE, HOST_ERROR_INVALID_DATA,
-        HOST_ERROR_INVALID_INPUT, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
+        CALLEE_GAS_DEPLETED, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT,
+        HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
     },
     keyspace::{Keyspace, KeyspaceTag},
     type_uid::Uid,
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::Executor,
+    install::{InstallContractError, InstallContractRequestBuilder, InstallContractResult},
     Caller, FatalHostError, VMError, VMResult,
 };
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
+    addressable_entity::{NamedKeyAddr, NamedKeyValue},
     bytesrepr::{self, Bytes as BytesreprBytes, ToBytes},
-    contracts::{ContractHash, ContractPackage, ContractPackageHash, EntryPoints},
-    AccessRights, AddressableEntity, BlockHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
-    EntityKind, EntryPointAddr, EntryPointPayment, EntryPointValue, HashAddr, Key, NamedKeys,
-    Package, PackageAddr, ProtocolVersion, StoredValue, TypeUid, URef,
+    AccessRights, BlockHash, CLType, CLValue, Digest, EntityAddr, EntryPointAddr,
+    EntryPointPayment, EntryPointValue, Key, NamedKeys, StoredValue, TypeUid,
 };
 use either::Either;
 use num_traits::FromPrimitive;
@@ -37,7 +34,6 @@ use crate::{
     abi::{CreateResult, EnvInfo},
     context::Context,
     host::{context_to_entity_addr, metered_write, EntityKindTag, NAME_FOR_V2_CONTRACT_MAIN_PURSE},
-    system,
 };
 
 /// Read value under from global state under a key.
@@ -674,14 +670,16 @@ pub(crate) fn host_create<S: GlobalStateReader + 'static>(
         maybe_seed,
         maybe_constructor_name,
         constructor_data,
+        bundle_data,
     ) = match bytesrepr::deserialize_from_slice::<
-        &Bytes,
+        _,
         (
             u64,
             Option<BytesreprBytes>,
             Option<[u8; 32]>,
             Option<String>,
             Option<BytesreprBytes>,
+            Option<bytesrepr::Bytes>,
         ),
     >(&input)
     {
@@ -698,245 +696,321 @@ pub(crate) fn host_create<S: GlobalStateReader + 'static>(
         caller.bytecode()
     };
 
-    let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&bytecode);
+    let gas_limit = caller
+        .get_remaining_points()?
+        .try_into_remaining()
+        .map_err(|_| FatalHostError::TypeConversion)?;
 
-    let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, bytecode.clone().into());
-    let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
+    let mut builder = InstallContractRequestBuilder::default();
 
-    let callee_addr = context_to_entity_addr(caller.context()).value();
-
-    let package_addr: HashAddr = chain_utils::compute_predictable_address(
-        caller.context().chain_name.as_bytes(),
-        callee_addr,
-        bytecode_hash,
-        maybe_seed,
-    );
-
-    let protocol_version = ProtocolVersion::V2_0_0;
-    let protocol_version_major = protocol_version.value().major;
-
-    let ae_enabled = caller.context().tracking_copy.addressable_entity_enabled();
-
-    let (smart_contract_package_key, smart_contract_package_as_stored_value, smart_contract_addr) =
-        if ae_enabled {
-            // 1. Store package hash
-            let mut smart_contract_package = Package::default();
-
-            let next_version =
-                smart_contract_package.next_entity_version_for(protocol_version_major);
-            let smart_contract_addr =
-                compute_next_contract_hash_version(package_addr, next_version);
-
-            smart_contract_package.insert_entity_version(
-                protocol_version_major,
-                EntityAddr::SmartContract(smart_contract_addr),
-            );
-
-            (
-                Key::Package(package_addr.into()),
-                StoredValue::SmartContract(smart_contract_package),
-                smart_contract_addr,
-            )
-        } else {
-            let mut smart_contract_package = ContractPackage::default();
-
-            let next_version =
-                smart_contract_package.next_contract_version_for(protocol_version_major);
-            let smart_contract_addr =
-                compute_next_contract_hash_version(package_addr, next_version);
-
-            smart_contract_package.insert_contract_version(
-                protocol_version_major,
-                ContractHash::new(smart_contract_addr),
-            );
-
-            (
-                Key::Hash(package_addr),
-                StoredValue::ContractPackage(smart_contract_package),
-                smart_contract_addr,
-            )
-        };
-
-    if caller
-        .context_mut()
-        .tracking_copy
-        .read(&smart_contract_package_key)
-        .map_err(|_| VMError::Fatal(FatalHostError::TrackingCopy))?
-        .is_some()
-    {
-        return Err(VMError::Fatal(FatalHostError::ContractAlreadyExists));
+    if let Some(entry_point_name) = maybe_constructor_name {
+        builder = builder.with_entry_point(entry_point_name);
     }
 
-    metered_write(
-        caller,
-        smart_contract_package_key,
-        smart_contract_package_as_stored_value,
-    )?;
-
-    // 2. Store wasm
-    if !ae_enabled {
-        let byte_code_key = Key::byte_code_key(ByteCodeAddr::V2CasperWasm(bytecode_hash));
-        let byte_code_key_as_cl_value = match CLValue::from_t(byte_code_key) {
-            Ok(cl_value) => cl_value,
-            Err(_) => return Ok((None, HOST_ERROR_CL_VALUE)),
-        };
-
-        metered_write(
-            caller,
-            Key::Hash(bytecode_hash),
-            StoredValue::CLValue(byte_code_key_as_cl_value),
-        )?
-    };
-
-    metered_write(
-        caller,
-        Key::ByteCode(bytecode_addr),
-        StoredValue::ByteCode(bytecode),
-    )?;
-
-    // TODO: abort(str) as an alternative to trap
-    let address_generator = Arc::clone(&caller.context().address_generator);
-    let transaction_hash = caller.context().transaction_hash;
-    let runtime_native_config = caller.context().runtime_native_config.clone();
-    let main_purse: URef = match system::create_purse(
-        &mut caller.context_mut().tracking_copy,
-        runtime_native_config,
-        transaction_hash,
-        address_generator,
-    ) {
-        Ok(uref) => uref,
-        Err(mint_error) => {
-            error!(?mint_error, "Failed to create a purse");
-            return Ok((None, CALLEE_TRAPPED));
-        }
-    };
-
-    if ae_enabled {
-        // 3. Store addressable entity
-        let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
-        let addressable_entity_key = Key::AddressableEntity(entity_addr);
-
-        let addressable_entity = AddressableEntity::new(
-            PackageAddr::new(package_addr),
-            ByteCodeHash::new(bytecode_hash),
-            ProtocolVersion::V2_0_0,
-            main_purse,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-            EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
-        );
-
-        metered_write(
-            caller,
-            addressable_entity_key,
-            StoredValue::AddressableEntity(addressable_entity),
-        )?;
-    } else {
-        let contract_package_hash = ContractPackageHash::new(package_addr);
-        let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
-
-        let named_keys = {
-            let mut ret = NamedKeys::default();
-            ret.insert(
-                NAME_FOR_V2_CONTRACT_MAIN_PURSE.to_string(),
-                Key::URef(main_purse),
-            );
-            ret
-        };
-
-        let contract = Contract::new(
-            contract_package_hash,
-            contract_wasm_hash,
-            // TODO: Populate this correctly
-            named_keys,
-            EntryPoints::default(),
-            ProtocolVersion::V2_0_0,
-        );
-
-        metered_write(
-            caller,
-            Key::Hash(smart_contract_addr),
-            StoredValue::Contract(contract),
-        )?;
+    if let Some(bundle_bytes) = bundle_data {
+        builder = builder.with_bundle_data(Bytes::from(bundle_bytes.take_inner()));
     }
 
-    let _initial_state = match maybe_constructor_name {
-        Some(entry_point_name) => {
-            // Limit the new VM to remaining gas.
-            let gas_limit = caller
-                .get_remaining_points()?
-                .try_into_remaining()
-                .map_err(|_| FatalHostError::TypeConversion)?;
+    if let Some(seed) = maybe_seed {
+        builder = builder.with_seed(seed);
+    }
 
-            let execute_request = ExecuteRequestBuilder::default()
-                .with_initiator(caller.context().initiator)
-                .with_caller_key(caller.context().callee)
-                .with_gas_limit(gas_limit)
-                .with_execution_kind(ExecutionKind::Stored {
-                    address: package_addr,
-                    entry_point: entry_point_name.clone(),
-                })
-                .with_input(constructor_data.unwrap_or_default())
-                .with_transferred_value(transferred_value)
-                .with_transaction_hash(caller.context().transaction_hash)
-                // We're using shared address generator there as we need to preserve and advance the
-                // state of deterministic address generator across chain of calls.
-                .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
-                .with_chain_name(caller.context().chain_name.clone())
-                .with_block_time(caller.context().block_time)
-                .with_state_hash(Digest::from_raw([0; 32]))
-                .with_block_height(1)
-                .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
-                .with_runtime_native_config(caller.context().runtime_native_config.clone())
-                .with_authorization_keys(caller.context().authorization_keys.clone())
-                .build()
-                .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
+    let install_request = builder
+        .with_initiator(caller.context().initiator)
+        // .with_caller_key(caller.context().callee)
+        .with_gas_limit(gas_limit)
+        .with_input(constructor_data.unwrap_or_default())
+        .with_transferred_value(transferred_value)
+        .with_transaction_hash(caller.context().transaction_hash)
+        // We're using shared address generator there as we need to preserve and advance the
+        // state of deterministic address generator across chain of calls.
+        .with_wasm_bytes(bytecode)
+        .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+        .with_chain_name(caller.context().chain_name.clone())
+        .with_block_time(caller.context().block_time)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .with_runtime_native_config(caller.context().runtime_native_config.clone())
+        .with_authorization_keys(caller.context().authorization_keys.clone())
+        .build()
+        .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
 
-            let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+    let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
-            match caller
-                .executor()
-                .execute(tracking_copy_for_ctor, execute_request)
-            {
-                Ok(ExecuteResult {
-                    host_error,
-                    output,
-                    gas_usage,
-                    effects,
-                    cache,
-                    messages,
-                }) => {
-                    // output
-                    caller.consume_gas(gas_usage.gas_spent())?;
+    let result = caller
+        .executor()
+        .install_contract(tracking_copy_for_ctor, install_request);
 
-                    if let Some(host_error) = host_error {
-                        return Ok((None, host_error.into_u32()));
-                    }
+    match result {
+        Ok(InstallContractResult {
+            smart_contract_addr,
+            gas_usage,
+            effects,
+            cache,
+            messages,
+        }) => {
+            caller.consume_gas(gas_usage.gas_spent())?;
 
-                    caller
-                        .context_mut()
-                        .tracking_copy
-                        .apply_changes(effects, cache, messages);
+            caller
+                .context_mut()
+                .tracking_copy
+                .apply_changes(effects, cache, messages);
 
-                    output
-                }
-                Err(execute_error) => {
-                    // This is a bug in the EE, as it should have been caught during the preparation
-                    // phase when the contract was stored in the global state.
-                    error!(?execute_error, "Failed to execute constructor entry point");
-                    return Err(VMError::Execute(execute_error));
-                }
-            }
+            let create_result = CreateResult {
+                package_addr: smart_contract_addr,
+            };
+
+            let create_result_bytes =
+                borsh::to_vec(&create_result).map_err(|_| FatalHostError::Serialization)?;
+
+            Ok((Some(create_result_bytes.into()), CALLEE_SUCCEEDED))
         }
-        None => None,
-    };
+        Err(InstallContractError::GasDepleted { gas_usage }) => {
+            caller.consume_gas(gas_usage.gas_spent())?;
+            Ok((None, CALLEE_GAS_DEPLETED))
+        }
+        Err(InstallContractError::Constructor {
+            host_error,
+            gas_usage,
+        }) => {
+            caller.consume_gas(gas_usage.gas_spent())?;
+            error!(
+                ?host_error,
+                "Constructor trap during smart contract installation"
+            );
+            Ok((None, host_error.into_u32()))
+        }
+        Err(install_error) => {
+            // This is a bug in the EE, as it should have been caught during the preparation
+            // phase when the contract was stored in the global state.
+            error!(?install_error, "Failed to install smart contract");
+            Err(VMError::Install(install_error))
+        }
+    }
 
-    let create_result = CreateResult { package_addr };
+    // let ae_enabled = caller.context().tracking_copy.addressable_entity_enabled();
 
-    let create_result_bytes =
-        borsh::to_vec(&create_result).map_err(|_| FatalHostError::Serialization)?;
+    // let (smart_contract_package_key, smart_contract_package_as_stored_value, smart_contract_addr)
+    // =     if ae_enabled {
+    //         // 1. Store package hash
+    //         let mut smart_contract_package = Package::default();
 
-    Ok((Some(create_result_bytes.into()), CALLEE_SUCCEEDED))
+    //         let next_version =
+    //             smart_contract_package.next_entity_version_for(protocol_version_major);
+    //         let smart_contract_addr =
+    //             compute_next_contract_hash_version(package_addr, next_version);
+
+    //         smart_contract_package.insert_entity_version(
+    //             protocol_version_major,
+    //             EntityAddr::SmartContract(smart_contract_addr),
+    //         );
+
+    //         (
+    //             Key::Package(package_addr.into()),
+    //             StoredValue::SmartContract(smart_contract_package),
+    //             smart_contract_addr,
+    //         )
+    //     } else {
+    //         let mut smart_contract_package = ContractPackage::default();
+
+    //         let next_version =
+    //             smart_contract_package.next_contract_version_for(protocol_version_major);
+    //         let smart_contract_addr =
+    //             compute_next_contract_hash_version(package_addr, next_version);
+
+    //         smart_contract_package.insert_contract_version(
+    //             protocol_version_major,
+    //             ContractHash::new(smart_contract_addr),
+    //         );
+
+    //         (
+    //             Key::Hash(package_addr),
+    //             StoredValue::ContractPackage(smart_contract_package),
+    //             smart_contract_addr,
+    //         )
+    //     };
+
+    // if caller
+    //     .context_mut()
+    //     .tracking_copy
+    //     .read(&smart_contract_package_key)
+    //     .map_err(|_| VMError::Fatal(FatalHostError::TrackingCopy))?
+    //     .is_some()
+    // {
+    //     return Err(VMError::Fatal(FatalHostError::ContractAlreadyExists));
+    // }
+
+    // metered_write(
+    //     caller,
+    //     smart_contract_package_key,
+    //     smart_contract_package_as_stored_value,
+    // )?;
+
+    // // 2. Store wasm
+    // if !ae_enabled {
+    //     let byte_code_key = Key::byte_code_key(ByteCodeAddr::V2CasperWasm(bytecode_hash));
+    //     let byte_code_key_as_cl_value = match CLValue::from_t(byte_code_key) {
+    //         Ok(cl_value) => cl_value,
+    //         Err(_) => return Ok((None, HOST_ERROR_CL_VALUE)),
+    //     };
+
+    //     metered_write(
+    //         caller,
+    //         Key::Hash(bytecode_hash),
+    //         StoredValue::CLValue(byte_code_key_as_cl_value),
+    //     )?
+    // };
+
+    // metered_write(
+    //     caller,
+    //     Key::ByteCode(bytecode_addr),
+    //     StoredValue::ByteCode(bytecode),
+    // )?;
+
+    // // TODO: abort(str) as an alternative to trap
+    // let address_generator = Arc::clone(&caller.context().address_generator);
+    // let transaction_hash = caller.context().transaction_hash;
+    // let runtime_native_config = caller.context().runtime_native_config.clone();
+    // let main_purse: URef = match system::create_purse(
+    //     &mut caller.context_mut().tracking_copy,
+    //     runtime_native_config,
+    //     transaction_hash,
+    //     address_generator,
+    // ) {
+    //     Ok(uref) => uref,
+    //     Err(mint_error) => {
+    //         error!(?mint_error, "Failed to create a purse");
+    //         return Ok((None, CALLEE_TRAPPED));
+    //     }
+    // };
+
+    // if ae_enabled {
+    //     // 3. Store addressable entity
+    //     let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
+    //     let addressable_entity_key = Key::AddressableEntity(entity_addr);
+
+    //     let addressable_entity = AddressableEntity::new(
+    //         PackageAddr::new(package_addr),
+    //         ByteCodeHash::new(bytecode_hash),
+    //         ProtocolVersion::V2_0_0,
+    //         main_purse,
+    //         AssociatedKeys::default(),
+    //         ActionThresholds::default(),
+    //         EntityKind::SmartContract(ContractRuntimeTag::VmCasperV2),
+    //     );
+
+    //     metered_write(
+    //         caller,
+    //         addressable_entity_key,
+    //         StoredValue::AddressableEntity(addressable_entity),
+    //     )?;
+    // } else {
+    //     let contract_package_hash = ContractPackageHash::new(package_addr);
+    //     let contract_wasm_hash = ContractWasmHash::new(bytecode_hash);
+
+    //     let named_keys = {
+    //         let mut ret = NamedKeys::default();
+    //         ret.insert(
+    //             NAME_FOR_V2_CONTRACT_MAIN_PURSE.to_string(),
+    //             Key::URef(main_purse),
+    //         );
+    //         ret
+    //     };
+
+    //     let contract = Contract::new(
+    //         contract_package_hash,
+    //         contract_wasm_hash,
+    //         // TODO: Populate this correctly
+    //         named_keys,
+    //         EntryPoints::default(),
+    //         ProtocolVersion::V2_0_0,
+    //     );
+
+    //     metered_write(
+    //         caller,
+    //         Key::Hash(smart_contract_addr),
+    //         StoredValue::Contract(contract),
+    //     )?;
+    // }
+
+    // match maybe_constructor_name {
+    //     Some(entry_point_name) => {
+    //         // Limit the new VM to remaining gas.
+    //         let gas_limit = caller
+    //             .get_remaining_points()?
+    //             .try_into_remaining()
+    //             .map_err(|_| FatalHostError::TypeConversion)?;
+
+    //         let execute_request = ExecuteRequestBuilder::default()
+    //             .with_initiator(caller.context().initiator)
+    //             .with_caller_key(caller.context().callee)
+    //             .with_gas_limit(gas_limit)
+    //             .with_execution_kind(ExecutionKind::Stored {
+    //                 address: package_addr,
+    //                 entry_point: entry_point_name.clone(),
+    //             })
+    //             .with_input(constructor_data.unwrap_or_default())
+    //             .with_transferred_value(transferred_value)
+    //             .with_transaction_hash(caller.context().transaction_hash)
+    //             // We're using shared address generator there as we need to preserve and advance
+    // the             // state of deterministic address generator across chain of calls.
+    //             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+    //             .with_chain_name(caller.context().chain_name.clone())
+    //             .with_block_time(caller.context().block_time)
+    //             .with_state_hash(Digest::from_raw([0; 32]))
+    //             .with_block_height(1)
+    //             .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+    //             .with_runtime_native_config(caller.context().runtime_native_config.clone())
+    //             .with_authorization_keys(caller.context().authorization_keys.clone())
+    //             .build()
+    //             .map_err(FatalHostError::ExecuteRequestBuildFailure)?;
+
+    //         let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+
+    //         match caller
+    //             .executor()
+    //             .execute(tracking_copy_for_ctor, execute_request)
+    //         {
+    //             Ok(ExecuteResult {
+    //                 host_error,
+    //                 output,
+    //                 gas_usage,
+    //                 effects,
+    //                 cache,
+    //                 messages,
+    //             }) => {
+    //                 // output
+    //                 caller.consume_gas(gas_usage.gas_spent())?;
+
+    //                 if let Some(host_error) = host_error {
+    //                     return Ok((None, host_error.into_u32()));
+    //                 }
+
+    //                 caller
+    //                     .context_mut()
+    //                     .tracking_copy
+    //                     .apply_changes(effects, cache, messages);
+
+    //                 output
+    //             }
+    //             Err(execute_error) => {
+    //                 // This is a bug in the EE, as it should have been caught during the
+    // preparation                 // phase when the contract was stored in the global state.
+    //                 error!(?execute_error, "Failed to execute constructor entry point");
+    //                 return Err(VMError::Execute(execute_error));
+    //             }
+    //         }
+    //     }
+    //     None => None,
+    // };
+
+    // let create_result = CreateResult { package_addr };
+
+    // let create_result_bytes =
+    //     borsh::to_vec(&create_result).map_err(|_| FatalHostError::Serialization)?;
+
+    // Ok((Some(create_result_bytes.into()), CALLEE_SUCCEEDED))
 }
 
 fn keyspace_to_global_state_key<S: GlobalStateReader>(

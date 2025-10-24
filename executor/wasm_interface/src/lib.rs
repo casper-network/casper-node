@@ -1,4 +1,5 @@
 pub mod executor;
+pub mod install;
 pub mod sandboxed_execution;
 
 use bytes::Bytes;
@@ -17,6 +18,8 @@ pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
 pub use sandboxed_execution::{
     SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
 };
+
+use crate::install::InstallContractError;
 
 /// Interface version for the Wasm host functions.
 ///
@@ -158,6 +161,8 @@ pub enum VMError {
     Trap(TrapCode),
     #[error("Execute error: {0}")]
     Execute(#[from] ExecuteError),
+    #[error("Install error: {0}")]
+    Install(#[from] InstallContractError),
 }
 
 impl VMError {

@@ -1,15 +1,16 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use crate::{executor::ExecuteError, GasUsage};
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::{executor::ExecuteError, GasUsage};
 use casper_storage::{
-    global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
+    global_state::error::Error as GlobalStateError,
+    tracking_copy::{TrackingCopyCache, TrackingCopyError},
     AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, BlockHash, BlockTime, CLValueError, Digest,
-    TransactionHash,
+    account::AccountHash, contract_messages::Messages, execution::Effects, BlockHash, BlockTime,
+    CLValueError, Digest, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -19,39 +20,39 @@ use thiserror::Error;
 /// Store contract request.
 pub struct InstallContractRequest {
     /// Initiator's address.
-    pub(crate) initiator: AccountHash,
+    pub initiator: AccountHash,
     /// Gas limit.
-    pub(crate) gas_limit: u64,
+    pub gas_limit: u64,
     /// Wasm bytes of the contract to be stored.
-    pub(crate) wasm_bytes: Bytes,
+    pub wasm_bytes: Bytes,
     /// Constructor entry point name.
-    pub(crate) entry_point: Option<String>,
+    pub entry_point: Option<String>,
     /// Input data for the constructor.
-    pub(crate) input: Option<Bytes>,
+    pub input: Option<Bytes>,
     /// Attached tokens value that to be transferred into the constructor.
-    pub(crate) transferred_value: u64,
+    pub transferred_value: u64,
     /// Transaction hash.
-    pub(crate) transaction_hash: TransactionHash,
+    pub transaction_hash: TransactionHash,
     /// Address generator.
-    pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
+    pub address_generator: Arc<RwLock<AddressGenerator>>,
     /// Chain name.
-    pub(crate) chain_name: Arc<str>,
+    pub chain_name: Arc<str>,
     /// Block time.
-    pub(crate) block_time: BlockTime,
+    pub block_time: BlockTime,
     /// State hash.
-    pub(crate) state_hash: Digest,
+    pub state_hash: Digest,
     /// Parent block hash.
-    pub(crate) parent_block_hash: BlockHash,
+    pub parent_block_hash: BlockHash,
     /// Block height.
-    pub(crate) block_height: u64,
+    pub block_height: u64,
     /// Seed used for smart contract hash computation.
-    pub(crate) seed: Option<[u8; 32]>,
+    pub seed: Option<[u8; 32]>,
     /// Runtime native config.
-    pub(crate) runtime_native_config: RuntimeNativeConfig,
+    pub runtime_native_config: RuntimeNativeConfig,
     /// Optional bundle data used to allow discoverability of installed smart contracts.
-    pub(crate) bundle_data: Bytes,
+    pub bundle_data: Option<Bytes>,
     /// Authorization keys for this installation.
-    pub(crate) authorization_keys: BTreeSet<AccountHash>,
+    pub authorization_keys: BTreeSet<AccountHash>,
 }
 
 #[derive(Default)]
@@ -167,11 +168,6 @@ impl InstallContractRequestBuilder {
         self
     }
 
-    pub fn with_optional_bundle_data(mut self, bundle_data: Option<Bytes>) -> Self {
-        self.bundle_data = bundle_data;
-        self
-    }
-
     pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = Some(authorization_keys);
         self
@@ -195,7 +191,7 @@ impl InstallContractRequestBuilder {
         let runtime_native_config = self
             .runtime_native_config
             .ok_or("Runtime native config not set")?;
-        let bundle_data = self.bundle_data.ok_or("Bundle data not set")?;
+        let bundle_data = self.bundle_data;
         let authorization_keys = self
             .authorization_keys
             .ok_or("Authorization keys not set")?;
@@ -225,13 +221,15 @@ impl InstallContractRequestBuilder {
 #[derive(Debug)]
 pub struct InstallContractResult {
     /// Smart contract address.
-    pub(crate) smart_contract_addr: [u8; 32],
+    pub smart_contract_addr: [u8; 32],
     /// Gas usage.
-    pub(crate) gas_usage: GasUsage,
+    pub gas_usage: GasUsage,
     /// Effects produced by the execution.
-    pub(crate) effects: Effects,
-    /// Post state hash after installation.
-    pub(crate) post_state_hash: Digest,
+    pub effects: Effects,
+    /// Cache of tracking copy effects produced by the execution.
+    pub cache: TrackingCopyCache,
+    /// Messages produced by the execution.
+    pub messages: Messages,
 }
 
 impl InstallContractResult {
@@ -243,12 +241,41 @@ impl InstallContractResult {
         &self.gas_usage
     }
 
-    pub fn post_state_hash(&self) -> Digest {
-        self.post_state_hash
+    pub fn smart_contract_addr(&self) -> &[u8; 32] {
+        &self.smart_contract_addr
+    }
+}
+
+/// Result of executing a Wasm contract.
+#[derive(Debug)]
+pub struct InstallContractWithProviderResult {
+    /// Smart contract address.
+    pub smart_contract_addr: [u8; 32],
+    /// Gas usage.
+    pub gas_usage: GasUsage,
+    /// Effects produced by the execution.
+    pub effects: Effects,
+    /// Post state hash.
+    pub post_state_hash: Digest,
+    /// Messages produced by the execution.
+    pub messages: Messages,
+}
+
+impl InstallContractWithProviderResult {
+    pub fn effects(&self) -> &Effects {
+        &self.effects
+    }
+
+    pub fn gas_usage(&self) -> &GasUsage {
+        &self.gas_usage
     }
 
     pub fn smart_contract_addr(&self) -> &[u8; 32] {
         &self.smart_contract_addr
+    }
+
+    pub fn post_state_hash(&self) -> Digest {
+        self.post_state_hash
     }
 }
 
@@ -266,10 +293,10 @@ pub enum InstallContractError {
         gas_usage: GasUsage,
     },
 
-    #[error("insufficient gas")]
+    #[error("gas depleted")]
     GasDepleted { gas_usage: GasUsage },
 
-    #[error("insufficient gas")]
+    #[error("constructor error: {host_error}")]
     Constructor {
         host_error: CallError,
         gas_usage: GasUsage,
