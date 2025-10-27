@@ -1447,10 +1447,6 @@ async fn binary_port_sandboxed_execution_request() {
         bytecode_hash,
         SEED_FOR_TESTING,
     );
-    eprintln!(
-        "@@@@@ predicted {}",
-        base16::encode_lower(&contract_address)
-    );
     let mut txn = Transaction::from(
         TransactionV1Builder::new_session(
             true,
@@ -1465,12 +1461,6 @@ async fn binary_port_sandboxed_execution_request() {
         .with_chain_name(chain_name.clone())
         .with_initiator_addr(alice_public_key.to_owned())
         .with_entry_point(TransactionEntryPoint::Custom("default".into()))
-        // .with_gas(1_000_000_000u64 * 10u64.pow(9))
-        // .with_pricing_mode(PricingMode::PaymentLimited {
-        //     payment_amount: 1_000_000_000u64 * 10u64.pow(9),
-        //     gas_price_tolerance: 3,
-        //     standard_payment: true,
-        // })
         .build()
         .unwrap(),
     );

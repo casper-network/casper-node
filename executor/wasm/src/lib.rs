@@ -1160,7 +1160,6 @@ impl ExecutorV2 {
         };
 
         let res = self.install_contract(tracking_copy, install_request);
-        eprintln!("@@@@@@@@@ Install contract result: {:?}", res);
         match res {
             Ok(InstallContractResult {
                 smart_contract_addr,
@@ -1297,11 +1296,6 @@ impl Executor for ExecutorV2 {
             initiator.value(),
             bytecode_hash,
             seed,
-        );
-
-        eprintln!(
-            "@@@@@@@@@ Computed package address: {}",
-            base16::encode_lower(&package_addr)
         );
 
         let protocol_version = ProtocolVersion::V2_0_0;
@@ -1823,7 +1817,6 @@ impl Executor for ExecutorV2 {
                     cache,
                     messages,
                 }) => {
-                    eprintln!("@@@@@@@@@ Constructor executed successfully");
                     if let Some(host_error) = host_error {
                         debug!(%host_error, "constructor execution failed");
                         return Err(InstallContractError::Constructor {
@@ -1847,20 +1840,11 @@ impl Executor for ExecutorV2 {
                     })?;
                 }
                 Err(execute_error) => {
-                    eprintln!(
-                        "@@@@@@@@@ Constructor execution failed: {:?}",
-                        execute_error
-                    );
                     error!(%execute_error, "unable to execute constructor");
                     return Err(InstallContractError::Execute(execute_error));
                 }
             }
         }
-
-        eprintln!(
-            "@@@@@@@@@ Finished installer: {}",
-            base16::encode_lower(&package_addr)
-        );
 
         Ok(InstallContractResult {
             smart_contract_addr: package_addr,
