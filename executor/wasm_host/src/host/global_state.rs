@@ -889,21 +889,15 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
     match keyspace {
         Keyspace::Context(context_addr) => match context_addr {
             ContextAddr::StateAddr(state_addr) => {
-                // Map state field to a NamedKey entry under the entity address
                 let digest = Digest::hash(state_addr.field_addr.as_bytes());
-                let base_entity = EntityAddr::new_smart_contract(state_addr.entity_addr);
                 Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                    base_entity,
+                    entity_addr,
                     digest.value(),
                 )))
             }
-            ContextAddr::CollectionAddr(collection_addr) => {
-                let base_entity = EntityAddr::new_smart_contract(collection_addr.entity_addr);
-                Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                    base_entity,
-                    collection_addr.tail,
-                )))
-            }
+            ContextAddr::CollectionAddr(collection_addr) => Some(Key::NamedKey(
+                NamedKeyAddr::new_named_key_entry(entity_addr, collection_addr.tail),
+            )),
         },
         Keyspace::NamedKey(payload) => {
             let digest = Digest::hash(payload.as_bytes());

@@ -11,6 +11,20 @@ pub enum KeyspaceTag {
     NamedKey = 1,
 }
 
+/// Discriminant indicating which collection type is being used.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+pub enum CollectionTypeTag {
+    /// A key-value mapping collection.
+    Map = 0,
+    /// A set collection for unique elements.
+    Set = 1,
+    /// A vector collection.
+    Vector = 2,
+    /// An iterable map collection.
+    IterableMap = 3,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum ContextAddr {
     /// Address of a state field for a given entity.
@@ -50,16 +64,15 @@ pub struct CollectionAddrInner {
 }
 
 impl CollectionAddrInner {
-    #[inline]
     pub fn new(
         entity_addr: [u8; 32],
-        collection_type_tag: u8,
+        collection_type_tag: CollectionTypeTag,
         collection_prefix: [u8; 8],
         tail: [u8; 32],
     ) -> Self {
         Self {
             entity_addr,
-            collection_type_tag,
+            collection_type_tag: collection_type_tag as u8,
             collection_prefix,
             tail,
         }

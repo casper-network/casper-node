@@ -5,3 +5,5 @@ pub mod entry_point;
 pub mod error;
 pub mod flags;
 pub mod keyspace;
+
+pub use keyspace::{CollectionTypeTag, KeyspaceTag};

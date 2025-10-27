@@ -5,7 +5,9 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_executor_wasm_common::keyspace::{CollectionAddrInner, ContextAddr, Keyspace};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 use crate::abi::{CasperABI, Declaration, Definition, Definitions, StructField};
@@ -63,7 +65,7 @@ where
         let prefix_bytes = self.compute_prefix_bytes_for_index(self.length);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            2,
+            CollectionTypeTag::Vector,
             [0u8; 8],
             casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
@@ -98,7 +100,7 @@ where
         let prefix = self.compute_prefix_bytes_for_index(index);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            2,
+            CollectionTypeTag::Vector,
             [0u8; 8],
             casper::generic_hash(&prefix, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
@@ -141,7 +143,7 @@ where
             let prefix_bytes = self.compute_prefix_bytes_for_index(i);
             let addr = CollectionAddrInner::new(
                 *casper::get_callee().address(),
-                2,
+                CollectionTypeTag::Vector,
                 [0u8; 8],
                 casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
             );
@@ -241,7 +243,7 @@ where
         self.length -= 1;
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            2,
+            CollectionTypeTag::Vector,
             [0u8; 8],
             casper::generic_hash(
                 &self.compute_prefix_bytes_for_index(self.length),
@@ -273,7 +275,7 @@ where
         self.length -= 1;
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            2,
+            CollectionTypeTag::Vector,
             [0u8; 8],
             casper::generic_hash(
                 &self.compute_prefix_bytes_for_index(self.length),
@@ -310,7 +312,7 @@ where
         let prefix_bytes = self.compute_prefix_bytes_for_index(index);
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            2,
+            CollectionTypeTag::Vector,
             [0u8; 8],
             casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );

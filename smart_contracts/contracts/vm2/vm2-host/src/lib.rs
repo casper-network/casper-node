@@ -4,7 +4,7 @@ use casper_contract_sdk::{
     casper::casper_ffi,
     casper_executor_wasm_common::{
         flags::ReturnFlags,
-        keyspace::{CollectionAddrInner, ContextAddr, Keyspace},
+        keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
     },
     prelude::*,
     serializers::borsh,
@@ -143,8 +143,12 @@ impl MinimalHostWrapper {
     }
 
     pub fn read(&self) {
-        let addr =
-            CollectionAddrInner::new(*casper::get_callee().address(), 0, [0u8; 8], [0u8; 32]);
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
         casper::read(Keyspace::Context(ContextAddr::from(addr)), |_| None).ok();
     }
 
@@ -161,15 +165,23 @@ impl MinimalHostWrapper {
     }
 
     pub fn write(&self) {
-        let addr =
-            CollectionAddrInner::new(*casper::get_callee().address(), 0, [0u8; 8], [0u8; 32]);
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
         casper::write(Keyspace::Context(ContextAddr::from(addr)), &[]).ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {
         let buffer = vec![0; n as usize];
-        let addr =
-            CollectionAddrInner::new(*casper::get_callee().address(), 0, [0u8; 8], [0u8; 32]);
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
         casper::write(Keyspace::Context(ContextAddr::from(addr)), &buffer).ok();
     }
 

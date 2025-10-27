@@ -11,7 +11,7 @@ use casper_contract_sdk::{
     casper::{self, emit, emit_message},
     casper_executor_wasm_common::{
         error::HostResult,
-        keyspace::{CollectionAddrInner, ContextAddr, Keyspace},
+        keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
     },
     log,
     prelude::Entity,
@@ -630,7 +630,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let value_2 = [8, 9, 10, 11, 12, 13, 14, 15];
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            0,
+            CollectionTypeTag::Map,
             [0u8; 8],
             casper::generic_hash(&key, HashAlgorithm::Blake2b).unwrap(),
         );
@@ -661,7 +661,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         // Attempting to remove a definetely non-existent key should be an error
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
-            0,
+            CollectionTypeTag::Map,
             [0u8; 8],
             casper::generic_hash(
                 b"this key definetely does not exists",
