@@ -1673,9 +1673,13 @@ fn process_casper_contract_state_for_struct(
                     inits.push(quote! { #field_ident, });
                 }
             }
-            let default_destructure = quote! {
-                let __default_state: Self = ::core::default::Default::default();
-                let Self { #(#default_pairs,)* } = __default_state;
+            let default_destructure = if fields.named.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    let __default_state: Self = ::core::default::Default::default();
+                    let Self { #(#default_pairs,)* } = __default_state;
+                }
             };
             (default_destructure, reads, writes, inits)
         }
