@@ -821,14 +821,13 @@ pub(crate) fn host_create<S: GlobalStateReader + 'static>(
                 .get_remaining_points()?
                 .try_into_remaining()
                 .map_err(|_| FatalHostError::TypeConversion)?;
-
             let execute_request = ExecuteRequestBuilder::default()
                 .with_initiator(caller.context().initiator)
                 .with_caller_key(caller.context().callee)
                 .with_gas_limit(gas_limit)
                 .with_execution_kind(ExecutionKind::Stored {
                     address: package_addr,
-                    entry_point: entry_point_name.clone(),
+                    entry_point: entry_point_name,
                 })
                 .with_input(constructor_data.unwrap_or_default())
                 .with_transferred_value(transferred_value)

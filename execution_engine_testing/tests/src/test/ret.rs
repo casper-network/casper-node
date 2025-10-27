@@ -43,6 +43,7 @@ fn vm1_casper_ret_emits_ret_transforms() {
     });
 
     let (_, value) = ret_transform.expect("Expected to find a Ret transform in the effects");
+
     let RetValue::CLValue(value) = value else {
         panic!("Expected VM1 return value to be a CLValue");
     };
