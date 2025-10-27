@@ -494,6 +494,10 @@ impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
 }
 
 impl CasperABI for String {
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        <char>::visit(v);
+    }
     fn definition() -> Definition {
         Definition::Sequence {
             decl: type_uid::of::<char>().into(),
@@ -510,6 +514,11 @@ impl CasperABI for str {
 }
 
 impl CasperABI for &'static str {
+    fn visit(v: &mut dyn ABIVisitor) {
+        v.accept(ABITypeInfo::from_abi_type::<Self>());
+        <char>::visit(v);
+    }
+
     fn definition() -> Definition {
         Definition::Sequence {
             decl: type_uid::of::<char>().into(),
@@ -590,7 +599,7 @@ mod tests {
 
     #[test]
     fn u256_schema() {
-        assert_eq!(U256::declaration(), "U256");
+        assert_eq!(U256::declaration(), "casper_contract_sdk::types::U256");
         assert_eq!(
             U256::definition(),
             Definition::FixedSequence {

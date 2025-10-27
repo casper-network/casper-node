@@ -107,7 +107,7 @@ impl<'a> TransactionV1Builder<'a> {
     pub const DEFAULT_TTL: TimeDiff = TimeDiff::from_millis(30 * 60 * 1_000);
     /// The default pricing mode for v1 transactions, ie FIXED cost.
     pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::PaymentLimited {
-        payment_amount: 10_000_000_000,
+        payment_amount: 10_000u64 * 10u64.pow(9),
         gas_price_tolerance: 3,
         standard_payment: true,
     };
