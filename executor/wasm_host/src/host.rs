@@ -45,19 +45,6 @@ enum EntityKindTag {
     Contract = 1,
 }
 
-pub trait FallibleInto<T> {
-    fn wrapped_try_into(self) -> VMResult<T>;
-}
-
-impl<From, To> FallibleInto<To> for From
-where
-    To: TryFrom<From>,
-{
-    fn wrapped_try_into(self) -> VMResult<To> {
-        To::try_from(self).map_err(|_| VMError::Fatal(FatalHostError::TypeConversion))
-    }
-}
-
 /// Consumes imputed amount of gas.
 fn charge_gas<S: GlobalStateReader>(
     caller: &mut impl Caller<Context = Context<S>>,
@@ -227,7 +214,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             cb_ctx
         };
         if out_ptr != 0 {
-            caller.memory_write(out_ptr.wrapped_try_into()?, &output)?;
+            caller.memory_write(out_ptr, &output)?;
         }
     }
     Ok(exit_code)

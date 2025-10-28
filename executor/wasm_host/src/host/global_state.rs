@@ -8,8 +8,9 @@ use casper_executor_wasm_common::{
         ENTRY_POINT_PAYMENT_SELF_ONWARD,
     },
     error::{
-        CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_CL_VALUE, HOST_ERROR_INVALID_DATA,
-        HOST_ERROR_INVALID_INPUT, HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
+        CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_CL_VALUE, HOST_ERROR_CONTRACT_EXISTS,
+        HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT, HOST_ERROR_NOT_FOUND,
+        HOST_ERROR_SUCCESS,
     },
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -87,7 +88,7 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
     let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
         Ok(Some(StoredValue::CLValue(cl_value))) => {
             let CLType::Any = cl_value.cl_type() else {
-                return Err(FatalHostError::TypeConversion)?;
+                return Ok((None, HOST_ERROR_INVALID_INPUT));
             };
             Cow::Owned(cl_value.inner_bytes().to_owned())
         }
@@ -718,7 +719,7 @@ pub(crate) fn host_create<S: GlobalStateReader + 'static>(
         .map_err(|_| VMError::Fatal(FatalHostError::TrackingCopy))?
         .is_some()
     {
-        return Err(VMError::Fatal(FatalHostError::ContractAlreadyExists));
+        return Ok((None, HOST_ERROR_CONTRACT_EXISTS));
     }
 
     metered_write(

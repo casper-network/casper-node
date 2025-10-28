@@ -560,6 +560,8 @@ pub enum ExecuteError {
     InvalidKeyForPurse(Key),
     #[error("attempt to call a non-existent ffi option {0}")]
     InvalidFFIOption(u32),
+    #[error("unexpected output after vm1 return")]
+    UnexpectedOutputAfterVm1Ret,
 }
 
 #[derive(Debug, Error)]

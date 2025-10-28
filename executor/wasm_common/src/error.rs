@@ -33,6 +33,8 @@ pub enum HostResult {
     Internal = 9,
     /// Error related to CLValues
     CLValue = 10,
+    /// Calculating address for specified contract data points to an existing contract
+    ContractExists = 11,
     /// An error code not covered by the other variants.
     Other(u32),
 }
@@ -48,6 +50,7 @@ pub const HOST_ERROR_MESSAGE_TOPIC_FULL: u32 = 7;
 pub const HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED: u32 = 8;
 pub const HOST_ERROR_INTERNAL: u32 = 9;
 pub const HOST_ERROR_CL_VALUE: u32 = 10;
+pub const HOST_ERROR_CONTRACT_EXISTS: u32 = 11;
 
 impl From<u32> for HostResult {
     fn from(value: u32) -> Self {
@@ -63,6 +66,7 @@ impl From<u32> for HostResult {
             HOST_ERROR_MAX_MESSAGES_PER_BLOCK_EXCEEDED => Self::MaxMessagesPerBlockExceeded,
             HOST_ERROR_INTERNAL => Self::Internal,
             HOST_ERROR_CL_VALUE => Self::CLValue,
+            HOST_ERROR_CONTRACT_EXISTS => Self::ContractExists,
             other => Self::Other(other),
         }
     }
