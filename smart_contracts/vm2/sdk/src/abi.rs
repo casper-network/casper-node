@@ -91,12 +91,12 @@ pub enum Definition {
     ///
     /// Example Rust types: `Vec<T>`, `&[T]`, `[T; N]`, `Box<[T]>`
     Sequence {
-        /// If length is known, then it specifies that this definition should be be represented as
+        /// If length is known, then it specifies that this definition should be represented as
         /// an array of a fixed size.
         decl: Declaration,
     },
     FixedSequence {
-        /// If length is known, then it specifies that this definition should be be represented as
+        /// If length is known, then it specifies that this definition should be represented as
         /// an array of a fixed size.
         length: u32, // None -> Vec<T> Some(N) [T; N]
         decl: Declaration,

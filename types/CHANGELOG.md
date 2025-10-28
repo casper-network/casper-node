@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file. The format 
 - in struct `WasmV2Config`:
   - field `host_ffi_opt_costs` (replacing `host_function_costs`)
 - type `HostFFIFunctionCosts` (which replaces `HostFunctionCostsV2`)
+- in enum TransformKindV2:
+  - new variant `EntryPointCalled`
 
 ### Changed
 
