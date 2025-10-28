@@ -1507,17 +1507,7 @@ where
         .await;
     let result = utils::map_sandbox_result(inner_result);
 
-    if result.is_success() {
-        // Return the output bytes on success
-        if let Some(output) = result.output() {
-            BinaryResponse::from_raw_bytes(ResponseType::SandboxedExecutionResult, output.to_vec())
-        } else {
-            BinaryResponse::from_raw_bytes(ResponseType::SandboxedExecutionResult, vec![])
-        }
-    } else {
-        // Return error message on failure
-        BinaryResponse::new_error(ErrorCode::SandboxedExecutionFailed)
-    }
+    BinaryResponse::from_value(result)
 }
 
 async fn handle_client_loop<REv>(

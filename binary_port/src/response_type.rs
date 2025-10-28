@@ -18,6 +18,7 @@ use casper_types::{
 use crate::{
     global_state_query_result::GlobalStateQueryResult,
     node_status::NodeStatus,
+    sandboxed_execution::SandboxedExecutionResult,
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
@@ -399,6 +400,10 @@ impl PayloadEntity for GetTrieFullResult {
 
 impl PayloadEntity for SpeculativeExecutionResult {
     const RESPONSE_TYPE: ResponseType = ResponseType::SpeculativeExecutionResult;
+}
+
+impl PayloadEntity for SandboxedExecutionResult {
+    const RESPONSE_TYPE: ResponseType = ResponseType::SandboxedExecutionResult;
 }
 
 impl PayloadEntity for NodeStatus {
