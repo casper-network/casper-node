@@ -15,7 +15,12 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    types::{
+        transaction::transaction_v1_builder::{
+            TransactionV1Builder, DEFAULT_GAS_PRICE_TOLERANCE, DEFAULT_PAYMENT_AMOUNT,
+        },
+        NodeId,
+    },
     utils::RESOURCES_PATH,
 };
 use casper_binary_port::{
@@ -43,8 +48,9 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
     ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
     EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction,
-    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef, U512,
+    PackageAddr, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef,
+    U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -1378,7 +1384,7 @@ async fn binary_port_sandboxed_execution_request() {
     let stakes = vec![
         (
             alice_public_key.clone(),
-            (U512::from(u128::MAX), U512::from(u64::MAX)),
+            (U512::from(u128::MAX), U512::from(u128::MAX)),
         ),
         (
             bob_public_key.clone(),
@@ -1460,6 +1466,11 @@ async fn binary_port_sandboxed_execution_request() {
         .with_chain_name(chain_name.clone())
         .with_initiator_addr(alice_public_key.to_owned())
         .with_entry_point(TransactionEntryPoint::Custom("default".into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: DEFAULT_PAYMENT_AMOUNT * 10,
+            gas_price_tolerance: DEFAULT_GAS_PRICE_TOLERANCE,
+            standard_payment: true,
+        })
         .build()
         .unwrap(),
     );

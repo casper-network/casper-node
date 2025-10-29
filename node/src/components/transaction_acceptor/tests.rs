@@ -2574,13 +2574,16 @@ async fn should_reject_transaction_v1_with_missing_session_contract_by_hash_from
     let test_scenario =
         TestScenario::FromPeerSessionContract(TxnType::V1, ContractScenario::MissingContractAtHash);
     let result = run_transaction_acceptor(test_scenario).await;
-    assert!(matches!(
-        result,
-        Err(super::Error::Parameters {
-            failure: ParameterFailure::NoSuchContractAtHash { .. },
-            ..
-        })
-    ))
+    assert!(
+        matches!(
+            result,
+            Err(super::Error::Parameters {
+                failure: ParameterFailure::NoSuchContractAtHash { .. },
+                ..
+            }),
+        ),
+        "{result:?}"
+    )
 }
 
 #[tokio::test]
