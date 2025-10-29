@@ -9,6 +9,7 @@ use casper_executor_wasm::{
     },
     ExecutorV2,
 };
+use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
@@ -68,6 +69,15 @@ impl WasmV2Result {
         match self {
             WasmV2Result::Install(result) => result.post_state_hash(),
             WasmV2Result::Execute(result) => result.post_state_hash(),
+        }
+    }
+
+    pub(crate) fn host_error(&self) -> Option<&CallError> {
+        match self {
+            WasmV2Result::Install(_) => None,
+            WasmV2Result::Execute(execute_with_provider_result) => {
+                execute_with_provider_result.host_error.as_ref()
+            }
         }
     }
 }
