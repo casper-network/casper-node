@@ -574,7 +574,9 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
 
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
 
-                let persist_after_call_tokens = if receiver_is_ref && receiver_is_mut {
+                let persist_after_call_tokens = if method_attribute.constructor {
+                    quote! { let _ = _ret.write_state_to_fields().unwrap(); }
+                } else if receiver_is_ref && receiver_is_mut {
                     quote! { let _ = instance.write_state_to_fields().unwrap(); }
                 } else {
                     quote! {}
