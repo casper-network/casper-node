@@ -1332,7 +1332,7 @@ impl ExecutorV2 {
                 if output.is_some() {
                     error!("output is not none after ExecutionEngineV1 execution");
                     // ExecutionEngineV1 sets output to None when error occurred.
-                    return Err(ExecuteError::Fatal(FatalHostError::UnexpectedOutput));
+                    return Err(ExecuteError::UnexpectedOutputAfterVm1Ret);
                 }
                 let revert_code: u32 = (*revert_code).into();
                 output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.

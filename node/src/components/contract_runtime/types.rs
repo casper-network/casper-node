@@ -498,6 +498,9 @@ impl ExecutionArtifactBuilder {
     /// Adds the result from a `WasmV2Result` to the artifact.
     pub(crate) fn with_wasm_v2_result(&mut self, result: WasmV2Result) -> &mut Self {
         self.with_added_consumed(Gas::from(result.gas_usage().gas_spent()));
+        if let Some(err) = result.host_error() {
+            self.with_error_message(err.to_string());
+        }
 
         // TODO: Use system message to notify about contract hash
 
