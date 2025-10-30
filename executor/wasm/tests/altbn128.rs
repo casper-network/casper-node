@@ -58,8 +58,11 @@ fn should_run_test_suite() {
 
     let address_generator = make_address_generator();
 
+    let vm2_altbn128 = read_wasm("vm2_altbn128.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_altbn128.wasm"))
+        .with_wasm_bytes(vm2_altbn128.wasm)
+        .with_bundle_data(vm2_altbn128.bundle.expect("should have bundle data"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -146,8 +149,10 @@ fn run_pairing_endpoint_test<T: BorshSerialize>(
 
     let address_generator = make_address_generator();
 
+    let vm2_altbn128 = read_wasm("vm2_altbn128.wasm");
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_altbn128.wasm"))
+        .with_wasm_bytes(vm2_altbn128.wasm)
+        .with_bundle_data(vm2_altbn128.bundle.expect("should have bundle data"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
