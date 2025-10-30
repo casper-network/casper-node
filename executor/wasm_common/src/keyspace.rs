@@ -36,7 +36,6 @@ pub enum ContextAddr {
 /// Address for a specific state field owned by `entity_addr`.
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct StateAddrInner {
-    pub entity_addr: [u8; 32],
     pub field_addr: String,
 }
 
@@ -44,7 +43,6 @@ impl StateAddrInner {
     #[inline]
     pub fn new<T: Into<String>>(entity_addr: [u8; 32], field_addr: T) -> Self {
         Self {
-            entity_addr,
             field_addr: field_addr.into(),
         }
     }
