@@ -41,7 +41,7 @@ pub struct StateAddrInner {
 
 impl StateAddrInner {
     #[inline]
-    pub fn new<T: Into<String>>(entity_addr: [u8; 32], field_addr: T) -> Self {
+    pub fn new<T: Into<String>>(field_addr: T) -> Self {
         Self {
             field_addr: field_addr.into(),
         }
