@@ -2048,14 +2048,14 @@ fn calling_upgrade_contract_should_produce_ret_and_call_result() {
     let expected_call_1 = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_HASH),
         TransformKindV2::EntryPointCalled(
-            Some(*create_result.smart_contract_addr()),
+            Key::Hash(*create_result.smart_contract_addr()),
             "perform_upgrade".to_string(),
         ),
     );
     let expected_call_2 = TransformV2::new(
         Key::Hash(*create_result.smart_contract_addr()),
         TransformKindV2::EntryPointCalled(
-            Some(*create_result.smart_contract_addr()),
+            Key::Hash(*create_result.smart_contract_addr()),
             "migrate".to_string(),
         ),
     );
@@ -2112,7 +2112,7 @@ fn calling_constructor_method_should_produce_ret_and_call_result() {
     let constructor_called = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_HASH),
         TransformKindV2::EntryPointCalled(
-            Some(*create_result.smart_contract_addr()),
+            Key::Hash(*create_result.smart_contract_addr()),
             "default".to_string(),
         ),
     );
@@ -2223,14 +2223,14 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
     let inc_and_get_call = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_HASH),
         TransformKindV2::EntryPointCalled(
-            Some(*caller_create_result.smart_contract_addr()),
+            Key::Hash(*caller_create_result.smart_contract_addr()),
             "inc_and_get".to_string(),
         ),
     );
     let increment_call = TransformV2::new(
         Key::Hash(*caller_create_result.smart_contract_addr()),
         TransformKindV2::EntryPointCalled(
-            Some(*counter_create_result.smart_contract_addr()),
+            Key::Hash(*counter_create_result.smart_contract_addr()),
             "increment".to_string(),
         ),
     );
@@ -2241,7 +2241,7 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
     let get_call = TransformV2::new(
         Key::Hash(*caller_create_result.smart_contract_addr()),
         TransformKindV2::EntryPointCalled(
-            Some(*counter_create_result.smart_contract_addr()),
+            Key::Hash(*counter_create_result.smart_contract_addr()),
             "get".to_string(),
         ),
     );
@@ -2307,7 +2307,10 @@ fn calling_session_should_produce_entry_point_called_and_ret() {
     assert_eq!(ep_calls_and_rets.len(), 2);
     let call = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_HASH),
-        TransformKindV2::EntryPointCalled(None, DEFAULT_ENTRY_POINT_NAME.to_string()),
+        TransformKindV2::EntryPointCalled(
+            Key::Account(*DEFAULT_ACCOUNT_HASH),
+            DEFAULT_ENTRY_POINT_NAME.to_string(),
+        ),
     );
     let session_return = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_HASH),

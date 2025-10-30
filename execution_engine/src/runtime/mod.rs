@@ -1455,9 +1455,10 @@ where
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
+        let context_key = self.context.get_context_key();
         self.context.state().borrow_mut().entry_point_called(
+            context_key,
             self.context.get_context_key(),
-            None,
             DEFAULT_ENTRY_POINT_NAME.to_string(),
         );
         #[cfg(feature = "test-support")]
@@ -1755,7 +1756,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        let (footprint, entity_addr, package) = match identifier {
+        let (footprint, entity_addr, package, contract_key) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let entity_addr = if self.context.is_system_addressable_entity(&contract_hash)? {
                     EntityAddr::new_system(contract_hash)
@@ -1812,7 +1813,13 @@ where
                     return Err(ExecError::DisabledEntity(entity_hash));
                 }
 
-                (footprint, entity_addr, package)
+                let contract_key = if self.context.engine_config().enable_entity {
+                    Key::AddressableEntity(entity_addr)
+                } else {
+                    Key::Hash(contract_hash)
+                };
+
+                (footprint, entity_addr, package, contract_key)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
@@ -1896,14 +1903,18 @@ where
                         )
                     }
                 };
-
-                (footprint, entity_addr, package)
+                let contract_key = if self.context.engine_config().enable_entity {
+                    Key::AddressableEntity(entity_addr)
+                } else {
+                    Key::Hash(hash_addr)
+                };
+                (footprint, entity_addr, package, contract_key)
             }
         };
 
         self.context.state().borrow_mut().entry_point_called(
             self.context.get_context_key(),
-            Some(entity_addr.value()),
+            contract_key,
             entry_point_name.to_string(),
         );
 

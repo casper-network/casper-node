@@ -7,8 +7,8 @@ use casper_storage::{
     global_state::error::Error as GlobalStateError, AddressGenerator, RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, BlockHash, BlockTime, CLValueError, Digest,
-    TransactionHash,
+    account::AccountHash, contract_messages::Messages, execution::Effects, BlockHash, BlockTime,
+    CLValueError, Digest, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -216,6 +216,8 @@ pub struct InstallContractResult {
     pub(crate) effects: Effects,
     /// Post state hash after installation.
     pub(crate) post_state_hash: Digest,
+    /// Messages emitted during execution
+    pub(crate) messages: Messages,
 }
 
 impl InstallContractResult {
@@ -233,6 +235,10 @@ impl InstallContractResult {
 
     pub fn smart_contract_addr(&self) -> &[u8; 32] {
         &self.smart_contract_addr
+    }
+
+    pub fn messages(&self) -> &Messages {
+        &self.messages
     }
 }
 

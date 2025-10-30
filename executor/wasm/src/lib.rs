@@ -521,6 +521,7 @@ impl ExecutorV2 {
         };
 
         let effects = tracking_copy.effects();
+        let messages = tracking_copy.messages();
 
         match state_provider.commit_effects(state_root_hash, effects.clone()) {
             Ok(post_state_hash) => Ok(InstallContractResult {
@@ -528,6 +529,7 @@ impl ExecutorV2 {
                 gas_usage: ctor_gas_usage,
                 effects,
                 post_state_hash,
+                messages,
             }),
             Err(error) => Err(InstallContractError::GlobalState(error)),
         }
@@ -966,7 +968,7 @@ impl ExecutorV2 {
         let mut initial_tracking_copy = tracking_copy.fork2();
 
         // Derive callee key from the execution target.
-        let (callee_key, entry_point_name, contract_addr) = match &execution_kind {
+        let (callee_key, entry_point_name) = match &execution_kind {
             ExecutionKind::Stored {
                 address: smart_contract_package_addr,
                 entry_point,
@@ -977,19 +979,18 @@ impl ExecutorV2 {
                 } else {
                     Key::Hash(*smart_contract_package_addr)
                 };
-                (key, entry_point.clone(), Some(*smart_contract_package_addr))
+                (key, entry_point.clone())
             }
             ExecutionKind::SessionBytes(_wasm_bytes) => (
                 Key::Account(initiator),
                 DEFAULT_WASM_ENTRY_POINT.to_string(),
-                None,
             ),
             ExecutionKind::System(_) => {
                 error!("System executions are not called in this way. This should be unreachable.");
                 return Err(ExecuteError::Fatal(FatalHostError::DispatchSystemContract));
             }
         };
-        tracking_copy.entry_point_called(caller_key, contract_addr, entry_point_name);
+        tracking_copy.entry_point_called(caller_key, callee_key, entry_point_name);
         let ffi_call_costs = self.build_ffi_call_costs(&self.config);
         let context = Context {
             initiator,

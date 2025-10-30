@@ -19,8 +19,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     execution::ret_value::RetValue,
-    CLType, CLTyped, CLValue, HashAddr, Key, StoredValue, StoredValueTypeMismatch, U128, U256,
-    U512,
+    CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
 /// Taxonomy of Transform.
@@ -96,9 +95,8 @@ pub enum TransformKindV2 {
     Failure(TransformError),
     /// Registers a value return from the contract
     Ret(RetValue),
-    /// Registers an entry point called. If the hash addr is none that means that the call was
-    /// made to session bytes.
-    EntryPointCalled(Option<HashAddr>, String),
+    /// Registers an entry point called.
+    EntryPointCalled(Key, String),
 }
 
 impl TransformKindV2 {
@@ -383,10 +381,10 @@ impl FromBytes for TransformKindV2 {
                 Ok((TransformKindV2::Ret(ret_val), remainder))
             }
             tag if tag == TransformTag::EntryPointCalled as u8 => {
-                let (addr, remainder) = Option::<HashAddr>::from_bytes(remainder)?;
+                let (key, remainder) = Key::from_bytes(remainder)?;
                 let (entrypoint_name, remainder) = String::from_bytes(remainder)?;
                 Ok((
-                    TransformKindV2::EntryPointCalled(addr, entrypoint_name),
+                    TransformKindV2::EntryPointCalled(key, entrypoint_name),
                     remainder,
                 ))
             }
