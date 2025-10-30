@@ -68,6 +68,6 @@ jobs:
 
       - name: vm2 tests
         run: |
-          ./vm2-build-contracts.sh
+          make build-vm2-contracts-rs
           cargo test -p casper-executor-wasm
           cargo test -p casper-contract-sdk
