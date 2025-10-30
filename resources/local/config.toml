@@ -29,7 +29,7 @@
 #       and a node backing a dapp interested in auction activity or tracking trends would prefer to run in ttl mode.
 # note: as time goes on, the time to sync back to genesis takes progressively longer.
 # note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
-#       (it is currently ~18 hours by default on production and production-like networks but subject to change).
+#       (it is currently ~2 hours by default on production and production-like networks but subject to change).
 # note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
 #        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
 #        only interested in recent activity.
@@ -54,7 +54,7 @@ force_resync = false
 shutdown_for_upgrade_timeout = '2 minutes'
 
 # Maximum time a node will wait for an upgrade to commit.
-upgrade_timeout = '3 hours'
+upgrade_timeout = '30 seconds'
 
 # The node detects when it should do a controlled shutdown when it is in a detectably bad state
 # in order to avoid potentially catastrophic uncontrolled crashes. Generally, a node should be
@@ -295,8 +295,8 @@ blocklist_retain_max_duration = '10 minutes'
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
 # This option makes sense for some private chains where for security reasons joining new nodes is restricted.
 # [network.identity]
-# tls_certificate = "local_node_cert.pem"
-# secret_key = "local_node.pem"
+# tls_certificate = "node_cert.pem"
+# secret_key = "node.pem"
 # ca_certificate = "ca_cert.pem"
 
 # Weights for impact estimation of incoming messages, used in combination with
@@ -355,7 +355,7 @@ allow_request_speculative_exec = false
 sandboxed_execution_allowed_ips = []
 
 # Maximum size of a message in bytes.
-max_message_size_bytes = 4_194_304
+max_message_size_bytes = 134_217_728
 
 # Maximum number of connections to the server.
 max_connections = 5
