@@ -1640,7 +1640,6 @@ fn process_casper_contract_state_for_struct(
                         let #field_ident: #field_ty = {
                             let field_name = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
-                                *#crate_path::casper::get_callee().address(),
                                 field_name,
                             );
                             let mut buf = #crate_path::prelude::Vec::new();
@@ -1660,7 +1659,6 @@ fn process_casper_contract_state_for_struct(
                         {
                             let field_name = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
-                                *#crate_path::casper::get_callee().address(),
                                 field_name,
                             );
                             let bytes = #crate_path::serializers::borsh::to_vec(&self.#field_ident).unwrap();
