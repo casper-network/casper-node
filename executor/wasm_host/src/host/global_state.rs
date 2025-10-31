@@ -890,10 +890,7 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
         Keyspace::Context(context_addr) => match context_addr {
             ContextAddr::StateAddr(state_addr) => {
                 let digest = Digest::hash(state_addr.field_addr.as_bytes());
-                Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                    entity_addr,
-                    digest.value(),
-                )))
+                Some(Key::State(entity_addr, digest.value()))
             }
             ContextAddr::CollectionAddr(collection_addr) => Some(Key::NamedKey(
                 NamedKeyAddr::new_named_key_entry(entity_addr, collection_addr.tail),

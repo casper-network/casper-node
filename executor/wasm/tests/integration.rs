@@ -887,16 +887,18 @@ fn counter() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let field_tail = Digest::hash(b"value").value();
+    let query_request =
+        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 0u32, "should be 0");
+                assert_eq!(counter, 0u32, "should be 0");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");
@@ -973,16 +975,17 @@ fn counter() {
         None => panic!("get should have output"),
     }
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let query_request =
+        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 1u32, "should be 1");
+                assert_eq!(counter, 1u32, "should be 1");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");
@@ -1025,16 +1028,17 @@ fn counter() {
         .commit_effects(state_root_hash, result_3.effects().clone())
         .expect("Should commit");
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let query_request =
+        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 0u32, "should be 0");
+                assert_eq!(counter, 0u32, "should be 0");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");

@@ -335,8 +335,9 @@ pub enum Key {
     BalanceHold(BalanceHoldAddr),
     /// A `Key` under which a entrypoint record is written.
     EntryPoint(EntryPointAddr),
-    /// A `Key` under which a contract's state lives.
-    State(EntityAddr),
+    /// A `Key` under which a contract's state field lives.
+    /// The second component is a 32-byte hash of the field address.
+    State(EntityAddr, [u8; 32]),
 }
 
 #[cfg(feature = "json-schema")]
@@ -529,7 +530,7 @@ impl Key {
             Key::BlockGlobal(_) => String::from("Key::BlockGlobal"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
             Key::EntryPoint(_) => String::from("Key::EntryPoint"),
-            Key::State(_) => String::from("Key::State"),
+            Key::State(_, _) => String::from("Key::State"),
         }
     }
 
@@ -652,8 +653,8 @@ impl Key {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
             }
-            Key::State(entity_addr) => {
-                format!("{}{}", STATE_PREFIX, entity_addr)
+            Key::State(entity_addr, tail) => {
+                format!("{}{}-{}", STATE_PREFIX, entity_addr, base16::encode_lower(&tail))
             }
             Key::EntryPoint(entry_point_addr) => {
                 format!("{}", entry_point_addr)
@@ -968,13 +969,28 @@ impl Key {
             Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
         }
 
-        if let Some(entity_addr_formatted) = input.strip_prefix(STATE_PREFIX) {
-            match EntityAddr::from_formatted_str(entity_addr_formatted) {
-                Ok(entity_addr) => return Ok(Key::State(entity_addr)),
-                Err(addressable_entity::FromStrError::InvalidPrefix) => {}
-                Err(error) => {
-                    return Err(FromStrError::State(error.to_string()));
+        if let Some(entity_and_tail) = input.strip_prefix(STATE_PREFIX) {
+            let Some(last_dash) = entity_and_tail.rfind('-') else {
+                return Err(FromStrError::State("Missing state tail".to_string()));
+            };
+            let (entity_str, tail_hex) = entity_and_tail.split_at(last_dash);
+            let tail_hex = &tail_hex[1..];
+            match EntityAddr::from_formatted_str(entity_str) {
+                Ok(entity_addr) => {
+                    let tail_bytes = checksummed_hex::decode(tail_hex)
+                        .map_err(|e| FromStrError::State(e.to_string()))?;
+                    let tail: [u8; 32] = match <[u8; 32]>::try_from(tail_bytes.as_ref()) {
+                        Ok(arr) => arr,
+                        Err(_) => {
+                            return Err(FromStrError::State(
+                                "Invalid state tail length".to_string(),
+                            ))
+                        }
+                    };
+                    return Ok(Key::State(entity_addr, tail));
                 }
+                Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+                Err(error) => return Err(FromStrError::State(error.to_string())),
             }
         }
 
@@ -1444,8 +1460,13 @@ impl Display for Key {
             Key::EntryPoint(entry_point_addr) => {
                 write!(f, "Key::EntryPointAddr({})", entry_point_addr)
             }
-            Key::State(entity_addr) => {
-                write!(f, "Key::State({})", entity_addr)
+            Key::State(entity_addr, tail) => {
+                write!(
+                    f,
+                    "Key::State({}-{})",
+                    entity_addr,
+                    base16::encode_lower(tail)
+                )
             }
         }
     }
@@ -1484,7 +1505,7 @@ impl Tagged<KeyTag> for Key {
             Key::BlockGlobal(_) => KeyTag::BlockGlobal,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
             Key::EntryPoint(_) => KeyTag::EntryPoint,
-            Key::State(_) => KeyTag::State,
+            Key::State(_, _) => KeyTag::State,
         }
     }
 }
@@ -1601,7 +1622,8 @@ impl ToBytes for Key {
             Key::EntryPoint(entry_point_addr) => {
                 U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
-            Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
+            Key::State(entity_addr, tail) =>
+                KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length() + tail.serialized_length(),
         }
     }
 
@@ -1635,7 +1657,10 @@ impl ToBytes for Key {
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
             Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
-            Key::State(entity_addr) => entity_addr.write_bytes(writer),
+            Key::State(entity_addr, tail) => {
+                entity_addr.write_bytes(writer)?;
+                tail.write_bytes(writer)
+            }
         }
     }
 }
@@ -1752,7 +1777,8 @@ impl FromBytes for Key {
             }
             KeyTag::State => {
                 let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
-                Ok((Key::State(entity_addr), rem))
+                let (tail, rem) = <[u8; 32]>::from_bytes(rem)?;
+                Ok((Key::State(entity_addr, tail), rem))
             }
         }
     }
@@ -1787,7 +1813,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::BlockGlobal(_) => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
         Key::EntryPoint(_) => unimplemented!(),
-        Key::State(_) => unimplemented!(),
+        Key::State(_, _) => unimplemented!(),
     }
 }
 
@@ -1822,7 +1848,7 @@ impl Distribution<Key> for Standard {
             21 => Key::BlockGlobal(rng.gen()),
             22 => Key::BalanceHold(rng.gen()),
             23 => Key::EntryPoint(rng.gen()),
-            24 => Key::State(rng.gen()),
+            24 => Key::State(rng.gen(), rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1858,7 +1884,7 @@ mod serde_helpers {
         BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
         EntryPoint(&'a EntryPointAddr),
-        State(&'a EntityAddr),
+        State { entity_addr: &'a EntityAddr, tail: &'a [u8; 32] },
     }
 
     #[derive(Deserialize)]
@@ -1888,7 +1914,7 @@ mod serde_helpers {
         BlockGlobal(BlockGlobalAddr),
         BalanceHold(BalanceHoldAddr),
         EntryPoint(EntryPointAddr),
-        State(EntityAddr),
+        State(EntityAddr, [u8; 32]),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1922,7 +1948,7 @@ mod serde_helpers {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
-                Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
+                Key::State(entity_addr, tail) => BinarySerHelper::State { entity_addr, tail },
             }
         }
     }
@@ -1960,7 +1986,7 @@ mod serde_helpers {
                 BinaryDeserHelper::EntryPoint(entry_point_addr) => {
                     Key::EntryPoint(entry_point_addr)
                 }
-                BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
+                BinaryDeserHelper::State(entity_addr, tail) => Key::State(entity_addr, tail),
             }
         }
     }
@@ -2052,10 +2078,10 @@ mod tests {
     ));
     const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
-    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
+    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]), [42; 32]);
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const STATE_KEY: Key = Key::State(EntityAddr::new_smart_contract([42; 32]));
+    const STATE_KEY: Key = Key::State(EntityAddr::new_smart_contract([42; 32]), [43; 32]);
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -2270,8 +2296,9 @@ mod tests {
         assert_eq!(
             format!("{}", STATE_KEY),
             format!(
-                "Key::State(entity-contract-{})",
-                base16::encode_lower(&[42; 32])
+                "Key::State(entity-contract-{}-{})",
+                base16::encode_lower(&[42; 32]),
+                base16::encode_lower(&[43; 32])
             )
         );
         assert_eq!(
@@ -2731,19 +2758,19 @@ mod tests {
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::ProtocolVersion));
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::AddressableEntity));
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
-        round_trip(&Key::State(EntityAddr::new_system(zeros)));
+        round_trip(&Key::State(EntityAddr::new_system(zeros), zeros));
     }
 
     #[test]
     fn state_json_deserialization() {
         let mut test_rng = TestRng::new();
-        let state_key = Key::State(EntityAddr::new_account(test_rng.gen()));
+        let state_key = Key::State(EntityAddr::new_account(test_rng.gen()), [0; 32]);
         round_trip(&state_key);
 
-        let state_key = Key::State(EntityAddr::new_system(test_rng.gen()));
+        let state_key = Key::State(EntityAddr::new_system(test_rng.gen()), [0; 32]);
         round_trip(&state_key);
 
-        let state_key = Key::State(EntityAddr::new_smart_contract(test_rng.gen()));
+        let state_key = Key::State(EntityAddr::new_smart_contract(test_rng.gen()), [0; 32]);
         round_trip(&state_key);
     }
 

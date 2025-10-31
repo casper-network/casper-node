@@ -196,7 +196,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         named_key_addr_arb().prop_map(Key::NamedKey),
         balance_hold_addr_arb().prop_map(Key::BalanceHold),
         entry_point_addr_arb().prop_map(Key::EntryPoint),
-        entity_addr_arb().prop_map(Key::State),
+        (entity_addr_arb(), u8_slice_32()).prop_map(|(addr, tail)| Key::State(addr, tail)),
     ]
 }
 
