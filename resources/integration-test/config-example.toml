@@ -334,6 +334,10 @@ allow_request_get_trie = false
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
 
+# IP addresses allowed to make `TrySandboxedExecution` requests. Empty list means no access allowed.
+# Supports IP address strings like "127.0.0.1" or "::1". A string of "*" matches all IPs.
+sandboxed_execution_allowed_ips = []
+
 # Maximum size of a message in bytes.
 max_message_size_bytes = 134_217_728
 
@@ -371,6 +375,9 @@ accept_transaction_request_termination_delay = '24 seconds'
 #[`Command::TrySpeculativeExec`] is sent to the node
 speculative_exec_request_termination_delay = '0 seconds'
 
+#The amount of time which is given to a connection to extend it's lifetime when a valid
+#[`Command::TrySandboxedExecution`] is sent to the node
+try_sandboxed_execution_request_termination_delay = '30 seconds'
 
 # ==============================================
 # Configuration options for the REST HTTP server
