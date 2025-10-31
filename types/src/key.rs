@@ -654,7 +654,12 @@ impl Key {
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
             }
             Key::State(entity_addr, tail) => {
-                format!("{}{}-{}", STATE_PREFIX, entity_addr, base16::encode_lower(&tail))
+                format!(
+                    "{}{}-{}",
+                    STATE_PREFIX,
+                    entity_addr,
+                    base16::encode_lower(&tail)
+                )
             }
             Key::EntryPoint(entry_point_addr) => {
                 format!("{}", entry_point_addr)
@@ -1622,8 +1627,11 @@ impl ToBytes for Key {
             Key::EntryPoint(entry_point_addr) => {
                 U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
-            Key::State(entity_addr, tail) =>
-                KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length() + tail.serialized_length(),
+            Key::State(entity_addr, tail) => {
+                KEY_ID_SERIALIZED_LENGTH
+                    + entity_addr.serialized_length()
+                    + tail.serialized_length()
+            }
         }
     }
 
@@ -1884,7 +1892,10 @@ mod serde_helpers {
         BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
         EntryPoint(&'a EntryPointAddr),
-        State { entity_addr: &'a EntityAddr, tail: &'a [u8; 32] },
+        State {
+            entity_addr: &'a EntityAddr,
+            tail: &'a [u8; 32],
+        },
     }
 
     #[derive(Deserialize)]

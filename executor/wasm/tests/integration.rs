@@ -888,8 +888,11 @@ fn counter() {
         .expect("Should commit");
 
     let field_tail = Digest::hash(b"value").value();
-    let query_request =
-        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(contract_hash, field_tail),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
@@ -975,8 +978,11 @@ fn counter() {
         None => panic!("get should have output"),
     }
 
-    let query_request =
-        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(contract_hash, field_tail),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
@@ -1028,8 +1034,11 @@ fn counter() {
         .commit_effects(state_root_hash, result_3.effects().clone())
         .expect("Should commit");
 
-    let query_request =
-        QueryRequest::new(state_root_hash, Key::State(contract_hash, field_tail), vec![]);
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(contract_hash, field_tail),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");

@@ -16,9 +16,7 @@ use casper_storage::{
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     AddressGenerator,
 };
-use casper_types::{
-    BlockHash, Digest, EntityAddr, Key, Timestamp,
-};
+use casper_types::{BlockHash, Digest, EntityAddr, Key, Timestamp};
 use once_cell::sync::Lazy;
 use parking_lot::{lock_api::RwLock, RawRwLock};
 use tempfile::TempDir;
