@@ -46,6 +46,7 @@ use casper_storage::{
 
 use casper_types::{
     account::AccountHash,
+    addressable_entity::StateFieldAddr,
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageChecksum, MessagePayload},
     execution::{RetValue, TransformKindV2, TransformV2},
@@ -890,7 +891,10 @@ fn counter() {
     let field_tail = Digest::hash(b"value").value();
     let query_request = QueryRequest::new(
         state_root_hash,
-        Key::State(contract_hash, field_tail),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
         vec![],
     );
     match global_state.query(query_request) {
@@ -980,7 +984,10 @@ fn counter() {
 
     let query_request = QueryRequest::new(
         state_root_hash,
-        Key::State(contract_hash, field_tail),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
         vec![],
     );
     match global_state.query(query_request) {
@@ -1036,7 +1043,10 @@ fn counter() {
 
     let query_request = QueryRequest::new(
         state_root_hash,
-        Key::State(contract_hash, field_tail),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
         vec![],
     );
     match global_state.query(query_request) {

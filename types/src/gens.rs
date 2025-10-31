@@ -15,7 +15,8 @@ use crate::{
     },
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
-        ContractRuntimeTag, MessageTopics, NamedKeyAddr, NamedKeyValue, Parameters, Weight,
+        ContractRuntimeTag, MessageTopics, NamedKeyAddr, NamedKeyValue, Parameters, StateFieldAddr,
+        Weight,
     },
     block::BlockGlobalAddr,
     byte_code::ByteCodeKind,
@@ -196,7 +197,8 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         named_key_addr_arb().prop_map(Key::NamedKey),
         balance_hold_addr_arb().prop_map(Key::BalanceHold),
         entry_point_addr_arb().prop_map(Key::EntryPoint),
-        (entity_addr_arb(), u8_slice_32()).prop_map(|(addr, tail)| Key::State(addr, tail)),
+        (entity_addr_arb(), u8_slice_32())
+            .prop_map(|(addr, tail)| Key::State(StateFieldAddr::new_state_field_addr(addr, tail))),
     ]
 }
 

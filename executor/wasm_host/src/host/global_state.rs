@@ -21,7 +21,9 @@ use casper_executor_wasm_interface::{
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue, StateFieldAddr,
+    },
     bytesrepr::{self, Bytes as BytesreprBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash, EntryPoints},
     AccessRights, AddressableEntity, BlockHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
@@ -890,7 +892,10 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
         Keyspace::Context(context_addr) => match context_addr {
             ContextAddr::StateAddr(state_addr) => {
                 let digest = Digest::hash(state_addr.field_addr.as_bytes());
-                Some(Key::State(entity_addr, digest.value()))
+                Some(Key::State(StateFieldAddr::new_state_field_addr(
+                    entity_addr,
+                    digest.value(),
+                )))
             }
             ContextAddr::CollectionAddr(collection_addr) => Some(Key::NamedKey(
                 NamedKeyAddr::new_named_key_entry(entity_addr, collection_addr.tail),

@@ -16,7 +16,9 @@ use casper_storage::{
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     AddressGenerator,
 };
-use casper_types::{BlockHash, Digest, EntityAddr, Key, Timestamp};
+use casper_types::{
+    addressable_entity::StateFieldAddr, BlockHash, Digest, EntityAddr, Key, Timestamp,
+};
 use once_cell::sync::Lazy;
 use parking_lot::{lock_api::RwLock, RawRwLock};
 use tempfile::TempDir;
@@ -49,7 +51,10 @@ fn should_store_initial_state() {
     let digest = Digest::hash(field_name.as_bytes());
     let value = match global_state.query(QueryRequest::new(
         post_state_root_hash,
-        Key::State(contract_hash, digest.value()),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            digest.value(),
+        )),
         vec![],
     )) {
         QueryResult::Success { value, proofs: _ } => value,
@@ -128,7 +133,10 @@ fn should_store_state_after_changes() {
     let digest = Digest::hash(field_name.as_bytes());
     let value = match global_state.query(QueryRequest::new(
         post_state_root_hash,
-        Key::State(contract_hash, digest.value()),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            digest.value(),
+        )),
         vec![],
     )) {
         QueryResult::Success { value, proofs: _ } => value,

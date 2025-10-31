@@ -1053,6 +1053,96 @@ pub struct NamedKeyAddr {
     string_bytes: [u8; KEY_HASH_LENGTH],
 }
 
+/// Address of a specific state field for a given entity with a 32-byte discriminator.
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct StateFieldAddr {
+    base_addr: EntityAddr,
+    discriminator_bytes: [u8; KEY_HASH_LENGTH],
+}
+
+impl StateFieldAddr {
+    /// Constructs a new `StateFieldAddr` from entity and 32-byte discriminator.
+    pub const fn new_state_field_addr(
+        entity_addr: EntityAddr,
+        discriminator_bytes: [u8; KEY_HASH_LENGTH],
+    ) -> Self {
+        Self {
+            base_addr: entity_addr,
+            discriminator_bytes,
+        }
+    }
+
+    /// Returns the encapsulated [`EntityAddr`].
+    pub fn entity_addr(&self) -> EntityAddr {
+        self.base_addr
+    }
+
+    /// Returns the 32-byte discriminator.
+    pub fn discriminator(&self) -> [u8; KEY_HASH_LENGTH] {
+        self.discriminator_bytes
+    }
+}
+
+impl ToBytes for StateFieldAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.append(&mut self.base_addr.to_bytes()?);
+        buffer.append(&mut self.discriminator_bytes.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.base_addr.serialized_length() + self.discriminator_bytes.serialized_length()
+    }
+}
+
+impl FromBytes for StateFieldAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (base_addr, remainder) = EntityAddr::from_bytes(bytes)?;
+        let (discriminator_bytes, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            Self {
+                base_addr,
+                discriminator_bytes,
+            },
+            remainder,
+        ))
+    }
+}
+
+impl Display for StateFieldAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}-{}",
+            self.base_addr,
+            base16::encode_lower(&self.discriminator_bytes)
+        )
+    }
+}
+
+impl Debug for StateFieldAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "StateFieldAddr({:?}-{:?})",
+            self.base_addr, self.discriminator_bytes
+        )
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<StateFieldAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> StateFieldAddr {
+        StateFieldAddr {
+            base_addr: rng.gen(),
+            discriminator_bytes: rng.gen(),
+        }
+    }
+}
+
 impl NamedKeyAddr {
     /// The length in bytes of a [`NamedKeyAddr`].
     pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::LENGTH;
