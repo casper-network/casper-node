@@ -575,9 +575,19 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
 
                 let persist_after_call_tokens = if method_attribute.constructor {
-                    quote! { let _ = _ret.write_state_to_fields().unwrap(); }
+                    quote! {
+                        {
+                            use casper_contract_sdk::FieldStateAccess;
+                            let _ = _ret.write_state_to_fields().unwrap();
+                        }
+                    }
                 } else if receiver_is_ref && receiver_is_mut {
-                    quote! { let _ = instance.write_state_to_fields().unwrap(); }
+                    quote! {
+                        {
+                            use casper_contract_sdk::FieldStateAccess;
+                            let _ = instance.write_state_to_fields().unwrap();
+                        }
+                    }
                 } else {
                     quote! {}
                 };
@@ -1264,7 +1274,10 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 let _ret = instance.#func_name(#(args.#arg_names,)*);
 
-                                if #is_by_ref && #is_mut { let _ = instance.write_state_to_fields().unwrap(); }
+                                if #is_by_ref && #is_mut {
+                                    use casper_contract_sdk::FieldStateAccess;
+                                    let _ = instance.write_state_to_fields().unwrap();
+                                }
 
                                 #handle_ret
                             }
@@ -1640,7 +1653,7 @@ fn process_casper_contract_state_for_struct(
                         let #field_ident: #field_ty = {
                             const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
-                                field_name,
+                                FIELD_NAME,
                             );
                             let mut buf = #crate_path::prelude::Vec::new();
                             let info = #crate_path::casper::read(
@@ -1659,7 +1672,7 @@ fn process_casper_contract_state_for_struct(
                         {
                             const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
-                                field_name,
+                                FIELD_NAME,
                             );
                             let bytes = #crate_path::serializers::borsh::to_vec(&self.#field_ident).unwrap();
                             #crate_path::casper::write(
