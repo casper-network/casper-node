@@ -1638,7 +1638,7 @@ fn process_casper_contract_state_for_struct(
                     default_pairs.push(quote! { #field_ident: #default_var });
                     reads.push(quote! {
                         let #field_ident: #field_ty = {
-                            let field_name = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
+                            const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
                                 field_name,
                             );
@@ -1657,7 +1657,7 @@ fn process_casper_contract_state_for_struct(
                     });
                     writes.push(quote! {
                         {
-                            let field_name = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
+                            const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
                                 field_name,
                             );
@@ -1710,27 +1710,16 @@ fn process_casper_contract_state_for_struct(
             }
         }
 
-        impl #struct_name {
-            pub fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
+        impl #crate_path::FieldStateAccess for #struct_name {
+            fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
                 #default_destructure
                 #(#read_bindings)*
                 Ok(Self { #(#init_fields)* })
             }
 
-            pub fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
+            fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
                 #(#write_statements)*
                 Ok(())
-            }
-
-        }
-
-        impl #crate_path::FieldStateAccess for #struct_name {
-            fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
-                Self::read_state_from_fields()
-            }
-
-            fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
-                self.write_state_to_fields()
             }
         }
     }
