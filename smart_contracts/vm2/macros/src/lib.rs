@@ -549,18 +549,18 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 let handle_call = if receiver_exists {
                     if receiver_is_ref {
                         quote! {
-                            {
+                            let mut instance: #struct_name = {
                                 use casper_contract_sdk::FieldStateAccess;
-                                let mut instance: #struct_name = #struct_name::read_state_from_fields().unwrap();
-                                let _ret = instance.#func_name(#(args.#arg_names,)*);
-                            }
+                                #struct_name::read_state_from_fields().unwrap()
+                            };
+                            let _ret = instance.#func_name(#(args.#arg_names,)*);
                         }
                     } else {
                         quote! {
-                            {
+                            let _ret = {
                                 use casper_contract_sdk::FieldStateAccess;
-                                let _ret = #struct_name::read_state_from_fields().unwrap().#func_name(#(args.#arg_names,)*);
-                            }
+                                #struct_name::read_state_from_fields().unwrap().#func_name(#(args.#arg_names,)*)
+                            };
                         }
                     }
                 } else if method_attribute.constructor {
