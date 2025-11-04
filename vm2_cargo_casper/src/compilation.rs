@@ -4,8 +4,6 @@ use std::{
     process::{Command, Stdio},
 };
 
-use anyhow::{anyhow, Context, Result};
-
 use crate::{
     cli,
     utils::command_runner::{self, DEFAULT_MAX_LINES},

@@ -29,4 +29,3 @@ blake2-rfc = { version = "0.2.18", default-features = false, features = [
 [features]
 default = []
 __abi_generator = []
-__embed_schema = []

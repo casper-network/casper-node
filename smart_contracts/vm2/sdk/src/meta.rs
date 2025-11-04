@@ -8,7 +8,7 @@ use casper_executor_wasm_common::type_uid::Uid;
 use crate::compat::types::CLType;
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub enum BundlePrimitive {
+pub enum MetaPrimitive {
     Char,
     U8,
     I8,
@@ -26,29 +26,31 @@ pub enum BundlePrimitive {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<crate::abi::Primitive> for BundlePrimitive {
+impl From<crate::abi::Primitive> for MetaPrimitive {
     fn from(value: crate::abi::Primitive) -> Self {
         match value {
-            crate::abi::Primitive::Char => BundlePrimitive::Char,
-            crate::abi::Primitive::U8 => BundlePrimitive::U8,
-            crate::abi::Primitive::I8 => BundlePrimitive::I8,
-            crate::abi::Primitive::U16 => BundlePrimitive::U16,
-            crate::abi::Primitive::I16 => BundlePrimitive::I16,
-            crate::abi::Primitive::U32 => BundlePrimitive::U32,
-            crate::abi::Primitive::I32 => BundlePrimitive::I32,
-            crate::abi::Primitive::U64 => BundlePrimitive::U64,
-            crate::abi::Primitive::I64 => BundlePrimitive::I64,
-            crate::abi::Primitive::U128 => BundlePrimitive::U128,
-            crate::abi::Primitive::I128 => BundlePrimitive::I128,
-            crate::abi::Primitive::F32 => BundlePrimitive::F32,
-            crate::abi::Primitive::F64 => BundlePrimitive::F64,
-            crate::abi::Primitive::Bool => BundlePrimitive::Bool,
+            crate::abi::Primitive::Char => MetaPrimitive::Char,
+            crate::abi::Primitive::U8 => MetaPrimitive::U8,
+            crate::abi::Primitive::I8 => MetaPrimitive::I8,
+            crate::abi::Primitive::U16 => MetaPrimitive::U16,
+            crate::abi::Primitive::I16 => MetaPrimitive::I16,
+            crate::abi::Primitive::U32 => MetaPrimitive::U32,
+            crate::abi::Primitive::I32 => MetaPrimitive::I32,
+            crate::abi::Primitive::U64 => MetaPrimitive::U64,
+            crate::abi::Primitive::I64 => MetaPrimitive::I64,
+            crate::abi::Primitive::U128 => MetaPrimitive::U128,
+            crate::abi::Primitive::I128 => MetaPrimitive::I128,
+            crate::abi::Primitive::F32 => MetaPrimitive::F32,
+            crate::abi::Primitive::F64 => MetaPrimitive::F64,
+            crate::abi::Primitive::Bool => MetaPrimitive::Bool,
         }
     }
 }
 
+// 1024
+
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleEnumVariant {
+pub struct MetaEnumVariant {
     pub discriminant: u64,
     /// Optional declaration for the variant.
     ///
@@ -57,16 +59,16 @@ pub struct BundleEnumVariant {
     pub decl: Option<Uid>,
 }
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleStructField {
+pub struct MetaStructField {
     pub decl: Uid,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub enum BundleTypeDefinition {
+pub enum MetaTypeDefinition {
     /// Primitive type.
     ///
     /// Examples: u64, i32, f32, bool, etc
-    Primitive(BundlePrimitive),
+    Primitive(MetaPrimitive),
     /// A mapping.
     ///
     /// Example Rust types: BTreeMap<K, V>.
@@ -95,50 +97,50 @@ pub enum BundleTypeDefinition {
         items: Vec<Uid>,
     },
     Enum {
-        items: Vec<BundleEnumVariant>,
+        items: Vec<MetaEnumVariant>,
     },
     Struct {
-        items: Vec<BundleStructField>,
+        items: Vec<MetaStructField>,
     },
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<crate::abi::Definition> for BundleTypeDefinition {
+impl From<crate::abi::Definition> for MetaTypeDefinition {
     fn from(value: crate::abi::Definition) -> Self {
         match value {
-            crate::abi::Definition::Primitive(p) => BundleTypeDefinition::Primitive(p.into()),
-            crate::abi::Definition::Mapping { key, value } => BundleTypeDefinition::Mapping {
+            crate::abi::Definition::Primitive(p) => MetaTypeDefinition::Primitive(p.into()),
+            crate::abi::Definition::Mapping { key, value } => MetaTypeDefinition::Mapping {
                 key: key.as_uid(),
                 value: value.as_uid(),
             },
-            crate::abi::Definition::Sequence { decl } => BundleTypeDefinition::Sequence {
+            crate::abi::Definition::Sequence { decl } => MetaTypeDefinition::Sequence {
                 decl: decl.as_uid(),
             },
             crate::abi::Definition::FixedSequence { length, decl } => {
-                BundleTypeDefinition::FixedSequence {
+                MetaTypeDefinition::FixedSequence {
                     length,
                     decl: decl.as_uid(),
                 }
             }
-            crate::abi::Definition::Tuple { items } => BundleTypeDefinition::Tuple {
+            crate::abi::Definition::Tuple { items } => MetaTypeDefinition::Tuple {
                 items: items
                     .into_iter()
                     .map(|schema_uid| schema_uid.as_uid())
                     .collect(),
             },
-            crate::abi::Definition::Enum { items } => BundleTypeDefinition::Enum {
+            crate::abi::Definition::Enum { items } => MetaTypeDefinition::Enum {
                 items: items
                     .into_iter()
-                    .map(|v| BundleEnumVariant {
+                    .map(|v| MetaEnumVariant {
                         discriminant: v.discriminant,
                         decl: v.decl.map(|schema_uid| schema_uid.as_uid()),
                     })
                     .collect(),
             },
-            crate::abi::Definition::Struct { items } => BundleTypeDefinition::Struct {
+            crate::abi::Definition::Struct { items } => MetaTypeDefinition::Struct {
                 items: items
                     .into_iter()
-                    .map(|f| BundleStructField {
+                    .map(|f| MetaStructField {
                         decl: f.decl.as_uid(),
                     })
                     .collect(),
@@ -148,20 +150,28 @@ impl From<crate::abi::Definition> for BundleTypeDefinition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleDefinition {
-    pub definition: BundleTypeDefinition,
+pub struct MetaDefinition {
+    pub uid: Uid,
+    /// The name of the declaration (i.e. [`String`])
+    pub name: String,
+    /// The fully qualified name of the declaration (i.e. [`alloc::string::String`])
+    pub fqn: String,
+    /// The type definition.
+    pub definition: MetaTypeDefinition,
+    /// The [`CLType`] representation of this definition.
     pub cl_type: CLType,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleArgument {
+pub struct MetaArgument {
+    pub name: String,
     pub decl: Uid,
 }
 
 bitflags::bitflags! {
     /// Flags for entry points.
     #[derive(Debug, PartialEq, Eq, Clone)]
-    pub struct BundleEntryPointFlags: u32 {
+    pub struct MetaEntryPointFlags: u32 {
         /// The entry point is a constructor.
         const IS_CONSTRUCTOR = 1 << 0;
         /// The entry point is payable.
@@ -173,30 +183,30 @@ bitflags::bitflags! {
     }
 }
 
-impl BorshSerialize for BundleEntryPointFlags {
+impl BorshSerialize for MetaEntryPointFlags {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         BorshSerialize::serialize(&self.bits(), writer)
     }
 }
 
-impl BorshDeserialize for BundleEntryPointFlags {
+impl BorshDeserialize for MetaEntryPointFlags {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let bits = u32::deserialize_reader(reader)?;
-        Ok(BundleEntryPointFlags::from_bits_truncate(bits))
+        Ok(MetaEntryPointFlags::from_bits_truncate(bits))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleEntryPoint {
+pub struct MetaEntryPoint {
     pub name: String,
     pub export_name: String,
-    pub arguments: Vec<BundleArgument>,
+    pub arguments: Vec<MetaArgument>,
     pub result: Uid,
-    pub flags: BundleEntryPointFlags,
+    pub flags: MetaEntryPointFlags,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleMessage {
+pub struct MetaMessage {
     /// The topic of the message.
     ///
     /// This, unlike the type names etc, is crucial for discovering messages.
@@ -205,86 +215,99 @@ pub struct BundleMessage {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub struct BundleV1 {
-    definitions: BTreeMap<Uid, BundleDefinition>,
-    entry_points: Vec<BundleEntryPoint>,
-    messages: Vec<BundleMessage>,
+pub struct MetaV1 {
+    wasm_hash: [u8; 32],
+    definitions: Vec<MetaDefinition>,
+    entry_points: Vec<MetaEntryPoint>,
+    messages: Vec<MetaMessage>,
+    metadata: BTreeMap<String, Vec<String>>,
 }
 
-impl BundleV1 {
+impl MetaV1 {
     pub fn new(
-        definitions: BTreeMap<Uid, BundleDefinition>,
-        entry_points: Vec<BundleEntryPoint>,
-        messages: Vec<BundleMessage>,
+        wasm_hash: [u8; 32],
+        definitions: Vec<MetaDefinition>,
+        entry_points: Vec<MetaEntryPoint>,
+        messages: Vec<MetaMessage>,
+        metadata: BTreeMap<String, Vec<String>>,
     ) -> Self {
         Self {
+            wasm_hash,
             definitions,
             entry_points,
             messages,
+            metadata,
         }
     }
 
-    pub fn entry_points(&self) -> &[BundleEntryPoint] {
+    pub fn wasm_hash(&self) -> &[u8; 32] {
+        &self.wasm_hash
+    }
+
+    pub fn entry_points(&self) -> &[MetaEntryPoint] {
         &self.entry_points
     }
 
-    pub fn messages(&self) -> &[BundleMessage] {
+    pub fn messages(&self) -> &[MetaMessage] {
         &self.messages
     }
 
-    pub fn definitions(&self) -> &BTreeMap<Uid, BundleDefinition> {
+    pub fn definitions(&self) -> &Vec<MetaDefinition> {
         &self.definitions
+    }
+
+    pub fn metadata(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.metadata
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<crate::schema::Schema> for BundleV1 {
-    fn from(schema: crate::schema::Schema) -> Self {
+impl Meta {
+    pub fn from_schema(schema: crate::schema::Schema, wasm_hash: [u8; 32]) -> Result<Meta, String> {
         let crate::schema::Schema {
+            metadata,
+            type_,
+            declarations,
             definitions,
-            metadata: _,
-            type_: _,
-            declarations: _,
             entry_points,
             messages,
         } = schema;
 
-        let bundle_definitions = definitions
-            .0
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k.as_uid(),
-                    BundleDefinition {
-                        definition: BundleTypeDefinition::from(v.definition),
-                        cl_type: v.cl_type,
-                    },
-                )
-            })
-            .collect();
+        let mut meta_definitions = Vec::new();
 
-        let bundle_messages = messages
+        for (schema_uid, schema_def) in definitions.0 {
+            let decl = declarations.0.get(&schema_uid).ok_or_else(|| {
+                format!(
+                    "missing declaration for definition UID {}",
+                    schema_uid.as_uid()
+                )
+            })?;
+
+            // meta_definitions.push(meta_definition);
+        }
+
+        let meta_messages = messages
             .into_iter()
-            .map(|msg| BundleMessage {
+            .map(|msg| MetaMessage {
                 topic: msg.topic,
                 decl: msg.decl,
             })
             .collect::<Vec<_>>();
 
-        let bundle_entry_points = entry_points
+        let meta_entry_points = entry_points
             .into_iter()
             .map(|ep| {
-                let mut flags = BundleEntryPointFlags::empty();
+                let mut flags = MetaEntryPointFlags::empty();
 
                 if ep.is_constructor {
-                    flags |= BundleEntryPointFlags::IS_CONSTRUCTOR;
+                    flags |= MetaEntryPointFlags::IS_CONSTRUCTOR;
                 }
                 if ep.is_payable {
-                    flags |= BundleEntryPointFlags::IS_PAYABLE;
+                    flags |= MetaEntryPointFlags::IS_PAYABLE;
                 }
                 match ep.receiver {
                     Some(crate::schema::SchemaReceiver::Immutable) => {
-                        flags |= BundleEntryPointFlags::IS_IMMUTABLE;
+                        flags |= MetaEntryPointFlags::IS_IMMUTABLE;
                     }
                     Some(crate::schema::SchemaReceiver::Mutable) => {
                         // This is the default behavior
@@ -299,20 +322,23 @@ impl From<crate::schema::Schema> for BundleV1 {
 
                 match ep.abi_convention {
                     crate::schema::SchemaAbiConvention::Named => {
-                        flags |= BundleEntryPointFlags::USES_NAMED_CONVENTION;
+                        flags |= MetaEntryPointFlags::USES_NAMED_CONVENTION;
                     }
                     crate::schema::SchemaAbiConvention::Positional => {
                         // Default behavior
                     }
                 }
 
-                BundleEntryPoint {
+                MetaEntryPoint {
                     name: ep.name,
                     export_name: ep.export_name,
                     arguments: ep
                         .arguments
                         .into_iter()
-                        .map(|arg| BundleArgument { decl: arg.decl })
+                        .map(|arg| MetaArgument {
+                            name: arg.name,
+                            decl: arg.decl,
+                        })
                         .collect(),
                     result: ep.result,
                     flags,
@@ -320,21 +346,49 @@ impl From<crate::schema::Schema> for BundleV1 {
             })
             .collect::<Vec<_>>();
 
-        Self {
-            definitions: bundle_definitions,
-            entry_points: bundle_entry_points,
-            messages: bundle_messages,
+        let crate::schema::SchemaMetadata {
+            name,
+            version,
+            authors,
+            description,
+            rust_version,
+        } = metadata;
+
+        let mut meta = BTreeMap::new();
+
+        if let Some(name) = name {
+            meta.insert("name".to_string(), vec![name]);
         }
+        if let Some(version) = version {
+            meta.insert("version".to_string(), vec![version]);
+        }
+        if let Some(authors) = authors {
+            meta.insert("authors".to_string(), authors);
+        }
+        if let Some(description) = description {
+            meta.insert("description".to_string(), vec![description]);
+        }
+        if let Some(rust_version) = rust_version {
+            meta.insert("rust_version".to_string(), vec![rust_version]);
+        }
+
+        Ok(Meta::V1(MetaV1 {
+            wasm_hash,
+            definitions: meta_definitions,
+            entry_points: meta_entry_points,
+            messages: meta_messages,
+            metadata: meta,
+        }))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
-pub enum Bundle {
-    V1(BundleV1),
+pub enum Meta {
+    V1(MetaV1),
 }
 
-impl From<BundleV1> for Bundle {
-    fn from(value: BundleV1) -> Self {
+impl From<MetaV1> for Meta {
+    fn from(value: MetaV1) -> Self {
         Self::V1(value)
     }
 }

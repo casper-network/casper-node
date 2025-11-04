@@ -9,7 +9,7 @@ pub enum CliError {
     /// be considered a valid smart contract.
     ///
     /// This will cause a plain wasm32 build without the necessary information to provide a JSON
-    /// schema and bundle.
+    /// schema and meta file.
     #[error("Missing feature set specification")]
     MissingRequiredFeatureSet,
 
@@ -33,4 +33,7 @@ pub enum CliError {
 
     #[error(transparent)]
     CommandRunner(#[from] command_runner::Outcome),
+
+    #[error("Schema conversion error: {0}")]
+    SchemaConversionError(String),
 }

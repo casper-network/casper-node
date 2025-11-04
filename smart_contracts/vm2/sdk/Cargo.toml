@@ -44,4 +44,3 @@ std = []
 
 cli = ["clap", "thiserror"]
 __abi_generator = ["casper-contract-macros/__abi_generator"]
-__embed_schema = ["casper-contract-macros/__embed_schema"]

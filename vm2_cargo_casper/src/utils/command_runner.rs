@@ -158,8 +158,10 @@ pub enum Interactive {
     /// Program will figure it out if a logs can be printed interactively.
     Auto,
     /// Interactive mode is enabled.
+    #[allow(dead_code)]
     Yes,
     /// Interactive mode is disabled.
+    #[allow(dead_code)]
     No,
 }
 

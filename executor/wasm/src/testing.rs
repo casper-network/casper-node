@@ -105,7 +105,7 @@ pub fn read_wasm<P: AsRef<Path>>(filename: P) -> SmartContract {
     for path in &paths {
         let wasm_path = path.join(&filename);
 
-        let bundle_path = wasm_path.with_extension("bundle");
+        let bundle_path = wasm_path.with_extension("meta");
 
         let bundle = fs::read(bundle_path).map(Bytes::from).ok();
 

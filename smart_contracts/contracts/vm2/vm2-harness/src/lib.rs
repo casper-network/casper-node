@@ -8,11 +8,11 @@ extern crate alloc;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    bundle::{BundleDefinition, BundlePrimitive, BundleTypeDefinition},
     casper::{self, emit, emit_message},
     common::{error::HostResult, keyspace::Keyspace},
     compat::types::CLType,
     log,
+    meta::{BundleDefinition, BundlePrimitive, BundleTypeDefinition},
     prelude::Entity,
     serializers::borsh,
     types::{Address, CallError, NamedKey, PublicKey},

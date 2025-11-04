@@ -1,7 +1,3 @@
-pub trait CasperSchema {
-    fn schema() -> Schema;
-}
-
 use crate::{
     abi::collector::AbiEntryPoint,
     prelude::{
@@ -16,6 +12,7 @@ use core::{mem, ptr::NonNull};
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use bitflags::Flags;
 use casper_executor_wasm_common::type_uid::{Uid, UidRepr};
+use core::fmt::Write;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -26,7 +23,7 @@ use crate::{
     compat::types::CLType,
 };
 
-pub fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
     T: Flags,
@@ -35,7 +32,7 @@ where
     data.bits().serialize(serializer)
 }
 
-pub fn deserialize_bits<'de, D, F>(deserializer: D) -> Result<F, D::Error>
+fn deserialize_bits<'de, D, F>(deserializer: D) -> Result<F, D::Error>
 where
     D: Deserializer<'de>,
     F: Flags,
@@ -45,6 +42,62 @@ where
     F::from_bits(raw).ok_or(serde::de::Error::custom(format!(
         "Unexpected flags value 0x{raw:#08x}"
     )))
+}
+
+fn serialize_hex_bytes<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if serializer.is_human_readable() {
+        let mut s = String::with_capacity(2 + bytes.len() * 2);
+        s.push_str("0x");
+        for b in bytes {
+            write!(s, "{:02x}", b).map_err(serde::ser::Error::custom)?;
+        }
+        serializer.serialize_str(&s)
+    } else {
+        serializer.serialize_bytes(bytes)
+    }
+}
+
+fn deserialize_hex_bytes<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    for<'a> T: TryFrom<&'a [u8]>,
+{
+    if deserializer.is_human_readable() {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let hex = s
+            .strip_prefix("0x")
+            .or_else(|| s.strip_prefix("0X"))
+            .unwrap_or(&s);
+        if hex.len() % 2 != 0 {
+            return Err(serde::de::Error::custom("odd-length hex string"));
+        }
+        let mut out = Vec::with_capacity(hex.len() / 2);
+        for i in 0..(hex.len() / 2) {
+            let byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)
+                .map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
+            out.push(byte);
+        }
+
+        let result = T::try_from(out.as_slice()).map_err(|_e| {
+            serde::de::Error::custom(format!(
+                "failed to convert bytes to target type, length: {}",
+                out.len()
+            ))
+        })?;
+
+        Ok(result)
+    } else {
+        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        Ok(bytes.as_slice().try_into().map_err(|_e| {
+            serde::de::Error::custom(format!(
+                "failed to convert bytes to target type, length: {}",
+                bytes.len()
+            ))
+        })?)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -220,7 +273,13 @@ impl SchemaUid {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
-pub struct SchemaDeclarations(BTreeMap<SchemaUid, String>);
+pub struct SchemaDeclaration {
+    pub name: String,
+    pub fqn: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
+pub struct SchemaDeclarations(pub(crate) BTreeMap<SchemaUid, SchemaDeclaration>);
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct SchemaDefinition {
@@ -332,10 +391,13 @@ pub fn casper_collect_schema() -> Schema {
         for abi_type_info in schema_data.defs {
             let type_uid = abi_type_info.type_uid();
             let cl_type = abi_type_info.cl_type().clone();
-            let decl = abi_type_info.declaration().clone();
+            let fqn = abi_type_info.declaration().clone();
             let def = abi_type_info.definition().clone();
 
-            schema_decls.0.insert(SchemaUid(type_uid), decl.clone());
+            let name = fqn.split("::").last().unwrap_or("").to_string();
+            let decl = SchemaDeclaration { name, fqn };
+
+            schema_decls.0.insert(SchemaUid(type_uid), decl);
             schema_defs.0.insert(
                 SchemaUid(type_uid),
                 SchemaDefinition {

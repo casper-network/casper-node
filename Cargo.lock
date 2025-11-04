@@ -7233,6 +7233,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "atty",
+ "base16",
+ "blake2 0.10.6",
  "cargo_metadata 0.19.2",
  "casper-contract-sdk",
  "casper-contract-sdk-sys",

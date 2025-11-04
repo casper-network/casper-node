@@ -5,7 +5,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use casper_contract_sdk::bundle::{Bundle, BundlePrimitive, BundleTypeDefinition};
+use casper_contract_sdk::meta::{Bundle, BundlePrimitive, BundleTypeDefinition};
 use casper_execution_engine::{
     engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,

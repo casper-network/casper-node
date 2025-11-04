@@ -1,31 +1,19 @@
 mod artifact;
 
-use std::{env::consts::DLL_EXTENSION, ffi::OsStr, io::Write, path::PathBuf};
+use std::{env::consts::DLL_EXTENSION, ffi::OsStr, path::PathBuf};
 
-use anyhow::Context;
 use artifact::Artifact;
 use cargo_metadata::MetadataCommand;
-use casper_contract_sdk::{
-    bundle::{Bundle, BundleV1},
-    schema::Schema,
-    serializers::borsh,
-};
+use casper_contract_sdk::schema::Schema;
 
 use crate::{
-    cli::{
-        self,
-        error::{self, CliError},
-    },
+    cli::{self, error::CliError},
     compilation::CompileJob,
 };
 
 /// The `build-schema` subcommand flow. The schema is written to the specified
 /// [`Write`] implementer.
-pub fn build_schema_impl<W: Write>(
-    package_name: Option<&str>,
-    schema_writer: &mut W,
-    bundle_writer: &mut W,
-) -> cli::Result<()> {
+pub fn build_schema_impl(package_name: Option<&str>) -> cli::Result<Schema> {
     // Compile contract package to a native library with extra code that will
     // produce ABI information including entrypoints, types, etc.
     eprintln!("🔨 Step 1: Building contract schema...");
@@ -94,12 +82,12 @@ pub fn build_schema_impl<W: Write>(
         .ok_or(CliError::NoCompiledArtifactFound)?;
 
     let artifact = Artifact::from_path(artifact_path)?;
-    let collected = artifact.collect_schema()?;
-    let schema: Schema = serde_json::from_value(collected.clone())?;
-    let bundle_v1: BundleV1 = schema.into();
-    let bundle = Bundle::V1(bundle_v1);
 
-    serde_json::to_writer(schema_writer, &collected)?;
-    borsh::to_writer(bundle_writer, &bundle)?;
-    Ok(())
+    let collected = artifact.collect_schema()?;
+
+    let schema: Schema = serde_json::from_value(collected).map_err(|e| {
+        CliError::SchemaConversionError(format!("Failed to convert collected schema: {}", e))
+    })?;
+
+    Ok(schema)
 }

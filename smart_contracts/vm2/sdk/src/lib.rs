@@ -6,8 +6,8 @@ extern crate alloc;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod abi;
-pub mod bundle;
 pub mod compat;
+pub mod meta;
 pub mod prelude;
 pub mod serializers;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
