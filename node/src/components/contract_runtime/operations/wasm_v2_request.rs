@@ -23,9 +23,9 @@ use casper_storage::{
     AddressGeneratorBuilder,
 };
 use casper_types::{
-    bytesrepr::ToBytes, execution::Effects, BlockHash, Digest, Gas, Key, TransactionArgs,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntimeParams,
-    TransactionTarget, U512,
+    bytesrepr::ToBytes, contract_messages::Messages, execution::Effects, BlockHash, Digest, Gas,
+    Key, TransactionArgs, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionTarget, U512,
 };
 use thiserror::Error;
 use tracing::info;
@@ -44,7 +44,7 @@ pub(crate) enum WasmV2Request {
 pub(crate) enum WasmV2Result {
     /// The result of installing a Wasm contract.
     Install(InstallContractResult),
-    /// The result of executing a Wasm contract.
+    /// Messages produced by the execution.
     Execute(ExecuteWithProviderResult),
 }
 
@@ -77,6 +77,15 @@ impl WasmV2Result {
             WasmV2Result::Install(_) => None,
             WasmV2Result::Execute(execute_with_provider_result) => {
                 execute_with_provider_result.host_error.as_ref()
+            }
+        }
+    }
+
+    pub(crate) fn messages(&self) -> &Messages {
+        match self {
+            WasmV2Result::Install(install_contract_result) => install_contract_result.messages(),
+            WasmV2Result::Execute(execute_with_provider_result) => {
+                execute_with_provider_result.messages()
             }
         }
     }

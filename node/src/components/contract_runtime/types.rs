@@ -505,6 +505,7 @@ impl ExecutionArtifactBuilder {
         // TODO: Use system message to notify about contract hash
 
         self.with_appended_effects(result.effects().clone());
+        self.with_appended_messages(&mut result.messages().clone());
 
         self
     }

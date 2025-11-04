@@ -42,7 +42,10 @@ fn vm1_do_nothing_session_should_not_return_entry_point_called() {
         assert_eq!(ep_calls_and_rets.len(), 2);
         let call_called = TransformV2::new(
             Key::Account(*DEFAULT_ACCOUNT_ADDR),
-            TransformKindV2::EntryPointCalled(None, DEFAULT_ENTRY_POINT_NAME.to_string()),
+            TransformKindV2::EntryPointCalled(
+                Key::Account(*DEFAULT_ACCOUNT_ADDR),
+                DEFAULT_ENTRY_POINT_NAME.to_string(),
+            ),
         );
         let ret = TransformV2::new(
             Key::Account(*DEFAULT_ACCOUNT_ADDR),
@@ -182,7 +185,7 @@ where
     assert_eq!(ep_calls_and_rets.len(), 2);
     let delegate_called = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
-        TransformKindV2::EntryPointCalled(Some(contract_hash), "delegate".to_string()),
+        TransformKindV2::EntryPointCalled(Key::Hash(contract_hash), "delegate".to_string()),
     );
     let delegate_ret = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
@@ -225,7 +228,7 @@ fn vm1_do_nothing_stored_should_return_entry_point_called() {
     assert_eq!(ep_calls_and_rets.len(), 2);
     let delegate_called = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
-        TransformKindV2::EntryPointCalled(Some(contract_hash), "delegate".to_string()),
+        TransformKindV2::EntryPointCalled(Key::Hash(contract_hash), "delegate".to_string()),
     );
     let delegate_ret = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
@@ -293,11 +296,11 @@ fn vm1_nested_call_should_produce_entry_point_calls_and_rets() {
     assert_eq!(ep_calls_and_rets.len(), 4);
     let caller_called = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
-        TransformKindV2::EntryPointCalled(Some(caller_hash), "call_stored".to_string()),
+        TransformKindV2::EntryPointCalled(Key::Hash(caller_hash), "call_stored".to_string()),
     );
     let delegate_called = TransformV2::new(
         Key::Hash(caller_hash),
-        TransformKindV2::EntryPointCalled(Some(contract_hash), "delegate".to_string()),
+        TransformKindV2::EntryPointCalled(Key::Hash(contract_hash), "delegate".to_string()),
     );
     let delegate_ret =
         TransformV2::new(Key::Hash(caller_hash), TransformKindV2::Ret(RetValue::Unit));
