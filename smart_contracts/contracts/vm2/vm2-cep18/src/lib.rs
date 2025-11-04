@@ -16,7 +16,6 @@ impl Default for TokenContract {
     fn default() -> Self {
         panic!("nope");
     }
-    //
 }
 
 #[casper]

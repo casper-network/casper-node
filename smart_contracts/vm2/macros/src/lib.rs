@@ -1643,22 +1643,17 @@ fn process_casper_contract_state_for_struct(
     };
 
     // Build per-field read/write code for named fields
-    let (default_destructure, read_bindings, write_statements, init_fields) = match &contract_struct
-        .fields
-    {
+    let (read_bindings, write_statements, init_fields) = match &contract_struct.fields {
         syn::Fields::Named(fields) => {
-            let mut default_pairs = Vec::new();
             let mut reads = Vec::new();
             let mut writes = Vec::new();
             let mut inits = Vec::new();
             for field in &fields.named {
                 if let Some(field_ident) = &field.ident {
                     let field_ty = &field.ty;
-                    let default_var = format_ident!("{}_default", field_ident);
-                    default_pairs.push(quote! { #field_ident: #default_var });
                     reads.push(quote! {
                         let #field_ident: #field_ty = {
-                            const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
+                            const FIELD_NAME: &'static str = stringify!(#field_ident);
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
                                 FIELD_NAME,
                             );
@@ -1669,15 +1664,16 @@ fn process_casper_contract_state_for_struct(
                                 ),
                                 |sz| #crate_path::reserve_vec_space(&mut buf, sz)
                             )?;
-                            match info {
-                                Some(()) => #crate_path::serializers::borsh::from_slice(&buf).unwrap(),
-                                None => #default_var,
+                            if let Some(()) = info {
+                                #crate_path::serializers::borsh::from_slice(&buf).unwrap()
+                            } else {
+                                return Err(#crate_path::casper_executor_wasm_common::error::HostResult::NotFound);
                             }
                         };
                     });
                     writes.push(quote! {
                         {
-                            const FIELD_NAME: &'static str = concat!(stringify!(#struct_name), "_", stringify!(#field_ident));
+                            const FIELD_NAME: &'static str = stringify!(#field_ident);
                             let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
                                 FIELD_NAME,
                             );
@@ -1693,17 +1689,9 @@ fn process_casper_contract_state_for_struct(
                     inits.push(quote! { #field_ident, });
                 }
             }
-            let default_destructure = if fields.named.is_empty() {
-                quote! {}
-            } else {
-                quote! {
-                    let __default_state: Self = ::core::default::Default::default();
-                    let Self { #(#default_pairs,)* } = __default_state;
-                }
-            };
-            (default_destructure, reads, writes, inits)
+            (reads, writes, inits)
         }
-        _ => (quote! {}, Vec::new(), Vec::new(), Vec::new()),
+        _ => (Vec::new(), Vec::new(), Vec::new()),
     };
 
     quote! {
@@ -1732,7 +1720,6 @@ fn process_casper_contract_state_for_struct(
 
         impl #crate_path::FieldStateAccess for #struct_name {
             fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
-                #default_destructure
                 #(#read_bindings)*
                 Ok(Self { #(#init_fields)* })
             }

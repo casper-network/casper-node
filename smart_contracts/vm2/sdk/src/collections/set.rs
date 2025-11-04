@@ -4,6 +4,7 @@ use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
 use casper_executor_wasm_common::keyspace::{
     CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
 };
+use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
@@ -33,10 +34,11 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             CollectionTypeTag::Set,
-            [0u8; 8],
+            collection_prefix,
             casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
                 .unwrap(),
         );
@@ -45,10 +47,11 @@ where
 
     pub fn contains_key(&self, key: T) -> bool {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             CollectionTypeTag::Set,
-            [0u8; 8],
+            collection_prefix,
             casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
                 .unwrap(),
         );

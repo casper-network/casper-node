@@ -45,7 +45,7 @@ where
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             CollectionTypeTag::Map,
-            [0u8; 8],
+            compute_prefix(&self.name),
             casper::generic_hash(&context_key, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
         casper::write(
@@ -60,7 +60,7 @@ where
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             CollectionTypeTag::Map,
-            [0u8; 8],
+            compute_prefix(&self.name),
             casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
         casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
@@ -72,7 +72,7 @@ where
         let addr = CollectionAddrInner::new(
             *casper::get_callee().address(),
             CollectionTypeTag::Map,
-            [0u8; 8],
+            compute_prefix(&self.name),
             casper::generic_hash(&key_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
         read_into_vec(Keyspace::Context(ContextAddr::from(addr)))

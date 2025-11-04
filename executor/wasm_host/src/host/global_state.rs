@@ -24,7 +24,7 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue, StateFieldAddr,
     },
-    bytesrepr::{self, Bytes as BytesreprBytes},
+    bytesrepr::{self, Bytes as BytesreprBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash, EntryPoints},
     AccessRights, AddressableEntity, BlockHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
     CLType, CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
@@ -897,9 +897,21 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
                     digest.value(),
                 )))
             }
-            ContextAddr::CollectionAddr(collection_addr) => Some(Key::NamedKey(
-                NamedKeyAddr::new_named_key_entry(entity_addr, collection_addr.tail),
-            )),
+            ContextAddr::CollectionAddr(collection_addr) => {
+                let mut buf = Vec::with_capacity(
+                    collection_addr.collection_type_tag.serialized_length()
+                        + collection_addr.collection_prefix.len()
+                        + collection_addr.tail.len(),
+                );
+                buf.push(collection_addr.collection_type_tag);
+                buf.extend_from_slice(&collection_addr.collection_prefix);
+                buf.extend_from_slice(&collection_addr.tail);
+                let digest = Digest::hash(&buf);
+                Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                    entity_addr,
+                    digest.value(),
+                )))
+            }
         },
         Keyspace::NamedKey(payload) => {
             let digest = Digest::hash(payload.as_bytes());
