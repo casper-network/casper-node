@@ -11,13 +11,13 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 19665
+activation_point = 19267
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casper'
+name = 'casper-test'
 # The maximum size of an acceptable networking message in bytes.  Any message larger than this will
 # be rejected at the networking level.
 maximum_net_message_size = 25_165_824
@@ -43,7 +43,7 @@ start_protocol_version_with_strict_finality_signatures_required = '1.5.0'
 # Used to determine finality sufficiency for new joiners syncing blocks created
 # in a protocol version before
 # `start_protocol_version_with_strict_finality_signatures_required`.
-legacy_required_finality = 'Strict'
+legacy_required_finality = 'Any'
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
 auction_delay = 1
@@ -55,15 +55,15 @@ vesting_schedule_period = '0 weeks'
 unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
-# Annual issuance: 8%
-# Minimum block time: 2^14 milliseconds
+# Annual issuance: 0.25%
+# Minimum round exponent: 14
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below
+# (1+0.0025)^((2^14)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [7, 175070816]
+# Fraction((1 + 0.0025)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [1, 770883818]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
@@ -121,7 +121,7 @@ refund_handling = { type = 'refund', refund_ratio = [75, 100] }
 #   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
 #                 administrator accounts
 #   'burn': fees are burned
-fee_handling = { type = 'burn' }
+fee_handling = { type = 'pay_to_proposer' }
 # If a validator would recieve a validator credit, it cannot exceed this percentage of their total stake.
 validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
@@ -359,7 +359,7 @@ call_package_version = { cost = 300_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 1
 
 [wasm.v2]
 # Amount of free memory each contract can use for stack.
-max_memory = 64
+max_memory = 17
 
 [wasm.v2.opcode_costs]
 # Bit operations multiplier.
