@@ -281,7 +281,7 @@ impl SecretKey {
                 der = Der::new(&mut encoded);
                 der.sequence(|der| {
                     der.integer(&[1])?;
-                    der.octet_string(secret_key.to_bytes().as_slice())?;
+                    der.octet_string(&secret_key.to_bytes())?;
                     der.element(Tag::ContextSpecificConstructed0, &oid_bytes)
                 })?;
                 Ok(encoded)
