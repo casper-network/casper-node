@@ -7400,6 +7400,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-returner"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
+]
+
+[[package]]
+name = "vm2-returner-caller"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
+]
+
+[[package]]
+name = "vm2-returner-proxy"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
+]
+
+[[package]]
 name = "vm2-system-caller"
 version = "0.1.0"
 dependencies = [

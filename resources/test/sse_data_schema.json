@@ -3719,7 +3719,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Registers an entry point called. If the hash addr is none that means that the call was made to session bytes.",
+          "description": "Registers an entry point called.",
           "type": "object",
           "required": [
             "EntryPointCalled"
@@ -3729,17 +3729,7 @@
               "type": "array",
               "items": [
                 {
-                  "type": [
-                    "array",
-                    "null"
-                  ],
-                  "items": {
-                    "type": "integer",
-                    "format": "uint8",
-                    "minimum": 0.0
-                  },
-                  "maxItems": 32,
-                  "minItems": 32
+                  "$ref": "#/definitions/Key"
                 },
                 {
                   "type": "string"
