@@ -280,9 +280,9 @@ impl InstallContractWithProviderResult {
 }
 
 #[derive(Debug, Error)]
-pub enum BundleError {
-    #[error("invalid bundle data: {0}")]
-    InvalidBundleData(String),
+pub enum MetaError {
+    #[error("invalid meta data: {0}")]
+    InvalidMetaData(String),
 }
 
 #[derive(Debug, Error)]
@@ -317,8 +317,8 @@ pub enum InstallContractError {
     #[error("CLValue error: {0}")]
     CLValueError(CLValueError),
 
-    #[error("Bundle install error: {0}")]
-    Bundle(#[from] BundleError),
+    #[error("Meta install error: {0}")]
+    Meta(#[from] MetaError),
 }
 
 impl InstallContractError {

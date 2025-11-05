@@ -5,7 +5,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use casper_contract_sdk::meta::{Bundle, BundlePrimitive, BundleTypeDefinition};
+use casper_contract_sdk::meta::{Meta, MetaPrimitive, MetaTypeDefinition};
 use casper_execution_engine::{
     engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
@@ -28,8 +28,8 @@ use casper_executor_wasm_interface::{
         SystemContractMenu,
     },
     install::{
-        BundleError, InstallContractError, InstallContractRequest, InstallContractResult,
-        InstallContractWithProviderResult,
+        InstallContractError, InstallContractRequest, InstallContractResult,
+        InstallContractWithProviderResult, MetaError,
     },
     sandboxed_execution::{
         SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
@@ -1401,8 +1401,8 @@ impl Executor for ExecutorV2 {
 
         let bundle = if let Some(bundle_data) = bundle_data {
             // Parse bundle data
-            let Bundle::V1(bundle) = borsh::from_slice(&bundle_data).map_err(|_| {
-                BundleError::InvalidBundleData("Failed to parse bundle data".to_string())
+            let Meta::V1(bundle) = borsh::from_slice(&bundle_data).map_err(|_| {
+                MetaError::InvalidMetaData("Failed to parse bundle data".to_string())
             })?;
             Some(bundle)
         } else {
@@ -1434,13 +1434,13 @@ impl Executor for ExecutorV2 {
             let max_topics_per_contract = self.config.message_limits.max_topics_per_contract();
 
             if bundle.messages().len() > max_topics_per_contract as usize {
-                return Err(InstallContractError::Bundle(
-                    BundleError::InvalidBundleData(format!(
+                return Err(InstallContractError::Meta(MetaError::InvalidMetaData(
+                    format!(
                         "Number of message topics ({}) exceeds the maximum allowed ({})",
                         bundle.messages().len(),
                         max_topics_per_contract
-                    )),
-                ));
+                    ),
+                )));
             }
 
             for bundle_message in bundle.messages() {
@@ -1475,19 +1475,17 @@ impl Executor for ExecutorV2 {
             let mut uid_to_cl_type = HashMap::new();
 
             // Load up all type definitions from the bundle blob
-            for (uid, bundle_def) in bundle.definitions() {
-                let type_uid = TypeUid::from(uid.into_raw());
+            for meta_def in bundle.definitions() {
+                let type_uid = TypeUid::from(meta_def.uid.into_raw());
 
-                let cl_type_bytes = borsh::to_vec(&bundle_def.cl_type.clone()).map_err(|_| {
-                    BundleError::InvalidBundleData(
-                        "Failed to serialize argument CLType".to_string(),
-                    )
+                let cl_type_bytes = borsh::to_vec(&meta_def.cl_type.clone()).map_err(|_| {
+                    MetaError::InvalidMetaData("Failed to serialize argument CLType".to_string())
                 })?;
                 let cl_type: CLType =
                     bytesrepr::deserialize_from_slice(&cl_type_bytes).map_err(|error| {
-                        BundleError::InvalidBundleData(format!(
+                        MetaError::InvalidMetaData(format!(
                             "Failed to deserialize argument CLType {:?} ({error:?})",
-                            bundle_def
+                            &meta_def
                         ))
                     })?;
 
@@ -1496,45 +1494,45 @@ impl Executor for ExecutorV2 {
                     continue;
                 }
 
-                let type_def = match &bundle_def.definition {
-                    BundleTypeDefinition::Primitive(bundle_primitive) => {
+                let type_def = match &meta_def.definition {
+                    MetaTypeDefinition::Primitive(bundle_primitive) => {
                         TypeDefinitionKind::Primitive(match bundle_primitive {
-                            BundlePrimitive::Char => TypePrimitive::Char,
-                            BundlePrimitive::U8 => TypePrimitive::U8,
-                            BundlePrimitive::I8 => TypePrimitive::I8,
-                            BundlePrimitive::U16 => TypePrimitive::U16,
-                            BundlePrimitive::I16 => TypePrimitive::I16,
-                            BundlePrimitive::U32 => TypePrimitive::U32,
-                            BundlePrimitive::I32 => TypePrimitive::I32,
-                            BundlePrimitive::U64 => TypePrimitive::U64,
-                            BundlePrimitive::I64 => TypePrimitive::I64,
-                            BundlePrimitive::U128 => TypePrimitive::U128,
-                            BundlePrimitive::I128 => TypePrimitive::I128,
-                            BundlePrimitive::F32 => TypePrimitive::F32,
-                            BundlePrimitive::F64 => TypePrimitive::F64,
-                            BundlePrimitive::Bool => TypePrimitive::Bool,
+                            MetaPrimitive::Char => TypePrimitive::Char,
+                            MetaPrimitive::U8 => TypePrimitive::U8,
+                            MetaPrimitive::I8 => TypePrimitive::I8,
+                            MetaPrimitive::U16 => TypePrimitive::U16,
+                            MetaPrimitive::I16 => TypePrimitive::I16,
+                            MetaPrimitive::U32 => TypePrimitive::U32,
+                            MetaPrimitive::I32 => TypePrimitive::I32,
+                            MetaPrimitive::U64 => TypePrimitive::U64,
+                            MetaPrimitive::I64 => TypePrimitive::I64,
+                            MetaPrimitive::U128 => TypePrimitive::U128,
+                            MetaPrimitive::I128 => TypePrimitive::I128,
+                            MetaPrimitive::F32 => TypePrimitive::F32,
+                            MetaPrimitive::F64 => TypePrimitive::F64,
+                            MetaPrimitive::Bool => TypePrimitive::Bool,
                         })
                     }
-                    BundleTypeDefinition::Mapping { key, value } => TypeDefinitionKind::Mapping {
+                    MetaTypeDefinition::Mapping { key, value } => TypeDefinitionKind::Mapping {
                         key: TypeUid::from(key.into_raw()),
                         value: TypeUid::from(value.into_raw()),
                     },
-                    BundleTypeDefinition::Sequence { decl } => TypeDefinitionKind::Sequence {
+                    MetaTypeDefinition::Sequence { decl } => TypeDefinitionKind::Sequence {
                         decl: TypeUid::from(decl.into_raw()),
                     },
-                    BundleTypeDefinition::FixedSequence { length, decl } => {
+                    MetaTypeDefinition::FixedSequence { length, decl } => {
                         TypeDefinitionKind::FixedSequence {
                             length: *length,
                             decl: TypeUid::from(decl.into_raw()),
                         }
                     }
-                    BundleTypeDefinition::Tuple { items } => TypeDefinitionKind::Tuple {
+                    MetaTypeDefinition::Tuple { items } => TypeDefinitionKind::Tuple {
                         items: items
                             .iter()
                             .map(|item| TypeUid::from(item.into_raw()))
                             .collect(),
                     },
-                    BundleTypeDefinition::Enum { items } => {
+                    MetaTypeDefinition::Enum { items } => {
                         let items: Vec<TypeEnumVariant> = items
                             .iter()
                             .map(|variant| TypeEnumVariant {
@@ -1544,7 +1542,7 @@ impl Executor for ExecutorV2 {
                             .collect();
                         TypeDefinitionKind::Enum { items }
                     }
-                    BundleTypeDefinition::Struct { items } => {
+                    MetaTypeDefinition::Struct { items } => {
                         let items: Vec<TypeStructField> = items
                             .iter()
                             .map(|field| TypeStructField {
@@ -1557,7 +1555,7 @@ impl Executor for ExecutorV2 {
 
                 uid_to_cl_type.insert(type_uid, (cl_type.clone(), type_def.clone()));
 
-                let type_uid = TypeUid::from(uid.into_raw());
+                let type_uid = TypeUid::from(meta_def.uid.into_raw());
                 let pending_type_definition = StoredValue::TypeDef(TypeDefinition {
                     definition: type_def,
                     cl_type,
@@ -1580,11 +1578,9 @@ impl Executor for ExecutorV2 {
                             // are the same, then we don't need
                             // to do anything.
 
-                            return Err(InstallContractError::Bundle(
-                                BundleError::InvalidBundleData(format!(
-                                    "Type definition collision for UID {type_uid:?}"
-                                )),
-                            ));
+                            return Err(InstallContractError::Meta(MetaError::InvalidMetaData(
+                                format!("Type definition collision for UID {type_uid:?}"),
+                            )));
                         }
                     }
                     None => {
@@ -1598,11 +1594,9 @@ impl Executor for ExecutorV2 {
 
             for bundle_entry_point in bundle.entry_points() {
                 if !entry_point_names.remove(&bundle_entry_point.export_name) {
-                    return Err(InstallContractError::Bundle(
-                        BundleError::InvalidBundleData(
-                            "Entry point not found in Wasm exports".to_string(),
-                        ),
-                    ));
+                    return Err(InstallContractError::Meta(MetaError::InvalidMetaData(
+                        "Entry point not found in Wasm exports".to_string(),
+                    )));
                 }
 
                 let mut entity_entry_point_parameters = Parameters::new();
@@ -1610,21 +1604,24 @@ impl Executor for ExecutorV2 {
                     let mut type_args = Vec::new();
 
                     for bundle_arg in &bundle_entry_point.arguments {
-                        let bundle_arg_def = bundle.definitions().get(&bundle_arg.decl).ok_or(
-                            BundleError::InvalidBundleData(
-                                "Argument type definition not found".to_string(),
-                            ),
-                        )?;
+                        let bundle_arg_def = bundle
+                            .definitions()
+                            .iter()
+                            .find(|&def| def.uid == bundle_arg.decl)
+                            .ok_or(MetaError::InvalidMetaData(format!(
+                                "Argument type definition {:?} not found",
+                                bundle_arg.decl
+                            )))?;
 
                         let cl_type_bytes =
                             borsh::to_vec(&bundle_arg_def.cl_type).map_err(|_| {
-                                BundleError::InvalidBundleData(
+                                MetaError::InvalidMetaData(
                                     "Failed to serialize argument CLType".to_string(),
                                 )
                             })?;
                         let cl_type: CLType = bytesrepr::deserialize_from_slice(&cl_type_bytes)
                             .map_err(|error| {
-                                BundleError::InvalidBundleData(format!(
+                                MetaError::InvalidMetaData(format!(
                                     "Failed to deserialize argument CLType {:?} ({error:?})",
                                     bundle_arg_def
                                 ))
@@ -1638,17 +1635,19 @@ impl Executor for ExecutorV2 {
                     type_args
                 };
 
-                let bundle_ret_def = bundle.definitions().get(&bundle_entry_point.result).ok_or(
-                    BundleError::InvalidBundleData("Result type definition not found".to_string()),
-                )?;
+                let bundle_ret_def = bundle
+                    .definitions()
+                    .iter()
+                    .find(|&def| def.uid == bundle_entry_point.result)
+                    .ok_or(MetaError::InvalidMetaData(
+                        "Result type definition not found".to_string(),
+                    ))?;
                 let ret_cl_type_bytes = borsh::to_vec(&bundle_ret_def.cl_type).map_err(|_| {
-                    BundleError::InvalidBundleData(
-                        "Failed to serialize argument CLType".to_string(),
-                    )
+                    MetaError::InvalidMetaData("Failed to serialize argument CLType".to_string())
                 })?;
                 let ret_cl_type: CLType = bytesrepr::deserialize_from_slice(&ret_cl_type_bytes[..])
                     .map_err(|_| {
-                        BundleError::InvalidBundleData(format!(
+                        MetaError::InvalidMetaData(format!(
                             "Failed to deserialize return CLType {:?} for entry point {}",
                             bundle_ret_def, bundle_entry_point.export_name
                         ))
@@ -1713,11 +1712,11 @@ impl Executor for ExecutorV2 {
         if !entry_point_names.is_empty() {
             // Some exports were not described in the bundle blob
             // This is an error - build tool must describe all function exports.
-            return Err(InstallContractError::Bundle(
-                BundleError::InvalidBundleData(format!(
+            return Err(InstallContractError::Meta(MetaError::InvalidMetaData(
+                format!(
                     "Not all Wasm exports are described in the bundle blob: {entry_point_names:?}"
-                )),
-            ));
+                ),
+            )));
         }
 
         let key_of_contract = if addressable_entity_enabled {

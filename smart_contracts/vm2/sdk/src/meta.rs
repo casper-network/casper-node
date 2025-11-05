@@ -266,7 +266,7 @@ impl Meta {
     pub fn from_schema(schema: crate::schema::Schema, wasm_hash: [u8; 32]) -> Result<Meta, String> {
         let crate::schema::Schema {
             metadata,
-            type_,
+            type_: _,
             declarations,
             definitions,
             entry_points,
@@ -275,15 +275,66 @@ impl Meta {
 
         let mut meta_definitions = Vec::new();
 
-        for (schema_uid, schema_def) in definitions.0 {
-            let decl = declarations.0.get(&schema_uid).ok_or_else(|| {
+        for (schema_uid, _schema_def) in definitions.0 {
+            let _decl = declarations.0.get(&schema_uid).ok_or_else(|| {
                 format!(
                     "missing declaration for definition UID {}",
                     schema_uid.as_uid()
                 )
             })?;
 
-            // meta_definitions.push(meta_definition);
+            let _meta_def = MetaDefinition {
+                uid: schema_uid.as_uid(),
+                name: _decl.name.clone(),
+                fqn: _decl.name.clone(),
+                definition: {
+                    use crate::abi::Definition;
+
+                    match _schema_def.definition {
+                        Definition::Primitive(p) => MetaTypeDefinition::Primitive(p.into()),
+                        Definition::Mapping { key, value } => MetaTypeDefinition::Mapping {
+                            key: key.as_uid(),
+                            value: value.as_uid(),
+                        },
+                        Definition::Sequence { decl } => MetaTypeDefinition::Sequence {
+                            decl: decl.as_uid(),
+                        },
+                        Definition::FixedSequence { length, decl } => {
+                            MetaTypeDefinition::FixedSequence {
+                                length,
+                                decl: decl.as_uid(),
+                            }
+                        }
+                        Definition::Tuple { items } => MetaTypeDefinition::Tuple {
+                            items: items
+                                .into_iter()
+                                .map(|schema_uid| schema_uid.as_uid())
+                                .collect(),
+                        },
+                        Definition::Enum { items } => MetaTypeDefinition::Enum {
+                            items: items
+                                .into_iter()
+                                .map(|v| MetaEnumVariant {
+                                    discriminant: v.discriminant,
+                                    decl: v.decl.map(|schema_uid| schema_uid.as_uid()),
+                                })
+                                .collect(),
+                        },
+                        Definition::Struct { items } => MetaTypeDefinition::Struct {
+                            items: items
+                                .into_iter()
+                                .map(|f| MetaStructField {
+                                    decl: f.decl.as_uid(),
+                                })
+                                .collect(),
+                        },
+                    }
+                },
+
+                cl_type: _schema_def.cl_type,
+            };
+
+            meta_definitions.push(_meta_def);
         }
 
         let meta_messages = messages

@@ -12,7 +12,7 @@ use casper_contract_sdk::{
     common::{error::HostResult, keyspace::Keyspace},
     compat::types::CLType,
     log,
-    meta::{BundleDefinition, BundlePrimitive, BundleTypeDefinition},
+    meta::{MetaDefinition, MetaPrimitive, MetaTypeDefinition},
     prelude::Entity,
     serializers::borsh,
     types::{Address, CallError, NamedKey, PublicKey},
@@ -685,11 +685,11 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             casper::read_into_vec(Keyspace::TypeDef(expected_uid)).expect("Should read typedef");
         match typedef_bytes {
             Some(bytes) => {
-                let typedef: BundleDefinition =
+                let typedef: MetaDefinition =
                     borsh::from_slice(&bytes).expect("Should deserialize typedef");
                 assert_eq!(
                     typedef.definition,
-                    BundleTypeDefinition::Primitive(BundlePrimitive::U64)
+                    MetaTypeDefinition::Primitive(MetaPrimitive::U64)
                 );
                 assert_eq!(typedef.cl_type, CLType::U64);
             }
