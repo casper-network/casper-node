@@ -224,7 +224,7 @@ fn install_hello_world() -> (
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(vm2_hello_world.wasm)
-        .with_bundle_data(vm2_hello_world.bundle.expect("should have bundle data"))
+        .with_bundle_data(vm2_hello_world.meta.expect("should have bundle data"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

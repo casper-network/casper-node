@@ -1321,17 +1321,23 @@ mod tests {
             definition: TypeDefinitionKind::Struct {
                 items: vec![
                     type_definitions::StructField {
+                        name: "field1".to_string(),
                         decl: TypeUid::new(1),
                     },
                     type_definitions::StructField {
+                        name: "field2".to_string(),
                         decl: TypeUid::new(2),
                     },
                     type_definitions::StructField {
+                        name: "field3".to_string(),
                         decl: TypeUid::new(3),
                     },
                 ],
             },
             cl_type: CLType::Any,
+            uid: TypeUid::new(0x1234),
+            name: "String".to_string(),
+            fqn: "alloc::string::String".to_string(),
         };
         let stored_value = StoredValue::TypeDef(type_definitions.clone());
 

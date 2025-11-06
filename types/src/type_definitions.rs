@@ -84,13 +84,29 @@ impl FromBytes for TypeUid {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct TypeDefinition {
+    /// Uid
+    pub uid: TypeUid,
+    /// Name of the type definition (i.e. [`String`]).
+    pub name: String,
+    /// The fully qualified name of the declaration (i.e. [`alloc::string::String`]).
+    pub fqn: String,
     pub definition: TypeDefinitionKind,
     pub cl_type: CLType,
 }
 
 impl TypeDefinition {
-    pub fn new(definition: TypeDefinitionKind, cl_type: CLType) -> Self {
+    /// Creates a new [`TypeDefinition`].
+    pub fn new(
+        uid: TypeUid,
+        name: String,
+        fqn: String,
+        definition: TypeDefinitionKind,
+        cl_type: CLType,
+    ) -> Self {
         Self {
+            uid,
+            name,
+            fqn,
             definition,
             cl_type,
         }
@@ -105,21 +121,50 @@ impl ToBytes for TypeDefinition {
     }
 
     fn serialized_length(&self) -> usize {
-        self.definition.serialized_length() + self.cl_type.serialized_length()
+        let Self {
+            uid,
+            name,
+            fqn,
+            definition,
+            cl_type,
+        } = self;
+        uid.serialized_length()
+            + name.serialized_length()
+            + fqn.serialized_length()
+            + definition.serialized_length()
+            + cl_type.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.definition.write_bytes(writer)?;
-        self.cl_type.write_bytes(writer)
+        let Self {
+            uid,
+            name,
+            fqn,
+            definition,
+            cl_type,
+        } = self;
+        uid.write_bytes(writer)?;
+        name.write_bytes(writer)?;
+        fqn.write_bytes(writer)?;
+        definition.write_bytes(writer)?;
+        cl_type.write_bytes(writer)?;
+        Ok(())
     }
 }
 
 impl FromBytes for TypeDefinition {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (definition, rem) = TypeDefinitionKind::from_bytes(bytes)?;
-        let (cl_type, rem) = CLType::from_bytes(rem)?;
+        let (uid, rem) = FromBytes::from_bytes(bytes)?;
+        let (name, rem) = FromBytes::from_bytes(rem)?;
+        let (fqn, rem) = FromBytes::from_bytes(rem)?;
+        let (definition, rem) = FromBytes::from_bytes(rem)?;
+        let (cl_type, rem) = FromBytes::from_bytes(rem)?;
+
         Ok((
             TypeDefinition {
+                uid,
+                name,
+                fqn,
                 definition,
                 cl_type,
             },
@@ -165,6 +210,7 @@ impl FromBytes for TypeMessage {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EnumVariant {
+    pub name: String,
     pub discriminant: u64,
     pub decl: Option<TypeUid>,
 }
@@ -177,20 +223,30 @@ impl ToBytes for EnumVariant {
     }
 
     fn serialized_length(&self) -> usize {
-        U64_SERIALIZED_LENGTH + self.decl.serialized_length()
+        self.name.serialized_length() + U64_SERIALIZED_LENGTH + self.decl.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.name.write_bytes(writer)?;
         self.discriminant.write_bytes(writer)?;
-        self.decl.write_bytes(writer)
+        self.decl.write_bytes(writer)?;
+        Ok(())
     }
 }
 
 impl FromBytes for EnumVariant {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (discriminant, rem) = u64::from_bytes(bytes)?;
+        let (name, rem) = String::from_bytes(bytes)?;
+        let (discriminant, rem) = u64::from_bytes(rem)?;
         let (decl, rem) = Option::<TypeUid>::from_bytes(rem)?;
-        Ok((EnumVariant { discriminant, decl }, rem))
+        Ok((
+            EnumVariant {
+                name,
+                discriminant,
+                decl,
+            },
+            rem,
+        ))
     }
 }
 
@@ -198,6 +254,7 @@ impl FromBytes for EnumVariant {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct StructField {
+    pub name: String,
     pub decl: TypeUid,
 }
 
@@ -209,18 +266,20 @@ impl ToBytes for StructField {
     }
 
     fn serialized_length(&self) -> usize {
-        self.decl.serialized_length()
+        self.name.serialized_length() + self.decl.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.name.write_bytes(writer)?;
         self.decl.write_bytes(writer)
     }
 }
 
 impl FromBytes for StructField {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (decl, rem) = TypeUid::from_bytes(bytes)?;
-        Ok((StructField { decl }, rem))
+        let (name, rem) = String::from_bytes(bytes)?;
+        let (decl, rem) = TypeUid::from_bytes(rem)?;
+        Ok((StructField { name, decl }, rem))
     }
 }
 
@@ -559,12 +618,14 @@ mod tests {
     #[test]
     fn enum_variant_and_struct_field_roundtrip() {
         let variant = EnumVariant {
+            name: "VariantA".to_string(),
             discriminant: 42,
             decl: Some(TypeUid::new(7)),
         };
         test_serialization_roundtrip(&variant);
 
         let field = StructField {
+            name: "field1".to_string(),
             decl: TypeUid::new(8),
         };
         test_serialization_roundtrip(&field);
@@ -605,10 +666,12 @@ mod tests {
         // Enum
         let enum_items = vec![
             EnumVariant {
+                name: "Variant0".to_string(),
                 discriminant: 0,
                 decl: None,
             },
             EnumVariant {
+                name: "Variant1".to_string(),
                 discriminant: 1,
                 decl: Some(TypeUid::new(9)),
             },
@@ -619,9 +682,12 @@ mod tests {
         // Struct
         let struct_items = vec![
             StructField {
+                name: "field1".to_string(),
+
                 decl: TypeUid::new(10),
             },
             StructField {
+                name: "field2".to_string(),
                 decl: TypeUid::new(11),
             },
         ];

@@ -51,6 +51,8 @@ impl From<crate::abi::Primitive> for MetaPrimitive {
 
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct MetaEnumVariant {
+    /// The name of the variant.
+    pub name: String,
     pub discriminant: u64,
     /// Optional declaration for the variant.
     ///
@@ -60,6 +62,7 @@ pub struct MetaEnumVariant {
 }
 #[derive(Debug, PartialEq, Eq, Clone, BorshSerialize, BorshDeserialize)]
 pub struct MetaStructField {
+    pub name: String,
     pub decl: Uid,
 }
 
@@ -107,6 +110,8 @@ pub enum MetaTypeDefinition {
 #[cfg(not(target_arch = "wasm32"))]
 impl From<crate::abi::Definition> for MetaTypeDefinition {
     fn from(value: crate::abi::Definition) -> Self {
+        use crate::abi::{EnumVariant, StructField};
+
         match value {
             crate::abi::Definition::Primitive(p) => MetaTypeDefinition::Primitive(p.into()),
             crate::abi::Definition::Mapping { key, value } => MetaTypeDefinition::Mapping {
@@ -131,17 +136,25 @@ impl From<crate::abi::Definition> for MetaTypeDefinition {
             crate::abi::Definition::Enum { items } => MetaTypeDefinition::Enum {
                 items: items
                     .into_iter()
-                    .map(|v| MetaEnumVariant {
-                        discriminant: v.discriminant,
-                        decl: v.decl.map(|schema_uid| schema_uid.as_uid()),
-                    })
+                    .map(
+                        |EnumVariant {
+                             discriminant,
+                             decl,
+                             name,
+                         }| MetaEnumVariant {
+                            discriminant,
+                            decl: decl.map(|schema_uid| schema_uid.as_uid()),
+                            name,
+                        },
+                    )
                     .collect(),
             },
             crate::abi::Definition::Struct { items } => MetaTypeDefinition::Struct {
                 items: items
                     .into_iter()
-                    .map(|f| MetaStructField {
-                        decl: f.decl.as_uid(),
+                    .map(|StructField { name, decl }| MetaStructField {
+                        name,
+                        decl: decl.as_uid(),
                     })
                     .collect(),
             },
@@ -288,7 +301,7 @@ impl Meta {
                 name: _decl.name.clone(),
                 fqn: _decl.name.clone(),
                 definition: {
-                    use crate::abi::Definition;
+                    use crate::abi::{Definition, EnumVariant, StructField};
 
                     match _schema_def.definition {
                         Definition::Primitive(p) => MetaTypeDefinition::Primitive(p.into()),
@@ -314,17 +327,25 @@ impl Meta {
                         Definition::Enum { items } => MetaTypeDefinition::Enum {
                             items: items
                                 .into_iter()
-                                .map(|v| MetaEnumVariant {
-                                    discriminant: v.discriminant,
-                                    decl: v.decl.map(|schema_uid| schema_uid.as_uid()),
-                                })
+                                .map(
+                                    |EnumVariant {
+                                         discriminant,
+                                         decl,
+                                         name,
+                                     }| MetaEnumVariant {
+                                        discriminant,
+                                        decl: decl.map(|schema_uid| schema_uid.as_uid()),
+                                        name,
+                                    },
+                                )
                                 .collect(),
                         },
                         Definition::Struct { items } => MetaTypeDefinition::Struct {
                             items: items
                                 .into_iter()
-                                .map(|f| MetaStructField {
-                                    decl: f.decl.as_uid(),
+                                .map(|StructField { name, decl }| MetaStructField {
+                                    decl: decl.as_uid(),
+                                    name,
                                 })
                                 .collect(),
                         },

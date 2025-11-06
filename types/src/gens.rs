@@ -993,12 +993,18 @@ pub fn type_primitive_arb() -> impl Strategy<Value = TypePrimitive> {
 }
 
 pub fn type_enum_variant_arb() -> impl Strategy<Value = TypeEnumVariant> {
-    (any::<u64>(), option::of(type_uid_arb()))
-        .prop_map(|(discriminant, decl)| TypeEnumVariant { discriminant, decl })
+    (any::<u64>(), option::of(type_uid_arb())).prop_map(|(discriminant, decl)| TypeEnumVariant {
+        discriminant,
+        decl,
+        name: "String".to_string(),
+    })
 }
 
 pub fn type_struct_field_arb() -> impl Strategy<Value = TypeStructField> {
-    (type_uid_arb(),).prop_map(|(decl,)| TypeStructField { decl })
+    (type_uid_arb(),).prop_map(|(decl,)| TypeStructField {
+        decl,
+        name: "String".to_string(),
+    })
 }
 
 pub fn type_definition_kind_arb() -> impl Strategy<Value = TypeDefinitionKind> {
@@ -1018,8 +1024,17 @@ pub fn type_definition_kind_arb() -> impl Strategy<Value = TypeDefinitionKind> {
 }
 
 pub fn type_definition_arb() -> impl Strategy<Value = TypeDefinition> {
-    (type_definition_kind_arb(), cl_type_arb())
-        .prop_map(|(definition, cl_type)| TypeDefinition::new(definition, cl_type))
+    (type_uid_arb(), type_definition_kind_arb(), cl_type_arb()).prop_map(
+        |(uid, definition, cl_type)| {
+            TypeDefinition::new(
+                uid,
+                "String".to_string(),
+                "alloc::string::String".to_string(),
+                definition,
+                cl_type,
+            )
+        },
+    )
 }
 
 pub fn type_message_arb() -> impl Strategy<Value = TypeMessage> {

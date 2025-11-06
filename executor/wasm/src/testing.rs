@@ -92,7 +92,7 @@ pub static RUST_TOOL_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 pub struct SmartContract {
     pub wasm: Bytes,
-    pub bundle: Option<Bytes>,
+    pub meta: Option<Bytes>,
 }
 
 #[track_caller]
@@ -113,7 +113,7 @@ pub fn read_wasm<P: AsRef<Path>>(filename: P) -> SmartContract {
             Ok(bytes) => {
                 return SmartContract {
                     wasm: Bytes::from(bytes),
-                    bundle,
+                    meta: bundle,
                 }
             }
             Err(err) => {
@@ -415,7 +415,7 @@ pub fn call_dummy_host_fn_by_name(
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(vm2_host.wasm)
-        .with_bundle_data(vm2_host.bundle.expect("should have bundle"))
+        .with_bundle_data(vm2_host.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

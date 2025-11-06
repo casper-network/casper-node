@@ -921,6 +921,7 @@ dependencies = [
  "bnum",
  "borsh",
  "bytes",
+ "casper-contract-sdk",
  "casper-executor-wasm-common",
  "casper-executor-wasm-interface",
  "casper-storage",

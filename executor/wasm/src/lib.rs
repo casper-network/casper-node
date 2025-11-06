@@ -1536,6 +1536,7 @@ impl Executor for ExecutorV2 {
                         let items: Vec<TypeEnumVariant> = items
                             .iter()
                             .map(|variant| TypeEnumVariant {
+                                name: variant.name.clone(),
                                 discriminant: variant.discriminant,
                                 decl: variant.decl.map(|uid| TypeUid::from(uid.into_raw())),
                             })
@@ -1546,6 +1547,7 @@ impl Executor for ExecutorV2 {
                         let items: Vec<TypeStructField> = items
                             .iter()
                             .map(|field| TypeStructField {
+                                name: field.name.clone(),
                                 decl: TypeUid::from(field.decl.into_raw()),
                             })
                             .collect();
@@ -1559,6 +1561,9 @@ impl Executor for ExecutorV2 {
                 let pending_type_definition = StoredValue::TypeDef(TypeDefinition {
                     definition: type_def,
                     cl_type,
+                    name: meta_def.name.clone(),
+                    fqn: meta_def.fqn.clone(),
+                    uid: type_uid,
                 });
 
                 match state
