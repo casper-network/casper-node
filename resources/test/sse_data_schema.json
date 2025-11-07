@@ -3988,6 +3988,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A bundle of type definitions.",
+          "type": "object",
+          "required": [
+            "TypeDef"
+          ],
+          "properties": {
+            "TypeDef": {
+              "$ref": "#/definitions/TypeDefinition"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4868,6 +4881,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Entrypoints to be executed against the V2 Casper VM.",
+          "type": "object",
+          "required": [
+            "V2CasperVm"
+          ],
+          "properties": {
+            "V2CasperVm": {
+              "$ref": "#/definitions/EntityEntryPointV2"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4931,6 +4957,306 @@
           ]
         }
       ]
+    },
+    "EntityEntryPointV2": {
+      "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+      "type": "object",
+      "required": [
+        "args",
+        "entry_point_payment",
+        "flags",
+        "name",
+        "ret"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TypeUid"
+          }
+        },
+        "ret": {
+          "$ref": "#/definitions/TypeUid"
+        },
+        "entry_point_payment": {
+          "$ref": "#/definitions/EntryPointPayment"
+        },
+        "flags": {
+          "$ref": "#/definitions/EntityEntryPointV2Flags"
+        }
+      }
+    },
+    "TypeUid": {
+      "description": "Unique identifier for a type definition.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "EntityEntryPointV2Flags": {
+      "type": "object",
+      "required": [
+        "bits"
+      ],
+      "properties": {
+        "bits": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TypeDefinition": {
+      "type": "object",
+      "required": [
+        "cl_type",
+        "definition",
+        "fqn",
+        "name",
+        "uid"
+      ],
+      "properties": {
+        "uid": {
+          "description": "Uid",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TypeUid"
+            }
+          ]
+        },
+        "name": {
+          "description": "Name of the type definition (i.e. [`String`]).",
+          "type": "string"
+        },
+        "fqn": {
+          "description": "The fully qualified name of the declaration (i.e. [`alloc::string::String`]).",
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/definitions/TypeDefinitionKind"
+        },
+        "cl_type": {
+          "$ref": "#/definitions/CLType"
+        }
+      }
+    },
+    "TypeDefinitionKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Primitive"
+          ],
+          "properties": {
+            "Primitive": {
+              "$ref": "#/definitions/Primitive"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Mapping"
+          ],
+          "properties": {
+            "Mapping": {
+              "type": "object",
+              "required": [
+                "key",
+                "value"
+              ],
+              "properties": {
+                "key": {
+                  "$ref": "#/definitions/TypeUid"
+                },
+                "value": {
+                  "$ref": "#/definitions/TypeUid"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Sequence"
+          ],
+          "properties": {
+            "Sequence": {
+              "type": "object",
+              "required": [
+                "decl"
+              ],
+              "properties": {
+                "decl": {
+                  "$ref": "#/definitions/TypeUid"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "FixedSequence"
+          ],
+          "properties": {
+            "FixedSequence": {
+              "type": "object",
+              "required": [
+                "decl",
+                "length"
+              ],
+              "properties": {
+                "length": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "decl": {
+                  "$ref": "#/definitions/TypeUid"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Tuple"
+          ],
+          "properties": {
+            "Tuple": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TypeUid"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Enum"
+          ],
+          "properties": {
+            "Enum": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/EnumVariant"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Struct"
+          ],
+          "properties": {
+            "Struct": {
+              "type": "object",
+              "required": [
+                "items"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/StructField"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Primitive": {
+      "type": "string",
+      "enum": [
+        "Char",
+        "U8",
+        "I8",
+        "U16",
+        "I16",
+        "U32",
+        "I32",
+        "U64",
+        "I64",
+        "U128",
+        "I128",
+        "F32",
+        "F64",
+        "Bool"
+      ]
+    },
+    "EnumVariant": {
+      "type": "object",
+      "required": [
+        "discriminant",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "discriminant": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "decl": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TypeUid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "StructField": {
+      "type": "object",
+      "required": [
+        "decl",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "decl": {
+          "$ref": "#/definitions/TypeUid"
+        }
+      }
     },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",

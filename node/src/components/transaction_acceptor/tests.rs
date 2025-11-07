@@ -829,6 +829,7 @@ impl TestScenario {
                     TransactionRuntimeParams::VmCasperV2 {
                         transferred_value: 0,
                         seed: None,
+                        bundle_data: None,
                     },
                 )
                 .with_chain_name("casper-example")
@@ -866,6 +867,7 @@ impl TestScenario {
                 let transaction_runtime = TransactionRuntimeParams::VmCasperV2 {
                     transferred_value: 3_000_000_000u64,
                     seed: None,
+                    bundle_data: Some(vec![0, 0, 0, 0].into()),
                 };
                 let module_bytes = Bytes::from(vec![1]);
                 let txn =
@@ -2572,13 +2574,16 @@ async fn should_reject_transaction_v1_with_missing_session_contract_by_hash_from
     let test_scenario =
         TestScenario::FromPeerSessionContract(TxnType::V1, ContractScenario::MissingContractAtHash);
     let result = run_transaction_acceptor(test_scenario).await;
-    assert!(matches!(
-        result,
-        Err(super::Error::Parameters {
-            failure: ParameterFailure::NoSuchContractAtHash { .. },
-            ..
-        })
-    ))
+    assert!(
+        matches!(
+            result,
+            Err(super::Error::Parameters {
+                failure: ParameterFailure::NoSuchContractAtHash { .. },
+                ..
+            }),
+        ),
+        "{result:?}"
+    )
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
-use crate::prelude::marker::PhantomData;
+use crate::prelude::{marker::PhantomData, String};
 
-use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
+use crate::{casper, serializers::borsh::BorshSerialize};
 use casper_executor_wasm_common::keyspace::Keyspace;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};

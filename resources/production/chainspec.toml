@@ -422,6 +422,7 @@ write = { base_cost = 0, per_byte = 0 }
 remove = { base_cost = 0, per_byte = 0 }
 copy_input = { base_cost = 0, per_byte = 0 }
 ret = { base_cost = 0, per_byte = 0 }
+revert = { base_cost = 0, per_byte = 0 }
 create = { base_cost = 0, per_byte = 0 }
 transfer = { base_cost = 0, per_byte = 0 }
 env_balance = { base_cost = 0, per_byte = 0 }

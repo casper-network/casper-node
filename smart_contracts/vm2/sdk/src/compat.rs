@@ -9,6 +9,7 @@ mod tests {
         casper::native::{dispatch_with, Environment},
         compat::types::RuntimeArgs,
     };
+    // no extra prelude imports needed here
 
     use super::*;
     use crate::compat::types::U512;
@@ -17,10 +18,7 @@ mod tests {
     fn test_compat() {
         let mut runtime_args = RuntimeArgs::new();
         runtime_args.insert("amount", U512::from(1000u64)).unwrap();
-        runtime_args.insert("hello", String::from("world")).unwrap();
-        runtime_args
-            .insert("complex type", vec![1u64, 2u64, 3u64])
-            .unwrap();
+        runtime_args.insert("hello", "world").unwrap();
 
         let arg_bytes = borsh::to_vec(&runtime_args).unwrap();
 

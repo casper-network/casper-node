@@ -1,14 +1,17 @@
 use crate::{
     casper::{self, read_into_vec},
-    log,
-    prelude::{cmp::Ordering, marker::PhantomData, *},
+    compat::types::{CLType, CLTyped},
+    prelude::{borrow::ToOwned, cmp::Ordering, marker::PhantomData, Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::{
+    keyspace::Keyspace,
+    type_uid::{TypeUid, Uid},
+};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-use crate::abi::{CasperABI, Declaration, Definition, Definitions, StructField};
+use crate::abi::{AbiDeclaration, CasperABI, Definition, StructField};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 #[borsh(crate = "crate::serializers::borsh")]
@@ -18,11 +21,13 @@ pub struct Vector<T> {
     pub(crate) _marker: PhantomData<T>,
 }
 
+impl<T: TypeUid> TypeUid for Vector<T> {
+    const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID, T::UID]);
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl<T: CasperABI> CasperABI for Vector<T> {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Vector<{}>", T::declaration())
     }
 
@@ -31,14 +36,19 @@ impl<T: CasperABI> CasperABI for Vector<T> {
             items: vec![
                 StructField {
                     name: "prefix".into(),
-                    decl: String::declaration(),
+                    decl: String::UID.into(),
                 },
                 StructField {
                     name: "length".into(),
-                    decl: u64::declaration(),
+                    decl: u64::UID.into(),
                 },
             ],
         }
+    }
+}
+impl<T: CLTyped> CLTyped for Vector<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
     }
 }
 
@@ -88,11 +98,9 @@ where
     pub fn get(&self, index: u64) -> Option<T> {
         let prefix = self.compute_prefix_bytes_for_index(index);
         let item_keyspace = Keyspace::Context(&prefix);
-        log!("Foooo");
-        read_into_vec(item_keyspace).unwrap().map(|vec| {
-            log!("vec {:?}", vec);
-            borsh::from_slice(&vec).unwrap()
-        })
+        read_into_vec(item_keyspace)
+            .unwrap()
+            .map(|vec| borsh::from_slice(&vec).unwrap())
     }
 
     /// Returns an iterator over self, with elements deserialized.

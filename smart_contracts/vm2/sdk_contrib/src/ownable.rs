@@ -58,7 +58,7 @@ pub trait Ownable {
     }
 
     /// Transfers ownership of the contract to a new owner.
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn transfer_ownership(&mut self, new_owner: Entity) -> Result<(), OwnableError> {
         self.only_owner()?;
         self.state_mut().owner = Some(new_owner);
@@ -76,7 +76,7 @@ pub trait Ownable {
     /// once the contract is deployed. After calling this function, the contract
     /// will no longer have an owner, and no entity will be able to call
     /// functions that require ownership.
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
         self.only_owner()?;
         self.state_mut().owner = None;

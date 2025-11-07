@@ -7,13 +7,12 @@ extern crate alloc;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod abi;
 pub mod compat;
+pub mod meta;
 pub mod prelude;
 pub mod serializers;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub use linkme;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-pub mod abi_generator;
+pub mod build;
 pub mod casper;
 pub mod collections;
 
@@ -27,7 +26,7 @@ use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper::{CallResult, Entity};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
-pub use casper_executor_wasm_common;
+pub use casper_executor_wasm_common as common;
 use types::{Address, CallError};
 
 cfg_if::cfg_if! {
@@ -96,7 +95,6 @@ pub enum Access {
 }
 
 // A println! like macro that calls `host::print` function.
-#[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
@@ -104,33 +102,19 @@ macro_rules! log {
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => {{
-        // eprintln!("📝 {}", &$crate::prelude::format!($($arg)*));
-    }};
-}
-
 #[macro_export]
 macro_rules! rollback {
     () => {{
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
-            None,
-        );
-        unreachable!()
+        $crate::casper::ret($crate::common::flags::ReturnFlags::ROLLBACK, None);
     }};
     ($arg:expr) => {{
         let value = $arg;
         let data =
             $crate::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
         $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
+            $crate::common::flags::ReturnFlags::ROLLBACK,
             Some(data.as_slice()),
         );
-        #[allow(unreachable_code)]
-        value
     }};
 }
 
@@ -148,44 +132,23 @@ macro_rules! ret {
     }};
 }
 
-#[macro_export]
-macro_rules! revert {
-    () => {{
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            None,
-        );
-        unreachable!()
-    }};
-    ($msg:expr) => {{
-        let msg: &str = $msg;
-        let bytes = msg.as_bytes();
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            Some(bytes),
-        );
-        unreachable!()
-    }};
-}
-
-pub trait UnwrapOrRevert<T> {
+pub trait UnwrapOrRollback<T> {
     /// Unwraps the value into its inner type or calls [`crate::casper::ret`] with a
     /// predetermined error code on failure.
-    fn unwrap_or_revert(self) -> T;
+    fn unwrap_or_rollback(self) -> T;
 }
 
-impl<T, E> UnwrapOrRevert<T> for Result<T, E>
+impl<T, E> UnwrapOrRollback<T> for Result<T, E>
 where
     E: BorshSerialize,
 {
-    fn unwrap_or_revert(self) -> T {
+    fn unwrap_or_rollback(self) -> T {
         self.unwrap_or_else(|error| {
-            let error_data = borsh::to_vec(&error).expect("Revert value should serialize");
+            let error_data = borsh::to_vec(&error).expect("Rollback value should serialize");
             casper::ret(
                 casper_executor_wasm_common::flags::ReturnFlags::ROLLBACK,
                 Some(error_data.as_slice()),
             );
-            unreachable!("Support for unwrap_or_revert")
         })
     }
 }
@@ -318,6 +281,7 @@ pub struct ContractBuilder<'a, T: ContractRef> {
     transferred_value: Option<u64>,
     code: Option<&'a [u8]>,
     seed: Option<&'a [u8; 32]>,
+    bundle_data: Option<&'a [u8]>,
     marker: PhantomData<T>,
 }
 
@@ -335,6 +299,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
             code: None,
             seed: None,
             marker: PhantomData,
+            bundle_data: None,
         }
     }
 
@@ -356,6 +321,12 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
         self
     }
 
+    #[must_use]
+    pub fn with_bundle_data(mut self, bundle_data: &'a [u8]) -> Self {
+        self.bundle_data = Some(bundle_data);
+        self
+    }
+
     pub fn create<CallData: ToCallData>(
         &self,
         func: impl FnOnce() -> CallData,
@@ -367,12 +338,14 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
         let call_data = func();
         let input_data = call_data.input_data();
         let seed = self.seed;
+        let bundle_data = self.bundle_data;
         let create_result = casper::create(
             self.code,
             value,
             Some(call_data.entry_point()),
             input_data.as_deref(),
             seed,
+            bundle_data,
         )?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }
@@ -384,7 +357,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
 
         let value = self.transferred_value.unwrap_or(0);
         let seed = self.seed;
-        let create_result = casper::create(self.code, value, None, None, seed)?;
+        let create_result = casper::create(self.code, value, None, None, seed, self.bundle_data)?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }
 }

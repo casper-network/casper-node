@@ -1,9 +1,7 @@
 use casper_contract_sdk::{prelude::*, types::U256};
 use casper_contract_sdk_contrib::{
     access_control::{AccessControl, AccessControlExt, AccessControlState},
-    cep18::{
-        Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
-    },
+    cep18::*,
 };
 
 #[casper(contract_state)]
@@ -46,6 +44,10 @@ impl TokenContract {
             .get(&casper::get_caller())
             .unwrap_or_default()
     }
+
+    pub fn this_is_using_nested_types(&self, maybe: Option<Entity>) {
+        log!("Hello {maybe:?}");
+    }
 }
 
 #[casper(path = casper_contract_sdk_contrib::cep18)]
@@ -81,6 +83,7 @@ mod tests {
     use super::*;
 
     use casper_contract_sdk::{
+        abi::collector::ABI_ITEMS,
         casper::{
             self,
             native::{
@@ -91,6 +94,7 @@ mod tests {
         },
         casper_executor_wasm_common::keyspace::Keyspace,
         contrib::cep18::Cep18Error,
+        serializers::AbiConvention,
         ContractHandle, ToCallData,
     };
 
@@ -144,6 +148,7 @@ mod tests {
                 0,
                 Some(constructor.entry_point()),
                 ctor_input_data.as_ref().map(|data| data.as_slice()),
+                None,
                 None,
             )
             .expect("Should create");
@@ -265,5 +270,11 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(())));
+    }
+
+    #[test]
+    fn foo() {
+        let vec = ABI_ITEMS.iter().collect::<Vec<_>>();
+        dbg!(vec);
     }
 }

@@ -20,6 +20,7 @@ use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
+    install::{InstallContractError, InstallContractRequest, InstallContractResult},
     CallError, FatalHostError, GasUsage, SandboxedExecutionRequest, SandboxedExecutionResult,
     WasmPreparationError,
 };
@@ -458,6 +459,8 @@ pub enum CryptoMethods {
 pub enum IOMethods {
     Return,
     CopyInput,
+    /// Reverts execution with a message, call stack is unwound.
+    Revert,
 }
 
 /// Specific subsection of FFIMenu actions that will be executed as system contract calls
@@ -524,6 +527,7 @@ impl FFIMenu {
             FFIMenu::IO(iomethods) => match iomethods {
                 IOMethods::Return => true,
                 IOMethods::CopyInput => true,
+                IOMethods::Revert => true,
             },
         }
     }
@@ -645,6 +649,12 @@ pub trait Executor: Clone + Send {
         runtime_native_config: RuntimeNativeConfig,
         request: SandboxedExecutionRequest,
     ) -> Result<SandboxedExecutionResult, ExecuteError>;
+
+    fn install_contract<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        install_request: InstallContractRequest,
+    ) -> Result<InstallContractResult, InstallContractError>;
 }
 
 #[repr(u32)]
@@ -686,6 +696,7 @@ enum FFIPrimitiveValue {
     /* IO values */
     IOReturn = 600,
     IOCopyInput = 601,
+    IORevert = 602,
 }
 
 impl From<&FFIPrimitiveValue> for FFIMenu {
@@ -734,6 +745,7 @@ impl From<&FFIPrimitiveValue> for FFIMenu {
             FFIPrimitiveValue::ControlUpgrade => Self::Control(ControlMethods::Upgrade),
             FFIPrimitiveValue::IOReturn => Self::IO(IOMethods::Return),
             FFIPrimitiveValue::IOCopyInput => Self::IO(IOMethods::CopyInput),
+            FFIPrimitiveValue::IORevert => Self::IO(IOMethods::Revert),
         }
     }
 }
@@ -783,6 +795,7 @@ impl From<&FFIMenu> for FFIPrimitiveValue {
             FFIMenu::IO(iomethods) => match iomethods {
                 IOMethods::Return => Self::IOReturn,
                 IOMethods::CopyInput => Self::IOCopyInput,
+                IOMethods::Revert => Self::IORevert,
             },
         }
     }

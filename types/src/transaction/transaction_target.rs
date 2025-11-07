@@ -26,6 +26,7 @@ const VM_CASPER_V1_TAG: u8 = 0;
 const VM_CASPER_V2_TAG: u8 = 1;
 const TRANSFERRED_VALUE_INDEX: u16 = 1;
 const SEED_VALUE_INDEX: u16 = 2;
+const BUNDLE_DATA_INDEX: u16 = 3;
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -48,6 +49,8 @@ pub enum TransactionRuntimeParams {
         transferred_value: u64,
         /// The seed for the session code that is used for an installer.
         seed: Option<[u8; 32]>,
+        /// The bundle data for the session code that is used for an installer.
+        bundle_data: Option<Bytes>,
     },
 }
 
@@ -67,18 +70,32 @@ impl TransactionRuntimeParams {
         }
     }
 
+    pub fn bundle_data(&self) -> Option<&Bytes> {
+        match self {
+            TransactionRuntimeParams::VmCasperV1 => None,
+            TransactionRuntimeParams::VmCasperV2 { bundle_data, .. } => bundle_data.as_ref(),
+        }
+    }
+
     pub fn serialized_field_lengths(&self) -> Vec<usize> {
         match self {
             TransactionRuntimeParams::VmCasperV1 => vec![crate::bytesrepr::U8_SERIALIZED_LENGTH],
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed,
+                bundle_data,
             } => {
-                vec![
+                let mut field_sizes = vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     transferred_value.serialized_length(),
                     seed.serialized_length(),
-                ]
+                ];
+
+                if let Some(bundle_data) = bundle_data {
+                    field_sizes.push(bundle_data.serialized_length());
+                }
+
+                field_sizes
             }
         }
     }
@@ -95,11 +112,20 @@ impl ToBytes for TransactionRuntimeParams {
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed,
-            } => CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
-                .add_field(TAG_FIELD_INDEX, &VM_CASPER_V2_TAG)?
-                .add_field(TRANSFERRED_VALUE_INDEX, transferred_value)?
-                .add_field(SEED_VALUE_INDEX, seed)?
-                .binary_payload_bytes(),
+                bundle_data,
+            } => {
+                let mut builder =
+                    CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                        .add_field(TAG_FIELD_INDEX, &VM_CASPER_V2_TAG)?
+                        .add_field(TRANSFERRED_VALUE_INDEX, transferred_value)?
+                        .add_field(SEED_VALUE_INDEX, seed)?;
+
+                if let Some(bundle_data) = bundle_data {
+                    builder = builder.add_field(BUNDLE_DATA_INDEX, bundle_data)?;
+                }
+
+                builder.binary_payload_bytes()
+            }
         }
     }
 
@@ -113,18 +139,26 @@ impl ToBytes for TransactionRuntimeParams {
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed,
-            } => CalltableSerializationEnvelope::estimate_size(vec![
-                crate::bytesrepr::U8_SERIALIZED_LENGTH,
-                transferred_value.serialized_length(),
-                seed.serialized_length(),
-            ]),
+                bundle_data,
+            } => {
+                let mut field_sizes = vec![
+                    crate::bytesrepr::U8_SERIALIZED_LENGTH,
+                    transferred_value.serialized_length(),
+                    seed.serialized_length(),
+                ];
+                if let Some(bundle_data) = bundle_data {
+                    field_sizes.push(bundle_data.serialized_length());
+                }
+
+                CalltableSerializationEnvelope::estimate_size(field_sizes)
+            }
         }
     }
 }
 
 impl FromBytes for TransactionRuntimeParams {
     fn from_bytes(bytes: &[u8]) -> Result<(TransactionRuntimeParams, &[u8]), Error> {
-        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(3, bytes)?;
+        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(4, bytes)?;
         let window = binary_payload.start_consuming()?.ok_or(Formatting)?;
         window.verify_index(TAG_FIELD_INDEX)?;
         let (tag, window) = window.deserialize_and_maybe_next::<u8>()?;
@@ -139,15 +173,29 @@ impl FromBytes for TransactionRuntimeParams {
                 let window = window.ok_or(Formatting)?;
                 window.verify_index(TRANSFERRED_VALUE_INDEX)?;
                 let (transferred_value, window) = window.deserialize_and_maybe_next::<u64>()?;
+
                 let window = window.ok_or(Formatting)?;
                 window.verify_index(SEED_VALUE_INDEX)?;
                 let (seed, window) = window.deserialize_and_maybe_next::<Option<[u8; 32]>>()?;
-                if window.is_some() {
-                    return Err(Formatting);
-                }
+
+                let bundle_data = if let Some(window) = window {
+                    window.verify_index(BUNDLE_DATA_INDEX)?;
+                    let (bundle_data, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                    if window.is_some() {
+                        return Err(Formatting);
+                    }
+                    Some(bundle_data)
+                } else {
+                    // if window.is_some() {
+                    //     return Err(Formatting);
+                    // }
+                    None
+                };
+
                 Ok(TransactionRuntimeParams::VmCasperV2 {
                     transferred_value,
                     seed,
+                    bundle_data,
                 })
             }
             _ => Err(Formatting),
@@ -163,11 +211,16 @@ impl Display for TransactionRuntimeParams {
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed,
-            } => write!(
-                formatter,
-                "vm-casper-v2 {{ transferred_value: {}, seed: {:?} }}",
-                transferred_value, seed
-            ),
+                bundle_data,
+            } => {
+                write!(
+                    formatter,
+                    "vm-casper-v2 {{ transferred_value: {}, seed: {:?}, bundle_data_len: {:?} }}",
+                    transferred_value,
+                    seed,
+                    bundle_data.as_ref().map(|d| d.len()),
+                )
+            }
         }
     }
 }
@@ -485,12 +538,17 @@ mod serde_helpers {
             transferred_value: u64,
             /// The seed for the session code that is used for an installer.
             seed: Option<String>,
+            /// The bundle data for the session code that is used for an installer.
+            ///
+            /// This is hex-encoded.
+            bundle_data: Option<String>,
         },
     }
 
     pub(crate) enum TransactionRuntimeParamsDeserializationError {
         SeedDecodeError(String),
         WrongSeedLength(u32),
+        BundleDecodeError(String),
     }
 
     impl Display for TransactionRuntimeParamsDeserializationError {
@@ -508,6 +566,13 @@ mod serde_helpers {
                     "Error when trying to deserialize TransactionRuntimeParams: given `seed` field has unexpected length. Expected hex-encoded 32 bytes array, got {} bytes",
                     l
                 ),
+                TransactionRuntimeParamsDeserializationError::BundleDecodeError(s) => {
+                    write!(
+                        f,
+                        "Error when trying to deserialize TransactionRuntimeParams: {}",
+                        s
+                    )
+                }
             }
         }
     }
@@ -523,6 +588,7 @@ mod serde_helpers {
                 TransactionRuntimeParamsSerdeHelper::VmCasperV2 {
                     transferred_value,
                     seed,
+                    bundle_data,
                 } => {
                     let seed = if let Some(seed) = seed {
                         let vec = checksummed_hex::decode(seed).map_err(|e| {
@@ -540,9 +606,22 @@ mod serde_helpers {
                     } else {
                         None
                     };
+
+                    let bundle_data = if let Some(bundle_data) = bundle_data {
+                        let vec = checksummed_hex::decode(bundle_data).map_err(|e| {
+                            TransactionRuntimeParamsDeserializationError::BundleDecodeError(
+                                format!("{}", e),
+                            )
+                        })?;
+                        Some(vec.into())
+                    } else {
+                        None
+                    };
+
                     Ok(TransactionRuntimeParams::VmCasperV2 {
                         transferred_value,
                         seed,
+                        bundle_data,
                     })
                 }
             }
@@ -558,9 +637,11 @@ mod serde_helpers {
                 TransactionRuntimeParams::VmCasperV2 {
                     transferred_value,
                     seed,
+                    bundle_data,
                 } => TransactionRuntimeParamsSerdeHelper::VmCasperV2 {
                     transferred_value: *transferred_value,
                     seed: seed.map(hex::encode),
+                    bundle_data: bundle_data.as_ref().map(hex::encode),
                 },
             }
         }
@@ -594,13 +675,36 @@ mod tests {
         let to_serialize = TransactionRuntimeParams::VmCasperV2 {
             transferred_value: u64::MAX,
             seed: Some([1; 32]),
+            bundle_data: None,
         };
         let serialized = serde_json::to_string(&to_serialize).expect("Expect serialization");
         let serialized_value = serde_json::from_str::<serde_json::Value>(&serialized)
             .expect("expected to transform to value");
         let expected = json!({ "VmCasperV2": json!({
             "transferred_value": u64::MAX,
-            "seed": "0101010101010101010101010101010101010101010101010101010101010101"
+            "seed": "0101010101010101010101010101010101010101010101010101010101010101",
+            "bundle_data": null
+        })});
+        assert_eq!(expected, serialized_value);
+        let trp: TransactionRuntimeParams =
+            serde_json::from_str(&serialized).expect("Expect deserialization");
+        assert_eq!(trp, to_serialize);
+    }
+
+    #[test]
+    fn should_correctly_serialize_bundle_for_vm2() {
+        let to_serialize = TransactionRuntimeParams::VmCasperV2 {
+            transferred_value: u64::MAX,
+            seed: Some([1; 32]),
+            bundle_data: Some(b"1234567890".to_vec().into()),
+        };
+        let serialized = serde_json::to_string(&to_serialize).expect("Expect serialization");
+        let serialized_value = serde_json::from_str::<serde_json::Value>(&serialized)
+            .expect("expected to transform to value");
+        let expected = json!({ "VmCasperV2": json!({
+            "transferred_value": u64::MAX,
+            "seed": "0101010101010101010101010101010101010101010101010101010101010101",
+            "bundle_data": "31323334353637383930"
         })});
         assert_eq!(expected, serialized_value);
         let trp: TransactionRuntimeParams =

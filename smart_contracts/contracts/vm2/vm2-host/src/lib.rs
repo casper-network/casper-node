@@ -2,7 +2,7 @@
 
 use casper_contract_sdk::{
     casper::casper_ffi,
-    casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
+    common::{flags::ReturnFlags, keyspace::Keyspace},
     prelude::*,
     serializers::borsh,
     types::{EntityAddr, HashAlgorithm, IOFunctionOption},
@@ -132,7 +132,7 @@ impl MinimalHostWrapper {
     }
 
     pub fn create(&self) {
-        casper::create(None, 0, None, None, None).ok();
+        casper::create(None, 0, None, None, None, None).ok();
     }
 
     pub fn print(&self) {

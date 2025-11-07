@@ -1,5 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::type_uid::Uid;
+
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum KeyspaceTag {
@@ -14,7 +16,11 @@ pub enum KeyspaceTag {
     /// Used for a named key based storage which usually involves named keys.
     NamedKey = 2,
     /// Used for getting all named keys
-    AllNamedKeys = 4,
+    AllNamedKeys = 3,
+    /// Used for type definitions.
+    TypeDef = 4,
+    /// Used for entry points.
+    EntryPoint = 5,
 }
 
 #[repr(u64)]
@@ -33,6 +39,34 @@ pub enum Keyspace<'a> {
     ///
     /// No additional info as the contracts address will be used as the base.
     AllNamedKeys,
+    /// Retrieves contract's type definitions.
+    TypeDef(Uid),
+    /// Stores contract's entry points.
+    EntryPoint(&'a str),
+}
+
+const EMPTY_SLICE: &[u8] = &[];
+
+impl Keyspace<'_> {
+    pub fn to_host_input_data(&self) -> borsh::io::Result<Vec<u8>> {
+        match self {
+            Keyspace::State => borsh::to_vec(&(KeyspaceTag::State as u64, EMPTY_SLICE)),
+            Keyspace::Context(key_bytes) => {
+                borsh::to_vec(&(KeyspaceTag::Context as u64, key_bytes))
+            }
+            Keyspace::NamedKey(key_bytes) => {
+                borsh::to_vec(&(KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()))
+            }
+            Keyspace::AllNamedKeys => borsh::to_vec(&(KeyspaceTag::AllNamedKeys as u64,)),
+            Keyspace::TypeDef(typedef) => borsh::to_vec(&(
+                KeyspaceTag::TypeDef as u64,
+                &typedef.into_raw().to_le_bytes()[..],
+            )),
+            Keyspace::EntryPoint(entry_point_name) => {
+                borsh::to_vec(&(KeyspaceTag::EntryPoint as u64, entry_point_name.as_bytes()))
+            }
+        }
+    }
 }
 
 impl Keyspace<'_> {
@@ -43,6 +77,8 @@ impl Keyspace<'_> {
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
             Keyspace::AllNamedKeys => KeyspaceTag::AllNamedKeys,
+            Keyspace::TypeDef(_) => KeyspaceTag::TypeDef,
+            Keyspace::EntryPoint(_) => KeyspaceTag::EntryPoint,
         }
     }
 
@@ -54,6 +90,8 @@ impl Keyspace<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::type_uid::Uid;
+
     use super::*;
 
     #[test]
@@ -94,5 +132,18 @@ mod tests {
         let name = "my_key";
         let keyspace = Keyspace::NamedKey(name);
         assert_eq!(keyspace.as_u64(), 2);
+    }
+
+    #[test]
+    fn test_as_u64_all_named_keys() {
+        let keyspace = Keyspace::TypeDef(Uid::from_name("foobar"));
+        assert_eq!(keyspace.as_u64(), 4);
+    }
+
+    #[test]
+    fn test_as_u64_entry_point() {
+        let name = "my_entry_point";
+        let keyspace = Keyspace::EntryPoint(name);
+        assert_eq!(keyspace.as_u64(), 5);
     }
 }

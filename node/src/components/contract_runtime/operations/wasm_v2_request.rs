@@ -2,17 +2,15 @@ use std::sync::Arc;
 
 use super::MetaTransaction;
 use bytes::Bytes;
-use casper_executor_wasm::{
-    install::{
-        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
-        InstallContractResult,
-    },
-    ExecutorV2,
-};
+use casper_executor_wasm::ExecutorV2;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
         ExecuteWithProviderResult, ExecutionKind,
+    },
+    install::{
+        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
+        InstallContractWithProviderResult,
     },
     FatalHostError, GasUsage,
 };
@@ -42,7 +40,7 @@ pub(crate) enum WasmV2Request {
 /// The result of executing a Wasm contract.
 pub(crate) enum WasmV2Result {
     /// The result of installing a Wasm contract.
-    Install(InstallContractResult),
+    Install(InstallContractWithProviderResult),
     /// The result of executing a Wasm contract.
     Execute(ExecuteWithProviderResult),
 }
@@ -100,6 +98,13 @@ impl WasmV2Error {
                 }
                 None
             }
+        }
+    }
+
+    pub(crate) fn gas_usage(&self) -> Option<&GasUsage> {
+        match self {
+            WasmV2Error::Install(install_error) => install_error.gas_usage(),
+            WasmV2Error::Execute(_) => None,
         }
     }
 }
@@ -163,6 +168,7 @@ impl WasmV2Request {
                 entry_point: String,
                 transferred_value: u64,
                 seed: Option<[u8; 32]>,
+                bundle_data: Option<Bytes>,
             },
             Session {
                 module_bytes: Bytes,
@@ -197,6 +203,7 @@ impl WasmV2Request {
                     TransactionRuntimeParams::VmCasperV2 {
                         transferred_value,
                         seed,
+                        bundle_data,
                     },
                 is_install_upgrade: _, // TODO: Handle this
             } => match transaction.entry_point() {
@@ -208,6 +215,7 @@ impl WasmV2Request {
                     entry_point: entry_point.to_string(),
                     transferred_value,
                     seed,
+                    bundle_data: bundle_data.map(|bytes| bytes.take_inner().into()),
                 },
                 _ => todo!(),
             },
@@ -221,6 +229,7 @@ impl WasmV2Request {
                 entry_point,
                 transferred_value,
                 seed,
+                bundle_data,
             } => {
                 let mut builder = InstallContractRequestBuilder::default();
 
@@ -242,6 +251,10 @@ impl WasmV2Request {
 
                 if let Some(seed) = seed {
                     builder = builder.with_seed(seed);
+                }
+
+                if let Some(bundle_data) = bundle_data {
+                    builder = builder.with_bundle_data(bundle_data);
                 }
 
                 // Value is expected to be the same as transferred value, it's just taken through
@@ -329,7 +342,11 @@ impl WasmV2Request {
     {
         match self {
             WasmV2Request::Install(install_request) => {
-                match engine.install_contract(state_root_hash, state_provider, install_request) {
+                match engine.install_contract_with_provider(
+                    state_root_hash,
+                    state_provider,
+                    install_request,
+                ) {
                     Ok(result) => Ok(WasmV2Result::Install(result)),
                     Err(error) => Err(WasmV2Error::Install(error)),
                 }

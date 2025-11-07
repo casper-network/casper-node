@@ -562,6 +562,7 @@ impl TransactionAcceptor {
                             )),
                         );
                     }
+
                     NextStep::CryptoValidation
                 }
                 TransactionTarget::Native => NextStep::CryptoValidation,

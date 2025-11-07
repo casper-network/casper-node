@@ -82,13 +82,14 @@ fn argument_size_exceeds_memory_limit() {
     let runtime_native_config = RuntimeNativeConfig::from_chainspec(&chainspec);
     // Create an input larger than 1 page
     let large_input = Bytes::from(vec![0u8; 70_000]);
+    let vm2_cep18 = read_wasm("vm2_cep18.wasm");
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2_cep18.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(vm2_cep18.wasm))
         .with_input(large_input)
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -435,7 +436,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_execution_kind(ExecutionKind::SessionBytes(session_code))
+        .with_execution_kind(ExecutionKind::SessionBytes(session_code.wasm))
         .with_input(Bytes::new())
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
