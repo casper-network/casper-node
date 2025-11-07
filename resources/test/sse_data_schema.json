@@ -5012,9 +5012,28 @@
       "type": "object",
       "required": [
         "cl_type",
-        "definition"
+        "definition",
+        "fqn",
+        "name",
+        "uid"
       ],
       "properties": {
+        "uid": {
+          "description": "Uid",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TypeUid"
+            }
+          ]
+        },
+        "name": {
+          "description": "Name of the type definition (i.e. [`String`]).",
+          "type": "string"
+        },
+        "fqn": {
+          "description": "The fully qualified name of the declaration (i.e. [`alloc::string::String`]).",
+          "type": "string"
+        },
         "definition": {
           "$ref": "#/definitions/TypeDefinitionKind"
         },
@@ -5200,9 +5219,13 @@
     "EnumVariant": {
       "type": "object",
       "required": [
-        "discriminant"
+        "discriminant",
+        "name"
       ],
       "properties": {
+        "name": {
+          "type": "string"
+        },
         "discriminant": {
           "type": "integer",
           "format": "uint64",
@@ -5223,9 +5246,13 @@
     "StructField": {
       "type": "object",
       "required": [
-        "decl"
+        "decl",
+        "name"
       ],
       "properties": {
+        "name": {
+          "type": "string"
+        },
         "decl": {
           "$ref": "#/definitions/TypeUid"
         }
