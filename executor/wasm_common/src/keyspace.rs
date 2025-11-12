@@ -1,98 +1,114 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use num_derive::{FromPrimitive, ToPrimitive};
 
+/// Discriminant indicating which keyspace is being accessed.
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum KeyspaceTag {
-    /// Used for a state based storage which usually involves single dimensional data i.e.
-    /// key-value pairs, etc.
-    ///
-    /// See also [`Keyspace::State`].
-    State = 0,
-    /// Used for a context based storage which usually involves multi dimensional data i.e. maps,
-    /// efficient vectors, etc.
-    Context = 1,
-    /// Used for a named key based storage which usually involves named keys.
-    NamedKey = 2,
-    /// Used for getting all named keys
-    AllNamedKeys = 4,
+    /// Context-based storage addressing using a structured address.
+    Context = 0,
+    /// Named key based storage which usually involves human-readable names.
+    NamedKey = 1,
+}
+
+/// Discriminant indicating which collection type is being used.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+pub enum CollectionTypeTag {
+    /// A key-value mapping collection.
+    Map = 0,
+    /// A set collection for unique elements.
+    Set = 1,
+    /// A vector collection.
+    Vector = 2,
+    /// An iterable map collection.
+    IterableMap = 3,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub enum ContextAddr {
+    /// Address of a state field for a given entity.
+    StateAddr(StateAddrInner),
+    /// Address of a collection element for a given entity.
+    CollectionAddr(CollectionAddrInner),
+}
+
+/// Address for a specific state field owned by `entity_addr`.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub struct StateAddrInner {
+    pub field_addr: String,
+}
+
+impl StateAddrInner {
+    #[inline]
+    pub fn new<T: Into<String>>(field_addr: T) -> Self {
+        Self {
+            field_addr: field_addr.into(),
+        }
+    }
+}
+
+/// Address for a collection element owned by `entity_addr`.
+///
+/// The `collection_type_tag` identifies the collection kind (e.g., map, set, vector).
+/// The `collection_prefix` is an 8-byte collection-level namespace derived from the collection
+/// name. The `tail` is a 32-byte element-level discriminator (e.g., hashed key or index).
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub struct CollectionAddrInner {
+    pub entity_addr: [u8; 32],
+    pub collection_type_tag: u8,
+    pub collection_prefix: [u8; 8],
+    pub tail: [u8; 32],
+}
+
+impl CollectionAddrInner {
+    pub fn new(
+        entity_addr: [u8; 32],
+        collection_type_tag: CollectionTypeTag,
+        collection_prefix: [u8; 8],
+        tail: [u8; 32],
+    ) -> Self {
+        Self {
+            entity_addr,
+            collection_type_tag: collection_type_tag as u8,
+            collection_prefix,
+            tail,
+        }
+    }
+}
+
+impl From<StateAddrInner> for ContextAddr {
+    fn from(value: StateAddrInner) -> Self {
+        ContextAddr::StateAddr(value)
+    }
+}
+
+impl From<CollectionAddrInner> for ContextAddr {
+    fn from(value: CollectionAddrInner) -> Self {
+        ContextAddr::CollectionAddr(value)
+    }
 }
 
 #[repr(u64)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyspace<'a> {
-    /// Stores contract's context.
-    ///
-    /// There's no additional payload for this variant as the host implies the contract's address.
-    State,
-    /// Stores contract's context data. Bytes can be any value as long as it uniquely identifies a
-    /// value.
-    Context(&'a [u8]),
-    /// Stores contract's named keys.
+    /// Structured context address.
+    Context(ContextAddr),
+    /// Human-readable named key.
     NamedKey(&'a str),
-    /// All the named keys for the given contract
-    ///
-    /// No additional info as the contracts address will be used as the base.
-    AllNamedKeys,
 }
 
 impl Keyspace<'_> {
     #[must_use]
     pub fn as_tag(&self) -> KeyspaceTag {
         match self {
-            Keyspace::State => KeyspaceTag::State,
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
-            Keyspace::AllNamedKeys => KeyspaceTag::AllNamedKeys,
         }
     }
 
     #[must_use]
     pub fn as_u64(&self) -> u64 {
         self.as_tag() as u64
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_as_tag_state() {
-        let keyspace = Keyspace::State;
-        assert_eq!(keyspace.as_tag(), KeyspaceTag::State);
-    }
-
-    #[test]
-    fn test_as_tag_context() {
-        let data = [1, 2, 3];
-        let keyspace = Keyspace::Context(&data);
-        assert_eq!(keyspace.as_tag(), KeyspaceTag::Context);
-    }
-
-    #[test]
-    fn test_as_tag_named_key() {
-        let name = "my_key";
-        let keyspace = Keyspace::NamedKey(name);
-        assert_eq!(keyspace.as_tag(), KeyspaceTag::NamedKey);
-    }
-
-    #[test]
-    fn test_as_u64_state() {
-        let keyspace = Keyspace::State;
-        assert_eq!(keyspace.as_u64(), 0);
-    }
-
-    #[test]
-    fn test_as_u64_context() {
-        let data = [1, 2, 3];
-        let keyspace = Keyspace::Context(&data);
-        assert_eq!(keyspace.as_u64(), 1);
-    }
-
-    #[test]
-    fn test_as_u64_named_key() {
-        let name = "my_key";
-        let keyspace = Keyspace::NamedKey(name);
-        assert_eq!(keyspace.as_u64(), 2);
     }
 }

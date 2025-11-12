@@ -37,6 +37,7 @@ use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
         self, AddressableEntityHash, EntityAddr, EntityKindTag, EntryPointAddr, NamedKeyAddr,
+        StateFieldAddr,
     },
     block::BlockGlobalAddr,
     byte_code,
@@ -335,8 +336,8 @@ pub enum Key {
     BalanceHold(BalanceHoldAddr),
     /// A `Key` under which a entrypoint record is written.
     EntryPoint(EntryPointAddr),
-    /// A `Key` under which a contract's state lives.
-    State(EntityAddr),
+    /// A `Key` under which a contract's state field lives.
+    State(StateFieldAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -652,8 +653,8 @@ impl Key {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
             }
-            Key::State(entity_addr) => {
-                format!("{}{}", STATE_PREFIX, entity_addr)
+            Key::State(state_field_addr) => {
+                format!("{}{}", STATE_PREFIX, state_field_addr)
             }
             Key::EntryPoint(entry_point_addr) => {
                 format!("{}", entry_point_addr)
@@ -968,13 +969,31 @@ impl Key {
             Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
         }
 
-        if let Some(entity_addr_formatted) = input.strip_prefix(STATE_PREFIX) {
-            match EntityAddr::from_formatted_str(entity_addr_formatted) {
-                Ok(entity_addr) => return Ok(Key::State(entity_addr)),
-                Err(addressable_entity::FromStrError::InvalidPrefix) => {}
-                Err(error) => {
-                    return Err(FromStrError::State(error.to_string()));
+        if let Some(entity_and_tail) = input.strip_prefix(STATE_PREFIX) {
+            let Some(last_dash) = entity_and_tail.rfind('-') else {
+                return Err(FromStrError::State("Missing state tail".to_string()));
+            };
+            let (entity_str, tail_hex) = entity_and_tail.split_at(last_dash);
+            let tail_hex = &tail_hex[1..];
+            match EntityAddr::from_formatted_str(entity_str) {
+                Ok(entity_addr) => {
+                    let tail_bytes = checksummed_hex::decode(tail_hex)
+                        .map_err(|e| FromStrError::State(e.to_string()))?;
+                    let tail: [u8; 32] = match <[u8; 32]>::try_from(tail_bytes.as_ref()) {
+                        Ok(arr) => arr,
+                        Err(_) => {
+                            return Err(FromStrError::State(
+                                "Invalid state tail length".to_string(),
+                            ))
+                        }
+                    };
+                    return Ok(Key::State(StateFieldAddr::new_state_field_addr(
+                        entity_addr,
+                        tail,
+                    )));
                 }
+                Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+                Err(error) => return Err(FromStrError::State(error.to_string())),
             }
         }
 
@@ -1444,9 +1463,7 @@ impl Display for Key {
             Key::EntryPoint(entry_point_addr) => {
                 write!(f, "Key::EntryPointAddr({})", entry_point_addr)
             }
-            Key::State(entity_addr) => {
-                write!(f, "Key::State({})", entity_addr)
-            }
+            Key::State(addr) => write!(f, "Key::State({})", addr),
         }
     }
 }
@@ -1601,7 +1618,7 @@ impl ToBytes for Key {
             Key::EntryPoint(entry_point_addr) => {
                 U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
-            Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
+            Key::State(addr) => KEY_ID_SERIALIZED_LENGTH + addr.serialized_length(),
         }
     }
 
@@ -1635,7 +1652,7 @@ impl ToBytes for Key {
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
             Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
-            Key::State(entity_addr) => entity_addr.write_bytes(writer),
+            Key::State(addr) => addr.write_bytes(writer),
         }
     }
 }
@@ -1751,8 +1768,8 @@ impl FromBytes for Key {
                 Ok((Key::EntryPoint(entry_point_addr), rem))
             }
             KeyTag::State => {
-                let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
-                Ok((Key::State(entity_addr), rem))
+                let (addr, rem) = StateFieldAddr::from_bytes(remainder)?;
+                Ok((Key::State(addr), rem))
             }
         }
     }
@@ -1858,7 +1875,7 @@ mod serde_helpers {
         BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
         EntryPoint(&'a EntryPointAddr),
-        State(&'a EntityAddr),
+        State(&'a StateFieldAddr),
     }
 
     #[derive(Deserialize)]
@@ -1888,7 +1905,7 @@ mod serde_helpers {
         BlockGlobal(BlockGlobalAddr),
         BalanceHold(BalanceHoldAddr),
         EntryPoint(EntryPointAddr),
-        State(EntityAddr),
+        State(StateFieldAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1922,7 +1939,7 @@ mod serde_helpers {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
-                Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
+                Key::State(addr) => BinarySerHelper::State(addr),
             }
         }
     }
@@ -1960,7 +1977,7 @@ mod serde_helpers {
                 BinaryDeserHelper::EntryPoint(entry_point_addr) => {
                     Key::EntryPoint(entry_point_addr)
                 }
-                BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
+                BinaryDeserHelper::State(addr) => Key::State(addr),
             }
         }
     }
@@ -2052,10 +2069,13 @@ mod tests {
     ));
     const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
-    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
+    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]), [42; 32]);
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const STATE_KEY: Key = Key::State(EntityAddr::new_smart_contract([42; 32]));
+    const STATE_KEY: Key = Key::State(StateFieldAddr::new_state_field_addr(
+        EntityAddr::new_smart_contract([42; 32]),
+        [43; 32],
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -2270,8 +2290,9 @@ mod tests {
         assert_eq!(
             format!("{}", STATE_KEY),
             format!(
-                "Key::State(entity-contract-{})",
-                base16::encode_lower(&[42; 32])
+                "Key::State(entity-contract-{}-{})",
+                base16::encode_lower(&[42; 32]),
+                base16::encode_lower(&[43; 32])
             )
         );
         assert_eq!(
@@ -2731,19 +2752,31 @@ mod tests {
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::ProtocolVersion));
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::AddressableEntity));
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
-        round_trip(&Key::State(EntityAddr::new_system(zeros)));
+        round_trip(&Key::State(StateFieldAddr::new_state_field_addr(
+            EntityAddr::new_system(zeros),
+            zeros,
+        )));
     }
 
     #[test]
     fn state_json_deserialization() {
         let mut test_rng = TestRng::new();
-        let state_key = Key::State(EntityAddr::new_account(test_rng.gen()));
+        let state_key = Key::State(StateFieldAddr::new_state_field_addr(
+            EntityAddr::new_account(test_rng.gen()),
+            [0; 32],
+        ));
         round_trip(&state_key);
 
-        let state_key = Key::State(EntityAddr::new_system(test_rng.gen()));
+        let state_key = Key::State(StateFieldAddr::new_state_field_addr(
+            EntityAddr::new_system(test_rng.gen()),
+            [0; 32],
+        ));
         round_trip(&state_key);
 
-        let state_key = Key::State(EntityAddr::new_smart_contract(test_rng.gen()));
+        let state_key = Key::State(StateFieldAddr::new_state_field_addr(
+            EntityAddr::new_smart_contract(test_rng.gen()),
+            [0; 32],
+        ));
         round_trip(&state_key);
     }
 

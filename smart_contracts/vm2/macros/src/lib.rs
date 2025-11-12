@@ -392,44 +392,16 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     .iter()
                     .map(|(name, ty)| quote! { #name: #ty })
                     .collect();
-                // Entry point has &self or &mut self
-                let mut entry_point_requires_state: bool = false;
 
-                let handle_write_state = match func.sig.inputs.first() {
-                    Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
-                        entry_point_requires_state = true;
-
-                        if !never_returns && receiver.reference.is_some() {
-                            // &mut self does write updated state
-                            Some(quote! {
-                                casper_contract_sdk::casper::write_state(&instance).unwrap();
-                            })
-                        } else {
-                            // mut self does not write updated state as the
-                            // method call
-                            // will consume self and there's nothing to persist.
-                            None
-                        }
-                    }
-                    Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_none() => {
-                        entry_point_requires_state = true;
-
-                        // &self does not write state
-                        None
-                    }
-                    Some(syn::FnArg::Receiver(receiver)) if receiver.lifetime().is_some() => {
-                        panic!("Lifetimes are currently not supported");
-                    }
-                    Some(_) | None => {
-                        if !never_returns && method_attribute.constructor {
-                            Some(quote! {
-                                casper_contract_sdk::casper::write_state(&_ret).unwrap();
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                };
+                let (receiver_is_ref, receiver_is_mut, receiver_exists) =
+                    match func.sig.inputs.first() {
+                        Some(syn::FnArg::Receiver(receiver)) => (
+                            receiver.reference.is_some(),
+                            receiver.mutability.is_some(),
+                            true,
+                        ),
+                        _ => (false, false, false),
+                    };
 
                 let call_data_return_lifetime = if method_attribute.constructor {
                     quote! {
@@ -546,14 +518,6 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     }
                 });
 
-                if method_attribute.constructor {
-                    prelude.push(quote! {
-                        if casper_contract_sdk::casper::has_state().unwrap() {
-                            panic!("State of the contract is already present; unable to proceed with the constructor");
-                        }
-                    });
-                }
-
                 if !method_attribute.payable {
                     let panic_msg = format!(
                         r#"Entry point "{func_name}" is not payable and does not accept tokens"#
@@ -582,10 +546,22 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                     quote! {}
                 };
 
-                let handle_call = if entry_point_requires_state {
-                    quote! {
-                        let mut instance: #struct_name = casper_contract_sdk::casper::read_state().unwrap();
-                        let _ret = instance.#func_name(#(args.#arg_names,)*);
+                let handle_call = if receiver_exists {
+                    if receiver_is_ref {
+                        quote! {
+                            let mut instance: #struct_name = {
+                                use casper_contract_sdk::FieldStateAccess;
+                                #struct_name::read_state_from_fields().unwrap()
+                            };
+                            let _ret = instance.#func_name(#(args.#arg_names,)*);
+                        }
+                    } else {
+                        quote! {
+                            let _ret = {
+                                use casper_contract_sdk::FieldStateAccess;
+                                #struct_name::read_state_from_fields().unwrap().#func_name(#(args.#arg_names,)*)
+                            };
+                        }
                     }
                 } else if method_attribute.constructor {
                     quote! {
@@ -603,6 +579,24 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                 let _bits = flag_value.bits();
 
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
+
+                let persist_after_call_tokens = if method_attribute.constructor {
+                    quote! {
+                        {
+                            use casper_contract_sdk::FieldStateAccess;
+                            let _ = _ret.write_state_to_fields().unwrap();
+                        }
+                    }
+                } else if receiver_is_ref && receiver_is_mut {
+                    quote! {
+                        {
+                            use casper_contract_sdk::FieldStateAccess;
+                            let _ = instance.write_state_to_fields().unwrap();
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
 
                 extern_entry_points.push(quote! {
 
@@ -631,9 +625,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                         #handle_call;
 
                         #handle_err;
-
-                        #handle_write_state;
-
+                        #persist_after_call_tokens
                         #handle_ret;
                     }
 
@@ -1234,19 +1226,23 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 };
 
                 let handle_dispatch = match func.sig.inputs.first() {
-                    Some(syn::FnArg::Receiver(_receiver)) => {
+                    Some(syn::FnArg::Receiver(receiver)) => {
                         assert!(
                             !method_attribute.private,
                             "can't make dispatcher for private method"
                         );
+                        let is_by_ref = receiver.reference.is_some();
+                        let is_mut = receiver.mutability.is_some();
                         quote! {
                             #vis extern "C" fn #dispatch_func_name<T>()
                             where
                                 T: #trait_name
                                     + #crate_path::serializers::borsh::BorshDeserialize
                                     + #crate_path::serializers::borsh::BorshSerialize
+                                    + #crate_path::FieldStateAccess
                                     + Default
                             {
+                                use casper_contract_sdk::FieldStateAccess;
 
                                 #[derive(#crate_path::serializers::borsh::BorshDeserialize, Debug)]
                                 #[borsh(crate = #borsh_path)]
@@ -1255,7 +1251,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 }
 
                                 let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
-                                let mut instance: T = #crate_path::casper::read_state().unwrap();
+                                let mut instance: T = T::read_state_from_fields().unwrap();
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = {
                                     match #resolve_abi_convention {
@@ -1285,7 +1281,10 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 let _ret = instance.#func_name(#(args.#arg_names,)*);
 
-                                #crate_path::casper::write_state(&instance).unwrap();
+                                if #is_by_ref && #is_mut {
+                                    use casper_contract_sdk::FieldStateAccess;
+                                    let _ = instance.write_state_to_fields().unwrap();
+                                }
 
                                 #handle_ret
                             }
@@ -1643,6 +1642,58 @@ fn process_casper_contract_state_for_struct(
         },
     };
 
+    // Build per-field read/write code for named fields
+    let (read_bindings, write_statements, init_fields) = match &contract_struct.fields {
+        syn::Fields::Named(fields) => {
+            let mut reads = Vec::new();
+            let mut writes = Vec::new();
+            let mut inits = Vec::new();
+            for field in &fields.named {
+                if let Some(field_ident) = &field.ident {
+                    let field_ty = &field.ty;
+                    reads.push(quote! {
+                        let #field_ident: #field_ty = {
+                            const FIELD_NAME: &'static str = stringify!(#field_ident);
+                            let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
+                                FIELD_NAME,
+                            );
+                            let mut buf = #crate_path::prelude::Vec::new();
+                            let info = #crate_path::casper::read(
+                                #crate_path::casper_executor_wasm_common::keyspace::Keyspace::Context(
+                                    #crate_path::casper_executor_wasm_common::keyspace::ContextAddr::from(state_addr)
+                                ),
+                                |sz| #crate_path::reserve_vec_space(&mut buf, sz)
+                            )?;
+                            if let Some(()) = info {
+                                #crate_path::serializers::borsh::from_slice(&buf).unwrap()
+                            } else {
+                                return Err(#crate_path::casper_executor_wasm_common::error::HostResult::NotFound);
+                            }
+                        };
+                    });
+                    writes.push(quote! {
+                        {
+                            const FIELD_NAME: &'static str = stringify!(#field_ident);
+                            let state_addr = #crate_path::casper_executor_wasm_common::keyspace::StateAddrInner::new(
+                                FIELD_NAME,
+                            );
+                            let bytes = #crate_path::serializers::borsh::to_vec(&self.#field_ident).unwrap();
+                            #crate_path::casper::write(
+                                #crate_path::casper_executor_wasm_common::keyspace::Keyspace::Context(
+                                    #crate_path::casper_executor_wasm_common::keyspace::ContextAddr::from(state_addr)
+                                ),
+                                &bytes
+                            )?;
+                        }
+                    });
+                    inits.push(quote! { #field_ident, });
+                }
+            }
+            (reads, writes, inits)
+        }
+        _ => (Vec::new(), Vec::new(), Vec::new()),
+    };
+
     quote! {
         #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
         #[borsh(crate = #borsh_path)]
@@ -1664,6 +1715,18 @@ fn process_casper_contract_state_for_struct(
         impl #crate_path::compat::types::CLTyped for #struct_name {
             fn cl_type() -> #crate_path::compat::types::CLType {
                 #crate_path::compat::types::CLType::Any
+            }
+        }
+
+        impl #crate_path::FieldStateAccess for #struct_name {
+            fn read_state_from_fields() -> Result<Self, #crate_path::casper_executor_wasm_common::error::HostResult> {
+                #(#read_bindings)*
+                Ok(Self { #(#init_fields)* })
+            }
+
+            fn write_state_to_fields(&self) -> Result<(), #crate_path::casper_executor_wasm_common::error::HostResult> {
+                #(#write_statements)*
+                Ok(())
             }
         }
     }

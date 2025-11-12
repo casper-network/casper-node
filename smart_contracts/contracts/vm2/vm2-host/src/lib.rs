@@ -2,7 +2,10 @@
 
 use casper_contract_sdk::{
     casper::casper_ffi,
-    casper_executor_wasm_common::{flags::ReturnFlags, keyspace::Keyspace},
+    casper_executor_wasm_common::{
+        flags::ReturnFlags,
+        keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    },
     prelude::*,
     serializers::borsh,
     types::{EntityAddr, HashAlgorithm, IOFunctionOption},
@@ -140,7 +143,13 @@ impl MinimalHostWrapper {
     }
 
     pub fn read(&self) {
-        casper::read(Keyspace::Context(&[]), |_| None).ok();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::read(Keyspace::Context(ContextAddr::from(addr)), |_| None).ok();
     }
 
     pub fn ret(&self) {
@@ -156,12 +165,24 @@ impl MinimalHostWrapper {
     }
 
     pub fn write(&self) {
-        casper::write(Keyspace::Context(&[]), &[]).ok();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &[]).ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {
         let buffer = vec![0; n as usize];
-        casper::write(Keyspace::Context(&[0]), &buffer).ok();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            [0u8; 32],
+        );
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &buffer).ok();
     }
 
     pub fn ret_faulty_flags(&self) {
