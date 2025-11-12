@@ -152,7 +152,7 @@ impl HasTraits {
 
 fn perform_test() {
     let contract_handle = ContractBuilder::<HasTraitsRef>::new()
-        .default_create()
+        .create(|| HasTraitsRef::new(0))
         .expect("should create contract");
     let trait1_handle =
         ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
