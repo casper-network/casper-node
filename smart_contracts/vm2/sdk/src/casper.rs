@@ -108,6 +108,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let ctx = &Some(f) as *const _ as *mut _;
 
     let input_data = borsh::to_vec(&(key_space, key_bytes)).expect("Expected borsh to work");
+
     let ret = unsafe {
         casper_contract_sdk_sys::casper_ffi(
             GlobalStateFunctionOption::Read.into(),
@@ -143,6 +144,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
     };
 
     let input_data = borsh::to_vec(&(key_space, key_bytes, value)).expect("Expected borsh to work");
+
     extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
         // Write shouldn't have any output data and should not return anything
         ptr::null_mut()
@@ -172,7 +174,9 @@ pub fn remove(key: Keyspace) -> Result<(), HostResult> {
             (KeyspaceTag::NamedKey as u64, key_name.as_bytes().to_vec())
         }
     };
+
     let input_data = borsh::to_vec(&(key_space, key_bytes)).expect("Expected borsh to work");
+
     extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
         // Write shouldn't have any output data and should not return anything
         ptr::null_mut()
@@ -262,8 +266,8 @@ pub fn casper_call(
     entry_point: &str,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, Result<(), CallError>) {
-    let input_data = borsh::to_vec(&(address, input_data, entry_point, transferred_value))
-        .expect("Expected borsh to work");
+    let input_data =
+        borsh::to_vec(&(address, input_data, entry_point, transferred_value)).expect("borsh");
     let (output_data, result_code) = casper_ffi(ControlFunctionOption::Call.into(), &input_data);
     (output_data, call_result_from_code(result_code))
 }
@@ -567,7 +571,11 @@ pub enum GenericHashError {
 
 #[inline]
 pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], GenericHashError> {
-    let input_data = borsh::to_vec(&(algorithm, data)).expect("Expected borsh to work");
+    let mut input_data = Vec::new();
+    input_data.extend_from_slice(&(algorithm as u32).to_le_bytes());
+    input_data.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    input_data.extend_from_slice(data);
+
     let (output_data, result_code) =
         casper_ffi(CryptoFunctionOption::GenericHash.into(), &input_data);
 
@@ -596,6 +604,7 @@ pub fn recover_secp256k1(
 ) -> Result<PublicKey, RecoverSecp256K1Error> {
     let input_data =
         borsh::to_vec(&(recovery_id, message, signature)).expect("Expected borsh to work");
+
     let (output_data, result_code) =
         casper_ffi(CryptoFunctionOption::RecoverSecp256K1.into(), &input_data);
     match result_from_code(result_code) {
