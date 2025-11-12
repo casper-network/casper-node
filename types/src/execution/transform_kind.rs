@@ -1,4 +1,7 @@
-use alloc::{string::ToString, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{any, convert::TryFrom};
 
 #[cfg(feature = "datasize")]
@@ -92,6 +95,8 @@ pub enum TransformKindV2 {
     Failure(TransformError),
     /// Registers a value return from the contract
     Ret(RetValue),
+    /// Registers an entry point called.
+    EntryPointCalled(Key, String),
 }
 
 impl TransformKindV2 {
@@ -214,6 +219,7 @@ impl TransformKindV2 {
             },
             TransformKindV2::Failure(error) => Err(error),
             TransformKindV2::Ret(_) => Ok(store(stored_value)),
+            TransformKindV2::EntryPointCalled(_, _) => Ok(store(stored_value)),
         }
     }
 
@@ -265,6 +271,9 @@ impl ToBytes for TransformKindV2 {
                 TransformKindV2::Failure(error) => error.serialized_length(),
                 TransformKindV2::Prune(value) => value.serialized_length(),
                 TransformKindV2::Ret(value) => value.serialized_length(),
+                TransformKindV2::EntryPointCalled(addr, entry_point_name) => {
+                    addr.serialized_length() + entry_point_name.serialized_length()
+                }
             }
     }
 
@@ -310,6 +319,11 @@ impl ToBytes for TransformKindV2 {
             TransformKindV2::Ret(value) => {
                 (TransformTag::Ret as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
+            }
+            TransformKindV2::EntryPointCalled(addr, entry_point_name) => {
+                (TransformTag::EntryPointCalled as u8).write_bytes(writer)?;
+                addr.write_bytes(writer)?;
+                entry_point_name.write_bytes(writer)
             }
         }
     }
@@ -366,6 +380,18 @@ impl FromBytes for TransformKindV2 {
             tag if tag == TransformTag::Prune as u8 => {
                 let (key, remainder) = Key::from_bytes(remainder)?;
                 Ok((TransformKindV2::Prune(key), remainder))
+            }
+            tag if tag == TransformTag::Ret as u8 => {
+                let (ret_val, remainder) = RetValue::from_bytes(remainder)?;
+                Ok((TransformKindV2::Ret(ret_val), remainder))
+            }
+            tag if tag == TransformTag::EntryPointCalled as u8 => {
+                let (key, remainder) = Key::from_bytes(remainder)?;
+                let (entrypoint_name, remainder) = String::from_bytes(remainder)?;
+                Ok((
+                    TransformKindV2::EntryPointCalled(key, entrypoint_name),
+                    remainder,
+                ))
             }
             _ => {
                 error!(%tag, rem_len = remainder.len(), "FromBytes for TransformKindV2: unknown tag");
@@ -439,6 +465,7 @@ enum TransformTag {
     Failure = 8,
     Prune = 9,
     Ret = 10,
+    EntryPointCalled = 11,
 }
 
 #[cfg(test)]

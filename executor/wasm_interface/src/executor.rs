@@ -483,55 +483,6 @@ pub enum FFIMenu {
 }
 
 impl FFIMenu {
-    pub fn allowed_in_sandbox(&self) -> bool {
-        match self {
-            FFIMenu::Mint(mint_methods) => match mint_methods {
-                MintMethods::Burn => false,
-                MintMethods::Transfer => false,
-                MintMethods::TransferPurse => false,
-            },
-            FFIMenu::Auction(auction_methods) => match auction_methods {
-                AuctionMethods::Activate => false,
-                AuctionMethods::Bid => false,
-                AuctionMethods::Withdraw => false,
-                AuctionMethods::Delegate => false,
-                AuctionMethods::Undelegate => false,
-                AuctionMethods::Redelegate => false,
-                AuctionMethods::AddReservation => false,
-                AuctionMethods::CancelReservation => false,
-                AuctionMethods::ChangePublicKey => false,
-            },
-            FFIMenu::Crypto(crypto_methods) => match crypto_methods {
-                CryptoMethods::AltBn128Add => true,
-                CryptoMethods::AltBn128Multiply => true,
-                CryptoMethods::AltBn128Pairing => true,
-                CryptoMethods::GenericHash => true,
-                CryptoMethods::RecoverSecp256K1 => true,
-            },
-            FFIMenu::Emit(emit_methods) => match emit_methods {
-                EmitMethods::PrintStd => true,
-                EmitMethods::Native => false,
-            },
-            FFIMenu::GlobalState(global_state_methods) => match global_state_methods {
-                GlobalStateMethods::Read => true,
-                GlobalStateMethods::Write => false,
-                GlobalStateMethods::Remove => false,
-                GlobalStateMethods::GetBalance => true,
-                GlobalStateMethods::GetInfo => true,
-                GlobalStateMethods::Create => false,
-            },
-            FFIMenu::Control(control_methods) => match control_methods {
-                ControlMethods::Call => false,
-                ControlMethods::Upgrade => false,
-            },
-            FFIMenu::IO(iomethods) => match iomethods {
-                IOMethods::Return => true,
-                IOMethods::CopyInput => true,
-                IOMethods::Revert => true,
-            },
-        }
-    }
-
     pub fn all_ffi_options() -> impl Iterator<Item = FFIMenu> {
         FFIPrimitiveValue::iter().map(|raw| FFIMenu::from(&raw))
     }
@@ -612,8 +563,8 @@ pub enum ExecuteError {
     InvalidKeyForPurse(Key),
     #[error("attempt to call a non-existent ffi option {0}")]
     InvalidFFIOption(u32),
-    #[error("attempted writing in restricted mode")]
-    AttemptWriteInRestricted,
+    #[error("unexpected output after vm1 return")]
+    UnexpectedOutputAfterVm1Ret,
 }
 
 #[derive(Debug, Error)]

@@ -77,7 +77,7 @@ impl Update {
             .get(&Key::BidAddr(BidAddr::from(account)))
             .expect("stored value should exist")
             .as_bid_kind()
-            .expect("stored value should be be BidKind")
+            .expect("stored value should be BidKind")
             .clone()
     }
 

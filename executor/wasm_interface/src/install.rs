@@ -226,9 +226,9 @@ pub struct InstallContractResult {
     pub gas_usage: GasUsage,
     /// Effects produced by the execution.
     pub effects: Effects,
-    /// Cache of tracking copy effects produced by the execution.
+    /// Tracking copy cache.
     pub cache: TrackingCopyCache,
-    /// Messages produced by the execution.
+    /// Messages emitted during execution
     pub messages: Messages,
 }
 
@@ -243,6 +243,10 @@ impl InstallContractResult {
 
     pub fn smart_contract_addr(&self) -> &[u8; 32] {
         &self.smart_contract_addr
+    }
+
+    pub fn messages(&self) -> &Messages {
+        &self.messages
     }
 }
 
@@ -276,6 +280,10 @@ impl InstallContractWithProviderResult {
 
     pub fn post_state_hash(&self) -> Digest {
         self.post_state_hash
+    }
+
+    pub fn messages(&self) -> &Messages {
+        &self.messages
     }
 }
 

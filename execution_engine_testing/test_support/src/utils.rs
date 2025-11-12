@@ -11,7 +11,9 @@ use casper_execution_engine::engine_state::{Error, WasmV1Result};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{bytesrepr::Bytes, GenesisAccount, GenesisConfig};
 
-use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
+use super::{
+    ChainspecConfig, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+};
 use crate::{
     GenesisConfigBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
@@ -134,9 +136,43 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
         .build()
 }
 
+/// Returns an [`GenesisConfig`] using a given chainspec config.
+pub fn create_genesis_config_with_chainspec(
+    accounts: Vec<GenesisAccount>,
+    chainspec: ChainspecConfig,
+) -> GenesisConfig {
+    GenesisConfigBuilder::default()
+        .with_accounts(accounts)
+        .with_wasm_config(chainspec.wasm_config)
+        .with_system_config(chainspec.system_costs_config)
+        .with_validator_slots(chainspec.core_config.validator_slots)
+        .with_auction_delay(chainspec.core_config.auction_delay)
+        .with_locked_funds_period_millis(chainspec.core_config.locked_funds_period.millis())
+        .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
+        .with_unbonding_delay(chainspec.core_config.unbonding_delay)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_storage_costs(chainspec.storage_costs)
+        .with_addressable_entity_enabled(chainspec.core_config.addressable_entity_enabled)
+        .build()
+}
+
 /// Returns a [`GenesisRequest`].
 pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> GenesisRequest {
     let config = create_genesis_config(accounts);
+    GenesisRequest::new(
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
+        config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    )
+}
+
+/// Returns a [`GenesisRequest`] using a given chainspec config.
+pub fn create_run_genesis_request_with_chainspec_config(
+    accounts: Vec<GenesisAccount>,
+    chainspec_config: ChainspecConfig,
+) -> GenesisRequest {
+    let config = create_genesis_config_with_chainspec(accounts, chainspec_config);
     GenesisRequest::new(
         DEFAULT_GENESIS_CONFIG_HASH,
         DEFAULT_PROTOCOL_VERSION,

@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '2.0.0'
+version = '2.1.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 11000
+activation_point = 17889
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -43,7 +43,7 @@ start_protocol_version_with_strict_finality_signatures_required = '1.5.0'
 # Used to determine finality sufficiency for new joiners syncing blocks created
 # in a protocol version before
 # `start_protocol_version_with_strict_finality_signatures_required`.
-legacy_required_finality = 'Strict'
+legacy_required_finality = 'Any'
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
 auction_delay = 1
@@ -121,7 +121,7 @@ refund_handling = { type = 'refund', refund_ratio = [75, 100] }
 #   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
 #                 administrator accounts
 #   'burn': fees are burned
-fee_handling = { type = 'pay_to_proposer' }
+fee_handling = { type = 'burn' }
 # If a validator would recieve a validator credit, it cannot exceed this percentage of their total stake.
 validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
@@ -199,7 +199,7 @@ max_timestamp_leeway = '5 seconds'
 # Configuration of the transaction runtime.
 [transactions.enabled_runtime]
 vm_casper_v1 = true
-vm_casper_v2 = false
+vm_casper_v2 = true
 
 [transactions.v1]
 # The configuration settings for the lanes of transactions including both native and Wasm based interactions.
@@ -417,24 +417,24 @@ cost = 150
 size_multiplier = 100
 
 [wasm.v2.host_ffi_opt_costs]
-read = { base_cost = 0, per_byte = 0 }
-write = { base_cost = 0, per_byte = 0 }
-remove = { base_cost = 0, per_byte = 0 }
-copy_input = { base_cost = 0, per_byte = 0 }
-ret = { base_cost = 0, per_byte = 0 }
-revert = { base_cost = 0, per_byte = 0 }
-create = { base_cost = 0, per_byte = 0 }
-transfer = { base_cost = 0, per_byte = 0 }
-env_balance = { base_cost = 0, per_byte = 0 }
-upgrade = { base_cost = 0, per_byte = 0 }
-call = { base_cost = 0, per_byte = 0 }
-print = { base_cost = 0, per_byte = 0 }
-emit = { base_cost = 0, per_byte = 0 }
-env_info = { base_cost = 0, per_byte = 0 }
-generic_hash = { base_cost = 0, per_byte = 0 }
-recover_secp256k1 = { base_cost = 0, per_byte = 0 }
-alt_bn128_add = { base_cost = 1_000_000, per_byte = 0 }
-alt_bn128_mul = { base_cost = 1_000_000, per_byte = 0 }
+read = { base_cost = 1_000_000, per_byte = 2_000 }
+write = { base_cost = 1_000_000, per_byte = 2_000 }
+remove = { base_cost = 1_000_000, per_byte = 2_000 }
+copy_input = { base_cost = 1_000_000, per_byte = 2_000 }
+ret = { base_cost = 1_000_000, per_byte = 2_000 }
+revert = { base_cost = 1_000_000, per_byte = 2_000 }
+create = { base_cost = 1_000_000, per_byte = 2_000 }
+transfer = { base_cost = 1_000_000, per_byte = 2_000 }
+env_balance = { base_cost = 1_000_000, per_byte = 2_000 }
+upgrade = { base_cost = 1_000_000, per_byte = 2_000 }
+call = { base_cost = 1_000_000, per_byte = 2_000 }
+print = { base_cost = 1_000_000, per_byte = 2_000 }
+emit = { base_cost = 1_000_000, per_byte = 2_000 }
+env_info = { base_cost = 1_000_000, per_byte = 2_000 }
+generic_hash = { base_cost = 1_000_000, per_byte = 2_000 }
+recover_secp256k1 = { base_cost = 1_000_000, per_byte = 2_000 }
+alt_bn128_add = { base_cost = 1_000_000, per_byte = 2_000 }
+alt_bn128_mul = { base_cost = 1_000_000, per_byte = 2_000 }
 alt_bn128_pairing = { base_cost = 1_000_000, per_byte = 2_000 }
 
 [wasm.messages_limits]

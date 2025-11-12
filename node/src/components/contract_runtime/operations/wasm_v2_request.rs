@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::MetaTransaction;
 use bytes::Bytes;
 use casper_executor_wasm::ExecutorV2;
+use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
@@ -20,9 +21,9 @@ use casper_storage::{
     AddressGeneratorBuilder,
 };
 use casper_types::{
-    bytesrepr::ToBytes, execution::Effects, BlockHash, Digest, Gas, Key, TransactionArgs,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntimeParams,
-    TransactionTarget, U512,
+    bytesrepr::ToBytes, contract_messages::Messages, execution::Effects, BlockHash, Digest, Gas,
+    Key, TransactionArgs, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionTarget, U512,
 };
 use thiserror::Error;
 use tracing::info;
@@ -66,6 +67,24 @@ impl WasmV2Result {
         match self {
             WasmV2Result::Install(result) => result.post_state_hash(),
             WasmV2Result::Execute(result) => result.post_state_hash(),
+        }
+    }
+
+    pub(crate) fn host_error(&self) -> Option<&CallError> {
+        match self {
+            WasmV2Result::Install(_) => None,
+            WasmV2Result::Execute(execute_with_provider_result) => {
+                execute_with_provider_result.host_error.as_ref()
+            }
+        }
+    }
+
+    pub(crate) fn messages(&self) -> &Messages {
+        match self {
+            WasmV2Result::Install(install_contract_result) => install_contract_result.messages(),
+            WasmV2Result::Execute(execute_with_provider_result) => {
+                execute_with_provider_result.messages()
+            }
         }
     }
 }

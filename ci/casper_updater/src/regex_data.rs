@@ -226,6 +226,13 @@ pub mod execution_engine_testing_test_support {
 pub mod node {
     use super::*;
 
+    pub static CHAINSPEC_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"(?m)(^version = )'([^']+)"#).unwrap());
+
+    fn chainspec_toml_replacement(updated_version: &str) -> String {
+        format!(r#"$1'{}"#, updated_version)
+    }
+
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
@@ -240,6 +247,36 @@ pub mod node {
                 )
                 .unwrap(),
                 replacement_with_slash,
+            ),
+            DependentFile::new(
+                "resources/local/chainspec.toml.in",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/production/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/mainnet/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/testnet/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/integration-test/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/devnet/chainspec.toml",
+                CHAINSPEC_REGEX.clone(),
+                chainspec_toml_replacement,
             ),
         ]
     });
@@ -277,7 +314,7 @@ pub mod smart_contracts_sdk_sys {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "smart_contracts/sdk_sys/Cargo.toml",
+                "smart_contracts/vm2/sdk_sys/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             ),
@@ -292,12 +329,12 @@ pub mod smart_contracts_sdk_sys {
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 SMART_CONTRACTS_SDK_SYS_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 SMART_CONTRACTS_SDK_SYS_VERSION_REGEX.clone(),
                 replacement,
             ),
@@ -310,7 +347,7 @@ pub mod smart_contracts_sdk {
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![DependentFile::new(
-            "smart_contracts/sdk/Cargo.toml",
+            "smart_contracts/vm2/sdk/Cargo.toml",
             MANIFEST_VERSION_REGEX.clone(),
             replacement,
         )]
@@ -323,12 +360,12 @@ pub mod smart_contracts_macros {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-contract-macros = \{[^\}]*version = )"(?:[^"]+)"#)
                     .unwrap(),
                 replacement,
@@ -371,12 +408,12 @@ pub mod executor_wasm_common {
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/macros/Cargo.toml",
+                "smart_contracts/vm2/macros/Cargo.toml",
                 EXECUTOR_WASM_COMMON_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "smart_contracts/sdk/Cargo.toml",
+                "smart_contracts/vm2/sdk/Cargo.toml",
                 EXECUTOR_WASM_COMMON_VERSION_REGEX.clone(),
                 replacement,
             ),

@@ -223,6 +223,24 @@ impl ExecuteRequestBuilder {
         )
     }
 
+    /// Returns an [`ExecuteRequest`] derived from a deploy with sessiond and payment bytecode.
+    pub fn standard_and_payment(
+        account_hash: AccountHash,
+        session_file: &str,
+        session_args: RuntimeArgs,
+        payment_file: &str,
+        payment_args: RuntimeArgs,
+    ) -> Self {
+        Self::standard_and_payment_with_protocol_version(
+            account_hash,
+            session_file,
+            session_args,
+            payment_file,
+            payment_args,
+            DEFAULT_PROTOCOL_VERSION,
+        )
+    }
+
     /// Returns an [`ExecuteRequest`] derived from a deploy with standard dependencies.
     pub fn standard_with_protocol_version(
         account_hash: AccountHash,
@@ -236,6 +254,24 @@ impl ExecuteRequestBuilder {
             .with_standard_payment(runtime_args! {
                 ARG_AMOUNT => *DEFAULT_PAYMENT
             })
+            .with_authorization_keys(&[account_hash])
+            .build();
+        Self::from_deploy_item_for_protocol_version(&deploy_item, protocol_version)
+    }
+
+    /// Returns an [`ExecuteRequest`] derived from a deploy with standard dependencies.
+    pub fn standard_and_payment_with_protocol_version(
+        account_hash: AccountHash,
+        session_file: &str,
+        session_args: RuntimeArgs,
+        payment_file: &str,
+        payment_args: RuntimeArgs,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(account_hash)
+            .with_session_code(session_file, session_args)
+            .with_payment_code(payment_file, payment_args)
             .with_authorization_keys(&[account_hash])
             .build();
         Self::from_deploy_item_for_protocol_version(&deploy_item, protocol_version)

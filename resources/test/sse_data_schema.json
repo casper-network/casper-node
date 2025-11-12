@@ -3717,6 +3717,29 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Registers an entry point called.",
+          "type": "object",
+          "required": [
+            "EntryPointCalled"
+          ],
+          "properties": {
+            "EntryPointCalled": {
+              "type": "array",
+              "items": [
+                {
+                  "$ref": "#/definitions/Key"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -5364,6 +5387,12 @@
     "RetValue": {
       "description": "Type disambiguating between the formatting of the returned data.",
       "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        },
         {
           "description": "The returned data is CLValue.",
           "type": "object",

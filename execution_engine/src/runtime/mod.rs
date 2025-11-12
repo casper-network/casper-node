@@ -718,13 +718,13 @@ where
                 self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
 
                 // Emit Ret transform to the execution journal
-                if let Some(cl_value) = &self.host_buffer {
-                    let key = self.context.get_context_key();
-                    self.context
-                        .state()
-                        .borrow_mut()
-                        .ret(key, RetValue::CLValue(cl_value.clone()));
-                }
+                let ret_val = if let Some(cl_value) = &self.host_buffer {
+                    RetValue::CLValue(cl_value.clone())
+                } else {
+                    RetValue::Unit
+                };
+                let key = self.context.get_context_key();
+                self.context.state().borrow_mut().ret(key, ret_val);
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),
@@ -1455,6 +1455,12 @@ where
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
+        let context_key = self.context.get_context_key();
+        self.context.state().borrow_mut().entry_point_called(
+            context_key,
+            self.context.get_context_key(),
+            DEFAULT_ENTRY_POINT_NAME.to_string(),
+        );
         #[cfg(feature = "test-support")]
         let max_stack_height = wasm_config.v1().max_stack_height();
         let module = preprocess(*wasm_config, module_bytes)?;
@@ -1483,6 +1489,10 @@ where
             // returned the unit type `()` as per Rust functions which don't specify a
             // return value.
             Ok(_) => {
+                self.context
+                    .state()
+                    .borrow_mut()
+                    .ret(self.context.get_context_key(), RetValue::Unit);
                 return Ok(self.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
@@ -1746,7 +1756,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        let (footprint, entity_addr, package) = match identifier {
+        let (footprint, entity_addr, package, contract_key) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let entity_addr = if self.context.is_system_addressable_entity(&contract_hash)? {
                     EntityAddr::new_system(contract_hash)
@@ -1803,7 +1813,13 @@ where
                     return Err(ExecError::DisabledEntity(entity_hash));
                 }
 
-                (footprint, entity_addr, package)
+                let contract_key = if self.context.engine_config().enable_entity {
+                    Key::AddressableEntity(entity_addr)
+                } else {
+                    Key::Hash(contract_hash)
+                };
+
+                (footprint, entity_addr, package, contract_key)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
@@ -1887,10 +1903,20 @@ where
                         )
                     }
                 };
-
-                (footprint, entity_addr, package)
+                let contract_key = if self.context.engine_config().enable_entity {
+                    Key::AddressableEntity(entity_addr)
+                } else {
+                    Key::Hash(hash_addr)
+                };
+                (footprint, entity_addr, package, contract_key)
             }
         };
+
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            contract_key,
+            entry_point_name.to_string(),
+        );
 
         if let EntityKind::Account(_) = footprint.entity_kind() {
             return Err(ExecError::InvalidContext);
@@ -1915,6 +1941,11 @@ where
                 return Err(ExecError::NoSuchMethod(entry_point_name.to_owned()));
             }
         };
+
+        // if session the caller's context
+        // else the called contract's context
+        let context_entity_key =
+            self.get_context_key_for_contract_call(entity_addr, entry_point)?;
 
         let entry_point_type = entry_point.entry_point_type();
 
@@ -1970,11 +2001,6 @@ where
         {
             return Err(ExecError::DisabledEntity(entity_hash));
         }
-
-        // if session the caller's context
-        // else the called contract's context
-        let context_entity_key =
-            self.get_context_key_for_contract_call(entity_addr, entry_point)?;
 
         let context_entity_hash = context_entity_key
             .into_entity_hash_addr()
@@ -2199,7 +2225,6 @@ where
             .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
         runtime.context.transfers().clone_into(transfers);
-
         match result {
             Ok(_) => {
                 // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but
@@ -2215,6 +2240,8 @@ where
                 }
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
+                let key = self.context.get_context_key();
+                self.context.state().borrow_mut().ret(key, RetValue::Unit);
                 Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
             }
             Err(error) => {

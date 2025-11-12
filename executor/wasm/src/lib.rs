@@ -57,6 +57,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         EntryPoints as ContractEntryPoints,
     },
+    execution::RetValue,
     AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
     CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
     EntityEntryPointV2, EntityEntryPointV2Flags, EntityKind, EntryPointAccess, EntryPointAddr,
@@ -74,6 +75,9 @@ pub mod chainspec_config;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 
+// If calculating the wasm entry point for session bytecode ever changes we need
+// to revisit the code that produces EntyPointCalled journal entries for session
+// code (both for VM1 and VM2)
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 #[derive(Copy, Clone, Debug)]
@@ -288,8 +292,13 @@ impl ExecutorV2 {
         mut tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
-        if let Some(ffi_menu_selection) = execute_request.execution_kind.ffi_selection() {
-            return self.execute_ffi(ffi_menu_selection, tracking_copy, execute_request);
+        if let Some(system_contract_menu_selection) = execute_request.execution_kind.ffi_selection()
+        {
+            return self.execute_ffi(
+                system_contract_menu_selection,
+                tracking_copy,
+                execute_request,
+            );
         }
 
         let ExecuteRequest {
@@ -679,23 +688,29 @@ impl ExecutorV2 {
         let mut initial_tracking_copy = tracking_copy.fork2();
 
         // Derive callee key from the execution target.
-        let callee_key = match &execution_kind {
+        let (callee_key, entry_point_name) = match &execution_kind {
             ExecutionKind::Stored {
                 address: smart_contract_package_addr,
+                entry_point,
                 ..
             } => {
-                if initial_tracking_copy.addressable_entity_enabled() {
+                let key = if tracking_copy.addressable_entity_enabled() {
                     Key::Package((*smart_contract_package_addr).into())
                 } else {
                     Key::Hash(*smart_contract_package_addr)
-                }
+                };
+                (key, entry_point.clone())
             }
-            ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
+            ExecutionKind::SessionBytes(_wasm_bytes) => (
+                Key::Account(initiator),
+                DEFAULT_WASM_ENTRY_POINT.to_string(),
+            ),
             ExecutionKind::System(_) => {
                 error!("System executions are not called in this way. This should be unreachable.");
                 return Err(ExecuteError::Fatal(FatalHostError::DispatchSystemContract));
             }
         };
+        tracking_copy.entry_point_called(caller_key, callee_key, entry_point_name);
         let ffi_call_costs = self.build_ffi_call_costs(&self.config);
         let context = Context {
             initiator,
@@ -764,27 +779,23 @@ impl ExecutorV2 {
         let context = instance.teardown();
 
         let Context {
-            tracking_copy: final_tracking_copy,
+            tracking_copy: mut final_tracking_copy,
             ..
         } = context;
 
         match vm_result {
-            Ok(()) => Ok(ExecuteResult {
-                host_error: None,
-                output: None,
-                gas_usage,
-                effects: final_tracking_copy.effects(),
-                cache: final_tracking_copy.cache(),
-                messages: final_tracking_copy.messages(),
-            }),
-            Err(VMError::Revert(error)) => Ok(ExecuteResult {
-                host_error: Some(CallError::Revert(error)),
-                output: None,
-                gas_usage,
-                effects: initial_tracking_copy.effects(),
-                cache: initial_tracking_copy.cache(),
-                messages: initial_tracking_copy.messages(),
-            }),
+            Ok(()) => {
+                // We put a Ret in if the function ended successfully
+                final_tracking_copy.ret(caller_key, RetValue::Unit);
+                Ok(ExecuteResult {
+                    host_error: None,
+                    output: None,
+                    gas_usage,
+                    effects: final_tracking_copy.effects(),
+                    cache: final_tracking_copy.cache(),
+                    messages: final_tracking_copy.messages(),
+                })
+            }
             Err(VMError::Return { flags, data }) => {
                 let host_error = if flags.contains(ReturnFlags::ROLLBACK) {
                     // The contract has rolled back.
@@ -796,6 +807,11 @@ impl ExecutorV2 {
                         final_tracking_copy.cache(),
                         final_tracking_copy.messages(),
                     );
+                    let ret_val = match &data {
+                        None => RetValue::Unit,
+                        Some(data) => RetValue::Bytes(data.to_vec().into()),
+                    };
+                    initial_tracking_copy.ret(caller_key, ret_val);
 
                     None
                 };
@@ -809,6 +825,14 @@ impl ExecutorV2 {
                     messages: initial_tracking_copy.messages(),
                 })
             }
+            Err(VMError::Revert(error)) => Ok(ExecuteResult {
+                host_error: Some(CallError::Revert(error)),
+                output: None,
+                gas_usage,
+                effects: initial_tracking_copy.effects(),
+                cache: initial_tracking_copy.cache(),
+                messages: initial_tracking_copy.messages(),
+            }),
             Err(VMError::OutOfGas) => Ok(ExecuteResult {
                 host_error: Some(CallError::CalleeGasDepleted),
                 output: None,
@@ -1042,7 +1066,7 @@ impl ExecutorV2 {
                 if output.is_some() {
                     error!("output is not none after ExecutionEngineV1 execution");
                     // ExecutionEngineV1 sets output to None when error occurred.
-                    return Err(ExecuteError::Fatal(FatalHostError::UnexpectedOutput));
+                    return Err(ExecuteError::UnexpectedOutputAfterVm1Ret);
                 }
                 let revert_code: u32 = (*revert_code).into();
                 output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.

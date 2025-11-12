@@ -88,8 +88,6 @@ pub enum MemoryError {
 pub enum FatalHostError {
     #[error("type conversion failure")]
     TypeConversion,
-    #[error("contract already exists")]
-    ContractAlreadyExists,
     #[error("tracking copy error")]
     TrackingCopy,
     #[error("failed building execution request: {0}")]
@@ -104,18 +102,12 @@ pub enum FatalHostError {
     RemainingGasExceedsGasLimit,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
-    #[error("missing system contract")]
-    MissingSystemContract,
     #[error("dispatching system contract failed")]
     DispatchSystemContract,
     #[error("incompatible type: expected {expected}, found {found}")]
     UnexpectedStoredValueVariant { expected: String, found: String },
     #[error("Error on bytesrepr serialization/deserialization. Details: {0}")]
     Bytesrepr(BytesreprError),
-    #[error(
-        "Successfull execution of VM1 contract returned an output which is undefined behavior"
-    )]
-    UnexpectedOutput,
     #[error("Executor in a state that made in unable to proceed. Details: {0}")]
     CorruptExecutionState(String),
     #[error("Error when creating config: {0}")]

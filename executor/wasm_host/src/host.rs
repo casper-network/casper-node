@@ -45,19 +45,6 @@ enum EntityKindTag {
     Contract = 1,
 }
 
-pub trait FallibleInto<T> {
-    fn wrapped_try_into(self) -> VMResult<T>;
-}
-
-impl<From, To> FallibleInto<To> for From
-where
-    To: TryFrom<From>,
-{
-    fn wrapped_try_into(self) -> VMResult<To> {
-        To::try_from(self).map_err(|_| VMError::Fatal(FatalHostError::TypeConversion))
-    }
-}
-
 /// Consumes imputed amount of gas.
 fn charge_gas<S: GlobalStateReader>(
     caller: &mut impl Caller<Context = Context<S>>,
@@ -85,10 +72,6 @@ fn metered_write<S: GlobalStateReader>(
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
-    if caller.context().sandboxed {
-        return Err(VMError::Execute(ExecuteError::AttemptWriteInRestricted));
-    }
-
     charge_gas_storage(caller, value.serialized_length())?;
     caller.context_mut().tracking_copy.write(key, value);
     Ok(())
@@ -144,9 +127,6 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             return Err(VMError::Execute(ExecuteError::InvalidFFIOption(ffi_opt)));
         }
     };
-    if caller.context().sandboxed && !option.allowed_in_sandbox() {
-        return Err(VMError::Execute(ExecuteError::AttemptWriteInRestricted));
-    }
 
     let call_cost_definition = match caller.context().ffi_call_costs.get(&ffi_opt) {
         Some(ffi_call_cost) => ffi_call_cost,
@@ -221,7 +201,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             }
         },
         FFIMenu::IO(io_methods) => match io_methods {
-            IOMethods::Return => host_return(&mut caller, input_data).map(|code| (None, code)),
+            IOMethods::Return => host_return(input_data).map(|code| (None, code)),
             IOMethods::CopyInput => host_copy_input(&mut caller),
             IOMethods::Revert => host_revert(&mut caller, input_data).map(|code| (None, code)),
         },

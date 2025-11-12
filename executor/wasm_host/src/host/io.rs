@@ -5,17 +5,11 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_interface::{executor::ExecuteError, Caller, VMError, VMResult};
 use casper_storage::global_state::GlobalStateReader;
-use casper_types::{
-    bytesrepr::{self, Bytes as BytesreprBytes},
-    execution::RetValue,
-};
+use casper_types::bytesrepr::{self, Bytes as BytesreprBytes};
 
 use crate::context::Context;
 
-pub(crate) fn host_return<S: GlobalStateReader + 'static>(
-    caller: &mut impl Caller<Context = Context<S>>,
-    input: Bytes,
-) -> VMResult<u32> {
+pub(crate) fn host_return(input: Bytes) -> VMResult<u32> {
     let (flags, data) =
         match bytesrepr::deserialize_from_slice::<&Bytes, (u32, Option<BytesreprBytes>)>(&input) {
             Ok(res) => res,
@@ -34,14 +28,6 @@ pub(crate) fn host_return<S: GlobalStateReader + 'static>(
     };
 
     let data = data.map(|data| Bytes::from(data.take_inner()));
-    if let Some(data) = &data {
-        let key = caller.context().callee;
-        let bytes = casper_types::bytesrepr::Bytes::from(data.to_vec());
-        caller
-            .context_mut()
-            .tracking_copy
-            .ret(key, RetValue::Bytes(bytes));
-    }
     Err(VMError::Return { flags, data })
 }
 

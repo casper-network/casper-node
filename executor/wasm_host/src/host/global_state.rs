@@ -98,7 +98,7 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
     let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
         Ok(Some(StoredValue::CLValue(cl_value))) => {
             let CLType::Any = cl_value.cl_type() else {
-                return Err(FatalHostError::TypeConversion)?;
+                return Ok((None, HOST_ERROR_INVALID_INPUT));
             };
             Cow::Owned(cl_value.inner_bytes().to_owned())
         }
