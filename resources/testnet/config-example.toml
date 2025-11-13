@@ -29,7 +29,7 @@
 #       and a node backing a dapp interested in auction activity or tracking trends would prefer to run in ttl mode.
 # note: as time goes on, the time to sync back to genesis takes progressively longer.
 # note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
-#       (it is currently ~18 hours by default on production and production-like networks but subject to change).
+#       (it is currently ~2 hours by default on production and production-like networks but subject to change).
 # note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
 #        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
 #        only interested in recent activity.
@@ -46,7 +46,7 @@ max_attempts = 3
 # Default delay for the control events that have no dedicated delay requirements.
 control_logic_default_delay = '1 second'
 
-# Flag which forces the node to resync all of the blocks.
+# Flag which forces the node to resync all the blocks.
 force_resync = false
 
 # A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
@@ -54,7 +54,7 @@ force_resync = false
 shutdown_for_upgrade_timeout = '2 minutes'
 
 # Maximum time a node will wait for an upgrade to commit.
-upgrade_timeout = '3 hours'
+upgrade_timeout = '30 seconds'
 
 # The node detects when it should do a controlled shutdown when it is in a detectably bad state
 # in order to avoid potentially catastrophic uncontrolled crashes. Generally, a node should be
@@ -94,7 +94,7 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
-max_execution_delay = 3
+max_execution_delay = 6
 
 
 # =======================================
@@ -112,7 +112,7 @@ log_participation_interval = '1 minute'
 
 # The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
 # echo messages, before they vote to make the round skippable and move on to the next proposer.
-proposal_timeout = '10 seconds'
+proposal_timeout = '5 seconds'
 
 # The additional proposal delay that is still considered fast enough, in percent. This should
 # take into account variables like empty vs. full blocks, network traffic etc.
@@ -525,7 +525,7 @@ validate_and_store_timeout = '1 minute'
 [block_accumulator]
 
 # Block height difference threshold for starting to execute the blocks.
-attempt_execution_threshold = 3
+attempt_execution_threshold = 6
 
 # Accepted time interval for inactivity in block accumulator.
 dead_air_interval = '3 minutes'
@@ -564,7 +564,7 @@ latch_reset_interval = '5 seconds'
 #
 # A higher value can avoid creating needless validation work on an already-validated proposed
 # block, but comes at the cost of increased memory consumption.
-max_completed_entries = 3
+max_completed_entries = 6
 
 
 # ==================================

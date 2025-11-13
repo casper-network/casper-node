@@ -94,7 +94,7 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
 # The maximum number of blocks by which execution is allowed to lag behind finalization.
 # If it is more than that, consensus will pause, and resume once the executor has caught up.
-max_execution_delay = 3
+max_execution_delay = 6
 
 
 # =======================================
@@ -112,7 +112,7 @@ log_participation_interval = '1 minute'
 
 # The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
 # echo messages, before they vote to make the round skippable and move on to the next proposer.
-proposal_timeout = '10 seconds'
+proposal_timeout = '5 seconds'
 
 # The additional proposal delay that is still considered fast enough, in percent. This should
 # take into account variables like empty vs. full blocks, network traffic etc.
@@ -525,7 +525,7 @@ validate_and_store_timeout = '1 minute'
 [block_accumulator]
 
 # Block height difference threshold for starting to execute the blocks.
-attempt_execution_threshold = 3
+attempt_execution_threshold = 6
 
 # Accepted time interval for inactivity in block accumulator.
 dead_air_interval = '3 minutes'
@@ -564,7 +564,7 @@ latch_reset_interval = '5 seconds'
 #
 # A higher value can avoid creating needless validation work on an already-validated proposed
 # block, but comes at the cost of increased memory consumption.
-max_completed_entries = 3
+max_completed_entries = 6
 
 
 # ==================================
