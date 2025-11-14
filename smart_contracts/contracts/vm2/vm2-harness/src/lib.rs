@@ -15,10 +15,14 @@ use casper_contract_sdk::{
     meta::{MetaDefinition, MetaPrimitive, MetaTypeDefinition},
     prelude::Entity,
     serializers::borsh,
-    types::{Address, CallError, NamedKey, PublicKey},
+    types::{Address, CallError, HashAlgorithm, NamedKey, PublicKey},
 };
 
-use casper_executor_wasm_common::type_uid::Uid;
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, ContextAddr},
+    type_uid::Uid,
+    CollectionTypeTag,
+};
 use contracts::token_owner::TokenOwnerContractRef;
 
 #[casper(message(topic = "TestMessage"))]
@@ -625,29 +629,48 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let key = [0, 1, 2, 3];
         let value_1 = [4, 5, 6, 7];
         let value_2 = [8, 9, 10, 11, 12, 13, 14, 15];
-        let keyspace = Keyspace::Context(&key);
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            casper::generic_hash(&key, HashAlgorithm::Blake2b).unwrap(),
+        );
+        let keyspace = Keyspace::Context(ContextAddr::from(addr));
         // No value exists
-        assert_eq!(casper::read(keyspace, |_size| None), Ok(None));
+        assert_eq!(casper::read(keyspace.clone(), |_size| None), Ok(None));
 
         // Write a value
-        casper::write(keyspace, &value_1).unwrap();
+        casper::write(keyspace.clone(), &value_1).unwrap();
         // Value exists
-        assert_eq!(casper::read_into_vec(keyspace), Ok(Some(value_1.to_vec())));
+        assert_eq!(
+            casper::read_into_vec(keyspace.clone()),
+            Ok(Some(value_1.to_vec()))
+        );
         // Remove the value
-        casper::remove(keyspace).unwrap();
+        casper::remove(keyspace.clone()).unwrap();
         // No value exists
-        assert_eq!(casper::read_into_vec(keyspace), Ok(None));
+        assert_eq!(casper::read_into_vec(keyspace.clone()), Ok(None));
         // Removing again (aka removing non-existent key) should raise an error
-        assert_eq!(casper::remove(keyspace), Err(HostResult::NotFound));
+        assert_eq!(casper::remove(keyspace.clone()), Err(HostResult::NotFound));
         // Re-reading already purged value wouldn't be an issue
-        assert_eq!(casper::read_into_vec(keyspace), Ok(None));
+        assert_eq!(casper::read_into_vec(keyspace.clone()), Ok(None));
         // Write a new value under same key
-        casper::write(keyspace, &value_2).unwrap();
+        casper::write(keyspace.clone(), &value_2).unwrap();
         // New value exists
         assert_eq!(casper::read_into_vec(keyspace), Ok(Some(value_2.to_vec())));
 
         // Attempting to remove a definetely non-existent key should be an error
-        let keyspace = Keyspace::Context(b"this key definetely does not exists");
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            [0u8; 8],
+            casper::generic_hash(
+                b"this key definetely does not exists",
+                HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
+        );
+        let keyspace = Keyspace::Context(ContextAddr::from(addr));
         let result = casper::remove(keyspace);
         assert_eq!(result, Err(HostResult::NotFound));
     }

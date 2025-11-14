@@ -10,6 +10,7 @@ pub mod compat;
 pub mod meta;
 pub mod prelude;
 pub mod serializers;
+use casper_executor_wasm_common::error::HostResult;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub use linkme;
 pub mod build;
@@ -59,6 +60,11 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
         }
         NonNull::new(vec.as_mut_ptr())
     }
+}
+
+pub trait FieldStateAccess: Sized {
+    fn read_state_from_fields() -> Result<Self, HostResult>;
+    fn write_state_to_fields(&self) -> Result<(), HostResult>;
 }
 
 pub trait ContractRef {

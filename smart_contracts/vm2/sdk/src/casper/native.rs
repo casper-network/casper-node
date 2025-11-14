@@ -981,7 +981,6 @@ mod tests {
 
             dispatch_with(change_context_1, || {
                 casper::write(Keyspace::Context(b"test"), b"value 2").unwrap();
-                casper::write(Keyspace::State, b"state").unwrap();
             })
             .unwrap();
 

@@ -14,7 +14,7 @@ use crate::{
         Address, CallError, ControlFunctionOption, CryptoFunctionOption, EmitFunctionOption,
         GlobalStateFunctionOption, HashAlgorithm, IOFunctionOption, PublicKey,
     },
-    Message, ToCallData,
+    FieldStateAccess, Message, ToCallData,
 };
 use casper_contract_macros::TypeUid;
 
@@ -23,7 +23,7 @@ use casper_contract_sdk_sys::{CreateResult, EnvInfo};
 use casper_executor_wasm_common::{
     error::{result_from_code, HostResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
-    keyspace::Keyspace,
+    keyspace::{ContextAddr, Keyspace, StateAddrInner},
 };
 
 /// Print a message.
@@ -248,8 +248,8 @@ pub fn casper_call(
     entry_point: &str,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, Result<(), CallError>) {
-    let input_data = borsh::to_vec(&(address, input_data, entry_point, transferred_value))
-        .expect("Expected borsh to work");
+    let input_data =
+        borsh::to_vec(&(address, input_data, entry_point, transferred_value)).expect("borsh");
     let (output_data, result_code) = casper_ffi(ControlFunctionOption::Call.into(), &input_data);
     (output_data, call_result_from_code(result_code))
 }
@@ -274,31 +274,37 @@ pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, HostResult> {
     Ok(out)
 }
 
-/// Read from the global state into a vector.
-pub fn has_state() -> Result<bool, HostResult> {
-    // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
-    let mut vec = Vec::new();
-    let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
-    match read_info {
-        Some(()) => Ok(true),
+/// Read full contract state using macro-generated field methods
+pub fn read_contract_state<T: FieldStateAccess>() -> Result<T, HostResult> {
+    T::read_state_from_fields()
+}
+
+/// Write full contract state using macro-generated field methods
+pub fn write_contract_state<T: FieldStateAccess>(state: &T) -> Result<(), HostResult> {
+    state.write_state_to_fields()
+}
+
+const STATE_INITIALIZED_FIELD: &str = "STATE_INITIALIZED";
+
+pub fn is_contract_state_initialized() -> Result<bool, HostResult> {
+    let state_addr = StateAddrInner::new(STATE_INITIALIZED_FIELD);
+    let keyspace = Keyspace::Context(ContextAddr::from(state_addr));
+    let state_initialized = read_into_vec(keyspace)?;
+
+    match state_initialized {
+        Some(data) => {
+            let initialized: bool = borsh::from_slice(&data).expect("Expected borsh to work");
+            Ok(initialized)
+        }
         None => Ok(false),
     }
 }
 
-/// Read state from the global state.
-pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, HostResult> {
-    let mut vec = Vec::new();
-    let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
-    match read_info {
-        Some(()) => Ok(borsh::from_slice(&vec).unwrap()),
-        None => Ok(T::default()),
-    }
-}
-
-/// Write state to the global state.
-pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), HostResult> {
-    let new_state = borsh::to_vec(state).unwrap();
-    write(Keyspace::State, &new_state)?;
+pub fn mark_contract_initialization_state(initialized: bool) -> Result<(), HostResult> {
+    let state_addr = StateAddrInner::new(STATE_INITIALIZED_FIELD);
+    let keyspace = Keyspace::Context(ContextAddr::from(state_addr));
+    let data = borsh::to_vec(&initialized).expect("Expected borsh to work");
+    write(keyspace, &data)?;
     Ok(())
 }
 
@@ -550,7 +556,11 @@ pub enum GenericHashError {
 
 #[inline]
 pub fn generic_hash(data: &[u8], algorithm: HashAlgorithm) -> Result<[u8; 32], GenericHashError> {
-    let input_data = borsh::to_vec(&(algorithm, data)).expect("Expected borsh to work");
+    let mut input_data = Vec::new();
+    input_data.extend_from_slice(&(algorithm as u32).to_le_bytes());
+    input_data.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    input_data.extend_from_slice(data);
+
     let (output_data, result_code) =
         casper_ffi(CryptoFunctionOption::GenericHash.into(), &input_data);
 
@@ -579,6 +589,7 @@ pub fn recover_secp256k1(
 ) -> Result<PublicKey, RecoverSecp256K1Error> {
     let input_data =
         borsh::to_vec(&(recovery_id, message, signature)).expect("Expected borsh to work");
+
     let (output_data, result_code) =
         casper_ffi(CryptoFunctionOption::RecoverSecp256K1.into(), &input_data);
     match result_from_code(result_code) {

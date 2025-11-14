@@ -10,7 +10,7 @@ use casper_executor_wasm_common::{
         CALLEE_GAS_DEPLETED, CALLEE_SUCCEEDED, HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT,
         HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
     },
-    keyspace::{Keyspace, KeyspaceTag},
+    keyspace::{ContextAddr, Keyspace, KeyspaceTag},
     type_uid::Uid,
 };
 use casper_executor_wasm_interface::{
@@ -21,7 +21,7 @@ use casper_executor_wasm_interface::{
 use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{NamedKeyAddr, NamedKeyValue},
+    addressable_entity::{NamedKeyAddr, NamedKeyValue, StateFieldAddr},
     bytesrepr::{self, Bytes as BytesreprBytes, ToBytes},
     AccessRights, BlockHash, CLType, CLValue, Digest, EntityAddr, EntryPointAddr,
     EntryPointPayment, EntryPointValue, Key, NamedKeys, StoredValue, TypeUid,
@@ -57,8 +57,15 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
     };
 
     let keyspace = match keyspace_tag {
-        KeyspaceTag::State => Keyspace::State,
-        KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
+        KeyspaceTag::Context => {
+            let ctx_addr: ContextAddr = match borsh::from_slice(&key_payload_bytes) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Ok((None, HOST_ERROR_INVALID_INPUT));
+                }
+            };
+            Keyspace::Context(ctx_addr)
+        }
         KeyspaceTag::NamedKey => {
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
@@ -66,10 +73,8 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
                     return Ok((None, HOST_ERROR_INVALID_DATA));
                 }
             };
-
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
         KeyspaceTag::TypeDef => match <[u8; 4]>::try_from(key_payload_bytes.as_slice()) {
             Ok(array) => {
                 let u32_value = u32::from_le_bytes(array);
@@ -86,7 +91,7 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
         ),
     };
 
-    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
+    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace.clone()) {
         Some(global_state_key) => global_state_key,
         None => {
             // Unknown keyspace received, return error
@@ -150,33 +155,12 @@ pub(crate) fn host_read<S: GlobalStateReader + 'static>(
                     }
                 }
             }
-            Keyspace::AllNamedKeys => match contract.take_named_keys().to_bytes() {
-                Ok(bytes) => Cow::Owned(bytes),
-                Err(_) => return Ok((None, HOST_ERROR_INVALID_INPUT)),
-            },
             _ => {
                 error!(?keyspace, "unsupported keyspace");
                 return Ok((None, HOST_ERROR_INVALID_INPUT));
             }
         },
-        Ok(Some(StoredValue::AddressableEntity(_))) => {
-            if let Keyspace::AllNamedKeys = keyspace {
-                let entity_addr = context_to_entity_addr(caller.context());
-
-                let named_keys = caller
-                    .context_mut()
-                    .tracking_copy
-                    .get_named_keys(entity_addr)
-                    .map(|named_keys| named_keys.to_bytes());
-
-                match named_keys {
-                    Ok(Ok(bytes)) => Cow::Owned(bytes),
-                    Ok(_) | Err(_) => return Ok((None, HOST_ERROR_INVALID_INPUT)),
-                }
-            } else {
-                return Ok((None, HOST_ERROR_INVALID_INPUT));
-            }
-        }
+        Ok(Some(StoredValue::AddressableEntity(_))) => return Ok((None, HOST_ERROR_INVALID_INPUT)),
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             match entry_point.entry_point_payment() {
                 EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
@@ -244,8 +228,13 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
     };
 
     let keyspace = match keyspace_tag {
-        KeyspaceTag::State => Keyspace::State,
-        KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
+        KeyspaceTag::Context => {
+            let ctx_addr: ContextAddr = match borsh::from_slice(&key_payload_bytes) {
+                Ok(v) => v,
+                Err(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+            };
+            Keyspace::Context(ctx_addr)
+        }
         KeyspaceTag::NamedKey => {
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
@@ -253,21 +242,25 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
                     return Ok(HOST_ERROR_INVALID_INPUT);
                 }
             };
-
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
-        KeyspaceTag::TypeDef => {
-            // Writing to typedef keyspace only allowed at a contract installation point.
-            return Ok(HOST_ERROR_INVALID_INPUT);
-        }
-        KeyspaceTag::EntryPoint => {
-            // Writing to entrypoint keyspace is not allowed.
-            return Ok(HOST_ERROR_INVALID_INPUT);
-        }
+        KeyspaceTag::TypeDef => match <[u8; 4]>::try_from(key_payload_bytes.as_slice()) {
+            Ok(array) => {
+                let u32_value = u32::from_le_bytes(array);
+                let uid = Uid::new_raw(u32_value);
+                Keyspace::TypeDef(uid)
+            }
+            Err(_) => {
+                error!("Invalid TypeDef Uid bytes length");
+                return Ok(HOST_ERROR_INVALID_DATA);
+            }
+        },
+        KeyspaceTag::EntryPoint => Keyspace::EntryPoint(
+            std::str::from_utf8(&key_payload_bytes).map_err(|_| FatalHostError::TypeConversion)?,
+        ),
     };
 
-    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
+    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace.clone()) {
         Some(global_state_key) => global_state_key,
         None => {
             // Unknown keyspace received, return error
@@ -276,7 +269,7 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
     };
 
     let stored_value = match keyspace {
-        Keyspace::State | Keyspace::Context(_) => {
+        Keyspace::Context(_) => {
             let cl_value_any = CLValue::from_components(CLType::Any, value);
             StoredValue::CLValue(cl_value_any)
         }
@@ -357,7 +350,6 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
 
             stored_value
         }
-        Keyspace::AllNamedKeys => return Ok(HOST_ERROR_INVALID_INPUT),
         Keyspace::TypeDef(_) => return Ok(HOST_ERROR_INVALID_INPUT),
         Keyspace::EntryPoint(_) => return Ok(HOST_ERROR_INVALID_INPUT),
     };
@@ -396,8 +388,13 @@ pub(crate) fn host_remove<S: GlobalStateReader + 'static>(
     };
 
     let keyspace = match keyspace_tag {
-        KeyspaceTag::State => Keyspace::State,
-        KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
+        KeyspaceTag::Context => {
+            let ctx_addr: ContextAddr = match borsh::from_slice(&key_payload_bytes) {
+                Ok(v) => v,
+                Err(_) => return Ok(HOST_ERROR_INVALID_INPUT),
+            };
+            Keyspace::Context(ctx_addr)
+        }
         KeyspaceTag::NamedKey => {
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
@@ -405,10 +402,8 @@ pub(crate) fn host_remove<S: GlobalStateReader + 'static>(
                     return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
-
             Keyspace::NamedKey(key_name)
         }
-        KeyspaceTag::AllNamedKeys => Keyspace::AllNamedKeys,
         KeyspaceTag::TypeDef => {
             let u32_value = if key_payload_bytes.len() != 4 {
                 error!("Invalid TypeDef Uid bytes length");
@@ -426,7 +421,7 @@ pub(crate) fn host_remove<S: GlobalStateReader + 'static>(
         ),
     };
 
-    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
+    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace.clone()) {
         Some(global_state_key) => global_state_key,
         None => {
             // Unknown keyspace received, return error
@@ -439,7 +434,7 @@ pub(crate) fn host_remove<S: GlobalStateReader + 'static>(
         Ok(Some(StoredValue::AddressableEntity(_))) => return Ok(HOST_ERROR_INVALID_INPUT),
         Ok(Some(_)) => {
             // If it's a named key pointing to a URef, prune both the named key and the URef.
-            if let Keyspace::NamedKey(_) = keyspace {
+            if matches!(keyspace, Keyspace::NamedKey(_)) {
                 if let Ok(Some(StoredValue::NamedKey(named_key_value))) =
                     caller.context_mut().tracking_copy.read(&global_state_key)
                 {
@@ -1018,36 +1013,38 @@ fn keyspace_to_global_state_key<S: GlobalStateReader>(
     keyspace: Keyspace<'_>,
 ) -> Option<Key> {
     let entity_addr = context_to_entity_addr(context);
-    let ae_enabled = context.tracking_copy.addressable_entity_enabled();
 
     match keyspace {
-        Keyspace::State => Some(Key::State(entity_addr)),
-        Keyspace::Context(bytes) => {
-            let digest = Digest::hash(bytes);
-            Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                entity_addr,
-                digest.value(),
-            )))
-        }
+        Keyspace::Context(context_addr) => match context_addr {
+            ContextAddr::StateAddr(state_addr) => {
+                let digest = Digest::hash(state_addr.field_addr.as_bytes());
+                Some(Key::State(StateFieldAddr::new_state_field_addr(
+                    entity_addr,
+                    digest.value(),
+                )))
+            }
+            ContextAddr::CollectionAddr(collection_addr) => {
+                let mut buf = Vec::with_capacity(
+                    collection_addr.collection_type_tag.serialized_length()
+                        + collection_addr.collection_prefix.len()
+                        + collection_addr.tail.len(),
+                );
+                buf.push(collection_addr.collection_type_tag);
+                buf.extend_from_slice(&collection_addr.collection_prefix);
+                buf.extend_from_slice(&collection_addr.tail);
+                let digest = Digest::hash(&buf);
+                Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                    entity_addr,
+                    digest.value(),
+                )))
+            }
+        },
         Keyspace::NamedKey(payload) => {
             let digest = Digest::hash(payload.as_bytes());
             Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
                 entity_addr,
                 digest.value(),
             )))
-        }
-        Keyspace::AllNamedKeys => {
-            if ae_enabled {
-                Some(Key::AddressableEntity(entity_addr))
-            } else {
-                match entity_addr {
-                    EntityAddr::Account(hash_addr) => {
-                        Some(Key::Account(AccountHash::new(hash_addr)))
-                    }
-                    EntityAddr::SmartContract(hash_addr) => Some(Key::Hash(hash_addr)),
-                    _ => None,
-                }
-            }
         }
         Keyspace::TypeDef(typedef) => {
             let digest = typedef.into_raw();

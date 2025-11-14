@@ -14,7 +14,6 @@ impl Default for TokenContract {
     fn default() -> Self {
         panic!("nope");
     }
-    //
 }
 
 #[casper]
@@ -92,11 +91,9 @@ mod tests {
             },
             Entity,
         },
-        casper_executor_wasm_common::keyspace::Keyspace,
-        contrib::cep18::Cep18Error,
-        serializers::AbiConvention,
         ContractHandle, ToCallData,
     };
+    use casper_contract_sdk_contrib::cep18::Cep18Error;
 
     const ALICE: Entity = Entity::Account([1; 32]);
     const BOB: Entity = Entity::Account([2; 32]);
@@ -157,9 +154,7 @@ mod tests {
             let new_env = new_env.smart_contract(Entity::Contract(create_result.contract_address));
             dispatch_with(new_env, || {
                 // This is the caller of the contract
-                casper::read_into_vec(Keyspace::State)
-                    .expect("ok")
-                    .expect("ok");
+                casper::read_contract_state::<TokenContract>().unwrap();
             })
             .unwrap();
 
