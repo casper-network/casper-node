@@ -19,7 +19,7 @@
 //!
 //! ```rust
 //! use casper_contract_sdk::prelude::*;
-//! use casper_contract_sdk::contrib::cep18::{CEP18, CEP18State, CEP18Ext, Mintable, Burnable};
+//! use {CEP18, CEP18State, CEP18Ext, Mintable, Burnable};
 //! # use casper_contract_sdk::collections::Map;
 //! # use casper_contract_sdk::macros::casper;
 //! # use casper_contract_sdk::types::U256;
@@ -47,7 +47,7 @@
 //!   }
 //! }
 //!
-//! #[casper(path = casper_contract_sdk::contrib::cep18)]
+//! #[casper(path = casper_contract_sdk_contrib::cep18)]
 //! impl CEP18 for MyToken {
 //!   fn state(&self) -> &CEP18State {
 //!     &self.state
@@ -222,7 +222,7 @@ pub trait CEP18 {
             .unwrap_or_default();
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn approve(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
@@ -239,7 +239,7 @@ pub trait CEP18 {
         Ok(())
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn decrease_allowance(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
@@ -252,7 +252,7 @@ pub trait CEP18 {
         Ok(())
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn increase_allowance(&mut self, spender: Entity, amount: U256) -> Result<(), Cep18Error> {
         let owner = casper::get_caller();
         if owner == spender {
@@ -265,7 +265,7 @@ pub trait CEP18 {
         Ok(())
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn transfer(&mut self, recipient: Entity, amount: U256) -> Result<(), Cep18Error> {
         let sender = casper::get_caller();
         if sender == recipient {
@@ -287,7 +287,7 @@ pub trait CEP18 {
         Ok(())
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn transfer_from(
         &mut self,
         owner: Entity,
@@ -332,7 +332,7 @@ pub trait CEP18 {
 
 #[casper(export = true)]
 pub trait Mintable: CEP18 + AccessControl {
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn mint(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {
         if !CEP18::state(self).enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
@@ -361,7 +361,7 @@ pub trait Mintable: CEP18 + AccessControl {
 
 #[casper(export = true)]
 pub trait Burnable: CEP18 {
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     fn burn(&mut self, owner: Entity, amount: U256) -> Result<(), Cep18Error> {
         if !self.state().enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);

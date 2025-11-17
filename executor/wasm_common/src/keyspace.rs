@@ -1,6 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::type_uid::Uid;
+
 /// Discriminant indicating which keyspace is being accessed.
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
@@ -9,6 +11,10 @@ pub enum KeyspaceTag {
     Context = 0,
     /// Named key based storage which usually involves human-readable names.
     NamedKey = 1,
+    /// Used for type definitions.
+    TypeDef = 2,
+    /// Used for entry points.
+    EntryPoint = 3,
 }
 
 /// Discriminant indicating which collection type is being used.
@@ -96,6 +102,10 @@ pub enum Keyspace<'a> {
     Context(ContextAddr),
     /// Human-readable named key.
     NamedKey(&'a str),
+    /// Retrieves contract's type definitions.
+    TypeDef(Uid),
+    /// Stores contract's entry points.
+    EntryPoint(&'a str),
 }
 
 impl Keyspace<'_> {
@@ -104,11 +114,91 @@ impl Keyspace<'_> {
         match self {
             Keyspace::Context(_) => KeyspaceTag::Context,
             Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
+            Keyspace::TypeDef(_) => KeyspaceTag::TypeDef,
+            Keyspace::EntryPoint(_) => KeyspaceTag::EntryPoint,
         }
     }
 
     #[must_use]
     pub fn as_u64(&self) -> u64 {
         self.as_tag() as u64
+    }
+
+    pub fn to_host_input_data(&self) -> borsh::io::Result<Vec<u8>> {
+        match self {
+            Keyspace::Context(key_bytes) => {
+                borsh::to_vec(&(KeyspaceTag::Context as u64, borsh::to_vec(key_bytes)?))
+            }
+            Keyspace::NamedKey(key_bytes) => {
+                borsh::to_vec(&(KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()))
+            }
+            Keyspace::TypeDef(typedef) => borsh::to_vec(&(
+                KeyspaceTag::TypeDef as u64,
+                typedef.into_raw().to_le_bytes().to_vec(),
+            )),
+            Keyspace::EntryPoint(entry_point_name) => {
+                borsh::to_vec(&(KeyspaceTag::EntryPoint as u64, entry_point_name))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::type_uid::Uid;
+
+    use super::*;
+
+    #[test]
+    fn test_as_tag_state() {
+        let keyspace = Keyspace::State;
+        assert_eq!(keyspace.as_tag(), KeyspaceTag::State);
+    }
+
+    #[test]
+    fn test_as_tag_context() {
+        let data = [1, 2, 3];
+        let keyspace = Keyspace::Context(&data);
+        assert_eq!(keyspace.as_tag(), KeyspaceTag::Context);
+    }
+
+    #[test]
+    fn test_as_tag_named_key() {
+        let name = "my_key";
+        let keyspace = Keyspace::NamedKey(name);
+        assert_eq!(keyspace.as_tag(), KeyspaceTag::NamedKey);
+    }
+
+    #[test]
+    fn test_as_u64_state() {
+        let keyspace = Keyspace::State;
+        assert_eq!(keyspace.as_u64(), 0);
+    }
+
+    #[test]
+    fn test_as_u64_context() {
+        let data = [1, 2, 3];
+        let keyspace = Keyspace::Context(&data);
+        assert_eq!(keyspace.as_u64(), 1);
+    }
+
+    #[test]
+    fn test_as_u64_named_key() {
+        let name = "my_key";
+        let keyspace = Keyspace::NamedKey(name);
+        assert_eq!(keyspace.as_u64(), 2);
+    }
+
+    #[test]
+    fn test_as_u64_all_named_keys() {
+        let keyspace = Keyspace::TypeDef(Uid::from_name("foobar"));
+        assert_eq!(keyspace.as_u64(), 4);
+    }
+
+    #[test]
+    fn test_as_u64_entry_point() {
+        let name = "my_entry_point";
+        let keyspace = Keyspace::EntryPoint(name);
+        assert_eq!(keyspace.as_u64(), 5);
     }
 }

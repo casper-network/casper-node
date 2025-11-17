@@ -8,7 +8,12 @@ use include_dir::{Dir, DirEntry};
 
 pub mod build;
 pub mod build_schema;
+pub mod error;
 pub mod new;
+pub mod verify_meta;
+
+/// Convenience result alias for CLI operations.
+pub type Result<T> = std::result::Result<T, error::CliError>;
 
 /// Writes the binary-embedded directory into a filesystem directory.
 /// Returns the path to the extracted dir.
@@ -56,9 +61,6 @@ pub(crate) enum Command {
         /// Where should the build artifacts be saved?
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Should the schema be embedded and exposed in the contract? (Default: true)
-        #[arg(short, long)]
-        embed_schema: Option<bool>,
         /// The cargo workspace
         #[command(flatten)]
         workspace: clap_cargo::Workspace,
@@ -72,6 +74,18 @@ pub(crate) enum Command {
     New {
         /// Name of the project to create
         name: String,
+    },
+    /// Verifies that a schema, meta file, and wasm file are in sync.
+    VerifyMeta {
+        /// Path to the `.meta` file generated from the contract build.
+        #[arg(long)]
+        meta: PathBuf,
+        /// Path to the `.json` schema file describing the contract.
+        #[arg(long)]
+        schema: PathBuf,
+        /// Path to the compiled contract `.wasm`.
+        #[arg(long)]
+        wasm: PathBuf,
     },
 }
 

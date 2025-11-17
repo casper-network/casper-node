@@ -7,8 +7,15 @@ use std::{
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
-use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
+use casper_executor_wasm_interface::{
+    executor::{
+        ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
+        Executor,
+    },
+    install::{
+        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
+        InstallContractResult, InstallContractWithProviderResult,
+    },
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -28,14 +35,7 @@ use casper_types::{
 };
 use num_rational::Ratio;
 
-use crate::{
-    chainspec_config::ChainspecConfig,
-    install::{
-        InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
-        InstallContractResult,
-    },
-    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
-};
+use crate::{chainspec_config::ChainspecConfig, ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
 use casper_storage::system::runtime_native::{Config, TransferConfig};
 use casper_types::system::auction::DelegationRate;
 use once_cell::sync::Lazy;
@@ -90,8 +90,13 @@ pub static RUST_TOOL_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
         .join("wasm")
 });
 
+pub struct SmartContract {
+    pub wasm: Bytes,
+    pub meta: Option<Bytes>,
+}
+
 #[track_caller]
-pub fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
+pub fn read_wasm<P: AsRef<Path>>(filename: P) -> SmartContract {
     let paths = vec![
         RUST_WORKSPACE_WASM_PATH.clone(),
         RUST_TOOL_WASM_PATH.clone(),
@@ -99,8 +104,18 @@ pub fn read_wasm<P: AsRef<Path>>(filename: P) -> Bytes {
 
     for path in &paths {
         let wasm_path = path.join(&filename);
+
+        let bundle_path = wasm_path.with_extension("meta");
+
+        let bundle = fs::read(bundle_path).map(Bytes::from).ok();
+
         match fs::read(wasm_path) {
-            Ok(bytes) => return Bytes::from(bytes),
+            Ok(bytes) => {
+                return SmartContract {
+                    wasm: Bytes::from(bytes),
+                    meta: bundle,
+                }
+            }
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::NotFound {
                     continue;
@@ -304,9 +319,9 @@ pub fn run_create_contract(
     global_state: &LmdbGlobalState,
     pre_state_hash: Digest,
     install_contract_request: InstallContractRequest,
-) -> InstallContractResult {
+) -> InstallContractWithProviderResult {
     executor
-        .install_contract(pre_state_hash, global_state, install_contract_request)
+        .install_contract_with_provider(pre_state_hash, global_state, install_contract_request)
         .expect("run_create_contract should succeed")
 }
 
@@ -342,7 +357,7 @@ pub fn call_dummy_host_fn_by_name(
     chainspec_config: &ChainspecConfig,
     host_function_name: &str,
     gas_limit: u64,
-) -> Result<InstallContractResult, InstallContractError> {
+) -> Result<InstallContractWithProviderResult, InstallContractError> {
     let executor = {
         let execution_engine_v1 = ExecutionEngineV1::default();
         let default_wasm_config = WasmV2Config::default();
@@ -355,6 +370,7 @@ pub fn call_dummy_host_fn_by_name(
                 remove: HostFFIFunctionCost::fixed(1),
                 copy_input: HostFFIFunctionCost::fixed(1),
                 ret: HostFFIFunctionCost::fixed(1),
+                revert: HostFFIFunctionCost::fixed(1),
                 create: HostFFIFunctionCost::fixed(1),
                 transfer: HostFFIFunctionCost::fixed(1),
                 env_balance: HostFFIFunctionCost::fixed(1),
@@ -374,7 +390,7 @@ pub fn call_dummy_host_fn_by_name(
             .with_memory_limit(DEFAULT_WASM_MAX_MEMORY)
             .with_executor_kind(ExecutorKind::Compiled)
             .with_wasm_config(wasm_config)
-            .with_storage_costs(StorageCosts::default())
+            .with_storage_costs(StorageCosts::new(0))
             .with_mint_costs(MintCosts::default())
             .with_auction_costs(AuctionCosts::default())
             .with_baseline_motes_amount(DEFAULT_BASELINE_MOTES_AMOUNT)
@@ -392,11 +408,14 @@ pub fn call_dummy_host_fn_by_name(
         .map(Bytes::from)
         .expect("Expected borsh to work");
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let create_request = base_install_request_builder(chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(gas_limit)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -409,5 +428,5 @@ pub fn call_dummy_host_fn_by_name(
         .build()
         .expect("should build");
 
-    executor.install_contract(state_root_hash, &global_state, create_request)
+    executor.install_contract_with_provider(state_root_hash, &global_state, create_request)
 }

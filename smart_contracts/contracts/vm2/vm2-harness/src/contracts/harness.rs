@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap, LinkedList};
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper, collections::Map, log, prelude::Entity, revert, types::CallError, ContractHandle,
+    casper, collections::Map, log, prelude::Entity, rollback, types::CallError, ContractHandle,
 };
 
 use crate::traits::{DepositExt, DepositRef};
@@ -100,7 +100,7 @@ impl Harness {
     #[casper(constructor)]
     pub fn failing_constructor(who: String) -> Self {
         log!("👋 Hello from failing constructor with args: {who}");
-        revert!();
+        rollback!();
     }
 
     #[casper(constructor)]
@@ -139,10 +139,10 @@ impl Harness {
     #[casper(constructor, payable)]
     pub fn payable_failing_constructor() -> Self {
         log!(
-            "👋 Hello from payable failign constructor value={}",
+            "👋 Hello from payable failing constructor value={}",
             casper::transferred_value()
         );
-        revert!();
+        casper::revert("failing payable constructor");
     }
 
     #[casper(constructor, payable)]
@@ -172,17 +172,17 @@ impl Harness {
         self.greeting = greeting;
     }
 
-    pub fn emit_unreachable_trap(&mut self) -> ! {
+    pub fn emit_unreachable_trap(&mut self) {
         self.counter += 1;
         panic!("unreachable");
     }
 
-    #[casper(revert_on_error)]
-    pub fn emit_revert_with_data(&mut self) -> Result<(), CustomError> {
+    #[casper(rollback_on_error)]
+    pub fn emit_rollback_with_data(&mut self) -> Result<(), CustomError> {
         // revert(code), ret(bytes)
 
         // casper_return(flags, bytes) flags == 0, flags & FLAG_REVERT
-        log!("emit_revert_with_data state={:?}", self);
+        log!("emit_rollback_with_data state={:?}", self);
         log!(
             "Reverting with data before {counter}",
             counter = self.counter
@@ -197,9 +197,14 @@ impl Harness {
         Err(CustomError::Bar)
     }
 
-    pub fn emit_revert_without_data(&mut self) -> ! {
+    pub fn emit_rollback_without_data(&mut self) {
         self.counter += 1;
-        revert!()
+        rollback!()
+    }
+
+    pub fn emit_revert(&mut self) {
+        self.counter += 1;
+        casper::revert("this is a revert ");
     }
 
     pub fn get_address_inside_constructor(&self) -> Entity {
@@ -207,8 +212,8 @@ impl Harness {
             .expect("Constructor was expected to be caller")
     }
 
-    #[casper(revert_on_error)]
-    pub fn should_revert_on_error(&self, flag: bool) -> Result2 {
+    #[casper(rollback_on_error)]
+    pub fn should_rollback_on_error(&self, flag: bool) -> Result2 {
         if flag {
             Err(CustomError::WithBody("Reverted".into()))
         } else {
@@ -272,7 +277,7 @@ impl Harness {
     //     self.balances[sender] += transferred_value;
     // }
 
-    #[casper(payable, revert_on_error)]
+    #[casper(payable, rollback_on_error)]
     pub fn payable_failing_entrypoint(&self) -> Result<(), CustomError> {
         log!(
             "This is a payable entrypoint with value={}",
@@ -285,7 +290,7 @@ impl Harness {
         }
     }
 
-    #[casper(payable, revert_on_error)]
+    #[casper(payable, rollback_on_error)]
     pub fn perform_token_deposit(&mut self, balance_before: u64) -> Result<(), CustomError> {
         let caller = casper::get_caller();
         let value = casper::transferred_value();
@@ -310,7 +315,7 @@ impl Harness {
         Ok(())
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
         let caller = casper::get_caller();
         log!("Withdrawing {amount} into {caller:?}");

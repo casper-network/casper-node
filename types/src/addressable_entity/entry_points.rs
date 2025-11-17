@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use core::fmt::{Debug, Display, Formatter};
 
 use alloc::{
@@ -27,14 +28,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     addressable_entity::FromStrError,
-    bytesrepr,
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, CLType, EntityAddr, Group, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    checksummed_hex, CLType, EntityAddr, Group, HashAddr, TypeUid, BLAKE2B_DIGEST_LENGTH,
 };
 
 const V1_ENTRY_POINT_TAG: u8 = 0;
+const V2_ENTRY_POINT_TAG: u8 = 1;
 
 const V1_ENTRY_POINT_PREFIX: &str = "entry-point-v1-";
+const V2_ENTRY_POINT_PREFIX: &str = "entry-point-v2-";
 
 /// Context of method execution
 ///
@@ -598,31 +600,53 @@ pub enum EntryPointAddr {
     VmCasperV1 {
         /// The addr of the entity.
         entity_addr: EntityAddr,
-        /// The 32 byte hash of the name of the entry point
-        name_bytes: [u8; KEY_HASH_LENGTH],
+        /// The hash of the entry point name.
+        name_hash: HashAddr,
+    },
+    VmCasperV2 {
+        /// The addr of the entity.
+        entity_addr: EntityAddr,
+        /// The hash of the entry point name (also present in the wasm exports).
+        name_hash: HashAddr,
     },
 }
 
 impl EntryPointAddr {
-    /// Returns a `VmCasperV1` variant of the entry point address.
-    pub fn new_v1_entry_point_addr(
-        entity_addr: EntityAddr,
-        name: &str,
-    ) -> Result<Self, bytesrepr::Error> {
-        let bytes = name.to_bytes()?;
+    fn hash_entry_point_name(name: &str) -> Result<HashAddr, bytesrepr::Error> {
         let mut hasher = {
             match VarBlake2b::new(BLAKE2B_DIGEST_LENGTH) {
                 Ok(hasher) => hasher,
                 Err(_) => return Err(bytesrepr::Error::Formatting),
             }
         };
-        hasher.update(bytes);
+        hasher.update(name.as_bytes());
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
         let mut name_bytes = HashAddr::default();
         hasher.finalize_variable(|hash| name_bytes.clone_from_slice(hash));
+        Ok(name_bytes)
+    }
+
+    /// Returns a `VmCasperV1` variant of the entry point address.
+    pub fn new_v1_entry_point_addr(
+        entity_addr: EntityAddr,
+        name: &str,
+    ) -> Result<Self, bytesrepr::Error> {
+        let name_hash = Self::hash_entry_point_name(name)?;
         Ok(Self::VmCasperV1 {
             entity_addr,
-            name_bytes,
+            name_hash,
+        })
+    }
+
+    /// Returns a `VmCasperV2` variant of the entry point address.
+    pub fn new_v2_entry_point_addr(
+        entity_addr: EntityAddr,
+        name: &str,
+    ) -> Result<Self, bytesrepr::Error> {
+        let name_hash = Self::hash_entry_point_name(name)?;
+        Ok(Self::VmCasperV2 {
+            entity_addr,
+            name_hash,
         })
     }
 
@@ -630,6 +654,7 @@ impl EntryPointAddr {
     pub fn entity_addr(&self) -> EntityAddr {
         match self {
             EntryPointAddr::VmCasperV1 { entity_addr, .. } => *entity_addr,
+            EntryPointAddr::VmCasperV2 { entity_addr, .. } => *entity_addr,
         }
     }
 
@@ -649,7 +674,21 @@ impl EntryPointAddr {
                     FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
                 return Ok(Self::VmCasperV1 {
                     entity_addr,
-                    name_bytes,
+                    name_hash: name_bytes,
+                });
+            }
+        }
+
+        if let Some(entry_point_v2) = input.strip_prefix(V2_ENTRY_POINT_PREFIX) {
+            if let Some((entity_addr_str, string_bytes_str)) = entry_point_v2.rsplit_once('-') {
+                let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
+                let string_bytes =
+                    checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
+                let (name_bytes, _) =
+                    FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
+                return Ok(Self::VmCasperV2 {
+                    entity_addr,
+                    name_hash: name_bytes,
                 });
             }
         }
@@ -664,13 +703,22 @@ impl ToBytes for EntryPointAddr {
         match self {
             EntryPointAddr::VmCasperV1 {
                 entity_addr,
-                name_bytes: named_bytes,
+                name_hash,
             } => {
                 buffer.insert(0, V1_ENTRY_POINT_TAG);
                 buffer.append(&mut entity_addr.to_bytes()?);
-                buffer.append(&mut named_bytes.to_bytes()?);
+                buffer.append(&mut name_hash.to_bytes()?);
+            }
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                name_hash,
+            } => {
+                buffer.insert(0, V2_ENTRY_POINT_TAG);
+                buffer.append(&mut entity_addr.to_bytes()?);
+                buffer.append(&mut name_hash.to_bytes()?);
             }
         }
+
         Ok(buffer)
     }
 
@@ -679,8 +727,12 @@ impl ToBytes for EntryPointAddr {
             + match self {
                 EntryPointAddr::VmCasperV1 {
                     entity_addr,
-                    name_bytes: named_bytes,
-                } => entity_addr.serialized_length() + named_bytes.serialized_length(),
+                    name_hash,
+                } => entity_addr.serialized_length() + name_hash.serialized_length(),
+                EntryPointAddr::VmCasperV2 {
+                    entity_addr,
+                    name_hash,
+                } => entity_addr.serialized_length() + name_hash.serialized_length(),
             }
     }
 }
@@ -695,7 +747,18 @@ impl FromBytes for EntryPointAddr {
                 Ok((
                     Self::VmCasperV1 {
                         entity_addr,
-                        name_bytes,
+                        name_hash: name_bytes,
+                    },
+                    bytes,
+                ))
+            }
+            V2_ENTRY_POINT_TAG => {
+                let (entity_addr, bytes) = EntityAddr::from_bytes(bytes)?;
+                let (name_bytes, bytes) = FromBytes::from_bytes(bytes)?;
+                Ok((
+                    Self::VmCasperV2 {
+                        entity_addr,
+                        name_hash: name_bytes,
                     },
                     bytes,
                 ))
@@ -710,12 +773,24 @@ impl Display for EntryPointAddr {
         match self {
             EntryPointAddr::VmCasperV1 {
                 entity_addr,
-                name_bytes,
+                name_hash: name_bytes,
             } => {
                 write!(
                     f,
                     "{}{}-{}",
                     V1_ENTRY_POINT_PREFIX,
+                    entity_addr,
+                    base16::encode_lower(name_bytes)
+                )
+            }
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                name_hash: name_bytes,
+            } => {
+                write!(
+                    f,
+                    "{}{}-{}",
+                    V2_ENTRY_POINT_PREFIX,
                     entity_addr,
                     base16::encode_lower(name_bytes)
                 )
@@ -729,9 +804,23 @@ impl Debug for EntryPointAddr {
         match self {
             EntryPointAddr::VmCasperV1 {
                 entity_addr,
-                name_bytes,
+                name_hash: name_bytes,
             } => {
-                write!(f, "EntryPointAddr({:?}-{:?})", entity_addr, name_bytes)
+                write!(
+                    f,
+                    "EntryPointAddr::VmCasperV1({:?}-{:?})",
+                    entity_addr, name_bytes
+                )
+            }
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                name_hash: name_bytes,
+            } => {
+                write!(
+                    f,
+                    "EntryPointAddr::VmCasperV2({:?}-{:?})",
+                    entity_addr, name_bytes
+                )
             }
         }
     }
@@ -742,8 +831,144 @@ impl Distribution<EntryPointAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntryPointAddr {
         EntryPointAddr::VmCasperV1 {
             entity_addr: rng.gen(),
-            name_bytes: rng.gen(),
+            name_hash: rng.gen(),
         }
+    }
+}
+
+bitflags! {
+    #[derive(Serialize, Deserialize)]
+    #[cfg_attr(feature = "datasize", derive(DataSize))]
+    #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+    pub struct EntityEntryPointV2Flags: u32 {
+        const IS_CONSTRUCTOR = 1 << 0;
+        const IS_PAYABLE = 1 << 1;
+        const IS_IMMUTABLE = 1 << 2;
+        const USES_NAMED_CONVENTION = 1 << 3;
+    }
+}
+
+impl Default for EntityEntryPointV2Flags {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl ToBytes for EntityEntryPointV2Flags {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.bits().to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        U32_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.bits().write_bytes(writer)
+    }
+}
+
+impl FromBytes for EntityEntryPointV2Flags {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (bits, rem) = u32::from_bytes(bytes)?;
+        Ok((EntityEntryPointV2Flags::from_bits_truncate(bits), rem))
+    }
+}
+
+/// Type signature of a method. Order of arguments matter since can be
+/// referenced by index as well as name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct EntityEntryPointV2 {
+    name: String,
+    args: Vec<TypeUid>,
+    ret: TypeUid,
+    entry_point_payment: EntryPointPayment,
+    flags: EntityEntryPointV2Flags,
+}
+
+impl EntityEntryPointV2 {
+    /// `EntityEntryPointV2` constructor.
+    pub fn new<T: Into<String>>(
+        name: T,
+        args: Vec<TypeUid>,
+        ret: TypeUid,
+        entry_point_payment: EntryPointPayment,
+        flags: EntityEntryPointV2Flags,
+    ) -> Self {
+        EntityEntryPointV2 {
+            name: name.into(),
+            args,
+            ret,
+            entry_point_payment,
+            flags,
+        }
+    }
+
+    /// Get name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the arguments for this method.
+    pub fn args(&self) -> &[TypeUid] {
+        self.args.as_slice()
+    }
+
+    /// Get the return type index.
+    pub fn ret(&self) -> TypeUid {
+        self.ret
+    }
+
+    pub fn flags(&self) -> EntityEntryPointV2Flags {
+        self.flags
+    }
+}
+
+impl ToBytes for EntityEntryPointV2 {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.name.serialized_length()
+            + self.args.serialized_length()
+            + self.ret.serialized_length()
+            + self.entry_point_payment.serialized_length()
+            + self.flags.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.name.write_bytes(writer)?;
+        self.args.write_bytes(writer)?;
+        self.ret.write_bytes(writer)?;
+        self.entry_point_payment.write_bytes(writer)?;
+        self.flags.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for EntityEntryPointV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (name, bytes) = String::from_bytes(bytes)?;
+        let (args, bytes) = Vec::from_bytes(bytes)?;
+        let (ret, bytes) = TypeUid::from_bytes(bytes)?;
+        let (entry_point_payment, bytes) = EntryPointPayment::from_bytes(bytes)?;
+        let (flags, bytes) = EntityEntryPointV2Flags::from_bytes(bytes)?;
+
+        Ok((
+            EntityEntryPointV2 {
+                name,
+                args,
+                ret,
+                entry_point_payment,
+                flags,
+            },
+            bytes,
+        ))
     }
 }
 
@@ -754,6 +979,8 @@ impl Distribution<EntryPointAddr> for Standard {
 pub enum EntryPointValue {
     /// Entrypoints to be executed against the V1 Casper VM.
     V1CasperVm(EntityEntryPoint),
+    /// Entrypoints to be executed against the V2 Casper VM.
+    V2CasperVm(EntityEntryPointV2),
 }
 
 impl EntryPointValue {
@@ -762,10 +989,16 @@ impl EntryPointValue {
         Self::V1CasperVm(entry_point)
     }
 
+    /// Returns [`EntryPointValue::V2CasperVm`] variant.
+    pub fn new_v2_entry_point_value(entry_point_v2: EntityEntryPointV2) -> Self {
+        Self::V2CasperVm(entry_point_v2)
+    }
+
     /// Entry point will cover payment if directly invoked.
     pub fn will_pay_direct_invocation(&self) -> bool {
         match self {
             EntryPointValue::V1CasperVm(ep) => ep.entry_point_payment.will_pay_direct_invocation(),
+            EntryPointValue::V2CasperVm(ep) => ep.entry_point_payment.will_pay_direct_invocation(),
         }
     }
 }
@@ -781,6 +1014,7 @@ impl ToBytes for EntryPointValue {
         U8_SERIALIZED_LENGTH
             + match self {
                 EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
+                EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
             }
     }
 
@@ -790,7 +1024,12 @@ impl ToBytes for EntryPointValue {
                 writer.push(V1_ENTRY_POINT_TAG);
                 entry_point.write_bytes(writer)?;
             }
+            EntryPointValue::V2CasperVm(entry_point) => {
+                writer.push(V2_ENTRY_POINT_TAG);
+                entry_point.write_bytes(writer)?;
+            }
         }
+
         Ok(())
     }
 }
@@ -802,6 +1041,10 @@ impl FromBytes for EntryPointValue {
             V1_ENTRY_POINT_TAG => {
                 let (entry_point, remainder) = EntityEntryPoint::from_bytes(remainder)?;
                 Ok((Self::V1CasperVm(entry_point), remainder))
+            }
+            V2_ENTRY_POINT_TAG => {
+                let (entry_point, remainder) = EntityEntryPointV2::from_bytes(remainder)?;
+                Ok((Self::V2CasperVm(entry_point), remainder))
             }
             _ => Err(Error::Formatting),
         }
@@ -816,8 +1059,14 @@ mod tests {
     fn entry_point_type_serialization_roundtrip() {
         let vm1 = EntryPointAddr::VmCasperV1 {
             entity_addr: EntityAddr::new_smart_contract([42; 32]),
-            name_bytes: [99; 32],
+            name_hash: [99; 32],
         };
         bytesrepr::test_serialization_roundtrip(&vm1);
+
+        let vm2 = EntryPointAddr::VmCasperV2 {
+            entity_addr: EntityAddr::new_smart_contract([43; 32]),
+            name_hash: [100; 32],
+        };
+        bytesrepr::test_serialization_roundtrip(&vm2);
     }
 }

@@ -56,8 +56,9 @@ use crate::{
     EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, Group, InitiatorAddr,
     Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs,
     SemVer, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1, URef,
-    U128, U256, U512,
+    TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1,
+    TypeDefinition, TypeDefinitionKind, TypeEnumVariant, TypeMessage, TypePrimitive,
+    TypeStructField, TypeUid, URef, U128, U256, U512,
 };
 use proptest::{
     array, bits, bool,
@@ -166,7 +167,8 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
         balance_hold_addr_arb().prop_map(Key::BalanceHold),
-        Just(Key::EraSummary)
+        Just(Key::EraSummary),
+        type_uid_arb().prop_map(Key::TypeDef)
     ]
 }
 
@@ -199,6 +201,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         entry_point_addr_arb().prop_map(Key::EntryPoint),
         (entity_addr_arb(), u8_slice_32())
             .prop_map(|(addr, tail)| Key::State(StateFieldAddr::new_state_field_addr(addr, tail))),
+        type_uid_arb().prop_map(Key::TypeDef),
     ]
 }
 
@@ -968,6 +971,78 @@ pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
     })
 }
 
+pub fn type_uid_arb() -> impl Strategy<Value = TypeUid> {
+    any::<u32>().prop_map(TypeUid::new)
+}
+
+pub fn type_primitive_arb() -> impl Strategy<Value = TypePrimitive> {
+    prop_oneof![
+        Just(TypePrimitive::Char),
+        Just(TypePrimitive::U8),
+        Just(TypePrimitive::I8),
+        Just(TypePrimitive::U16),
+        Just(TypePrimitive::I16),
+        Just(TypePrimitive::U32),
+        Just(TypePrimitive::I32),
+        Just(TypePrimitive::U64),
+        Just(TypePrimitive::I64),
+        Just(TypePrimitive::U128),
+        Just(TypePrimitive::I128),
+        Just(TypePrimitive::F32),
+        Just(TypePrimitive::F64),
+        Just(TypePrimitive::Bool),
+    ]
+}
+
+pub fn type_enum_variant_arb() -> impl Strategy<Value = TypeEnumVariant> {
+    (any::<u64>(), option::of(type_uid_arb())).prop_map(|(discriminant, decl)| TypeEnumVariant {
+        discriminant,
+        decl,
+        name: "String".to_string(),
+    })
+}
+
+pub fn type_struct_field_arb() -> impl Strategy<Value = TypeStructField> {
+    (type_uid_arb(),).prop_map(|(decl,)| TypeStructField {
+        decl,
+        name: "String".to_string(),
+    })
+}
+
+pub fn type_definition_kind_arb() -> impl Strategy<Value = TypeDefinitionKind> {
+    prop_oneof![
+        type_primitive_arb().prop_map(TypeDefinitionKind::Primitive),
+        (type_uid_arb(), type_uid_arb())
+            .prop_map(|(key, value)| TypeDefinitionKind::Mapping { key, value }),
+        type_uid_arb().prop_map(|decl| TypeDefinitionKind::Sequence { decl }),
+        (any::<u32>(), type_uid_arb())
+            .prop_map(|(length, decl)| TypeDefinitionKind::FixedSequence { length, decl }),
+        collection::vec(type_uid_arb(), 0..5).prop_map(|items| TypeDefinitionKind::Tuple { items }),
+        collection::vec(type_enum_variant_arb(), 0..5)
+            .prop_map(|items| TypeDefinitionKind::Enum { items }),
+        collection::vec(type_struct_field_arb(), 0..5)
+            .prop_map(|items| TypeDefinitionKind::Struct { items }),
+    ]
+}
+
+pub fn type_definition_arb() -> impl Strategy<Value = TypeDefinition> {
+    (type_uid_arb(), type_definition_kind_arb(), cl_type_arb()).prop_map(
+        |(uid, definition, cl_type)| {
+            TypeDefinition::new(
+                uid,
+                "String".to_string(),
+                "alloc::string::String".to_string(),
+                definition,
+                cl_type,
+            )
+        },
+    )
+}
+
+pub fn type_message_arb() -> impl Strategy<Value = TypeMessage> {
+    ("\\PC*", type_uid_arb()).prop_map(|(topic, decl)| TypeMessage { topic, decl })
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -1015,6 +1090,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::NamedKey(_) => stored_value,
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
+        StoredValue::TypeDef(_) => stored_value,
         })
 }
 
@@ -1128,6 +1204,13 @@ fn seed_arb() -> impl Strategy<Value = Option<[u8; 32]>> {
     option::of(array::uniform32(any::<u8>()))
 }
 
+fn bundle_data_arb() -> impl Strategy<Value = Option<Bytes>> {
+    prop_oneof![
+        Just(None),
+        prop::collection::vec(any::<u8>(), 0..100).prop_map(|bytes| Some(Bytes::from(bytes)))
+    ]
+}
+
 pub fn session_transaction_target() -> impl Strategy<Value = TransactionTarget> {
     (
         any::<bool>(),
@@ -1151,6 +1234,7 @@ pub(crate) fn transaction_stored_runtime_params_arb(
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value,
                 seed: None,
+                bundle_data: None,
             }
         }),
     ]
@@ -1160,12 +1244,15 @@ pub(crate) fn transaction_session_runtime_params_arb(
 ) -> impl Strategy<Value = TransactionRuntimeParams> {
     prop_oneof![
         Just(TransactionRuntimeParams::VmCasperV1),
-        (transferred_value_arb(), seed_arb()).prop_map(|(transferred_value, seed)| {
-            TransactionRuntimeParams::VmCasperV2 {
-                transferred_value,
-                seed,
+        (transferred_value_arb(), seed_arb(), bundle_data_arb()).prop_map(
+            |(transferred_value, seed, bundle_data)| {
+                TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value,
+                    seed,
+                    bundle_data,
+                }
             }
-        })
+        )
     ]
 }
 

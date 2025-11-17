@@ -1,12 +1,14 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-use crate::abi::{CasperABI, Declaration, Definition, StructField};
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField};
 use crate::{
     casper::{self, read_into_vec},
+    compat::types::CLTyped,
     prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::keyspace::{
-    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    type_uid::{TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
@@ -15,6 +17,10 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 pub struct Map<K, V> {
     pub(crate) name: String,
     pub(crate) _marker: PhantomData<(K, V)>,
+}
+
+impl<K: TypeUid, V: TypeUid> TypeUid for Map<K, V> {
+    const UID: Uid = Uid::from_fields("Map", &[K::UID, V::UID]);
 }
 
 /// Computes the prefix for a given key.
@@ -88,22 +94,32 @@ where
     }
 }
 
+impl<K: CLTyped, V: CLTyped> CLTyped for Map<K, V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Map {
+            key: Box::new(K::cl_type()),
+            value: Box::new(V::cl_type()),
+        }
+    }
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
-    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
-        definitions.populate_one::<K>();
-        definitions.populate_one::<V>();
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        K::visit(visitor);
+        V::visit(visitor);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Map<{}, {}>", K::declaration(), V::declaration())
     }
+
     #[inline]
     fn definition() -> Definition {
         Definition::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
-                decl: u64::declaration(),
+                decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
             }],
         }
     }

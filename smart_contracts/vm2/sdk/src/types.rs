@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 
+use casper_contract_macros::TypeUid;
 use casper_executor_wasm_common::{
     error::{
         CALLEE_API_ERROR, CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE,
@@ -9,17 +10,18 @@ use casper_executor_wasm_common::{
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-use crate::abi::{CasperABI, Declaration, Definition, EnumVariant};
+use crate::abi::{AbiDeclaration, CasperABI, Definition, EnumVariant};
 
 use crate::{
     casper,
+    compat::types::{CLType, CLTyped},
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
 pub use ::bytes::Bytes;
 pub type Address = [u8; 32];
-pub use bnum::types::U256;
+pub use bnum::types::{U256, U512};
 
 /// Bytes for Ed25519 public key.
 pub type AddressEd25519 = [u8; 32];
@@ -156,24 +158,6 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
         self.name
     }
 
-    /// Populate ABI definitions for the value type `T` of this named key.
-    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-    pub fn collect_abi(&self, definitions: &mut crate::abi::Definitions)
-    where
-        T: CasperABI,
-    {
-        definitions.populate_one::<T>();
-    }
-
-    /// Return the ABI declaration string for the value type `T` of this named key.
-    #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-    pub fn declaration(&self) -> Declaration
-    where
-        T: CasperABI,
-    {
-        <T as CasperABI>::declaration()
-    }
-
     pub fn write(&self, value: T) {
         let bytes = borsh::to_vec(&value).unwrap();
         casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();
@@ -200,7 +184,8 @@ pub enum HashAlgorithm {
 }
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, TypeUid)]
+#[type_uid(crate = "crate::common::type_uid")]
 #[borsh(crate = "crate::serializers::borsh", use_discriminant = true)]
 pub enum CallError {
     CalleeRolledBack = 1,
@@ -208,7 +193,7 @@ pub enum CallError {
     InputInvalid = 3,
     CalleeGasDepleted = 4,
     NotCallable = 5,
-    Api = 6,
+    CalleeReverted = 6,
     NoActiveContract = 7,
     CodeNotFound = 8,
     EntityNotFound = 9,
@@ -224,7 +209,7 @@ impl fmt::Display for CallError {
             CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
             CallError::NotCallable => write!(f, "not callable"),
             CallError::InputInvalid => write!(f, "input invalid"),
-            CallError::Api => write!(f, "api"),
+            CallError::CalleeReverted => write!(f, "api"),
             CallError::NoActiveContract => write!(f, "no active contract"),
             CallError::CodeNotFound => write!(f, "code not found"),
             CallError::EntityNotFound => write!(f, "entity not found"),
@@ -244,56 +229,46 @@ impl TryFrom<u32> for CallError {
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
             CALLEE_INPUT_INVALID => Ok(Self::InputInvalid),
-            CALLEE_API_ERROR => Ok(Self::Api),
+            CALLEE_API_ERROR => Ok(Self::CalleeReverted),
             _ => Err(()),
         }
     }
 }
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-impl CasperABI for CallError {
-    fn populate_definitions(_definitions: &mut crate::abi::Definitions) {}
+impl CLTyped for CallError {
+    fn cl_type() -> CLType {
+        CLType::U32
+    }
+}
 
-    fn declaration() -> Declaration {
+#[cfg(not(target_arch = "wasm32"))]
+impl CasperABI for CallError {
+    fn declaration() -> AbiDeclaration {
         "CallError".into()
     }
+
     fn definition() -> Definition {
         Definition::Enum {
             items: vec![
                 EnumVariant {
-                    name: "CalleeRolledBack".into(),
-                    discriminant: 1,
-                    decl: <()>::declaration(),
+                    name: "CalleeReverted".into(),
+                    discriminant: 0,
+                    decl: None,
                 },
                 EnumVariant {
                     name: "CalleeTrapped".into(),
-                    discriminant: 2,
-                    decl: <()>::declaration(),
-                },
-                EnumVariant {
-                    name: "InputInvalid".into(),
-                    discriminant: 3,
-                    decl: <()>::declaration(),
+                    discriminant: 1,
+                    decl: None,
                 },
                 EnumVariant {
                     name: "CalleeGasDepleted".into(),
-                    discriminant: 4,
-                    decl: <()>::declaration(),
+                    discriminant: 2,
+                    decl: None,
                 },
                 EnumVariant {
-                    name: "NotCallable".into(),
-                    discriminant: 5,
-                    decl: <()>::declaration(),
-                },
-                EnumVariant {
-                    name: "Api".into(),
-                    discriminant: 6,
-                    decl: <()>::declaration(),
-                },
-                EnumVariant {
-                    name: "InvalidOutput".into(),
-                    discriminant: 7,
-                    decl: <()>::declaration(),
+                    name: "CodeNotFound".into(),
+                    discriminant: 3,
+                    decl: None,
                 },
             ],
         }
@@ -427,6 +402,7 @@ impl TryFrom<u32> for ControlFunctionOption {
 pub enum IOFunctionOption {
     Return = 600,
     CopyInput = 601,
+    Revert = 602,
 }
 
 impl From<IOFunctionOption> for u32 {
@@ -442,6 +418,7 @@ impl TryFrom<u32> for IOFunctionOption {
         Ok(match value {
             600 => IOFunctionOption::Return,
             601 => IOFunctionOption::CopyInput,
+            602 => IOFunctionOption::Revert,
             _ => return Err(()),
         })
     }

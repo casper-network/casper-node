@@ -1,4 +1,5 @@
 pub mod executor;
+pub mod install;
 pub mod sandboxed_execution;
 
 use bytes::Bytes;
@@ -17,6 +18,8 @@ pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
 pub use sandboxed_execution::{
     SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
 };
+
+use crate::install::InstallContractError;
 
 /// Interface version for the Wasm host functions.
 ///
@@ -128,6 +131,9 @@ pub enum VMError {
     #[error("Fatal host error: {0}")]
     Fatal(#[from] FatalHostError),
 
+    #[error("Revert: {0}")]
+    Revert(String),
+
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,
@@ -147,6 +153,8 @@ pub enum VMError {
     Trap(TrapCode),
     #[error("Execute error: {0}")]
     Execute(#[from] ExecuteError),
+    #[error("Install error: {0}")]
+    Install(#[from] InstallContractError),
 }
 
 impl VMError {
@@ -293,7 +301,7 @@ pub enum WasmPreparationError {
     Internal(#[from] FatalHostError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GasUsage {
     /// The amount of gas used by the execution.
     gas_limit: u64,
@@ -301,7 +309,19 @@ pub struct GasUsage {
     remaining_points: u64,
 }
 
+#[derive(Error, Debug)]
+#[error("Gas limit exceeded")]
+pub struct GasLimit;
+
 impl GasUsage {
+    #[must_use]
+    pub fn new_from_limit(gas_limit: u64) -> Self {
+        GasUsage {
+            gas_limit,
+            remaining_points: gas_limit,
+        }
+    }
+
     #[must_use]
     pub fn new(gas_limit: u64, remaining_points: u64) -> Self {
         GasUsage {
@@ -326,9 +346,18 @@ impl GasUsage {
         self.remaining_points
     }
 
-    /// Spend a given amount of gas. If the amount exceeds the remaining gas, it will be set to 0.
-    pub fn spend(&mut self, amount: u64) {
-        self.remaining_points = self.remaining_points.saturating_sub(amount);
+    /// Consumes the specified amount of gas.
+    pub fn consume_gas(&mut self, amount: u64) -> Result<(), GasLimit> {
+        match self.remaining_points.checked_sub(amount) {
+            None => {
+                self.remaining_points = 0;
+                Err(GasLimit)
+            }
+            Some(remaining) => {
+                self.remaining_points = remaining;
+                Ok(())
+            }
+        }
     }
 }
 

@@ -8,7 +8,10 @@ use casper_executor_wasm_common::keyspace::{
 };
 use const_fnv1a_hash::fnv1a_hash_64;
 
-use crate::casper::{self, read_into_vec};
+use crate::{
+    casper::{self, read_into_vec},
+    prelude::{String, Vec},
+};
 
 /// A pointer that uniquely identifies a value written into the map.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq)]
@@ -518,7 +521,10 @@ where
 mod tests {
     /*#TODO fix native implementation
     use super::*;
-    use crate::casper::native::dispatch;
+    use crate::{
+        casper::native::dispatch,
+        prelude::{String, ToString, Vec},
+    };
 
     const TEST_MAP_PREFIX: &str = "test_map";
 

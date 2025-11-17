@@ -774,7 +774,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
         Err(der) => match der {
             DispatchError::Api(apr) => {
                 debug!(?transaction_hash, %apr, "api error");
-                (None, Some(CallError::Api(apr.to_string())), None)
+                (None, Some(CallError::Revert(apr.to_string())), None)
             }
             DispatchError::Call(cer) => {
                 debug!(?transaction_hash, %cer, "call error");
@@ -782,7 +782,7 @@ pub fn native_exec<A, T: ToBytes, R: GlobalStateReader + 'static>(
             }
             DispatchError::CLValue(cve) => {
                 debug!(?transaction_hash, %cve, "cl value error");
-                (None, Some(CallError::Api(cve.to_string())), None)
+                (None, Some(CallError::Revert(cve.to_string())), None)
             }
             // the below are all node killers
             DispatchError::RegistryNotFound => {

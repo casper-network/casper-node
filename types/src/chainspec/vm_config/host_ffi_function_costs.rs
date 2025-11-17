@@ -143,6 +143,9 @@ const DEFAULT_READ_KEY_SIZE_WEIGHT: Cost = 100;
 const DEFAULT_RET_COST: Cost = 300;
 const DEFAULT_RET_VALUE_SIZE_WEIGHT: Cost = 100;
 
+const DEFAULT_REVERT_COST: Cost = 3_000;
+const DEFAULT_REVERT_VALUE_SIZE_WEIGHT: Cost = 100;
+
 const DEFAULT_TRANSFER_COST: Cost = 2_500_000_000;
 
 const DEFAULT_WRITE_COST: Cost = 25_000;
@@ -185,6 +188,8 @@ pub struct HostFFIFunctionCosts {
     pub copy_input: HostFFIFunctionCost,
     /// Cost of calling the `ret` host function.
     pub ret: HostFFIFunctionCost,
+    /// Cost of calling the `revert` host function.
+    pub revert: HostFFIFunctionCost,
     /// Cost of calling the `create` host function.
     pub create: HostFFIFunctionCost,
     /// Cost of calling the `transfer` host function.
@@ -221,6 +226,7 @@ impl HostFFIFunctionCosts {
             remove: HostFFIFunctionCost::zero(),
             copy_input: HostFFIFunctionCost::zero(),
             ret: HostFFIFunctionCost::zero(),
+            revert: HostFFIFunctionCost::zero(),
             create: HostFFIFunctionCost::zero(),
             transfer: HostFFIFunctionCost::zero(),
             env_balance: HostFFIFunctionCost::zero(),
@@ -249,6 +255,7 @@ impl Default for HostFFIFunctionCosts {
                 DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT,
             ),
             ret: HostFFIFunctionCost::new(DEFAULT_RET_COST, DEFAULT_RET_VALUE_SIZE_WEIGHT),
+            revert: HostFFIFunctionCost::new(DEFAULT_REVERT_COST, DEFAULT_REVERT_VALUE_SIZE_WEIGHT),
             create: HostFFIFunctionCost::new(DEFAULT_CREATE_COST, DEFAULT_CREATE_CODE_SIZE_WEIGHT),
             env_balance: HostFFIFunctionCost::fixed(DEFAULT_ENV_BALANCE_COST),
             transfer: HostFFIFunctionCost::new(DEFAULT_TRANSFER_COST, NOT_USED),
@@ -280,6 +287,7 @@ impl ToBytes for HostFFIFunctionCosts {
         ret.append(&mut self.remove.to_bytes()?);
         ret.append(&mut self.copy_input.to_bytes()?);
         ret.append(&mut self.ret.to_bytes()?);
+        ret.append(&mut self.revert.to_bytes()?);
         ret.append(&mut self.create.to_bytes()?);
         ret.append(&mut self.transfer.to_bytes()?);
         ret.append(&mut self.env_balance.to_bytes()?);
@@ -300,6 +308,7 @@ impl ToBytes for HostFFIFunctionCosts {
         self.read.serialized_length()
             + self.write.serialized_length()
             + self.remove.serialized_length()
+            + self.revert.serialized_length()
             + self.copy_input.serialized_length()
             + self.ret.serialized_length()
             + self.create.serialized_length()
@@ -325,6 +334,7 @@ impl FromBytes for HostFFIFunctionCosts {
         let (remove, rem) = FromBytes::from_bytes(rem)?;
         let (copy_input, rem) = FromBytes::from_bytes(rem)?;
         let (ret, rem) = FromBytes::from_bytes(rem)?;
+        let (revert, rem) = FromBytes::from_bytes(rem)?;
         let (create, rem) = FromBytes::from_bytes(rem)?;
         let (transfer, rem) = FromBytes::from_bytes(rem)?;
         let (env_balance, rem) = FromBytes::from_bytes(rem)?;
@@ -345,6 +355,7 @@ impl FromBytes for HostFFIFunctionCosts {
                 remove,
                 copy_input,
                 ret,
+                revert,
                 create,
                 transfer,
                 env_balance,
@@ -373,6 +384,7 @@ impl Distribution<HostFFIFunctionCosts> for Standard {
             remove: rng.gen(),
             copy_input: rng.gen(),
             ret: rng.gen(),
+            revert: rng.gen(),
             create: rng.gen(),
             transfer: rng.gen(),
             env_balance: rng.gen(),
@@ -410,6 +422,7 @@ pub mod gens {
             remove in host_function_cost_v2_arb(),
             copy_input in host_function_cost_v2_arb(),
             ret in host_function_cost_v2_arb(),
+            revert in host_function_cost_v2_arb(),
             create in host_function_cost_v2_arb(),
             transfer in host_function_cost_v2_arb(),
             env_balance in host_function_cost_v2_arb(),
@@ -430,6 +443,7 @@ pub mod gens {
                 remove,
                 copy_input,
                 ret,
+                revert,
                 create,
                 transfer,
                 env_balance,
@@ -440,7 +454,7 @@ pub mod gens {
                 env_info,
                 generic_hash,
                 recover_secp256k1,
-                                alt_bn128_add,
+                alt_bn128_add,
                 alt_bn128_mul,
                 alt_bn128_pairing
             }

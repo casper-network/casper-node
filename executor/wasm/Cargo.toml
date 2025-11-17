@@ -12,6 +12,7 @@ license = "Apache-2.0"
 blake2 = "0.10"
 borsh = { version = "1.5", features = ["derive"] }
 bytes = "1.10"
+casper-contract-sdk = { version = "1.0.0", path = "../../smart_contracts/vm2/sdk" }
 casper-executor-wasm-common = { version = "1.0.0", path = "../wasm_common" }
 casper-executor-wasm-host = { version = "1.0.0", path = "../wasm_host" }
 casper-executor-wasm-interface = { version = "1.0.0", path = "../wasm_interface" }

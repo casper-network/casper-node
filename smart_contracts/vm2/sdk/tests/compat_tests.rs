@@ -1,5 +1,5 @@
 use casper_contract_sdk::compat;
-use casper_types::bytesrepr::ToBytes;
+use casper_types::bytesrepr::{self, ToBytes};
 use proptest::prelude::*;
 
 fn convert_to_compat_cl_type(cl_type: casper_types::CLType) -> compat::types::CLType {
@@ -57,6 +57,19 @@ fn convert_to_compat_cl_value(cl_value: casper_types::CLValue) -> compat::types:
     )
 }
 
+#[test]
+fn smoke() {
+    let lhs = borsh::to_vec(&compat::types::CLType::String).unwrap();
+    let rhs = casper_types::CLType::String.to_bytes().unwrap();
+
+    assert_eq!(&lhs, &rhs);
+
+    assert_eq!(
+        bytesrepr::deserialize_from_slice::<_, casper_types::CLType>(&lhs).unwrap(),
+        casper_types::CLType::String
+    );
+}
+
 proptest! {
     #[test]
     fn cl_type(cl_type in casper_types::gens::cl_type_arb()) {
@@ -103,4 +116,6 @@ proptest! {
         let cl_value_compat_again = convert_to_compat_cl_value(cl_value_from_compat_bytes);
         assert_eq!(compat_cl_value, cl_value_compat_again);
     }
+
+
 }

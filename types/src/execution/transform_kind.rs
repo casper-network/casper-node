@@ -211,6 +211,11 @@ impl TransformKindV2 {
                     let found = "EntryPoint".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::TypeDef(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "TypeDefinitions".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
             TransformKindV2::Failure(error) => Err(error),
             TransformKindV2::Ret(_) => Ok(store(stored_value)),

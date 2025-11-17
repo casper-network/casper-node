@@ -3,7 +3,7 @@ pub(crate) mod middleware;
 pub(crate) mod tunables;
 
 use std::{
-    collections::BinaryHeap,
+    collections::{BTreeSet, BinaryHeap},
     sync::{Arc, LazyLock, Weak},
 };
 
@@ -536,7 +536,7 @@ where
 pub fn entry_point_names(
     wasm_bytes: Bytes,
     config: Config,
-) -> Result<Vec<String>, WasmPreparationError> {
+) -> Result<BTreeSet<String>, WasmPreparationError> {
     let engine = {
         let mut singlepass_compiler = Singlepass::new();
         let gatekeeper_config = GatekeeperConfig::default();
@@ -560,8 +560,11 @@ pub fn entry_point_names(
 
     let entry_point_names = module
         .exports()
-        .map(|export| export.name().to_string())
-        .collect();
+        .filter_map(|export| match export.ty() {
+            wasmer::ExternType::Function(_) => Some(export.name().to_string()),
+            _ => None,
+        })
+        .collect::<BTreeSet<String>>();
 
     Ok(entry_point_names)
 }
