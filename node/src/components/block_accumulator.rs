@@ -235,7 +235,8 @@ impl BlockAccumulator {
             let block_timestamps = self.peer_block_timestamps.entry(sender).or_default();
 
             // Prune the timestamps, so the count reflects only the most recently added acceptors.
-            let purge_interval = self.purge_interval;
+            // assume at least a 1 milli purge interval to avoid 0 purge interval mathing issues
+            let purge_interval = self.purge_interval.max(TimeDiff::from_millis(1));
             while block_timestamps
                 .front()
                 .is_some_and(|(_, timestamp)| timestamp.elapsed() > purge_interval)

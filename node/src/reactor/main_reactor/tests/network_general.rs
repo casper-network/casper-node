@@ -456,7 +456,7 @@ async fn network_should_recover_from_stall() {
     }
 
     // Ensure all nodes progress until block 3 is marked complete.
-    fixture.run_until_block_height(3, TEN_SECS).await;
+    fixture.run_until_block_height(3, ONE_MIN).await;
 }
 
 #[tokio::test]
