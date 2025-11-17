@@ -1,6 +1,4 @@
 pub mod altbn128;
-#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-pub mod native;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 use crate::abi::{CasperABI, EnumVariant};
@@ -199,8 +197,10 @@ pub fn create(
             None => Err(CallError::InvalidOutput),
         },
         other_status => {
-            // #TODO! fix this wrap
-            Err(CallError::try_from(other_status).expect("Couldn't interpret error from host"))
+            let Ok(error) = CallError::try_from(other_status) else {
+                panic!("Couldn't interpret error from host: {}", other_status);
+            };
+            Err(error)
         }
     }
 }
@@ -281,7 +281,6 @@ pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, HostResult> {
 
 /// Read from the global state into a vector.
 pub fn has_state() -> Result<bool, HostResult> {
-    // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
     let mut vec = Vec::new();
     let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
     match read_info {
@@ -515,11 +514,9 @@ pub fn transferred_value() -> u64 {
 }
 
 /// Transfer tokens from the current contract to another account or contract.
-pub fn transfer(target_account: &EntityAddr, amount: u64) -> Result<(), CallError> {
-    // TODO: the variable name is called target_account, but
-    // logic would call it with misc addresses. need to confer w/ michal
-    log!("transfer entity_addr {:?}", target_account);
-    let bytes = match borsh::to_vec(&(target_account, amount)) {
+pub fn transfer(target: &EntityAddr, amount: u64) -> Result<(), CallError> {
+    log!("transfer entity_addr {:?}", target);
+    let bytes = match borsh::to_vec(&(target, amount)) {
         Ok(bytes) => bytes,
         Err(_err) => return Err(CallError::CalleeTrapped),
     };
