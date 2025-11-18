@@ -50,7 +50,7 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
-        contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
+        contract_runtime::ExecutionPreState,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -905,15 +905,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the persisted trie.
         responder: Responder<PutTrieResult>,
     },
-    /// Execute transaction without committing results
-    SpeculativelyExecute {
-        /// Pre-state.
-        block_header: Box<BlockHeader>,
-        /// Transaction to execute.
-        transaction: Box<Transaction>,
-        /// Results
-        responder: Responder<SpeculativeExecutionResult>,
-    },
     UpdateRuntimePrice(EraId, u8),
     GetEraGasPrice {
         era_id: EraId,
@@ -1004,18 +995,6 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::PutTrie { request, .. } => {
                 write!(formatter, "trie: {:?}", request)
-            }
-            ContractRuntimeRequest::SpeculativelyExecute {
-                transaction,
-                block_header,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "Execute {} on {}",
-                    transaction.hash(),
-                    block_header.state_root_hash()
-                )
             }
             ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
                 write!(formatter, "updating price to {}", era_gas_price)
@@ -1291,17 +1270,11 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
-    pub(crate) is_speculative: bool,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
 impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "accept transaction {} is_speculative: {}",
-            self.transaction.hash(),
-            self.is_speculative
-        )
+        write!(f, "accept transaction {}", self.transaction.hash(),)
     }
 }

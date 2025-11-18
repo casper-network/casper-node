@@ -53,6 +53,11 @@ pub struct InstallContractRequest {
     pub bundle_data: Option<Bytes>,
     /// Authorization keys for this installation.
     pub authorization_keys: BTreeSet<AccountHash>,
+    /// Whether the execution is in sandboxed mode.
+    ///
+    /// In sandboxed mode, the installation cannot make state changes.
+    /// No gas is charged for the execution.
+    pub sandboxed: bool,
 }
 
 #[derive(Default)]
@@ -74,6 +79,7 @@ pub struct InstallContractRequestBuilder {
     seed: Option<[u8; 32]>,
     bundle_data: Option<Bytes>,
     authorization_keys: Option<BTreeSet<AccountHash>>,
+    sandboxed: bool,
 }
 
 impl InstallContractRequestBuilder {
@@ -173,6 +179,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_sandboxed(mut self, sandboxed: bool) -> Self {
+        self.sandboxed = sandboxed;
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -213,6 +224,7 @@ impl InstallContractRequestBuilder {
             runtime_native_config,
             bundle_data,
             authorization_keys,
+            sandboxed: self.sandboxed,
         })
     }
 }

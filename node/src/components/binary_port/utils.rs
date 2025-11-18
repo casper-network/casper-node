@@ -1,81 +1,37 @@
-use casper_binary_port::{
-    SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
-};
-use casper_executor_wasm_interface::{
-    SandboxedExecutionError as InnerSandboxedExecutionError,
-    SandboxedExecutionRequest as InnerSandboxedExecutionRequest,
-    SandboxedExecutionResult as InnerSandboxedExecutionResult,
+use casper_executor_wasm_interface::SandboxedExecutionRequest as InnerSandboxedExecutionRequest;
+use casper_types::{
+    BlockHeader, BlockTime, Gas, InitiatorAddr, InvalidTransaction, PricingHandling, Transaction,
+    TransactionConfig,
 };
 
-/// Transforms binary port request into corresponding inner sandboxed execution request.
-pub(super) fn map_sandbox_request(
-    req: SandboxedExecutionRequest,
-) -> InnerSandboxedExecutionRequest {
-    InnerSandboxedExecutionRequest {
-        initiator: req.initiator,
-        contract_address: req.contract_address,
-        entry_point: req.entry_point,
-        input: req.input,
-        gas_limit: req.gas_limit,
-        block_time: req.block_time,
-        state_hash: req.state_hash,
-        parent_block_hash: req.parent_block_hash,
-        block_height: req.block_height,
-        chain_name: req.chain_name,
-    }
-}
+use crate::types::MetaTransaction;
 
-/// Transforms inner sandboxed execution error into corresponding binary port error.
-pub(super) fn map_sandbox_error(
-    maybe_error: Option<InnerSandboxedExecutionError>,
-) -> Option<SandboxedExecutionError> {
-    match maybe_error {
-        Some(error) => {
-            let ret = match error {
-                InnerSandboxedExecutionError::CalleeRolledBack => {
-                    SandboxedExecutionError::CalleeRolledBack
-                }
-                InnerSandboxedExecutionError::CalleeTrapped => {
-                    SandboxedExecutionError::CalleeTrapped
-                }
-                InnerSandboxedExecutionError::CalleeGasDepleted => {
-                    SandboxedExecutionError::CalleeGasDepleted
-                }
-                InnerSandboxedExecutionError::NotCallable => SandboxedExecutionError::NotCallable,
-                InnerSandboxedExecutionError::CodeNotFound => SandboxedExecutionError::CodeNotFound,
-                InnerSandboxedExecutionError::InternalHostError => {
-                    SandboxedExecutionError::InternalHostError
-                }
-                InnerSandboxedExecutionError::NoActiveContract => {
-                    SandboxedExecutionError::NoActiveContract
-                }
-                InnerSandboxedExecutionError::EntityNotFound => {
-                    SandboxedExecutionError::EntityNotFound
-                }
-                InnerSandboxedExecutionError::LockedPackage => {
-                    SandboxedExecutionError::LockedPackage
-                }
-                InnerSandboxedExecutionError::Api(api_error) => {
-                    SandboxedExecutionError::Api(api_error)
-                }
-                InnerSandboxedExecutionError::InputInvalid => SandboxedExecutionError::InputInvalid,
-            };
-            Some(ret)
-        }
-        None => None,
-    }
-}
-
-/// Transforms inner sandboxed execution result into corresponding binary port result.
-pub(super) fn map_sandbox_result(
-    result: InnerSandboxedExecutionResult,
-) -> SandboxedExecutionResult {
-    let error = map_sandbox_error(result.error);
-    let output = result.output;
-    let gas_usage = result.gas_usage;
-    SandboxedExecutionResult {
-        error,
-        output,
-        gas_usage,
-    }
+pub(super) fn transaction_to_sandbox_request(
+    transaction: Transaction,
+    block_header: BlockHeader,
+    gas_limit: u64,
+) -> Result<InnerSandboxedExecutionRequest, InvalidTransaction> {
+    // Filling it any data for pricing handling and transaction config since
+    // these parts of the transaction play no role in sandbox execution
+    let pricing_handling = PricingHandling::default();
+    let transaction_config = TransactionConfig::default();
+    let meta_transaction =
+        MetaTransaction::from_transaction(&transaction, pricing_handling, &transaction_config)?;
+    let account_hash = match &meta_transaction.initiator_addr() {
+        InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
+        InitiatorAddr::AccountHash(account_hash) => *account_hash,
+    };
+    Ok(InnerSandboxedExecutionRequest {
+        state_hash: *block_header.state_root_hash(),
+        block_height: block_header.height(),
+        block_time: BlockTime::new(block_header.timestamp().millis()),
+        parent_block_hash: *block_header.parent_hash(),
+        protocol_version: block_header.protocol_version(),
+        target: meta_transaction.target_retrofit(),
+        entry_point: meta_transaction.entry_point(),
+        initiator: account_hash,
+        args: meta_transaction.transaction_args_retrofit(),
+        authorization_keys: meta_transaction.authorization_keys(),
+        gas_limit: Gas::new(gas_limit),
+    })
 }

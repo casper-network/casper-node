@@ -9,11 +9,7 @@ mod rate_limiter;
 mod tests;
 mod utils;
 
-use std::{
-    convert::TryFrom,
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-};
+use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
@@ -23,7 +19,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
     PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    SandboxedExecutionRequest, TransactionWithExecutionInfo, ValueWithProof,
+    TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -49,7 +45,7 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
-    Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
+    Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, Gas, GlobalStateIdentifier, Key,
     Package, PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, StoredValue, TimeDiff,
     Timestamp, Transaction, URef,
 };
@@ -75,7 +71,6 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -170,7 +165,6 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-    sandboxed_execution_request: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -182,7 +176,6 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-            sandboxed_execution_request: config.try_sandboxed_execution_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -193,18 +186,17 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TrySandboxedExecution { .. } => self.sandboxed_execution_request,
         }
     }
 }
 
 async fn handle_request<REv>(
     req: Command,
-    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
+    gas_limit_for_sandboxed_execution: u64,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -222,7 +214,7 @@ where
     match req {
         Command::TryAcceptTransaction { transaction } => {
             metrics.binary_port_try_accept_transaction_count.inc();
-            try_accept_transaction(effect_builder, transaction, false).await
+            try_accept_transaction(effect_builder, transaction).await
         }
         Command::TrySpeculativeExec { transaction } => {
             metrics.binary_port_try_speculative_exec_count.inc();
@@ -233,22 +225,60 @@ where
                 );
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            let response = try_accept_transaction(effect_builder, transaction.clone(), true).await;
-            if !response.is_success() {
-                return response;
-            }
-            try_speculative_execution(effect_builder, transaction).await
-        }
-        Command::TrySandboxedExecution { request } => {
-            metrics.binary_port_try_sandboxed_execution_count.inc();
-            let enable_for_peer = config
-                .sandboxed_execution_allowed_ips
-                .iter()
-                .any(|ip| ip == "*" || ip == &peer_ip.to_string());
-            if !enable_for_peer {
-                return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
-            }
-            try_sandboxed_execution(effect_builder, request).await
+            let tip = match effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+            {
+                Some(tip) => tip,
+                None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
+            };
+            let block_hash = tip.block_hash();
+            let inner_request = match utils::transaction_to_sandbox_request(
+                transaction,
+                tip,
+                gas_limit_for_sandboxed_execution,
+            ) {
+                Ok(req) => req,
+                Err(invalid_transaction) => {
+                    return BinaryResponse::new_error(ErrorCode::from(invalid_transaction));
+                }
+            };
+            let inner_result = effect_builder
+                .execute_sandboxed_contract(inner_request)
+                .await;
+            let output = inner_result.output;
+            let (transfers, limit, consumed, effects, messages, bytes_output) =
+                if let Some(output) = output {
+                    (
+                        output.transfers,
+                        output.limit,
+                        output.consumed,
+                        output.effects,
+                        output.messages,
+                        Some(output.output),
+                    )
+                } else {
+                    (
+                        vec![],
+                        Gas::zero(),
+                        Gas::zero(),
+                        casper_types::execution::Effects::new(),
+                        vec![],
+                        None,
+                    )
+                };
+            let error_str = inner_result.error.map(|x| x.to_string());
+            let result = casper_binary_port::SpeculativeExecutionResult::new(
+                block_hash,
+                transfers,
+                limit,
+                consumed,
+                effects,
+                messages,
+                error_str,
+                bytes_output,
+            );
+            BinaryResponse::from_value(result)
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1447,13 +1477,12 @@ where
 async fn try_accept_transaction<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
-    is_speculative: bool,
 ) -> BinaryResponse
 where
     REv: From<AcceptTransactionRequest>,
 {
     effect_builder
-        .try_accept_transaction(transaction, is_speculative)
+        .try_accept_transaction(transaction)
         .await
         .map_or_else(
             |err| BinaryResponse::new_error(err.into()),
@@ -1461,58 +1490,8 @@ where
         )
 }
 
-async fn try_speculative_execution<REv>(
-    effect_builder: EffectBuilder<REv>,
-    transaction: Transaction,
-) -> BinaryResponse
-where
-    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
-{
-    let tip = match effect_builder
-        .get_highest_complete_block_header_from_storage()
-        .await
-    {
-        Some(tip) => tip,
-        None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
-    };
-
-    let result = effect_builder
-        .speculatively_execute(Box::new(tip), Box::new(transaction))
-        .await;
-
-    match result {
-        SpeculativeExecutionResult::InvalidTransaction(error) => {
-            debug!(%error, "invalid transaction submitted for speculative execution");
-            BinaryResponse::new_error(error.into())
-        }
-        SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
-            BinaryResponse::from_value(spec_exec_result)
-        }
-        SpeculativeExecutionResult::ReceivedV1Transaction => {
-            BinaryResponse::new_error(ErrorCode::ReceivedV1Transaction)
-        }
-    }
-}
-
-async fn try_sandboxed_execution<REv>(
-    effect_builder: EffectBuilder<REv>,
-    request: SandboxedExecutionRequest,
-) -> BinaryResponse
-where
-    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
-{
-    let inner_request = utils::map_sandbox_request(request);
-    let inner_result = effect_builder
-        .execute_sandboxed_contract(inner_request)
-        .await;
-    let result = utils::map_sandbox_result(inner_result);
-
-    BinaryResponse::from_value(result)
-}
-
 async fn handle_client_loop<REv>(
     stream: TcpStream,
-    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
@@ -1556,7 +1535,7 @@ where
                 let response = if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
                     BinaryResponse::new_error(ErrorCode::RequestThrottled)
                 } else {
-                    handle_payload(effect_builder, payload, peer_ip, &monitor, &life_extensions_config).await
+                    handle_payload(effect_builder, payload, &monitor, &life_extensions_config).await
                 };
                 let _ = &mut codec.encode(binary_message, &mut bytes_buf)?;
                 framed
@@ -1601,7 +1580,6 @@ fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
-    peer_ip: IpAddr,
     connection_terminator: &ConnectionTerminator,
     life_extensions_config: &BinaryRequestTerminationDelayValues,
 ) -> BinaryResponse
@@ -1631,11 +1609,7 @@ where
 
     effect_builder
         .make_request(
-            |responder| Event::HandleRequest {
-                request,
-                peer_ip,
-                responder,
-            },
+            |responder| Event::HandleRequest { request, responder },
             QueueKind::Regular,
         )
         .await
@@ -1663,10 +1637,8 @@ async fn handle_client<REv>(
 {
     let keep_alive_monitor = ConnectionTerminator::new();
     let life_extensions_config = BinaryRequestTerminationDelayValues::from_config(&config);
-    let peer_ip = addr.ip();
     if let Err(err) = handle_client_loop(
         stream,
-        peer_ip,
         effect_builder,
         config,
         rate_limiter,
@@ -1969,22 +1941,20 @@ where
                     }
                     responder.respond(()).ignore()
                 }
-                Event::HandleRequest {
-                    request,
-                    peer_ip,
-                    responder,
-                } => {
+                Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
                     let metrics = Arc::clone(&self.metrics);
                     let protocol_version = self.chainspec.protocol_version();
+                    let gas_limit_for_sandboxed_execution =
+                        self.chainspec.transaction_config.block_gas_limit;
                     async move {
                         let response = handle_request(
                             request,
-                            peer_ip,
                             effect_builder,
                             &config,
                             &metrics,
                             protocol_version,
+                            gas_limit_for_sandboxed_execution,
                         )
                         .await;
                         responder.respond(response).await;

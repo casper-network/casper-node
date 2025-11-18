@@ -5,7 +5,7 @@ use casper_types::{
     Transaction,
 };
 
-use crate::{get_request::GetRequest, sandboxed_execution::SandboxedExecutionRequest};
+use crate::get_request::GetRequest;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -115,11 +115,6 @@ pub enum Command {
         /// Transaction to execute.
         transaction: Transaction,
     },
-    /// Request to execute a sandboxed contract.
-    TrySandboxedExecution {
-        /// A sandboxed execution request.
-        request: SandboxedExecutionRequest,
-    },
 }
 
 impl Command {
@@ -129,7 +124,6 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
-            Command::TrySandboxedExecution { .. } => CommandTag::TrySandboxedExecution,
         }
     }
 
@@ -142,9 +136,6 @@ impl Command {
             },
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
-            },
-            CommandTag::TrySandboxedExecution => Self::TrySandboxedExecution {
-                request: SandboxedExecutionRequest::random(rng),
             },
         }
     }
@@ -162,7 +153,6 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::TrySandboxedExecution { request } => request.serialized_length(),
         }
     }
 
@@ -171,7 +161,6 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::TrySandboxedExecution { request } => request.write_bytes(writer),
         }
     }
 }
@@ -193,10 +182,6 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
-            CommandTag::TrySandboxedExecution => {
-                let (request, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::TrySandboxedExecution { request }, remainder)
-            }
         };
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
@@ -215,19 +200,16 @@ pub enum CommandTag {
     TryAcceptTransaction = 1,
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
-    /// Request to execute a sandboxed contract.
-    TrySandboxedExecution = 3,
 }
 
 impl CommandTag {
     /// Creates a random `CommandTag`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
-            3 => CommandTag::TrySandboxedExecution,
             _ => unreachable!(),
         }
     }
@@ -241,7 +223,6 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
-            3 => Ok(CommandTag::TrySandboxedExecution),
             _ => Err(InvalidCommandTag),
         }
     }

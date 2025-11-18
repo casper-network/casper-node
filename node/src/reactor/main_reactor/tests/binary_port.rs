@@ -31,7 +31,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    SandboxedExecutionRequest, SandboxedExecutionResult, Uptime, ValueWithProof,
+    SpeculativeExecutionResult, Uptime, ValueWithProof,
 };
 use casper_executor_wasm_common::chain_utils;
 use casper_storage::global_state::state::CommitProvider;
@@ -41,16 +41,18 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::{Effects, TransformKindV2, TransformV2},
-    system::auction::DelegatorKind,
+    runtime_args,
+    system::auction::{DelegatorKind, ARG_AMOUNT},
     testing::TestRng,
     Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
-    ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
-    EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef,
-    U512,
+    ContractRuntimeTag, ContractWasm, ContractWasmHash, Deploy, DeployHash, DeployHeader,
+    DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, ExecutableDeployItem,
+    GlobalStateIdentifier, HashAddr, InitiatorAddr, Key, KeyTag, NextUpgrade, Package, PackageAddr,
+    Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, TimeDiff,
+    Timestamp, Transaction, TransactionArgs, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionTarget, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -1371,7 +1373,7 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 }
 
 #[tokio::test]
-async fn binary_port_sandboxed_execution_request() {
+async fn binary_port_vm2_speculative_execution_request() {
     testing::init_logging();
 
     let alice_secret_key =
@@ -1489,7 +1491,7 @@ async fn binary_port_sandboxed_execution_request() {
         .expect("Expected transaction to be included in a block.");
 
     // Create a VM read request to call the get method
-    let (latest_block, state_root_hash) = {
+    let (_latest_block, _state_root_hash) = {
         let (_, runner) = fixture.network.nodes().iter().next().unwrap();
         let storage = runner.main_reactor().storage();
 
@@ -1499,20 +1501,23 @@ async fn binary_port_sandboxed_execution_request() {
         let state_root_hash = *latest_block.state_root_hash();
         (latest_block, state_root_hash)
     };
-
-    let request = SandboxedExecutionRequest {
-        initiator: alice_public_key.to_account_hash(),
-        contract_address,
-        entry_point: "get".to_string(),
-        input: Bytes::new(),
-        gas_limit: 100_000_000,
-        block_time: latest_block.timestamp().into(),
-        state_hash: state_root_hash,
-        parent_block_hash: *latest_block.parent_hash(),
-        block_height: latest_block.height(),
-        chain_name: chain_name.clone(),
-    };
-
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new()
+            .with_chain_name(chain_name.to_string())
+            .with_initiator_addr(InitiatorAddr::PublicKey(alice_public_key))
+            .with_transaction_target(TransactionTarget::Stored {
+                id: TransactionInvocationTarget::ByHash(contract_address),
+                runtime: TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value: 0,
+                    seed: None,
+                    bundle_data: None,
+                },
+            })
+            .with_entry_point(TransactionEntryPoint::Custom("get".to_string()))
+            .with_transaction_args(TransactionArgs::Bytesrepr(vec![].into()))
+            .build()
+            .unwrap(),
+    );
     // Connect to binary port (1st node)
     let (_, first_node) = fixture.network.nodes().iter().next().unwrap();
     let binary_port_addr = first_node
@@ -1530,7 +1535,7 @@ async fn binary_port_sandboxed_execution_request() {
     // Let the network run in the background while we wait for the request to be processed
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
     // Create and send the command
-    let request = Command::TrySandboxedExecution { request };
+    let request = Command::TrySpeculativeExec { transaction };
     let request_bytes = {
         let header = CommandHeader::new(request.tag(), 16);
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
@@ -1557,10 +1562,10 @@ async fn binary_port_sandboxed_execution_request() {
     let response_obj = binary_response_and_request.response();
     assert!(response_obj.is_success(), "{response_obj:?}");
 
-    let (result, remainder): (SandboxedExecutionResult, _) =
+    let (result, remainder): (SpeculativeExecutionResult, _) =
         FromBytes::from_bytes(response_obj.payload()).expect("should deserialize");
     assert!(remainder.is_empty());
-    assert!(result.is_success());
+    assert!(result.error().is_none());
 
     // The get entrypoint in flipper should return a single boolean value
     let (flipper_state, remainder) =
@@ -1570,6 +1575,177 @@ async fn binary_port_sandboxed_execution_request() {
     assert!(!flipper_state);
 
     finish_cranking.await;
+}
+
+#[tokio::test]
+async fn binary_port_speculative_should_allow_deploy_install_request() {
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("do_nothing_stored.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let result = speculative_exec_transaction_test(|chain_name| {
+        Transaction::from(Deploy::new(
+            DeployHash::new([0; 32].into()),
+            DeployHeader::new(
+                alice_public_key.clone(),
+                Timestamp::now(),
+                TimeDiff::default(),
+                1,
+                [1; 32].into(),
+                vec![],
+                chain_name,
+            ),
+            ExecutableDeployItem::Transfer {
+                args: runtime_args! {
+                    ARG_AMOUNT => U512::from(1)
+                },
+            },
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: module_bytes.clone(),
+                args: runtime_args! {},
+            },
+        ))
+    })
+    .await;
+    assert!(result.error().is_none());
+    assert_eq!(result.output().cloned(), Some(Bytes::default())); //The constructor
+                                                                  // returns no data
+}
+
+#[tokio::test]
+async fn binary_port_speculative_should_allow_v1_vm1_install_request() {
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("do_nothing_stored.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let result = speculative_exec_transaction_test(|chain_name| {
+        Transaction::from(
+            TransactionV1Builder::new_session(
+                true,
+                module_bytes.clone(),
+                TransactionRuntimeParams::VmCasperV1,
+            )
+            .with_chain_name(chain_name.clone())
+            .with_initiator_addr(alice_public_key.to_owned())
+            .with_entry_point(TransactionEntryPoint::Call)
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: DEFAULT_PAYMENT_AMOUNT * 10,
+                gas_price_tolerance: DEFAULT_GAS_PRICE_TOLERANCE,
+                standard_payment: true,
+            })
+            .build()
+            .unwrap(),
+        )
+    })
+    .await;
+    assert!(result.error().is_none());
+    assert_eq!(result.output().cloned(), Some(Bytes::default())); //The constructor
+                                                                  // returns no data
+}
+
+#[tokio::test]
+async fn binary_port_speculative_should_allow_v1_vm2_install_request() {
+    const SEED_FOR_TESTING: Option<[u8; 32]> = Some([42u8; 32]);
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("vm2_flipper.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let result = speculative_exec_transaction_test(|chain_name| {
+        Transaction::from(
+            TransactionV1Builder::new_session(
+                true,
+                module_bytes.clone(),
+                TransactionRuntimeParams::VmCasperV2 {
+                    transferred_value: 0,
+                    seed: SEED_FOR_TESTING,
+                    bundle_data: None,
+                },
+            )
+            .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+            .with_chain_name(chain_name.clone())
+            .with_initiator_addr(alice_public_key.to_owned())
+            .with_entry_point(TransactionEntryPoint::Custom("default".into()))
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: DEFAULT_PAYMENT_AMOUNT * 10,
+                gas_price_tolerance: DEFAULT_GAS_PRICE_TOLERANCE,
+                standard_payment: true,
+            })
+            .build()
+            .unwrap(),
+        )
+    })
+    .await;
+    assert!(result.error().is_none());
+    assert_eq!(result.output().cloned(), Some(Bytes::default())); //The constructor
+                                                                  // returns no data
+}
+
+#[tokio::test]
+async fn binary_port_speculative_should_return_data_from_vm1_call() {
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("ret_journal_test.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let result = speculative_exec_transaction_test(|chain_name| {
+        Transaction::from(Deploy::new(
+            DeployHash::new([0; 32].into()),
+            DeployHeader::new(
+                alice_public_key.clone(),
+                Timestamp::now(),
+                TimeDiff::default(),
+                1,
+                [1; 32].into(),
+                vec![],
+                chain_name,
+            ),
+            ExecutableDeployItem::Transfer {
+                args: runtime_args! {
+                    ARG_AMOUNT => U512::from(1)
+                },
+            },
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: module_bytes.clone(),
+                args: runtime_args! {},
+            },
+        ))
+    })
+    .await;
+    assert!(result.error().is_none());
+    let return_data = b"casper_ret test data";
+    let expected_bytes = CLValue::from_t(return_data).unwrap().to_bytes().unwrap();
+    assert_eq!(result.output().cloned(), Some(expected_bytes.into()));
 }
 
 #[tokio::test]
@@ -1618,4 +1794,122 @@ async fn binary_port_component_rejects_requests_with_invalid_header_version() {
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
         .await
         .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
+}
+
+async fn speculative_exec_transaction_test<T: Fn(String) -> Transaction>(
+    transaction_builder: T,
+) -> SpeculativeExecutionResult {
+    testing::init_logging();
+
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let bob_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    let stakes = vec![
+        (
+            alice_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(u128::MAX)),
+        ),
+        (
+            bob_public_key.clone(),
+            (U512::from(u128::MAX), U512::from(1)),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    let rng = TestRng::new();
+    let mut fixture = TestFixture::new_with_keys(
+        rng,
+        vec![alice_secret_key.clone(), bob_secret_key.clone()],
+        stakes,
+        Some(ConfigsOverride {
+            vm_casper_v2: true,
+            ..Default::default()
+        }),
+    )
+    .await;
+
+    let chain_name = fixture.chainspec.network_config.name.clone();
+    let mut rng = fixture.rng_mut().create_child();
+
+    let node_0 = fixture
+        .node_contexts
+        .first()
+        .expect("should have at least one node")
+        .id;
+
+    // Wait for network to start storing blocks
+    fixture
+        .network_mut()
+        .crank_all_until(
+            &node_0,
+            &mut rng,
+            |e| {
+                matches!(
+                    e,
+                    MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
+                        maybe_block_signatures: _,
+                        maybe_meta_block: _,
+                    })
+                )
+            },
+            Duration::from_secs(30),
+        )
+        .await;
+
+    // Connect to binary port (1st node)
+    let (_, first_node) = fixture.network.nodes().iter().next().unwrap();
+    let binary_port_addr = first_node
+        .main_reactor()
+        .binary_port
+        .bind_address()
+        .expect("should be bound");
+    let address = format!("localhost:{}", binary_port_addr.port());
+
+    let stream = TcpStream::connect(address.clone())
+        .await
+        .expect("should create stream");
+    let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
+
+    // Let the network run in the background while we wait for the request to be processed
+    let finish_cranking = fixture.run_until_stopped(rng.create_child());
+    let transaction = transaction_builder(chain_name);
+    // Create and send the command
+    let request = Command::TrySpeculativeExec { transaction };
+    let request_bytes = {
+        let header = CommandHeader::new(request.tag(), 16);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+        let request_bytes = ToBytes::to_bytes(&request).expect("should serialize");
+
+        [header_bytes, request_bytes].concat()
+    };
+    let binary_message = BinaryMessage::new(request_bytes);
+
+    client
+        .send(binary_message)
+        .await
+        .expect("Failed to send VM read request");
+
+    // Receive and verify response
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("VM read request should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have response"))
+        .unwrap_or_else(|err| panic!("should have ok response: {}", err));
+
+    let binary_response_and_request: BinaryResponseAndRequest =
+        bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
+    let response_obj = binary_response_and_request.response();
+    assert!(response_obj.is_success(), "{response_obj:?}");
+
+    let (result, remainder): (SpeculativeExecutionResult, _) =
+        FromBytes::from_bytes(response_obj.payload()).expect("should deserialize");
+    assert!(remainder.is_empty());
+
+    finish_cranking.await;
+    result
 }

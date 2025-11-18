@@ -6,9 +6,10 @@ use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, Se
 use casper_types::InvalidTransactionV1;
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, ExecutableDeployItem,
-    Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase, PricingHandling,
-    PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionConfig,
-    TransactionEntryPoint, TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID,
+    Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, PackageAddr, Phase,
+    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
+    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionTarget, INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use meta_deploy::MetaDeploy;
@@ -83,14 +84,6 @@ impl MetaTransaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
-        }
-    }
-
-    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
-    pub(crate) fn is_native(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().is_transfer(),
-            MetaTransaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
         }
     }
 
@@ -197,14 +190,6 @@ impl MetaTransaction {
                 .gas_limit(chainspec)
                 .map_err(InvalidTransaction::from),
             MetaTransaction::V1(v1) => v1.gas_limit(chainspec),
-        }
-    }
-
-    /// Is the transaction the original transaction variant.
-    pub(crate) fn is_deploy_transaction(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(_) => true,
-            MetaTransaction::V1(_) => false,
         }
     }
 
@@ -388,6 +373,74 @@ impl MetaTransaction {
         match self {
             MetaTransaction::Deploy(_) => None,
             MetaTransaction::V1(v1) => Some(v1.target().clone()),
+        }
+    }
+
+    pub(crate) fn target_retrofit(&self) -> TransactionTarget {
+        match self {
+            MetaTransaction::Deploy(meta_deploy) => match meta_deploy.deploy().session() {
+                ExecutableDeployItem::ModuleBytes {
+                    module_bytes,
+                    args: _,
+                } => TransactionTarget::Session {
+                    is_install_upgrade: true,
+                    module_bytes: module_bytes.clone(),
+                    runtime: TransactionRuntimeParams::VmCasperV1,
+                },
+                ExecutableDeployItem::StoredContractByHash {
+                    hash,
+                    entry_point: _,
+                    args: _,
+                } => TransactionTarget::Stored {
+                    id: TransactionInvocationTarget::ByHash(hash.value()),
+                    runtime: TransactionRuntimeParams::VmCasperV1,
+                },
+                ExecutableDeployItem::StoredContractByName {
+                    name,
+                    entry_point: _,
+                    args: _,
+                } => TransactionTarget::Stored {
+                    id: TransactionInvocationTarget::ByName(name.clone()),
+                    runtime: TransactionRuntimeParams::VmCasperV1,
+                },
+                ExecutableDeployItem::StoredVersionedContractByHash {
+                    hash,
+                    version,
+                    entry_point: _entry_point,
+                    args: _args,
+                } => TransactionTarget::Stored {
+                    id: TransactionInvocationTarget::ByPackageHash {
+                        addr: PackageAddr::new(hash.value()),
+                        version: *version,
+                        protocol_version_major: None,
+                    },
+                    runtime: TransactionRuntimeParams::VmCasperV1,
+                },
+                ExecutableDeployItem::StoredVersionedContractByName {
+                    name,
+                    version,
+                    entry_point: _entry_point,
+                    args: _args,
+                } => TransactionTarget::Stored {
+                    id: TransactionInvocationTarget::ByPackageName {
+                        name: name.to_string(),
+                        version: *version,
+                        protocol_version_major: None,
+                    },
+                    runtime: TransactionRuntimeParams::VmCasperV1,
+                },
+                ExecutableDeployItem::Transfer { args: _args } => TransactionTarget::Native,
+            },
+            MetaTransaction::V1(v1) => v1.target().clone(),
+        }
+    }
+
+    pub(crate) fn transaction_args_retrofit(&self) -> TransactionArgs {
+        match self {
+            MetaTransaction::Deploy(meta_deploy) => {
+                TransactionArgs::Named(meta_deploy.session().args().clone())
+            }
+            MetaTransaction::V1(meta_transaction_v1) => meta_transaction_v1.args().clone(),
         }
     }
 }
