@@ -172,7 +172,7 @@ impl MainReactor {
 
         // If the node was validating in the previous era there is a cvhance that it didn't get a
         // chance to apply it's finality signature to the last (or some of the last) blocks of that
-        // era. If that's true - it it might try to do that and for that it needs to have the
+        // era. If that's true - it might try to do that and for that it needs to have the
         // validator matrix updated with appropriate era data.
         let number_of_switch_blocks = recent_switch_block_headers.len();
         if number_of_switch_blocks > 1 {
