@@ -45,10 +45,6 @@ cfg_if::cfg_if! {
     }
     else {
         pub fn set_panic_hook() {
-            crate::casper::ret(
-                casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-                Some(s.as_bytes()),
-            );
         }
     }
 }
