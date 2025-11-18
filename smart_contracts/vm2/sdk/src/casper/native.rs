@@ -1,10 +1,8 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    convert::Infallible,
+    collections::{BTreeMap, VecDeque},
     fmt,
     panic::{self, UnwindSafe},
-    ptr::{self, NonNull},
     slice,
     sync::{Arc, RwLock},
 };
@@ -12,17 +10,10 @@ use std::{
 use crate::linkme::distributed_slice;
 use bytes::Bytes;
 use casper_executor_wasm_common::{
-    error::{
-        CALLEE_ROLLED_BACK, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
-        HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
-    },
     flags::ReturnFlags,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use rand::Rng;
 
 use super::Entity;
-use crate::types::Address;
 
 #[repr(C)]
 pub struct Param {
@@ -185,8 +176,6 @@ impl From<&Param> for NativeParam {
 #[derive(Clone, Debug)]
 pub struct Environment {
     pub db: Arc<RwLock<Container>>,
-    contracts: Arc<RwLock<BTreeSet<Address>>>,
-    // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
     caller: Entity,
     callee: Entity,
@@ -196,7 +185,6 @@ impl Default for Environment {
     fn default() -> Self {
         Self {
             db: Default::default(),
-            contracts: Default::default(),
             input_data: Default::default(),
             caller: DEFAULT_ADDRESS,
             callee: DEFAULT_ADDRESS,
@@ -211,7 +199,6 @@ impl Environment {
     pub fn new(db: Container, caller: Entity) -> Self {
         Self {
             db: Arc::new(RwLock::new(db)),
-            contracts: Default::default(),
             input_data: Default::default(),
             caller,
             callee: caller,
