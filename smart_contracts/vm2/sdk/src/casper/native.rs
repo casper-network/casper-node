@@ -9,9 +9,7 @@ use std::{
 
 use crate::linkme::distributed_slice;
 use bytes::Bytes;
-use casper_executor_wasm_common::{
-    flags::ReturnFlags,
-};
+use casper_executor_wasm_common::flags::ReturnFlags;
 
 use super::Entity;
 
