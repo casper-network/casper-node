@@ -32,7 +32,7 @@ use crate::{
         global_state::{
             host_create, host_env_balance, host_env_info, host_read, host_remove, host_write,
         },
-        io::{host_copy_input, host_return},
+        io::{host_copy_input, host_return, host_revert},
     },
 };
 use casper_executor_wasm_interface::executor::{ExecuteRequest, FFIMenu};
@@ -203,6 +203,7 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
         FFIMenu::IO(io_methods) => match io_methods {
             IOMethods::Return => host_return(input_data).map(|code| (None, code)),
             IOMethods::CopyInput => host_copy_input(&mut caller),
+            IOMethods::Revert => host_revert(&mut caller, input_data).map(|code| (None, code)),
         },
     }?;
 
@@ -288,7 +289,7 @@ fn exec<S: GlobalStateReader + 'static>(
     caller.consume_gas(gas_spent)?;
 
     // this will result in the VM being killed
-    if let Err(CallError::Api(api_error)) = host_result {
+    if let Err(CallError::Revert(api_error)) = host_result {
         return Err(VMError::Execute(ExecuteError::Api(api_error)));
     }
 

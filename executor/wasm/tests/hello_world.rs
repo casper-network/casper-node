@@ -2,7 +2,6 @@ use std::{env, path::PathBuf, sync::Arc};
 
 use casper_executor_wasm::{
     chainspec_config::{self, ChainspecConfig, DEFAULT_ACCOUNT_HASH},
-    install::InstallContractResult,
     testing::{
         base_execute_builder, base_install_request_builder, make_address_generator, make_executor,
         make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
@@ -10,13 +9,18 @@ use casper_executor_wasm::{
     },
     ExecutorV2,
 };
-use casper_executor_wasm_interface::executor::ExecutionKind;
+use casper_executor_wasm_interface::{
+    executor::ExecutionKind,
+    install::{InstallContractResult, InstallContractWithProviderResult},
+};
 use casper_storage::{
     data_access_layer::{QueryRequest, QueryResult},
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     AddressGenerator,
 };
-use casper_types::{BlockHash, Digest, EntityAddr, Key, Timestamp};
+use casper_types::{
+    addressable_entity::StateFieldAddr, BlockHash, Digest, EntityAddr, Key, Timestamp,
+};
 use once_cell::sync::Lazy;
 use parking_lot::{lock_api::RwLock, RawRwLock};
 use tempfile::TempDir;
@@ -45,9 +49,14 @@ fn should_store_initial_state() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
+    let field_name = "greeting";
+    let digest = Digest::hash(field_name.as_bytes());
     let value = match global_state.query(QueryRequest::new(
         post_state_root_hash,
-        Key::State(contract_hash),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            digest.value(),
+        )),
         vec![],
     )) {
         QueryResult::Success { value, proofs: _ } => value,
@@ -122,9 +131,14 @@ fn should_store_state_after_changes() {
         .commit_effects(post_state_root_hash, execution_result.effects().clone())
         .expect("Should commit");
 
+    let field_name = "greeting";
+    let digest = Digest::hash(field_name.as_bytes());
     let value = match global_state.query(QueryRequest::new(
         post_state_root_hash,
-        Key::State(contract_hash),
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            digest.value(),
+        )),
         vec![],
     )) {
         QueryResult::Success { value, proofs: _ } => value,
@@ -202,7 +216,7 @@ fn should_fetch_data_with_contract_method() {
 fn install_hello_world() -> (
     LmdbGlobalState,
     Digest,
-    InstallContractResult,
+    InstallContractWithProviderResult,
     ChainspecConfig,
     Arc<RwLock<RawRwLock, AddressGenerator>>,
     ExecutorV2,
@@ -217,10 +231,12 @@ fn install_hello_world() -> (
     let block_time_1 = Timestamp::now().into();
     let address_generator = make_address_generator();
 
+    let vm2_hello_world = read_wasm("vm2_hello_world.wasm");
     let install_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_hello_world.wasm"))
+        .with_wasm_bytes(vm2_hello_world.wasm)
+        .with_bundle_data(vm2_hello_world.meta.expect("should have bundle data"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())

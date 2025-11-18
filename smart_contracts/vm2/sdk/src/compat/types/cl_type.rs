@@ -1,10 +1,11 @@
 use crate::prelude::{
-    collections::{BTreeMap, BTreeSet, LinkedList},
-    *,
+    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+    Box, String, Vec,
 };
+use core::any::TypeId;
 
-#[cfg(any(feature = "std", feature = "hashbrown"))]
-use crate::prelude::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use serde::{Deserialize, Serialize};
 
 use crate::serializers::borsh::{
     io::{self, Read},
@@ -40,6 +41,7 @@ const CL_TYPE_TAG_ANY: u8 = 21;
 const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BorshSerialize, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
 #[repr(u8)]
 #[borsh(use_discriminant = true)]
 pub enum CLType {
@@ -128,6 +130,9 @@ impl_cltyped_for! {
     () => CLType::Unit,
     str => CLType::String,
     String => CLType::String,
+    f32 => CLType::Any, // No variant exists
+    f64 => CLType::Any, // No variant exists
+    char => CLType::Any, // No variant exists
 }
 
 impl<T: CLTyped> CLTyped for Option<T> {
@@ -160,27 +165,13 @@ impl<T: ?Sized + CLTyped> CLTyped for &T {
     }
 }
 
-impl<const COUNT: usize> CLTyped for [u8; COUNT] {
+impl<T: CLTyped + 'static, const COUNT: usize> CLTyped for [T; COUNT] {
     fn cl_type() -> CLType {
-        CLType::ByteArray(COUNT as u32)
-    }
-}
-
-impl<const COUNT: usize> CLTyped for [u16; COUNT] {
-    fn cl_type() -> CLType {
-        CLType::ByteArray((COUNT * 2) as u32)
-    }
-}
-
-impl<const COUNT: usize> CLTyped for [u32; COUNT] {
-    fn cl_type() -> CLType {
-        CLType::ByteArray((COUNT * 4) as u32)
-    }
-}
-
-impl<const COUNT: usize> CLTyped for [u64; COUNT] {
-    fn cl_type() -> CLType {
-        CLType::ByteArray((COUNT * 8) as u32)
+        if TypeId::of::<T>() == TypeId::of::<u8>() {
+            CLType::ByteArray(COUNT as u32)
+        } else {
+            CLType::List(Box::new(T::cl_type()))
+        }
     }
 }
 
@@ -258,6 +249,32 @@ impl<T1, T2, T3, T4, T5, T6, T7> CLTyped for (T1, T2, T3, T4, T5, T6, T7) {
     }
 }
 impl<T1, T2, T3, T4, T5, T6, T7, T8> CLTyped for (T1, T2, T3, T4, T5, T6, T7, T8) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7, T8, T9> CLTyped for (T1, T2, T3, T4, T5, T6, T7, T8, T9) {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> CLTyped
+    for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
+{
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> CLTyped
+    for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)
+{
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+impl<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12> CLTyped
+    for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)
+{
     fn cl_type() -> CLType {
         CLType::Any
     }
@@ -501,6 +518,10 @@ impl BorshDeserialize for CLType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        compat::types::CLTyped,
+        prelude::{String, Vec},
+    };
     use core::iter;
 
     #[test]

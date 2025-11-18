@@ -1,9 +1,7 @@
 use casper_contract_sdk::{prelude::*, types::U256};
 use casper_contract_sdk_contrib::{
     access_control::{AccessControl, AccessControlExt, AccessControlState},
-    cep18::{
-        Burnable, BurnableExt, CEP18Ext, CEP18State, Mintable, MintableExt, ADMIN_ROLE, CEP18,
-    },
+    cep18::*,
 };
 
 #[casper(contract_state)]
@@ -16,7 +14,6 @@ impl Default for TokenContract {
     fn default() -> Self {
         panic!("nope");
     }
-    //
 }
 
 #[casper]
@@ -45,6 +42,10 @@ impl TokenContract {
             .balances
             .get(&casper::get_caller())
             .unwrap_or_default()
+    }
+
+    pub fn this_is_using_nested_types(&self, maybe: Option<Entity>) {
+        log!("Hello {maybe:?}");
     }
 }
 
@@ -81,6 +82,7 @@ mod tests {
     use super::*;
 
     use casper_contract_sdk::{
+        abi::collector::ABI_ITEMS,
         casper::{
             self,
             native::{
@@ -89,10 +91,9 @@ mod tests {
             },
             Entity,
         },
-        casper_executor_wasm_common::keyspace::Keyspace,
-        contrib::cep18::Cep18Error,
         ContractHandle, ToCallData,
     };
+    use casper_contract_sdk_contrib::cep18::Cep18Error;
 
     const ALICE: Entity = Entity::Account([1; 32]);
     const BOB: Entity = Entity::Account([2; 32]);
@@ -145,6 +146,7 @@ mod tests {
                 Some(constructor.entry_point()),
                 ctor_input_data.as_ref().map(|data| data.as_slice()),
                 None,
+                None,
             )
             .expect("Should create");
 
@@ -152,9 +154,7 @@ mod tests {
             let new_env = new_env.smart_contract(Entity::Contract(create_result.contract_address));
             dispatch_with(new_env, || {
                 // This is the caller of the contract
-                casper::read_into_vec(Keyspace::State)
-                    .expect("ok")
-                    .expect("ok");
+                casper::read_contract_state::<TokenContract>().unwrap();
             })
             .unwrap();
 
@@ -265,5 +265,11 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(())));
+    }
+
+    #[test]
+    fn foo() {
+        let vec = ABI_ITEMS.iter().collect::<Vec<_>>();
+        dbg!(vec);
     }
 }

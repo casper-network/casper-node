@@ -156,7 +156,7 @@ pub enum CallError {
     LockedPackage,
     /// System is callee and signaled vm instance kill.
     #[error("kill the vm instance of the caller")]
-    Api(String),
+    Revert(String),
 }
 
 impl CallError {
@@ -173,7 +173,7 @@ impl CallError {
             Self::CodeNotFound => CALLEE_CODE_NOT_FOUND,
             Self::EntityNotFound => CALLEE_ENTITY_NOT_FOUND,
             Self::LockedPackage => CALLEE_LOCKED_PACKAGE,
-            Self::Api(_) => CALLEE_API_ERROR,
+            Self::Revert(_) => CALLEE_API_ERROR,
         }
     }
 }

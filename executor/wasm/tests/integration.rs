@@ -8,7 +8,6 @@ use std::{
 use bytes::Bytes;
 use casper_execution_engine::runtime::cryptography;
 use casper_executor_wasm::{
-    install::{InstallContractError, InstallContractRequest},
     testing::{
         base_execute_builder, base_install_request_builder, call_dummy_host_fn_by_name,
         expect_successful_execution, make_address_generator, make_executor,
@@ -24,9 +23,12 @@ use casper_executor_wasm::{
     testing::DEFAULT_STABLE_VALIDATOR_PUBLIC_KEY,
 };
 use casper_executor_wasm_common::error::CallError;
-use casper_executor_wasm_interface::executor::{
-    AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind, FFIMenu,
-    MintMethods,
+use casper_executor_wasm_interface::{
+    executor::{
+        AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind,
+        FFIMenu, MintMethods,
+    },
+    install::{InstallContractError, InstallContractRequest},
 };
 
 use casper_executor_wasm::testing::{DEFAULT_CHAIN_NAME, DEFAULT_STABLE_DELEGATOR_PUBLIC_KEY};
@@ -46,6 +48,7 @@ use casper_storage::{
 
 use casper_types::{
     account::AccountHash,
+    addressable_entity::StateFieldAddr,
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageChecksum, MessagePayload},
     execution::{RetValue, TransformKindV2, TransformV2},
@@ -76,8 +79,11 @@ fn vm2_should_return_output_to_caller() {
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
+    let vm2_harness = read_wasm("vm2_harness.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_wasm_bytes(vm2_harness.wasm)
+        .with_bundle_data(vm2_harness.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("initialize".to_string())
@@ -142,8 +148,10 @@ fn vm2_rollback_should_return_to_caller_with_data() {
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
+    let vm2_harness = read_wasm("vm2_harness.wasm");
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_wasm_bytes(vm2_harness.wasm)
+        .with_bundle_data(vm2_harness.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("initialize".to_string())
@@ -169,7 +177,7 @@ fn vm2_rollback_should_return_to_caller_with_data() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
             address: contract_hash.value(),
-            entry_point: "emit_revert_with_data".to_string(),
+            entry_point: "emit_rollback_with_data".to_string(),
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -204,8 +212,10 @@ fn vm2_revert_should_abort_whole_stack() {
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
+    let vm2_harness = read_wasm("vm2_harness.wasm");
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2-harness.wasm"))
+        .with_wasm_bytes(vm2_harness.wasm)
+        .with_bundle_data(vm2_harness.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("initialize".to_string())
@@ -231,7 +241,7 @@ fn vm2_revert_should_abort_whole_stack() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
             address: contract_hash.value(),
-            entry_point: "emit_revert_without_data".to_string(),
+            entry_point: "emit_revert".to_string(),
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -248,12 +258,13 @@ fn vm2_revert_should_abort_whole_stack() {
         .execute_with_provider(state_root_hash, &global_state, execute_request)
         .expect("exec ok");
     match result.host_error {
-        Some(CallError::Api(_)) => {}
-        Some(other) => panic!("expected Api(_) got {other:?}"),
+        Some(CallError::Revert(_)) => {}
+        Some(other) => panic!("expected Revert(_) got {other:?}"),
         None => panic!("expected error"),
     }
 }
 
+#[test]
 fn harness() {
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
@@ -271,8 +282,11 @@ fn harness() {
             .map(Bytes::from)
             .unwrap();
 
+        let cep18 = read_wasm("vm2_cep18.wasm");
+
         let install_request = base_install_request_builder(&chainspec_config)
-            .with_wasm_bytes(read_wasm("vm2_cep18.wasm"))
+            .with_wasm_bytes(cep18.wasm)
+            .with_bundle_data(cep18.meta.expect("should have bundle"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_transferred_value(0)
             .with_entry_point("new".to_string())
@@ -300,7 +314,9 @@ fn harness() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2-harness.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(
+            read_wasm("vm2_harness.wasm").wasm,
+        ))
         .with_serialized_input((cep18_address,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(address_generator)
@@ -366,7 +382,7 @@ fn exec_system_call(system_menu: FFIMenu, initiator: Option<AccountHash>) {
     let execute_request = make_execution_request(
         &chainspec_config,
         Arc::clone(&address_generator),
-        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
         input_data,
         0,
         Some(initiator),
@@ -432,7 +448,7 @@ fn should_revert_invalid_system_option() {
     let execute_request = make_execution_request(
         &chainspec_config,
         Arc::clone(&address_generator),
-        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+        ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
         input_data,
         0,
         Some(account_hash),
@@ -551,7 +567,7 @@ fn should_handle_reservations() {
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
-            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
             input_data,
             0,
             Some(account_hash),
@@ -589,7 +605,7 @@ fn should_handle_reservations() {
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
-            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
             input_data,
             0,
             Some(account_hash),
@@ -614,7 +630,7 @@ fn should_handle_reservations() {
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
-            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
             input_data,
             0,
             Some(account_hash),
@@ -640,7 +656,7 @@ fn should_handle_reservations() {
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
-            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
             input_data,
             0,
             Some(account_hash),
@@ -665,7 +681,7 @@ fn should_handle_reservations() {
         make_execution_request(
             &chainspec_config,
             Arc::clone(&address_generator),
-            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM)),
+            ExecutionKind::SessionBytes(read_wasm(VM2_SYSTEM_CALLER_WASM).wasm),
             input_data,
             0,
             Some(account_hash),
@@ -702,10 +718,13 @@ fn cep18() {
 
     let block_time_1 = Timestamp::now().into();
 
+    let cep18 = read_wasm("vm2_cep18.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_cep18.wasm").clone())
+        .with_wasm_bytes(cep18.wasm)
+        .with_bundle_data(cep18.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -750,6 +769,7 @@ fn cep18() {
         topics_1
             .sort_by_key(|topic| (topic.topic_name(), topic.blocktime(), topic.message_count()));
 
+        assert_ne!(topics_1.len(), 0);
         assert_eq!(topics_1[0].topic_name(), "Transfer");
         assert_eq!(topics_1[0].message_count(), 1);
         assert_eq!(topics_1[0].blocktime(), block_time_1);
@@ -763,9 +783,9 @@ fn cep18() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
-            "vm2_cep18_caller.wasm",
-        )))
+        .with_execution_kind(ExecutionKind::SessionBytes(
+            read_wasm("vm2_cep18_caller.wasm").wasm,
+        ))
         .with_serialized_input((create_result.smart_contract_addr(),))
         .expect("expected serialized input to be correct")
         .with_transferred_value(0)
@@ -859,11 +879,12 @@ fn counter() {
     let address_generator = make_address_generator();
 
     let block_time_1 = Timestamp::now().into();
-
+    let vm2_counter = read_wasm("vm2_counter.wasm");
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_wasm_bytes(vm2_counter.wasm.clone())
+        .with_bundle_data(vm2_counter.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("default".to_string())
@@ -887,16 +908,24 @@ fn counter() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let field_tail = Digest::hash(b"value").value();
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 0u32, "should be 0");
+                assert_eq!(counter, 0u32, "should be 0");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");
@@ -973,16 +1002,23 @@ fn counter() {
         None => panic!("get should have output"),
     }
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 1u32, "should be 1");
+                assert_eq!(counter, 1u32, "should be 1");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");
@@ -1025,16 +1061,23 @@ fn counter() {
         .commit_effects(state_root_hash, result_3.effects().clone())
         .expect("Should commit");
 
-    let query_request = QueryRequest::new(state_root_hash, Key::State(contract_hash), vec![]);
+    let query_request = QueryRequest::new(
+        state_root_hash,
+        Key::State(StateFieldAddr::new_state_field_addr(
+            contract_hash,
+            field_tail,
+        )),
+        vec![],
+    );
     match global_state.query(query_request) {
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
             panic!("query failed");
         }
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                let counter: (u32,) =
+                let counter: u32 =
                     borsh::from_slice(cl_value.inner_bytes()).expect("should deserialize");
-                assert_eq!(counter.0, 0u32, "should be 0");
+                assert_eq!(counter, 0u32, "should be 0");
             } else {
                 println!("{:?}", value);
                 panic!("wrong stored value variant");
@@ -1052,7 +1095,9 @@ fn traits() {
     let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = base_execute_builder(&chainspec_config)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm("vm2_trait.wasm")))
+        .with_execution_kind(ExecutionKind::SessionBytes(
+            read_wasm("vm2_trait.wasm").wasm,
+        ))
         .with_serialized_input(())
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(make_address_generator())
@@ -1080,11 +1125,14 @@ fn upgradable() {
 
     let upgradable_address;
 
+    let upgradable = read_wasm("vm2_upgradable.wasm");
+
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
         let create_request = base_install_request_builder(&chainspec_config)
-            .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+            .with_wasm_bytes(upgradable.wasm)
+            .with_bundle_data(upgradable.meta.expect("should have bundle"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
             .with_transferred_value(0)
@@ -1155,8 +1203,8 @@ fn upgradable() {
             .expect("Should commit");
     };
 
-    let binding = read_wasm("vm2_upgradable_v2.wasm");
-    let new_code = binding.as_ref();
+    let vm2_upgrdable_v2 = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = vm2_upgrdable_v2.wasm.as_ref();
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
@@ -1164,7 +1212,7 @@ fn upgradable() {
             address: upgradable_address,
             entry_point: "perform_upgrade".to_string(),
         })
-        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -1317,12 +1365,14 @@ fn backwards_compatibility() {
     let mut executor = make_executor(&chainspec_config);
     let address_generator = make_address_generator();
 
+    let vm2_vm1_wrapper = read_wasm("vm2_vm1_wrapper.wasm");
     //
     // Instantiate v2 runtime proxy contract
     //
     let input_data = counter_hash.to_vec();
     let install_request: InstallContractRequest = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_vm1_wrapper.wasm"))
+        .with_wasm_bytes(vm2_vm1_wrapper.wasm)
+        .with_bundle_data(vm2_vm1_wrapper.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1368,12 +1418,27 @@ fn backwards_compatibility() {
 fn host_functions_consume_gas() {
     fn assert_consumes_gas(chainspec_config: &ChainspecConfig, host_function_name: &str) {
         let result = call_dummy_host_fn_by_name(&chainspec_config.clone(), host_function_name, 1);
-        assert!(result.is_err_and(|e| matches!(
-            e,
+        let Err(error) = result else {
+            panic!(
+                "calling host function '{}' failed unexpectedly: {:?}",
+                host_function_name, result
+            );
+        };
+
+        match error {
             InstallContractError::Constructor {
+                gas_usage,
                 host_error: CallError::CalleeGasDepleted,
+            } => {
+                assert_ne!(
+                    gas_usage.gas_spent(),
+                    0,
+                    "host function '{}' did not consume any gas",
+                    host_function_name
+                );
             }
-        )));
+            other => panic!("unexpected install contract error: {:?}", other),
+        }
     }
 
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
@@ -1440,8 +1505,11 @@ fn casper_return_writes_to_execution_journal() {
         .map(Bytes::from)
         .unwrap();
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1528,8 +1596,11 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
         .map(Bytes::from)
         .unwrap();
 
+    let vm2_host = read_wasm("vm2_host.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_wasm_bytes(vm2_host.wasm)
+        .with_bundle_data(vm2_host.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1584,10 +1655,13 @@ fn escrow() {
     let input_data = Bytes::new();
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_escrow = read_wasm("vm2_escrow.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_wasm_bytes(vm2_escrow.wasm)
+        .with_bundle_data(vm2_escrow.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1660,10 +1734,13 @@ fn should_not_fail_without_account() {
     let input_data = Bytes::new();
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_escrow = read_wasm("vm2_escrow.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(AccountHash::new([0xF0; 32]))
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_escrow.wasm").clone())
+        .with_wasm_bytes(vm2_escrow.wasm)
+        .with_bundle_data(vm2_escrow.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1677,7 +1754,7 @@ fn should_not_fail_without_account() {
 
     let _create_result = {
         executor
-            .install_contract(state_root_hash, &global_state, create_request)
+            .install_contract_with_provider(state_root_hash, &global_state, create_request)
             .expect_err("Succeed")
     };
 }
@@ -1701,10 +1778,13 @@ fn supports_named_args_convention() {
 
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_named_args = read_wasm("vm2_named_args.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_named_args.wasm").clone())
+        .with_wasm_bytes(vm2_named_args.wasm)
+        .with_bundle_data(vm2_named_args.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1777,8 +1857,11 @@ fn installing_contract_should_produce_system_messages() {
     let address_generator = make_address_generator();
     let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
+    let vm2_upgradable = read_wasm("vm2_upgradable.wasm");
+
     let install_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+        .with_wasm_bytes(vm2_upgradable.wasm)
+        .with_bundle_data(vm2_upgradable.meta.expect("Expected bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -1869,11 +1952,14 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
+    let vm2_upgradable = read_wasm("vm2_upgradable.wasm");
+
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
         let create_request = base_install_request_builder(&chainspec_config)
-            .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+            .with_wasm_bytes(vm2_upgradable.wasm)
+            .with_bundle_data(vm2_upgradable.meta.expect("Expected bundle"))
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
             .with_transferred_value(0)
@@ -1895,8 +1981,8 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
             .commit_effects(state_root_hash, create_result.effects().clone())
             .expect("Should commit")
     };
-    let binding = read_wasm("vm2_upgradable_v2.wasm");
-    let new_code = binding.as_ref();
+    let vm2_upgradable_v2 = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = vm2_upgradable_v2.wasm.as_ref();
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
@@ -1904,7 +1990,7 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
             address: upgradable_address,
             entry_point: "perform_upgrade".to_string(),
         })
-        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
         .expect("expected serialized input to be correct")
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -1997,8 +2083,10 @@ fn calling_upgrade_contract_should_produce_ret_and_call_result() {
     let address_generator = make_address_generator();
     let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
+    let vm2_upgradable = read_wasm("vm2_upgradable.wasm");
     let create_request = base_install_request_builder(&chainspec_config)
-        .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+        .with_wasm_bytes(vm2_upgradable.wasm)
+        .with_bundle_data(vm2_upgradable.meta.expect("Expected bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
@@ -2020,7 +2108,7 @@ fn calling_upgrade_contract_should_produce_ret_and_call_result() {
         .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
     let binding = read_wasm("vm2_upgradable_v2.wasm");
-    let new_code = binding.as_ref();
+    let new_code = binding.wasm;
 
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
@@ -2086,10 +2174,13 @@ fn calling_constructor_method_should_produce_ret_and_call_result() {
 
     let block_time_1 = Timestamp::now().into();
 
+    let vm2_counter = read_wasm("vm2_counter.wasm");
+
     let create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_wasm_bytes(vm2_counter.wasm)
+        .with_bundle_data(vm2_counter.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("default".to_string())
@@ -2136,10 +2227,12 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
 
     let block_time_1 = Timestamp::now().into();
     let input = borsh::to_vec(&(0u32,)).map(Bytes::from).unwrap();
+    let vm2_counter = read_wasm("vm2_counter.wasm");
     let counter_create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_wasm_bytes(vm2_counter.wasm)
+        .with_bundle_data(vm2_counter.meta.expect("should have bundle"))
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("new".to_string())
@@ -2162,10 +2255,12 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
         .commit_effects(state_root_hash, counter_create_result.effects().clone())
         .expect("Should commit");
 
+    let vm2_counter_caller = read_wasm("vm2_counter_caller.wasm");
+
     let caller_create_request = base_install_request_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_wasm_bytes(read_wasm("vm2_counter_caller.wasm").clone())
+        .with_wasm_bytes(vm2_counter_caller.wasm)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_entry_point("create".to_string())
@@ -2279,14 +2374,13 @@ fn calling_session_should_produce_entry_point_called_and_ret() {
 
     let address_generator = make_address_generator();
 
+    let vm2_do_nothing_session = read_wasm("vm2_do_nothing_session.wasm");
     let execute_request = base_execute_builder(&chainspec_config)
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
-        .with_execution_kind(ExecutionKind::SessionBytes(read_wasm(
-            "vm2_do_nothing_session.wasm",
-        )))
+        .with_execution_kind(ExecutionKind::SessionBytes(vm2_do_nothing_session.wasm))
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_state_hash(Digest::from_raw([0; 32]))

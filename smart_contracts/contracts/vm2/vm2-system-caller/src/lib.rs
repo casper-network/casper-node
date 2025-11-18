@@ -3,15 +3,14 @@
 pub mod exports {
     use casper_contract_sdk::{
         casper::{casper_ffi, ret},
-        casper_executor_wasm_common::flags::ReturnFlags,
+        common::flags::ReturnFlags,
         prelude::*,
+        serializers::borsh,
         types::{DelegatorKind, EntityAddr, PublicKey, Reservation, SystemContractOption},
     };
 
     #[casper(export)]
     pub fn call(opt: u32, purse_delegation: bool) {
-        use borsh;
-
         let option = match SystemContractOption::try_from(opt) {
             Ok(option) => option,
             Err(_) => match &borsh::to_vec(&(opt,)) {

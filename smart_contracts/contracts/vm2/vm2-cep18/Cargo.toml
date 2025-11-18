@@ -10,3 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 casper-contract-sdk = { path = "../../../vm2/sdk" }
 casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }
+
+[build-dependencies]
+casper-contract-sdk = { path = "../../../vm2/sdk" }

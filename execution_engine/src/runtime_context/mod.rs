@@ -763,7 +763,8 @@ where
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
             | StoredValue::Prepayment(_)
-            | StoredValue::EntryPoint(_) => Ok(()),
+            | StoredValue::EntryPoint(_)
+            | StoredValue::TypeDef(_) => Ok(()),
         }
     }
 

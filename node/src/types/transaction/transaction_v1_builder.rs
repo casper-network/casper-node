@@ -102,13 +102,16 @@ pub(crate) struct TransactionV1Builder<'a> {
     _phantom_data: PhantomData<&'a ()>,
 }
 
+pub const DEFAULT_PAYMENT_AMOUNT: u64 = 10u64 * 10u64.pow(9);
+pub const DEFAULT_GAS_PRICE_TOLERANCE: u8 = 3;
+
 impl<'a> TransactionV1Builder<'a> {
     /// The default time-to-live for transactions, i.e. 30 minutes.
     pub const DEFAULT_TTL: TimeDiff = TimeDiff::from_millis(30 * 60 * 1_000);
     /// The default pricing mode for v1 transactions, ie FIXED cost.
     pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::PaymentLimited {
-        payment_amount: 10_000_000_000,
-        gas_price_tolerance: 3,
+        payment_amount: DEFAULT_PAYMENT_AMOUNT,
+        gas_price_tolerance: DEFAULT_GAS_PRICE_TOLERANCE,
         standard_payment: true,
     };
     /// The default scheduling for transactions, i.e. `Standard`.

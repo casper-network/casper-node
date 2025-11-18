@@ -2,7 +2,7 @@ use casper_contract_sdk::prelude::*;
 
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
-    casper, log, revert,
+    casper, log,
     types::{Address, CallError},
     ContractHandle,
 };
@@ -33,6 +33,8 @@ pub enum FallbackHandler {
     /// Accept tokens and do nothing.
     #[default]
     AcceptTokens,
+    /// Reject tokens with rollback.
+    RejectWithRollback,
     /// Reject tokens with revert.
     RejectWithRevert,
     /// Reject tokens with trap.
@@ -150,11 +152,18 @@ impl Deposit for TokenOwnerContract {
                 );
                 self.received_tokens += value;
             }
-            FallbackHandler::RejectWithRevert => {
+            FallbackHandler::RejectWithRollback => {
                 // This will cause a revert.
                 log!("TokenOwnerContract rejected with revert");
-                revert!();
+                rollback!();
             }
+
+            FallbackHandler::RejectWithRevert => {
+                // This will cause a rollback.
+                log!("TokenOwnerContract rejected with rollback");
+                casper::revert("rejecting tokens; aborting further execution");
+            }
+
             FallbackHandler::RejectWithTrap => {
                 // This will cause a trap.
                 unreachable!("its a trap");

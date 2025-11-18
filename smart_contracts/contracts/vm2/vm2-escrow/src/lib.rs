@@ -22,13 +22,13 @@ impl Escrow {
     #[casper(constructor)]
     pub fn new() -> Self {
         if casper::transferred_value() != 0 {
-            revert!()
+            rollback!()
         }
         Self {
             balances: Map::new("balances"),
         }
     }
-    #[casper(revert_on_error, payable)]
+    #[casper(rollback_on_error, payable)]
     pub fn deposit_tokens(&mut self) -> Result<(), Error> {
         let entity = casper::get_caller();
         if !entity.is_account() {
@@ -51,7 +51,7 @@ impl Escrow {
         self.balances.get(&entity).unwrap_or_default()
     }
 
-    #[casper(revert_on_error)]
+    #[casper(rollback_on_error)]
     pub fn withdraw_tokens(&mut self, amount: u64) -> Result<(), Error> {
         let entity = casper::get_caller();
         let current_balance = self.balances.get(&entity).unwrap_or_default();

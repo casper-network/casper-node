@@ -1,5 +1,13 @@
 use blake2::{digest::consts::U32, Blake2b, Digest};
 
+/// Compute the hash of the given topic name.
+pub fn compute_topic_name_hash(data: &str) -> [u8; 32] {
+    let mut hasher = Blake2b::<U32>::new();
+    hasher.update(data.as_bytes());
+    let hash = hasher.finalize();
+    hash.into()
+}
+
 /// Compute a predictable address for a contract.
 ///
 /// The address is computed as the hash of the chain name, initiator account, and the hash of the

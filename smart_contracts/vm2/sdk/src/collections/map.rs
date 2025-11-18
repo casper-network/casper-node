@@ -1,11 +1,15 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-use crate::abi::{CasperABI, Declaration, Definition, StructField};
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition, StructField};
 use crate::{
     casper::{self, read_into_vec},
+    compat::types::CLTyped,
     prelude::{marker::PhantomData, *},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    type_uid::{TypeUid, Uid},
+};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
@@ -13,6 +17,10 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 pub struct Map<K, V> {
     pub(crate) name: String,
     pub(crate) _marker: PhantomData<(K, V)>,
+}
+
+impl<K: TypeUid, V: TypeUid> TypeUid for Map<K, V> {
+    const UID: Uid = Uid::from_fields("Map", &[K::UID, V::UID]);
 }
 
 /// Computes the prefix for a given key.
@@ -40,21 +48,40 @@ where
         // NOTE: We may want to create new keyspace for a hashed context element to avoid hashing in
         // the wasm.
         key.serialize(&mut context_key).unwrap();
-        let prefix = Keyspace::Context(&context_key);
-        casper::write(prefix, &borsh::to_vec(value).unwrap()).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            compute_prefix(&self.name),
+            casper::generic_hash(&context_key, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::write(
+            Keyspace::Context(ContextAddr::from(addr)),
+            &borsh::to_vec(value).unwrap(),
+        )
+        .unwrap();
     }
 
     pub fn remove(&mut self, key: &K) {
         let prefix_bytes = self.compute_prefix_for_key(key);
-        let prefix = Keyspace::Context(&prefix_bytes);
-        casper::remove(prefix).unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            compute_prefix(&self.name),
+            casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
         let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
-        let prefix = Keyspace::Context(&key_bytes);
-        read_into_vec(prefix)
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Map,
+            compute_prefix(&self.name),
+            casper::generic_hash(&key_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        read_into_vec(Keyspace::Context(ContextAddr::from(addr)))
             .unwrap()
             .map(|vec| borsh::from_slice(&vec).unwrap())
     }
@@ -67,22 +94,32 @@ where
     }
 }
 
+impl<K: CLTyped, V: CLTyped> CLTyped for Map<K, V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Map {
+            key: Box::new(K::cl_type()),
+            value: Box::new(V::cl_type()),
+        }
+    }
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
-    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
-        definitions.populate_one::<K>();
-        definitions.populate_one::<V>();
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        K::visit(visitor);
+        V::visit(visitor);
     }
 
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Map<{}, {}>", K::declaration(), V::declaration())
     }
+
     #[inline]
     fn definition() -> Definition {
         Definition::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
-                decl: u64::declaration(),
+                decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
             }],
         }
     }

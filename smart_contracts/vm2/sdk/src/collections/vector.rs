@@ -1,14 +1,19 @@
 use crate::{
     casper::{self, read_into_vec},
+    compat::types::{CLType, CLTyped},
     log,
-    prelude::{cmp::Ordering, marker::PhantomData, *},
+    prelude::{borrow::ToOwned, cmp::Ordering, marker::PhantomData, Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_executor_wasm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    type_uid::{TypeUid, Uid},
+};
+use const_fnv1a_hash::fnv1a_hash_str_64;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-use crate::abi::{CasperABI, Declaration, Definition, Definitions, StructField};
+use crate::abi::{AbiDeclaration, CasperABI, Definition, StructField};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 #[borsh(crate = "crate::serializers::borsh")]
@@ -18,11 +23,13 @@ pub struct Vector<T> {
     pub(crate) _marker: PhantomData<T>,
 }
 
+impl<T: TypeUid> TypeUid for Vector<T> {
+    const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID, T::UID]);
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 impl<T: CasperABI> CasperABI for Vector<T> {
-    fn populate_definitions(_definitions: &mut Definitions) {}
-
-    fn declaration() -> Declaration {
+    fn declaration() -> AbiDeclaration {
         format!("Vector<{}>", T::declaration())
     }
 
@@ -31,14 +38,19 @@ impl<T: CasperABI> CasperABI for Vector<T> {
             items: vec![
                 StructField {
                     name: "prefix".into(),
-                    decl: String::declaration(),
+                    decl: String::UID.into(),
                 },
                 StructField {
                     name: "length".into(),
-                    decl: u64::declaration(),
+                    decl: u64::UID.into(),
                 },
             ],
         }
+    }
+}
+impl<T: CLTyped> CLTyped for Vector<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
     }
 }
 
@@ -61,8 +73,18 @@ where
     /// Appends an element to the back of a collection.
     pub fn push(&mut self, value: T) {
         let prefix_bytes = self.compute_prefix_bytes_for_index(self.length);
-        let prefix = Keyspace::Context(&prefix_bytes);
-        casper::write(prefix, &borsh::to_vec(&value).unwrap()).unwrap();
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Vector,
+            collection_prefix,
+            casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::write(
+            Keyspace::Context(ContextAddr::from(addr)),
+            &borsh::to_vec(&value).unwrap(),
+        )
+        .unwrap();
         self.length += 1;
     }
 
@@ -87,7 +109,14 @@ where
     /// Returns an element at index, deserialized.
     pub fn get(&self, index: u64) -> Option<T> {
         let prefix = self.compute_prefix_bytes_for_index(index);
-        let item_keyspace = Keyspace::Context(&prefix);
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Vector,
+            collection_prefix,
+            casper::generic_hash(&prefix, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        let item_keyspace = Keyspace::Context(ContextAddr::from(addr));
         log!("Foooo");
         read_into_vec(item_keyspace).unwrap().map(|vec| {
             log!("vec {:?}", vec);
@@ -124,8 +153,14 @@ where
     pub fn clear(&mut self) {
         for i in 0..self.length {
             let prefix_bytes = self.compute_prefix_bytes_for_index(i);
-            let item_keyspace = Keyspace::Context(&prefix_bytes);
-            casper::remove(item_keyspace).unwrap();
+            let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+            let addr = CollectionAddrInner::new(
+                *casper::get_callee().address(),
+                CollectionTypeTag::Vector,
+                collection_prefix,
+                casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+            );
+            casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
         }
         self.length = 0;
     }
@@ -219,10 +254,17 @@ where
 
         // Remove the last element from storage
         self.length -= 1;
-        casper::remove(Keyspace::Context(
-            &self.compute_prefix_bytes_for_index(self.length),
-        ))
-        .unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Vector,
+            [0u8; 8],
+            casper::generic_hash(
+                &self.compute_prefix_bytes_for_index(self.length),
+                crate::types::HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
+        );
+        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
 
         Some(value_to_remove)
     }
@@ -244,10 +286,17 @@ where
         }
 
         self.length -= 1;
-        casper::remove(Keyspace::Context(
-            &self.compute_prefix_bytes_for_index(self.length),
-        ))
-        .unwrap();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Vector,
+            [0u8; 8],
+            casper::generic_hash(
+                &self.compute_prefix_bytes_for_index(self.length),
+                crate::types::HashAlgorithm::Blake2b,
+            )
+            .unwrap(),
+        );
+        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
 
         Some(value_to_remove)
     }
@@ -274,8 +323,18 @@ where
 
     fn write(&self, index: u64, value: T) {
         let prefix_bytes = self.compute_prefix_bytes_for_index(index);
-        let prefix = Keyspace::Context(&prefix_bytes);
-        casper::write(prefix, &borsh::to_vec(&value).unwrap()).unwrap();
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Vector,
+            collection_prefix,
+            casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
+        );
+        casper::write(
+            Keyspace::Context(ContextAddr::from(addr)),
+            &borsh::to_vec(&value).unwrap(),
+        )
+        .unwrap();
     }
 }
 

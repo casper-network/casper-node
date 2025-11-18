@@ -10,3 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 casper-contract-macros = { path = "../../../vm2/macros" }
 casper-contract-sdk = { path = "../../../vm2/sdk" }
+
+[build-dependencies]
+casper-contract-sdk = { path = "../../../vm2/sdk" }

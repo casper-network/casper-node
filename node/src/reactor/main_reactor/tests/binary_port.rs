@@ -15,7 +15,12 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    types::{
+        transaction::transaction_v1_builder::{
+            TransactionV1Builder, DEFAULT_GAS_PRICE_TOLERANCE, DEFAULT_PAYMENT_AMOUNT,
+        },
+        NodeId,
+    },
     utils::RESOURCES_PATH,
 };
 use casper_binary_port::{
@@ -43,8 +48,9 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
     ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
     EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction,
-    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef, U512,
+    PackageAddr, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef,
+    U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -1428,6 +1434,8 @@ async fn binary_port_sandboxed_execution_request() {
         )
         .await;
 
+    const SEED_FOR_TESTING: Option<[u8; 32]> = Some([42u8; 32]);
+
     // Install a VM2 flipper contract
     let contract_file = RESOURCES_PATH
         .join("..")
@@ -1442,21 +1450,27 @@ async fn binary_port_sandboxed_execution_request() {
         chain_name.as_bytes(),
         EntityAddr::new_account(alice_public_key.to_account_hash().value()).value(),
         bytecode_hash,
-        None,
+        SEED_FOR_TESTING,
     );
     let mut txn = Transaction::from(
         TransactionV1Builder::new_session(
-            false,
+            true,
             module_bytes,
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value: 0,
-                seed: None,
+                seed: SEED_FOR_TESTING,
+                bundle_data: None,
             },
         )
         .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
         .with_chain_name(chain_name.clone())
         .with_initiator_addr(alice_public_key.to_owned())
         .with_entry_point(TransactionEntryPoint::Custom("default".into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: DEFAULT_PAYMENT_AMOUNT * 10,
+            gas_price_tolerance: DEFAULT_GAS_PRICE_TOLERANCE,
+            standard_payment: true,
+        })
         .build()
         .unwrap(),
     );
@@ -1541,7 +1555,7 @@ async fn binary_port_sandboxed_execution_request() {
     let binary_response_and_request: BinaryResponseAndRequest =
         bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
     let response_obj = binary_response_and_request.response();
-    assert!(response_obj.is_success());
+    assert!(response_obj.is_success(), "{response_obj:?}");
 
     let (result, remainder): (SandboxedExecutionResult, _) =
         FromBytes::from_bytes(response_obj.payload()).expect("should deserialize");

@@ -1,7 +1,10 @@
-use crate::prelude::marker::PhantomData;
+use crate::prelude::{marker::PhantomData, String};
 
-use crate::{casper, prelude::*, serializers::borsh::BorshSerialize};
-use casper_executor_wasm_common::keyspace::Keyspace;
+use crate::{casper, serializers::borsh::BorshSerialize};
+use casper_executor_wasm_common::keyspace::{
+    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+};
+use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
@@ -31,12 +34,28 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        casper::write(Keyspace::Context(lookup_key.as_ref()), &[]).unwrap();
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Set,
+            collection_prefix,
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
+                .unwrap(),
+        );
+        casper::write(Keyspace::Context(ContextAddr::from(addr)), &[]).unwrap();
     }
 
     pub fn contains_key(&self, key: T) -> bool {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        let entry = casper::read(Keyspace::Context(lookup_key.as_ref()), |_size| None).unwrap();
+        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
+        let addr = CollectionAddrInner::new(
+            *casper::get_callee().address(),
+            CollectionTypeTag::Set,
+            collection_prefix,
+            casper::generic_hash(lookup_key.as_ref(), crate::types::HashAlgorithm::Blake2b)
+                .unwrap(),
+        );
+        let entry = casper::read(Keyspace::Context(ContextAddr::from(addr)), |_size| None).unwrap();
         entry.is_some()
     }
 }

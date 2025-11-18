@@ -8,21 +8,6 @@ bitflags! {
     pub struct ReturnFlags: u32 {
         /// If this bit is set, the host should return the value to the caller and all the execution effects are reverted.
         const ROLLBACK = 0x0000_0001;
-        /// If this bit is set, the host should abort the entire call stack.
-        /// The optional return data is interpreted as a UTF-8 message.
-        const REVERT = 0x0000_0002;
-    }
-
-    #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct EntryPointFlags: u32 {
-        const CONSTRUCTOR = 0x0000_0001;
-    }
-}
-
-impl Default for EntryPointFlags {
-    fn default() -> Self {
-        Self::empty()
     }
 }
 

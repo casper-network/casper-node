@@ -422,6 +422,7 @@ write = { base_cost = 1_000_000, per_byte = 2_000 }
 remove = { base_cost = 1_000_000, per_byte = 2_000 }
 copy_input = { base_cost = 1_000_000, per_byte = 2_000 }
 ret = { base_cost = 1_000_000, per_byte = 2_000 }
+revert = { base_cost = 1_000_000, per_byte = 2_000 }
 create = { base_cost = 1_000_000, per_byte = 2_000 }
 transfer = { base_cost = 1_000_000, per_byte = 2_000 }
 env_balance = { base_cost = 1_000_000, per_byte = 2_000 }
