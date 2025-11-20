@@ -926,6 +926,7 @@ dependencies = [
  "casper-executor-wasm-interface",
  "casper-storage",
  "casper-types",
+ "criterion",
  "either",
  "keccak-asm",
  "num-derive",

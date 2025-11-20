@@ -29,3 +29,10 @@ num-traits = { workspace = true }
 parking_lot = "0.12"
 thiserror = "2"
 tracing = "0.1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "host_crypto"
+harness = false

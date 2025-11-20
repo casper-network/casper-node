@@ -23,17 +23,17 @@ use tracing::debug;
 #[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
 pub struct Pair {
     /// G1 point x-coordinate. 32 bytes little-endian encoded unsigned integer
-    ax: [u8; 32],
+    pub ax: [u8; 32],
     /// G1 point y-coordinate. 32 bytes little-endian encoded unsigned integer
-    ay: [u8; 32],
+    pub ay: [u8; 32],
     /// G2 point x-coordinate. 32 bytes little-endian encoded unsigned integer
-    bax: [u8; 32],
+    pub bax: [u8; 32],
     /// G2 point y-coordinate. 32 bytes little-endian encoded unsigned integer
-    bay: [u8; 32],
+    pub bay: [u8; 32],
     /// G1 point x-coordinate. 32 bytes little-endian encoded unsigned integer
-    bbx: [u8; 32],
+    pub bbx: [u8; 32],
     /// G1 point x-coordinate. 32 bytes little-endian encoded unsigned integer
-    bby: [u8; 32],
+    pub bby: [u8; 32],
 }
 
 impl FromBytes for Pair {
