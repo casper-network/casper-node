@@ -7278,6 +7278,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-collections-test"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "casper-executor-wasm-common",
+ "const-fnv1a-hash",
+]
+
+[[package]]
 name = "vm2-counter"
 version = "0.1.0"
 dependencies = [

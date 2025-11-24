@@ -275,14 +275,25 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
 
     let exported_func_name = format_ident!("__casper_export_{func_name}");
     quote! {
+        #[cfg(target_arch = "wasm32")]
         #[export_name = stringify!(#func_name)]
         #[no_mangle]
         pub extern "C" fn #exported_func_name() {
-            #[cfg(target_arch = "wasm32")]
-            {
-                casper_contract_sdk::set_panic_hook();
-            }
+            casper_contract_sdk::set_panic_hook();
+            #func
 
+            #[derive(casper_contract_sdk::serializers::borsh::BorshDeserialize)]
+            #[borsh(crate = "casper_contract_sdk::serializers::borsh")]
+            struct Arguments {
+                #(#arg_names: #arg_types,)*
+            }
+            let input = casper_contract_sdk::prelude::casper::copy_input();
+            let args: Arguments = casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+            let _ret = #func_name(#(args.#arg_names,)*);
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        pub fn #exported_func_name() {
             #func
 
             #[derive(casper_contract_sdk::serializers::borsh::BorshDeserialize)]
@@ -1257,7 +1268,65 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                         let is_by_ref = receiver.reference.is_some();
                         let is_mut = receiver.mutability.is_some();
                         quote! {
+                            #[cfg(target_arch = "wasm32")]
+                            #[no_mangle]
                             #vis extern "C" fn #dispatch_func_name<T>()
+                            where
+                                T: #trait_name
+                                    + #crate_path::serializers::borsh::BorshDeserialize
+                                    + #crate_path::serializers::borsh::BorshSerialize
+                                    + #crate_path::FieldStateAccess
+                                    + Default
+                            {
+                                use casper_contract_sdk::FieldStateAccess;
+
+                                #[derive(#crate_path::serializers::borsh::BorshDeserialize, Debug)]
+                                #[borsh(crate = #borsh_path)]
+                                struct Arguments {
+                                    #(#args_attrs,)*
+                                }
+
+                                let mut flags = #crate_path::common::flags::ReturnFlags::empty();
+                                let mut instance: T = T::read_state_from_fields().unwrap();
+                                let input = #crate_path::prelude::casper::copy_input();
+                                let args: Arguments = {
+                                    match #resolve_abi_convention {
+                                        casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                            casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                                        }
+                                        casper_contract_sdk::serializers::AbiConvention::Named => {
+                                            let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                                                casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                                            #(
+                                                let #arg_names: #arg_types = {
+                                                    let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                                    cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                                        panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                                    })
+                                                };
+                                            )*
+
+                                            Arguments {
+                                                #(
+                                                    #arg_names,
+                                                )*
+                                            }
+                                        }
+                                    }
+                                };
+
+                                let _ret = instance.#func_name(#(args.#arg_names,)*);
+
+                                if #is_by_ref && #is_mut {
+                                    use casper_contract_sdk::FieldStateAccess;
+                                    let _ = instance.write_state_to_fields().unwrap();
+                                }
+
+                                #handle_ret
+                            }
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            #vis fn #dispatch_func_name<T>()
                             where
                                 T: #trait_name
                                     + #crate_path::serializers::borsh::BorshDeserialize
@@ -1320,7 +1389,48 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             "can't make dispatcher for private static method"
                         );
                         quote! {
-                            #vis extern "C"  fn #dispatch_func_name<T: #trait_name>() {
+                            #[cfg(not(target_arch = "wasm32"))]
+                            #vis fn #dispatch_func_name<T: #trait_name>() {
+                                #[derive(#crate_path::serializers::borsh::BorshDeserialize)]
+                                #[borsh(crate = #borsh_path)]
+                                struct Arguments {
+                                    #(#args_attrs,)*
+                                }
+
+                                let mut flags = #crate_path::common::flags::ReturnFlags::empty();
+                                let input = #crate_path::prelude::casper::copy_input();
+                                let args: Arguments = {
+                                    match #resolve_abi_convention {
+                                        casper_contract_sdk::serializers::AbiConvention::Positional => {
+                                            casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                                        }
+                                        casper_contract_sdk::serializers::AbiConvention::Named => {
+                                            let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                                                casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                                                #(
+                                                    let #arg_names: #arg_types = {
+                                                        let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                                        cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                                            panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                                        })
+                                                    };
+                                                )*
+
+                                            Arguments {
+                                                #(
+                                                    #arg_names,
+                                                )*
+                                            }
+                                        }
+                                    }
+                                };
+                                let _ret = <T as #trait_name>::#func_name(#(args.#arg_names,)*);
+
+                                #handle_ret
+                            }
+
+                            #[cfg(target_arch = "wasm32")]
+                            #vis extern "C" fn #dispatch_func_name<T: #trait_name>() {
                                 #[derive(#crate_path::serializers::borsh::BorshDeserialize)]
                                 #[borsh(crate = #borsh_path)]
                                 struct Arguments {

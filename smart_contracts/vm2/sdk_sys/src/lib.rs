@@ -1,6 +1,6 @@
-use borsh::BorshDeserialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 
-#[derive(Debug, BorshDeserialize)]
+#[derive(Debug, Default, BorshDeserialize, Clone)]
 #[repr(C)]
 pub struct EnvInfo {
     pub protocol_version_major: u32,
@@ -28,7 +28,7 @@ pub struct ReadInfo {
 }
 
 #[repr(C)]
-#[derive(Debug, BorshDeserialize)]
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub struct CreateResult {
     pub contract_address: [u8; 32],
 }

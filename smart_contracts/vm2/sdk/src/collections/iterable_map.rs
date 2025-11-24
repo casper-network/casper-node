@@ -1,10 +1,16 @@
-use crate::prelude::{marker::PhantomData, *};
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition};
+use crate::{
+    compat::types::CLTyped,
+    prelude::{marker::PhantomData, *},
+};
 
 use crate::types::HashAlgorithm;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
-use casper_executor_wasm_common::keyspace::{
-    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    type_uid::{TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_64;
 
@@ -22,7 +28,35 @@ pub struct IterableMapPtr {
     /// in a bucket
     pub(crate) index: u64,
 }
+impl TypeUid for IterableMapPtr {
+    const UID: Uid = Uid::from_fields("IterableMapPtr", &[]);
+}
 
+impl CLTyped for IterableMapPtr {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Any
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl CasperABI for IterableMapPtr {
+    fn definition() -> Definition {
+        use crate::abi::StructField;
+
+        Definition::Struct {
+            items: vec![
+                StructField {
+                    name: "hash".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+                },
+                StructField {
+                    name: "index".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+                },
+            ],
+        }
+    }
+}
 /// Trait for types that can be used as keys in [IterableMap].
 /// Must produce a deterministic hash.
 ///
@@ -80,6 +114,17 @@ pub struct IterableMapEntry<K, V> {
     pub(crate) key: K,
     pub(crate) value: Option<V>,
     pub(crate) previous: Option<IterableMapPtr>,
+}
+
+impl<K, V> IterableMapEntry<K, V> {
+    #[cfg(feature = "testing")]
+    pub fn get_previous(&self) -> &Option<IterableMapPtr> {
+        &self.previous
+    }
+    #[cfg(feature = "testing")]
+    pub fn get_value(&self) -> &Option<V> {
+        &self.value
+    }
 }
 
 impl<K, V> IterableMap<K, V>
@@ -368,7 +413,17 @@ where
 
     /// Find the next slot we can safely write to. This is either a slot already owned and
     /// assigned to the key, a vacant tombstone, or empty memory.
+    #[cfg(feature = "testing")]
+    pub fn get_writable_slot(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
+        self.get_writable_slot_inner(key)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn get_writable_slot(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
+        self.get_writable_slot_inner(key)
+    }
+
+    fn get_writable_slot_inner(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
         let mut bucket_ptr = self.create_root_ptr_from_key(key);
 
         // Probe until we find either an existing slot, a tombstone or empty space.
@@ -406,7 +461,16 @@ where
         }
     }
 
+    #[cfg(feature = "testing")]
+    pub fn get_entry(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
+        self.get_entry_inner(keyspace)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn get_entry(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
+        self.get_entry_inner(keyspace)
+    }
+    fn get_entry_inner(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
         match read_into_vec(keyspace) {
             Ok(Some(vec)) => {
                 let entry: IterableMapEntry<K, V> = borsh::from_slice(&vec).unwrap();
@@ -422,14 +486,34 @@ where
         self.create_prefix_from_ptr(&ptr)
     }
 
+    #[cfg(feature = "testing")]
+    pub fn create_root_ptr_from_key(&self, key: &K) -> IterableMapPtr {
+        self.create_root_ptr_from_key_inner(key)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn create_root_ptr_from_key(&self, key: &K) -> IterableMapPtr {
+        self.create_root_ptr_from_key_inner(key)
+    }
+
+    fn create_root_ptr_from_key_inner(&self, key: &K) -> IterableMapPtr {
         IterableMapPtr {
             hash: key.compute_hash(),
             index: 0,
         }
     }
 
+    #[cfg(feature = "testing")]
+    pub fn create_prefix_from_ptr(&self, hash: &IterableMapPtr) -> Vec<u8> {
+        self.create_prefix_from_ptr_inner(hash)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn create_prefix_from_ptr(&self, hash: &IterableMapPtr) -> Vec<u8> {
+        self.create_prefix_from_ptr_inner(hash)
+    }
+
+    pub fn create_prefix_from_ptr_inner(&self, hash: &IterableMapPtr) -> Vec<u8> {
         let mut context_key = Vec::new();
         context_key.extend(self.prefix.as_bytes());
         context_key.extend(b"_");
@@ -437,6 +521,54 @@ where
         context_key.extend(b"_");
         context_key.put_u64_le(hash.index);
         context_key
+    }
+}
+
+impl<K, V> TypeUid for IterableMap<K, V>
+where
+    K: TypeUid,
+    V: TypeUid,
+{
+    const UID: Uid = Uid::from_fields("IterabeMap", &[K::UID, V::UID]);
+}
+
+impl<K: CLTyped, V: CLTyped> CLTyped for IterableMap<K, V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Map {
+            key: Box::new(K::cl_type()),
+            value: Box::new(V::cl_type()),
+        }
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl<K: CasperABI, V: CasperABI> CasperABI for IterableMap<K, V> {
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        K::visit(visitor);
+        V::visit(visitor);
+    }
+
+    fn declaration() -> AbiDeclaration {
+        format!("IterableMap<{}, {}>", K::declaration(), V::declaration())
+    }
+
+    #[inline]
+    fn definition() -> Definition {
+        use crate::abi::StructField;
+
+        Definition::Struct {
+            items: vec![
+                StructField {
+                    name: "prefix".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<String>().into(),
+                },
+                StructField {
+                    name: "tail_key_hash".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<Option<IterableMapPtr>>()
+                        .into(),
+                },
+            ],
+        }
     }
 }
 
@@ -516,550 +648,7 @@ where
     }
 }
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 #[cfg(test)]
 mod tests {
-    /*#TODO fix native implementation
-    use super::*;
-    use crate::{
-        casper::native::dispatch,
-        prelude::{String, ToString, Vec},
-    };
-
-    const TEST_MAP_PREFIX: &str = "test_map";
-
-    #[test]
-    fn insert_and_get() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            assert_eq!(map.len(), 0);
-
-            assert_eq!(map.get(&1), None);
-
-            map.insert(1, "a".to_string());
-            assert_eq!(map.len(), 1);
-
-            assert_eq!(map.get(&1), Some("a".to_string()));
-
-            map.insert(2, "b".to_string());
-            assert_eq!(map.len(), 2);
-
-            assert_eq!(map.get(&2), Some("b".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn overwrite_existing_key() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            assert_eq!(map.insert(1, "a".to_string()), None);
-            assert_eq!(map.insert(1, "b".to_string()), Some("a".to_string()));
-            assert_eq!(map.get(&1), Some("b".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn remove_tail_entry() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            assert_eq!(map.len(), 0);
-            map.insert(1, "a".to_string());
-            assert_eq!(map.len(), 1);
-            map.insert(2, "b".to_string());
-            assert_eq!(map.len(), 2);
-            assert_eq!(map.remove(&2), Some("b".to_string()));
-            assert_eq!(map.len(), 1);
-            assert_eq!(map.get(&2), None);
-            assert_eq!(map.get(&1), Some("a".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn remove_middle_entry() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            assert_eq!(map.len(), 0);
-
-            map.insert(1, "a".to_string());
-            assert_eq!(map.len(), 1);
-
-            map.insert(2, "b".to_string());
-            assert_eq!(map.len(), 2);
-
-            map.insert(3, "c".to_string());
-            assert_eq!(map.len(), 3);
-
-            assert_eq!(map.remove(&2), Some("b".to_string()));
-            assert_eq!(map.len(), 2);
-
-            assert_eq!(map.get(&2), None);
-            assert_eq!(map.get(&1), Some("a".to_string()));
-            assert_eq!(map.get(&3), Some("c".to_string()));
-
-            assert_eq!(map.len(), 2);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn remove_nonexistent_key_does_nothing() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            map.insert(1, "a".to_string());
-
-            assert_eq!(map.remove(&999), None);
-            assert_eq!(map.get(&1), Some("a".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn iterates_all_entries_in_reverse_insertion_order() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.insert(3, "c".to_string());
-
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(
-                values,
-                vec!["c".to_string(), "b".to_string(), "a".to_string(),]
-            );
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn iteration_skips_deleted_entries() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.insert(3, "c".to_string());
-
-            map.remove(&2);
-
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["c".to_string(), "a".to_string(),]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn empty_map_behaves_sanely() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            assert_eq!(map.get(&1), None);
-            assert_eq!(map.remove(&1), None);
-            assert_eq!(map.iter().count(), 0);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn separate_maps_do_not_conflict() {
-        dispatch(|| {
-            let mut map1 = IterableMap::<u64, String>::new("map1");
-            let mut map2 = IterableMap::<u64, String>::new("map2");
-
-            map1.insert(1, "a".to_string());
-            map2.insert(1, "b".to_string());
-
-            assert_eq!(map1.get(&1), Some("a".to_string()));
-            assert_eq!(map2.get(&1), Some("b".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn insert_same_value_under_different_keys() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-
-            map.insert(1, "shared".to_string());
-            map.insert(2, "shared".to_string());
-
-            assert_eq!(map.get(&1), Some("shared".to_string()));
-            assert_eq!(map.get(&2), Some("shared".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn clear_removes_all_entries() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.clear();
-            assert!(map.is_empty());
-            assert_eq!(map.iter().count(), 0);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn keys_returns_reverse_insertion_order() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            let hashes: Vec<_> = map.keys().collect();
-            assert_eq!(hashes, vec![2, 1]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn values_returns_values_in_reverse_insertion_order() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["b".to_string(), "a".to_string()]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn contains_key_returns_correctly() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            assert!(!map.contains_key(&1));
-            map.insert(1, "a".to_string());
-            assert!(map.contains_key(&1));
-            map.remove(&1);
-            assert!(!map.contains_key(&1));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn multiple_removals_and_insertions() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.insert(3, "c".to_string());
-            map.remove(&2);
-            assert_eq!(map.get(&2), None);
-            assert_eq!(map.get(&1), Some("a".to_string()));
-            assert_eq!(map.get(&3), Some("c".to_string()));
-
-            map.insert(4, "d".to_string());
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["d", "c", "a"]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn struct_as_key() {
-        #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
-        struct TestKey {
-            id: u64,
-            name: String,
-        }
-
-        impl IterableMapHash for TestKey {}
-
-        dispatch(|| {
-            let key1 = TestKey {
-                id: 1,
-                name: "Key1".to_string(),
-            };
-            let key2 = TestKey {
-                id: 2,
-                name: "Key2".to_string(),
-            };
-            let mut map = IterableMap::<TestKey, String>::new(TEST_MAP_PREFIX);
-
-            map.insert(key1.clone(), "a".to_string());
-            map.insert(key2.clone(), "b".to_string());
-
-            assert_eq!(map.get(&key1), Some("a".to_string()));
-            assert_eq!(map.get(&key2), Some("b".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn remove_middle_of_long_chain() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.insert(3, "c".to_string());
-            map.insert(4, "d".to_string());
-            map.insert(5, "e".to_string());
-
-            // The order is 5,4,3,2,1
-            map.remove(&3); // Remove the middle entry
-
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["e", "d", "b", "a"]);
-
-            // Check that entry 4's previous is now 2's hash
-            let ptr4 = map.create_root_ptr_from_key(&4u64);
-            let prefix = map.create_prefix_from_ptr(&ptr4);
-            let entry = map.get_entry(Keyspace::Context(&prefix)).unwrap();
-            assert_eq!(entry.previous, Some(map.create_root_ptr_from_key(&2u64)));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn insert_after_remove_updates_head() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            map.remove(&2);
-            map.insert(3, "c".to_string());
-
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["c", "a"]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn reinsert_removed_key() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.remove(&1);
-            map.insert(1, "b".to_string());
-
-            assert_eq!(map.get(&1), Some("b".to_string()));
-            assert_eq!(map.iter().next().unwrap().1, "b".to_string());
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn iteration_reflects_modifications() {
-        dispatch(|| {
-            let mut map = IterableMap::<u64, String>::new(TEST_MAP_PREFIX);
-            map.insert(1, "a".to_string());
-            map.insert(2, "b".to_string());
-            let mut iter = map.iter();
-            assert_eq!(iter.next().unwrap().1, "b".to_string());
-
-            map.remove(&2);
-            map.insert(3, "c".to_string());
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["c", "a"]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn unit_struct_as_key() {
-        #[derive(BorshSerialize, BorshDeserialize, PartialEq)]
-        struct UnitKey;
-
-        impl IterableMapHash for UnitKey {}
-
-        dispatch(|| {
-            let mut map = IterableMap::<UnitKey, String>::new(TEST_MAP_PREFIX);
-            map.insert(UnitKey, "value".to_string());
-            assert_eq!(map.get(&UnitKey), Some("value".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-    struct CollidingKey(u64, u64);
-
-    impl IterableMapHash for CollidingKey {
-        fn compute_hash(&self) -> u64 {
-            let mut bytes = Vec::new();
-            // Only serialize first field for hash computation
-            self.0.serialize(&mut bytes).unwrap();
-            fnv1a_hash_64(&bytes, None)
-        }
-    }
-
-    #[test]
-    fn basic_collision_handling() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            // Both keys will have same hash but different actual keys
-            let k1 = CollidingKey(42, 1);
-            let k2 = CollidingKey(42, 2);
-
-            map.insert(k1.clone(), "first".to_string());
-            map.insert(k2.clone(), "second".to_string());
-
-            assert_eq!(map.get(&k1), Some("first".to_string()));
-            assert_eq!(map.get(&k2), Some("second".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn tombstone_handling() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            let k1 = CollidingKey(42, 1);
-            let k2 = CollidingKey(42, 2);
-            let k3 = CollidingKey(42, 3);
-
-            map.insert(k1.clone(), "first".to_string());
-            map.insert(k2.clone(), "second".to_string());
-            map.insert(k3.clone(), "third".to_string());
-
-            // Remove middle entry
-            assert_eq!(map.remove(&k2), Some("second".to_string()));
-
-            // Verify tombstone state
-            let (_, entry) = map.get_writable_slot(&k2);
-            assert!(entry.unwrap().value.is_none());
-
-            // Verify chain integrity
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["third", "first"]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn tombstone_reuse() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            let k1 = CollidingKey(42, 1);
-            let k2 = CollidingKey(42, 2);
-
-            map.insert(k1.clone(), "first".to_string());
-            map.insert(k2.clone(), "second".to_string());
-
-            // Removing k1 while k2 exists guarantees k1 turns into
-            // a tombstone
-            map.remove(&k1);
-
-            // Reinsert into tombstone slot
-            map.insert(k1.clone(), "reused".to_string());
-
-            assert_eq!(map.get(&k1), Some("reused".to_string()));
-            assert_eq!(map.get(&k2), Some("second".to_string()));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn full_deletion_handling() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            let k1 = CollidingKey(42, 1);
-            map.insert(k1.clone(), "lonely".to_string());
-
-            assert_eq!(map.remove(&k1), Some("lonely".to_string()));
-
-            // Verify complete removal
-            let (_, entry) = map.get_writable_slot(&k1);
-            assert!(entry.is_none());
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn collision_chain_iteration() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            let keys = [
-                CollidingKey(42, 1),
-                CollidingKey(42, 2),
-                CollidingKey(42, 3),
-            ];
-
-            for (i, k) in keys.iter().enumerate() {
-                map.insert(k.clone(), format!("value-{}", i));
-            }
-
-            // Remove middle entry
-            map.remove(&keys[1]);
-
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["value-2", "value-0"]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn complex_collision_chain() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            // Create 5 colliding keys
-            let keys: Vec<_> = (0..5).map(|i| CollidingKey(42, i)).collect();
-
-            // Insert all
-            for k in &keys {
-                map.insert(k.clone(), format!("{}", k.1));
-            }
-
-            // Remove even indexes
-            for k in keys.iter().step_by(2) {
-                map.remove(k);
-            }
-
-            // Insert new values
-            map.insert(keys[0].clone(), "reinserted".to_string());
-            map.insert(CollidingKey(42, 5), "new".to_string());
-
-            // Verify final state
-            let expected = vec![
-                ("new".to_string(), 5),
-                ("reinserted".to_string(), 0),
-                ("3".to_string(), 3),
-                ("1".to_string(), 1),
-            ];
-
-            let results: Vec<_> = map.iter().map(|(k, v)| (v, k.1)).collect();
-
-            assert_eq!(results, expected);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn cross_bucket_reference() {
-        dispatch(|| {
-            let mut map = IterableMap::<CollidingKey, String>::new(TEST_MAP_PREFIX);
-
-            // Create keys with different hashes but chained references
-            let k1 = CollidingKey(1, 0);
-            let k2 = CollidingKey(2, 0);
-            let k3 = CollidingKey(1, 1); // Collides with k1
-
-            map.insert(k1.clone(), "first".to_string());
-            map.insert(k2.clone(), "second".to_string());
-            map.insert(k3.clone(), "third".to_string());
-
-            // Remove k2 which is referenced by k3
-            map.remove(&k2);
-
-            // Verify iteration skips removed entry
-            let values: Vec<_> = map.values().collect();
-            assert_eq!(values, vec!["third", "first"]);
-        })
-        .unwrap();
-    }
-    */
+    // Tests for functionality of this collection are in `vm2-collections-test` contract
 }

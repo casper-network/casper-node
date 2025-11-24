@@ -10,11 +10,10 @@ use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError, ExecuteWithProviderResult,
-        Executor,
     },
     install::{
         InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
-        InstallContractResult, InstallContractWithProviderResult,
+        InstallContractWithProviderResult,
     },
 };
 use casper_storage::{

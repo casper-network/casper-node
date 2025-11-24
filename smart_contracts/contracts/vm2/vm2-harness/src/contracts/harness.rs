@@ -84,8 +84,6 @@ impl Harness {
 
     #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
-        // Event::register();
-
         log!("👋 Hello from constructor with args: {who}");
 
         Self {
