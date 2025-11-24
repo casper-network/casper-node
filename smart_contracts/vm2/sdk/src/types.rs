@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use casper_contract_macros::TypeUid;
 use casper_executor_wasm_common::{
     error::{
-        CALLEE_API_ERROR, CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE,
+        CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE, CALLEE_REVERT_ERROR,
         CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
     },
     keyspace::Keyspace,
@@ -229,7 +229,7 @@ impl TryFrom<u32> for CallError {
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
             CALLEE_INPUT_INVALID => Ok(Self::InputInvalid),
-            CALLEE_API_ERROR => Ok(Self::CalleeReverted),
+            CALLEE_REVERT_ERROR => Ok(Self::CalleeReverted),
             _ => Err(()),
         }
     }

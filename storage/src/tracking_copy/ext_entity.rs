@@ -65,6 +65,7 @@ pub trait TrackingCopyEntityExt<R> {
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        skip_authorization_checks: bool,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error>;
 
     /// Returns runtime information and access rights if authorized, else error.
@@ -74,6 +75,7 @@ pub trait TrackingCopyEntityExt<R> {
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        skip_authorization_checks: bool,
     ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
 
     /// Returns runtime information for systemic functionality.
@@ -468,28 +470,32 @@ where
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        skip_authorization_checks: bool,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error> {
         let (entity_addr, footprint) =
             self.runtime_footprint_by_account_hash(protocol_version, account_hash)?;
 
-        if !administrative_accounts.is_empty()
-            && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
-        {
-            // Exit early if there's at least a single signature coming from an admin.
-            return Ok((footprint, entity_addr));
-        }
+        if !skip_authorization_checks {
+            // We don't do authorization checks for speculative exec
+            if !administrative_accounts.is_empty()
+                && administrative_accounts
+                    .intersection(authorization_keys)
+                    .next()
+                    .is_some()
+            {
+                // Exit early if there's at least a single signature coming from an admin.
+                return Ok((footprint, entity_addr));
+            }
 
-        // Authorize using provided authorization keys
-        if !footprint.can_authorize(authorization_keys) {
-            return Err(Self::Error::Authorization);
-        }
+            // Authorize using provided authorization keys
+            if !footprint.can_authorize(authorization_keys) {
+                return Err(Self::Error::Authorization);
+            }
 
-        // Check total key weight against deploy threshold
-        if !footprint.can_deploy_with(authorization_keys) {
-            return Err(Self::Error::DeploymentAuthorizationFailure);
+            // Check total key weight against deploy threshold
+            if !footprint.can_deploy_with(authorization_keys) {
+                return Err(Self::Error::DeploymentAuthorizationFailure);
+            }
         }
 
         Ok((footprint, entity_addr))
@@ -501,6 +507,7 @@ where
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        skip_authorization_checks: bool,
     ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
         if initiating_address == PublicKey::System.to_account_hash() {
             return self.system_entity_runtime_footprint(protocol_version);
@@ -511,6 +518,7 @@ where
             initiating_address,
             authorization_keys,
             administrative_accounts,
+            skip_authorization_checks,
         )?;
         let access_rights = footprint.extract_access_rights();
         Ok((entity_addr, footprint, access_rights))

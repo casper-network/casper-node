@@ -621,6 +621,13 @@ impl<'a> TransactionV1Builder<'a> {
         self
     }
 
+    /// Sets the transaction target.
+    #[cfg(test)]
+    pub fn with_transaction_target(mut self, target: TransactionTarget) -> Self {
+        self.target = target;
+        self
+    }
+
     /// Returns the new transaction, or an error if non-defaulted fields were not set.
     ///
     /// For more info, see [the `TransactionBuilder` documentation](TransactionV1Builder).

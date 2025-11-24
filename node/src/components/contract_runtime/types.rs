@@ -19,8 +19,8 @@ use casper_storage::{
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
-    BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidDeploy, InvalidTransaction,
-    InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash, U512,
+    BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidTransaction, ProtocolVersion,
+    PublicKey, Transaction, TransactionHash, U512,
 };
 
 use self::wasm_v2_request::{WasmV2Error, WasmV2Result};
@@ -577,31 +577,6 @@ pub struct BlockAndExecutionArtifacts {
     pub(crate) execution_artifacts: Vec<ExecutionArtifact>,
     /// The [`Effects`] and the upcoming validator sets determined by the `step`
     pub(crate) step_outcome: Option<StepOutcome>,
-}
-
-/// Type representing results of the speculative execution.
-#[derive(Debug)]
-pub enum SpeculativeExecutionResult {
-    InvalidTransaction(InvalidTransaction),
-    WasmV1(Box<casper_binary_port::SpeculativeExecutionResult>),
-    ReceivedV1Transaction,
-}
-
-impl SpeculativeExecutionResult {
-    pub fn invalid_gas_limit(transaction: Transaction) -> Self {
-        match transaction {
-            Transaction::Deploy(_) => SpeculativeExecutionResult::InvalidTransaction(
-                InvalidTransaction::Deploy(InvalidDeploy::UnableToCalculateGasLimit),
-            ),
-            Transaction::V1(_) => SpeculativeExecutionResult::InvalidTransaction(
-                InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
-            ),
-        }
-    }
-
-    pub fn invalid_transaction(error: InvalidTransaction) -> Self {
-        SpeculativeExecutionResult::InvalidTransaction(error)
-    }
 }
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the

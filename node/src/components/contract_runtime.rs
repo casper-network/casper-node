@@ -23,14 +23,19 @@ use std::{
 };
 
 use casper_executor_wasm::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
+use casper_executor_wasm_common::error::CallError;
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
-use casper_executor_wasm_interface::sandboxed_execution::{
-    SandboxedExecutionError, SandboxedExecutionResult,
+use casper_execution_engine::engine_state::{
+    BlockInfo, EngineConfigBuilder, ExecutableItem, ExecutionEngineV1, SessionKind, WasmV1Request,
+};
+use casper_executor_wasm_interface::{
+    sandboxed_execution::{SandboxedExecutionError, SandboxedExecutionResult},
+    SandboxedExecutionRequest, SuccessfullResultOutput,
 };
 use casper_storage::{
     data_access_layer::{
@@ -49,13 +54,20 @@ use casper_storage::{
     RuntimeNativeConfig,
 };
 use casper_types::{
-    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    EntityAddr, EraId, Gas, Key, PublicKey,
+    account::AccountHash,
+    bytesrepr::{Bytes, ToBytes},
+    ActivationPoint, CLValue, Chainspec, ChainspecRawBytes, ChainspecRegistry, ContractRuntimeTag,
+    EntityAddr, EraId, Gas, Key, Phase, PublicKey, TransactionHash, TransactionTarget,
+    TransactionV1Hash,
 };
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
+    contract_runtime::{
+        operations::wasm_v2_request::{InvalidRequest, WasmV2Request, WasmV2Result},
+        types::EraPrice,
+        utils::handle_protocol_upgrade,
+    },
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -73,7 +85,6 @@ use crate::{
     },
     NodeRng,
 };
-use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
 pub(crate) use error::{
     BlockExecutionError, ConfigError, ContractRuntimeError, EngineStateError, StateResultError,
@@ -84,11 +95,11 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-use operations::speculatively_execute;
-pub(crate) use types::{ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult};
+pub(crate) use types::{ExecutionArtifact, ExecutionPreState};
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
+static CL_VALUE_UNIT: Lazy<CLValue> = Lazy::new(CLValue::unit);
 
 pub(crate) const APPROVALS_CHECKSUM_NAME: &str = "approvals_checksum";
 pub(crate) const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "execution_results_checksum";
@@ -354,34 +365,134 @@ impl ContractRuntime {
             ContractRuntimeRequest::SandboxedExecution { request, responder } => {
                 trace!(?request, "call restricted");
                 let metrics = Arc::clone(&self.metrics);
+                let execution_engine_v1 = self.execution_engine_v1.clone();
                 let execution_engine_v2 = self.execution_engine_v2.clone();
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 // TODO: consider adding a singleton field for runtime_native_config to this
                 // component, set during construction.
                 let runtime_native_config = RuntimeNativeConfig::from_chainspec(&self.chainspec);
+                let chain_name = self.chainspec.network_config.name.clone();
+                let state_hash = request.state_hash;
                 async move {
                     let start = Instant::now();
-                    let result = run_intensive_task(move || {
-                        // Create a tracking copy for the request
-                        let state = data_access_layer.get_scratch_global_state();
-                        let tracking_copy = state
-                            .tracking_copy(request.state_hash)
-                            .expect("should get tracking copy result")
-                            .expect("should create tracking copy");
-                        // Execute the request
-                        execution_engine_v2.execute_sandbox(
-                            tracking_copy,
-                            runtime_native_config,
-                            request,
-                        )
-                    })
-                    .await;
-
-                    let result = result.unwrap_or(SandboxedExecutionResult {
-                        error: Some(SandboxedExecutionError::InternalHostError),
-                        output: None,
-                        gas_usage: Gas::new(0),
-                    });
+                    let contract_runtime_tag = match request.get_contract_runtime_tag() {
+                        Some(tag) => tag,
+                        None => {
+                            let result = SandboxedExecutionResult {
+                                error: Some(SandboxedExecutionError::InputInvalid),
+                                output: None,
+                                gas_usage: Gas::new(0),
+                            };
+                            responder.respond(result).await;
+                            return;
+                        }
+                    };
+                    // Create a tracking copy for the request
+                    let state: casper_storage::global_state::state::scratch::ScratchGlobalState =
+                        data_access_layer.get_scratch_global_state();
+                    let result = match contract_runtime_tag {
+                        ContractRuntimeTag::VmCasperV1 => {
+                            match to_wasm_v1_request(
+                                TransactionHash::V1(TransactionV1Hash::new([0; 32].into())),
+                                request,
+                            ) {
+                                Ok(wasm_v1_request) => {
+                                    run_intensive_task(move || {
+                                        let res =
+                                            execution_engine_v1.execute(&state, wasm_v1_request);
+                                        let error = res.error().map(|err| {
+                                            SandboxedExecutionError::V1EngineError(format!(
+                                                "{}",
+                                                err
+                                            ))
+                                        });
+                                        let consumed = res.consumed();
+                                        let output = if let Some(ret) = res.ret() {
+                                            if !ret.eq(&CL_VALUE_UNIT) {
+                                                // We only wnat to return an output if wasmv1
+                                                // returns non-unit.
+                                                // Unit is a VM1 way to say "there was no output"
+                                                let res = ret.to_bytes();
+                                                match res {
+                                            Ok(r) => Bytes::from(r),
+                                            Err(_) => return SandboxedExecutionResult {
+                                                error: Some(
+                                                    SandboxedExecutionError::V1EngineError(
+                                                        "Cannot serialize contract return value"
+                                                            .to_string(),
+                                                    ),
+                                                ),
+                                                output: None,
+                                                gas_usage: consumed,
+                                            },
+                                        }
+                                            } else {
+                                                Bytes::default()
+                                            }
+                                        } else {
+                                            Bytes::default()
+                                        };
+                                        let transfers = res.transfers().clone();
+                                        let limit = res.limit();
+                                        let effects = res.effects().clone();
+                                        let messages = res.messages().clone();
+                                        let result_output = SuccessfullResultOutput {
+                                            output,
+                                            transfers,
+                                            limit,
+                                            consumed,
+                                            effects,
+                                            messages,
+                                        };
+                                        SandboxedExecutionResult {
+                                            error,
+                                            output: Some(result_output),
+                                            gas_usage: res.consumed(),
+                                        }
+                                    })
+                                    .await
+                                }
+                                Err(e) => SandboxedExecutionResult {
+                                    error: Some(e),
+                                    output: None,
+                                    gas_usage: Gas::new(0),
+                                },
+                            }
+                        }
+                        ContractRuntimeTag::VmCasperV2 => {
+                            match to_wasm_v2_request(
+                                chain_name,
+                                TransactionHash::V1(TransactionV1Hash::new([0; 32].into())),
+                                request,
+                                runtime_native_config,
+                            ) {
+                                Ok(request) => {
+                                    run_intensive_task(move || {
+                                        match request.execute(
+                                            &execution_engine_v2,
+                                            state_hash,
+                                            &state,
+                                        ) {
+                                            Ok(execute_result) => to_sandbox_result(execute_result),
+                                            Err(_err) => SandboxedExecutionResult {
+                                                error: Some(
+                                                    SandboxedExecutionError::InternalHostError,
+                                                ),
+                                                output: None,
+                                                gas_usage: Gas::new(0),
+                                            },
+                                        }
+                                    })
+                                    .await
+                                }
+                                Err(_err) => SandboxedExecutionResult {
+                                    error: Some(SandboxedExecutionError::InternalHostError),
+                                    output: None,
+                                    gas_usage: Gas::new(0),
+                                },
+                            }
+                        }
+                    };
 
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!("restricted contract request completed");
@@ -771,29 +882,6 @@ impl ContractRuntime {
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
             }
-            ContractRuntimeRequest::SpeculativelyExecute {
-                block_header,
-                transaction,
-                responder,
-            } => {
-                let chainspec = Arc::clone(&self.chainspec);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
-                async move {
-                    let result = run_intensive_task(move || {
-                        speculatively_execute(
-                            data_access_layer.as_ref(),
-                            chainspec.as_ref(),
-                            execution_engine_v1.as_ref(),
-                            *block_header,
-                            *transaction,
-                        )
-                    })
-                    .await;
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder
                 .respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id))
                 .ignore(),
@@ -956,5 +1044,144 @@ where
             }
             Event::TrieDemand(demand) => self.handle_trie_demand(demand),
         }
+    }
+}
+
+fn to_wasm_v1_request(
+    transaction_hash: TransactionHash,
+    request: SandboxedExecutionRequest,
+) -> Result<WasmV1Request, SandboxedExecutionError> {
+    let entry_point_name = request.entry_point_name();
+    let runtime_args = request
+        .rutime_args()
+        .ok_or(SandboxedExecutionError::InputInvalid)?;
+    let SandboxedExecutionRequest {
+        state_hash,
+        block_height,
+        block_time,
+        parent_block_hash,
+        protocol_version,
+        target,
+        entry_point: _,
+        initiator,
+        args: _,
+        gas_limit,
+        authorization_keys,
+    } = request;
+    let executable_item = match target {
+        TransactionTarget::Native => {
+            return Err(SandboxedExecutionError::V1EngineError(
+                "Native not supported".to_string(),
+            ))
+        }
+        TransactionTarget::Stored { id, runtime: _ } => ExecutableItem::Invocation(id),
+        TransactionTarget::Session {
+            is_install_upgrade,
+            module_bytes,
+            runtime: _,
+        } => {
+            let kind = if is_install_upgrade {
+                SessionKind::InstallUpgradeBytecode
+            } else {
+                SessionKind::GenericBytecode
+            };
+            ExecutableItem::SessionBytes { kind, module_bytes }
+        }
+    };
+    let block_info = BlockInfo {
+        state_hash,
+        block_time,
+        parent_block_hash,
+        block_height,
+        protocol_version,
+    };
+    Ok(WasmV1Request {
+        block_info,
+        transaction_hash,
+        gas_limit,
+        initiator_addr: casper_types::InitiatorAddr::AccountHash(initiator),
+        authorization_keys,
+        executable_item,
+        entry_point: entry_point_name,
+        args: runtime_args,
+        phase: Phase::Session,
+        sandboxed: true,
+    })
+}
+
+fn to_wasm_v2_request(
+    network_name: String,
+    transaction_hash: TransactionHash,
+    request: SandboxedExecutionRequest,
+    runtime_native_config: RuntimeNativeConfig,
+) -> Result<WasmV2Request, InvalidRequest> {
+    let SandboxedExecutionRequest {
+        state_hash,
+        block_height,
+        block_time,
+        parent_block_hash,
+        protocol_version: _,
+        target,
+        entry_point,
+        initiator,
+        args,
+        gas_limit,
+        authorization_keys,
+    } = request;
+    WasmV2Request::new_with_args(
+        gas_limit,
+        network_name,
+        runtime_native_config,
+        state_hash,
+        parent_block_hash,
+        block_height,
+        transaction_hash,
+        initiator,
+        args,
+        0,
+        target,
+        entry_point,
+        block_time,
+        authorization_keys,
+        true,
+    )
+}
+
+fn to_sandbox_result(execute_result: WasmV2Result) -> SandboxedExecutionResult {
+    let output_bytes: Vec<u8> = execute_result
+        .output()
+        .map(|x| x.clone().into())
+        .unwrap_or_default();
+    let host_error = execute_result.host_error();
+    let gas_usage = execute_result.gas_usage();
+    let limit = gas_usage.gas_limit();
+    let consumed = gas_usage.gas_spent();
+    let output = Some(SuccessfullResultOutput {
+        transfers: vec![],
+        limit: Gas::new(limit),
+        consumed: Gas::new(consumed),
+        effects: execute_result.effects().clone(),
+        messages: execute_result.messages().clone(),
+        output: output_bytes.into(),
+    });
+
+    // Convert ExecuteResult to SandboxedExecutionResult
+    SandboxedExecutionResult {
+        error: host_error.map(|call_error| match call_error {
+            CallError::CalleeRolledBack => SandboxedExecutionError::CalleeRolledBack,
+            CallError::CalleeTrapped(_) => SandboxedExecutionError::CalleeTrapped,
+            CallError::CalleeGasDepleted => SandboxedExecutionError::CalleeGasDepleted,
+            CallError::NotCallable => SandboxedExecutionError::NotCallable,
+            CallError::NoActiveContract => SandboxedExecutionError::NoActiveContract,
+            CallError::CodeNotFound => SandboxedExecutionError::CodeNotFound,
+            CallError::EntityNotFound => SandboxedExecutionError::EntityNotFound,
+            CallError::LockedPackage => SandboxedExecutionError::LockedPackage,
+            CallError::InputInvalid => SandboxedExecutionError::InputInvalid,
+            CallError::Revert(revert_error) => {
+                SandboxedExecutionError::Revert(revert_error.to_string())
+            }
+        }),
+        output,
+        gas_usage: Gas::new(gas_usage.gas_spent()),
     }
 }

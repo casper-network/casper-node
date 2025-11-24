@@ -733,14 +733,9 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                is_speculative,
                 responder,
             }) => {
-                let source = if is_speculative {
-                    Source::SpeculativeExec
-                } else {
-                    Source::Client
-                };
+                let source = Source::Client;
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source,
@@ -796,12 +791,6 @@ impl reactor::Reactor for MainReactor {
                                 )),
                             ),
                         ));
-                    }
-                    Source::SpeculativeExec => {
-                        error!(
-                            %transaction,
-                            "transaction acceptor should not announce speculative exec transactions"
-                        );
                     }
                 }
 
