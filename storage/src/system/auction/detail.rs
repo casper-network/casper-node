@@ -1369,13 +1369,16 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
         return Err(Error::VestingLockout);
     }
 
+    let previous_minimum = validator_bid.minimum_delegation_amount();
+    let previous_maximum = validator_bid.maximum_delegation_amount();
+
     // set updated delegation amount range
     validator_bid
         .set_delegation_amount_boundaries(minimum_delegation_amount, maximum_delegation_amount);
 
     // check modified delegation bookends
-    let raised_min = validator_bid.minimum_delegation_amount() < minimum_delegation_amount;
-    let lowered_max = validator_bid.maximum_delegation_amount() > maximum_delegation_amount;
+    let raised_min = previous_minimum < minimum_delegation_amount;
+    let lowered_max = previous_maximum > maximum_delegation_amount;
     if !raised_min && !lowered_max {
         return Ok(());
     }

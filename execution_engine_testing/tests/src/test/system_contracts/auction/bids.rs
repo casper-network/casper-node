@@ -21,7 +21,7 @@ use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::data_access_layer::{GenesisRequest, HandleFeeMode};
+use casper_storage::data_access_layer::{AuctionMethod, GenesisRequest, HandleFeeMode};
 
 use crate::lmdb_fixture;
 use casper_types::{
@@ -836,8 +836,8 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(1_000),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
-            ARG_MINIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_2 + 1_000,
-            ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1 - 1_000,
+            ARG_MINIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_2 + 1_000,  // 100
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1 - 1_000,  // 1000
         },
     )
     .build();
@@ -5960,4 +5960,135 @@ fn should_mark_bids_with_less_than_minimum_bid_amount_as_inactive_via_upgrade() 
         .expect("must have the validator bid record");
 
     assert!(bid.inactive())
+}
+
+#[ignore]
+#[test]
+fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    builder
+        .exec(validator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*NON_FOUNDER_VALIDATOR_1_ADDR).into(),
+        AuctionMethod::AddBid {
+            public_key: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            delegation_rate: 10,
+            amount: U512::from(ADD_BID_AMOUNT_1),
+            minimum_delegation_amount: Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10),
+            maximum_delegation_amount: Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 10),
+            minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
+            reserved_slots: 0,
+        },
+    );
+
+    assert!(result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+    let validator_public_key = NON_FOUNDER_VALIDATOR_1_PK.clone();
+
+    let bid = builder
+        .get_bids()
+        .into_iter()
+        .find(|bid| bid.validator_public_key() == validator_public_key)
+        .expect("must have bid for the validator")
+        .as_validator_bid()
+        .expect("must get validator bid");
+
+    assert_eq!(
+        bid.minimum_delegation_amount(),
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10
+    );
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*NON_FOUNDER_VALIDATOR_1_ADDR).into(),
+        AuctionMethod::AddBid {
+            public_key: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            delegation_rate: 10,
+            amount: U512::from(ADD_BID_AMOUNT_1),
+            minimum_delegation_amount: Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 5),
+            maximum_delegation_amount: None,
+            minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
+            reserved_slots: 0,
+        },
+    );
+
+    assert!(result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+
+    let validator_public_key = NON_FOUNDER_VALIDATOR_1_PK.clone();
+
+    let bid = builder
+        .get_bids()
+        .into_iter()
+        .find(|bid| bid.validator_public_key() == validator_public_key)
+        .expect("must have bid for the validator")
+        .as_validator_bid()
+        .expect("must get validator bid");
+
+    assert_eq!(
+        bid.minimum_delegation_amount(),
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT + 5
+    );
+
+    assert_eq!(
+        bid.maximum_delegation_amount(),
+        DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 10
+    );
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*NON_FOUNDER_VALIDATOR_1_ADDR).into(),
+        AuctionMethod::AddBid {
+            public_key: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            delegation_rate: 10,
+            amount: U512::from(ADD_BID_AMOUNT_1),
+            minimum_delegation_amount: None,
+            maximum_delegation_amount: Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5),
+            minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
+            reserved_slots: 0,
+        },
+    );
+
+    assert!(result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+
+    let validator_public_key = NON_FOUNDER_VALIDATOR_1_PK.clone();
+
+    let bid = builder
+        .get_bids()
+        .into_iter()
+        .find(|bid| bid.validator_public_key() == validator_public_key)
+        .expect("must have bid for the validator")
+        .as_validator_bid()
+        .expect("must get validator bid");
+
+    assert_eq!(
+        bid.minimum_delegation_amount(),
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT + 5
+    );
+
+    assert_eq!(
+        bid.maximum_delegation_amount(),
+        DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5
+    );
 }
