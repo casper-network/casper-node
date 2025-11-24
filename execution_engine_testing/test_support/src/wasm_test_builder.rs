@@ -824,6 +824,7 @@ where
         let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
         let minimum_bid_amount = config.core_config.minimum_bid_amount;
         let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
+        let maximum_delegation_amount = config.core_config.maximum_delegation_amount;
         let balance_hold_interval = config.core_config.gas_hold_interval.millis();
         let include_credits = config.core_config.fee_handling == FeeHandling::NoFee;
         let credit_cap = Ratio::new_raw(
@@ -841,6 +842,7 @@ where
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
@@ -1010,6 +1012,7 @@ where
             self.chainspec.core_config.max_delegators_per_validator,
             self.chainspec.core_config.minimum_bid_amount,
             self.chainspec.core_config.minimum_delegation_amount,
+            self.chainspec.core_config.maximum_delegation_amount,
             self.chainspec.core_config.gas_hold_interval.millis(),
             include_credits,
             credit_cap,

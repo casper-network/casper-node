@@ -1102,6 +1102,8 @@ where
                         minimum_bid_amount,
                         max_delegators_per_validator,
                         reserved_slots,
+                        global_minimum_delegation_amount,
+                        global_maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 

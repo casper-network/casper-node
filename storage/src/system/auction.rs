@@ -78,6 +78,8 @@ pub trait Auction:
         minimum_bid_amount: u64,
         max_delegators_per_validator: u32,
         reserved_slots: u32,
+        global_minimum_delegation_amount: u64,
+        global_maximum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -102,6 +104,14 @@ pub trait Auction:
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());
         }
+
+        if minimum_delegation_amount < global_minimum_delegation_amount
+            || maximum_delegation_amount > global_maximum_delegation_amount
+            || minimum_delegation_amount > maximum_delegation_amount
+        {
+            return Err(ApiError::InvalidDelegationAmountLimits);
+        }
+
         let validator_bid_key = BidAddr::from(public_key.clone()).into();
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?

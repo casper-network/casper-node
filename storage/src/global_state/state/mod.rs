@@ -1225,6 +1225,9 @@ pub trait StateProvider: Send + Sync + Sized {
         let address_generator = AddressGenerator::new(&id.seed(), phase);
         let max_delegators_per_validator = config.max_delegators_per_validator();
         let minimum_bid_amount = config.minimum_bid_amount();
+
+        let global_minimum_delegation_limit = config.global_minimum_delegation_amount();
+        let global_maximum_delegation_limit = config.global_maximum_delegation_amount();
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
@@ -1264,6 +1267,8 @@ pub trait StateProvider: Send + Sync + Sized {
                     minimum_bid_amount,
                     max_delegators_per_validator,
                     reserved_slots,
+                    global_minimum_delegation_limit,
+                    global_maximum_delegation_limit,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),

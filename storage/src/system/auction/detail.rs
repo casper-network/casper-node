@@ -1361,13 +1361,6 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
     minimum_delegation_amount: u64,
     maximum_delegation_amount: u64,
 ) -> Result<(), Error> {
-    // check modified delegation bookends
-    let raised_min = validator_bid.minimum_delegation_amount() < minimum_delegation_amount;
-    let lowered_max = validator_bid.maximum_delegation_amount() > maximum_delegation_amount;
-    if !raised_min && !lowered_max {
-        return Ok(());
-    }
-
     let era_end_timestamp_millis = get_era_end_timestamp_millis(provider)?;
     if validator_bid.is_locked(era_end_timestamp_millis) {
         // cannot increase the min or decrease the max while vesting is locked
@@ -1379,6 +1372,13 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
     // set updated delegation amount range
     validator_bid
         .set_delegation_amount_boundaries(minimum_delegation_amount, maximum_delegation_amount);
+
+    // check modified delegation bookends
+    let raised_min = validator_bid.minimum_delegation_amount() < minimum_delegation_amount;
+    let lowered_max = validator_bid.maximum_delegation_amount() > maximum_delegation_amount;
+    if !raised_min && !lowered_max {
+        return Ok(());
+    }
 
     let validator_public_key = validator_bid.validator_public_key();
     let min_delegation = minimum_delegation_amount.into();
