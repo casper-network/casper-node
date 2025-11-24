@@ -329,6 +329,16 @@ impl BidKind {
             | BidKind::Unbond(_) => None,
         }
     }
+
+    /// Returns a cloned validator bid.
+    #[cfg(any(feature = "testing", test))]
+    pub fn as_validator_bid(&self) -> Option<ValidatorBid> {
+        if let Self::Validator(bid) = self {
+            return Some(*bid.clone());
+        }
+
+        None
+    }
 }
 
 impl CLTyped for BidKind {

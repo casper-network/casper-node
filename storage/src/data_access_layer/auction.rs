@@ -56,9 +56,11 @@ pub enum AuctionMethod {
         /// Bid amount.
         amount: U512,
         /// Minimum delegation amount for this validator bid.
-        minimum_delegation_amount: u64,
+        /// if provided by the user is set to Some
+        minimum_delegation_amount: Option<u64>,
         /// Maximum delegation amount for this validator bid.
-        maximum_delegation_amount: u64,
+        /// if provided by the user is set to Some
+        maximum_delegation_amount: Option<u64>,
         /// The minimum bid amount a validator must submit to have
         /// their bid considered as valid.
         minimum_bid_amount: u64,
@@ -145,12 +147,9 @@ impl AuctionMethod {
                 Err(AuctionMethodError::InvalidEntryPoint(entry_point))
             }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
-            TransactionEntryPoint::AddBid => Self::new_add_bid(
-                runtime_args,
-                chainspec.core_config.minimum_delegation_amount,
-                chainspec.core_config.maximum_delegation_amount,
-                chainspec.core_config.minimum_bid_amount,
-            ),
+            TransactionEntryPoint::AddBid => {
+                Self::new_add_bid(runtime_args, chainspec.core_config.minimum_bid_amount)
+            }
             TransactionEntryPoint::WithdrawBid => {
                 Self::new_withdraw_bid(runtime_args, chainspec.core_config.minimum_bid_amount)
             }
@@ -178,19 +177,15 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
-        global_minimum_delegation: u64,
-        global_maximum_delegation: u64,
         global_minimum_bid_amount: u64,
     ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         let minimum_delegation_amount =
-            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)
-                .unwrap_or(global_minimum_delegation);
+            Self::try_get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
         let maximum_delegation_amount =
-            Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)
-                .unwrap_or(global_maximum_delegation);
+            Self::try_get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)?;
         let reserved_slots =
             Self::get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS).unwrap_or(0);
 
@@ -328,6 +323,25 @@ impl AuctionMethod {
             arg: name.to_string(),
             error,
         })
+    }
+
+    fn try_get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<Option<T>, AuctionMethodError> {
+        match args.get(name) {
+            Some(arg) => {
+                let arg = arg
+                    .clone()
+                    .into_t()
+                    .map_err(|error| AuctionMethodError::CLValue {
+                        arg: name.to_string(),
+                        error,
+                    })?;
+                Ok(Some(arg))
+            }
+            None => Ok(None),
+        }
     }
 }
 

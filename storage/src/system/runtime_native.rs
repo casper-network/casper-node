@@ -25,6 +25,7 @@ pub struct Config {
     max_delegators_per_validator: u32,
     minimum_bid_amount: u64,
     minimum_delegation_amount: u64,
+    maximum_delegation_amount: u64,
     balance_hold_interval: u64,
     include_credits: bool,
     credit_cap: Ratio<U512>,
@@ -45,6 +46,7 @@ impl Config {
         max_delegators_per_validator: u32,
         minimum_bid_amount: u64,
         minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
         balance_hold_interval: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
@@ -61,6 +63,7 @@ impl Config {
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
@@ -80,6 +83,7 @@ impl Config {
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_bid_amount = chainspec.core_config.minimum_bid_amount;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
+        let maximum_delegation_amount = chainspec.core_config.maximum_delegation_amount;
         let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
         let include_credits = chainspec.core_config.fee_handling == FeeHandling::NoFee;
         let credit_cap = Ratio::new_raw(
@@ -98,6 +102,7 @@ impl Config {
             max_delegators_per_validator,
             minimum_bid_amount,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             balance_hold_interval,
             include_credits,
             credit_cap,
@@ -146,9 +151,14 @@ impl Config {
         self.minimum_bid_amount
     }
 
-    /// Returns minimum delegation amount setting.
-    pub fn minimum_delegation_amount(&self) -> u64 {
+    /// Returns the global minimum delegation amount setting.
+    pub fn global_minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
+    }
+
+    /// Returns the global maximum delegation amount setting.
+    pub fn global_maximum_delegation_amount(&self) -> u64 {
+        self.maximum_delegation_amount
     }
 
     /// Returns balance hold interval setting.
@@ -182,6 +192,7 @@ impl Config {
             allow_auction_bids: self.allow_auction_bids,
             minimum_bid_amount: self.minimum_bid_amount,
             minimum_delegation_amount: self.minimum_delegation_amount,
+            maximum_delegation_amount: self.maximum_delegation_amount,
             compute_rewards: self.compute_rewards,
             balance_hold_interval: self.balance_hold_interval,
             include_credits: self.include_credits,

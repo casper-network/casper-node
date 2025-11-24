@@ -1066,23 +1066,15 @@ where
                 let minimum_delegation_amount = Self::try_get_named_argument(
                     runtime_args,
                     auction::ARG_MINIMUM_DELEGATION_AMOUNT,
-                )?
-                .unwrap_or(global_minimum_delegation_amount);
+                )?;
 
                 let global_maximum_delegation_amount =
                     self.context.engine_config().maximum_delegation_amount();
                 let maximum_delegation_amount = Self::try_get_named_argument(
                     runtime_args,
                     auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
-                )?
-                .unwrap_or(global_maximum_delegation_amount);
+                )?;
 
-                if minimum_delegation_amount < global_minimum_delegation_amount
-                    || maximum_delegation_amount > global_maximum_delegation_amount
-                    || minimum_delegation_amount > maximum_delegation_amount
-                {
-                    return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
-                }
                 let reserved_slots =
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
@@ -1102,6 +1094,8 @@ where
                         minimum_bid_amount,
                         max_delegators_per_validator,
                         reserved_slots,
+                        global_minimum_delegation_amount,
+                        global_maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 

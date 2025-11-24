@@ -998,8 +998,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     public_key: VALIDATOR_1.clone(),
                     amount,
                     delegation_rate: 0,
-                    minimum_delegation_amount: undelegate_amount.as_u64(),
-                    maximum_delegation_amount: undelegate_amount.as_u64(),
+                    minimum_delegation_amount: Some(undelegate_amount.as_u64()),
+                    maximum_delegation_amount: Some(undelegate_amount.as_u64()),
                     minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
                     reserved_slots: 0,
                 }

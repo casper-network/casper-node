@@ -73,11 +73,13 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-        minimum_delegation_amount: u64,
-        maximum_delegation_amount: u64,
+        minimum_delegation_amount: Option<u64>,
+        maximum_delegation_amount: Option<u64>,
         minimum_bid_amount: u64,
         max_delegators_per_validator: u32,
         reserved_slots: u32,
+        global_minimum_delegation_amount: u64,
+        global_maximum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -102,6 +104,19 @@ pub trait Auction:
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());
         }
+
+        if let Some(minimum_delegation_amount) = minimum_delegation_amount {
+            if minimum_delegation_amount < global_minimum_delegation_amount {
+                return Err(ApiError::InvalidDelegationAmountLimits);
+            }
+        }
+
+        if let Some(maximum_delegation_amount) = maximum_delegation_amount {
+            if maximum_delegation_amount > global_maximum_delegation_amount {
+                return Err(ApiError::InvalidDelegationAmountLimits);
+            }
+        }
+
         let validator_bid_key = BidAddr::from(public_key.clone()).into();
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
@@ -112,6 +127,15 @@ pub trait Auction:
             }
             // idempotent
             validator_bid.activate();
+
+            let minimum_delegation_amount =
+                minimum_delegation_amount.unwrap_or(validator_bid.minimum_delegation_amount());
+            let maximum_delegation_amount =
+                maximum_delegation_amount.unwrap_or(validator_bid.maximum_delegation_amount());
+
+            if maximum_delegation_amount < minimum_delegation_amount {
+                return Err(ApiError::InvalidDelegationAmountLimits);
+            }
 
             validator_bid.with_delegation_rate(delegation_rate);
             process_updated_delegator_stake_boundaries(
@@ -131,6 +155,15 @@ pub trait Auction:
             if amount < U512::from(minimum_bid_amount) {
                 return Err(Error::BondTooSmall.into());
             }
+            let minimum_delegation_amount =
+                minimum_delegation_amount.unwrap_or(global_minimum_delegation_amount);
+            let maximum_delegation_amount =
+                maximum_delegation_amount.unwrap_or(global_maximum_delegation_amount);
+
+            if maximum_delegation_amount < minimum_delegation_amount {
+                return Err(ApiError::InvalidDelegationAmountLimits);
+            }
+
             // create new validator bid
             let bonding_purse = self.create_purse()?;
             let validator_bid = ValidatorBid::unlocked(

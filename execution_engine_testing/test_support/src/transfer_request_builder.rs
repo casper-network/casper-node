@@ -55,6 +55,7 @@ impl TransferRequestBuilder {
         0,
         500_000_000_000,
         500_000_000_000,
+        1_000_000_000_000_000_000,
         DEFAULT_GAS_HOLD_INTERVAL.millis(),
         false,
         Ratio::new_raw(U512::zero(), U512::zero()),
@@ -196,7 +197,12 @@ impl TransferRequestBuilder {
                         .to_bytes()
                         .unwrap(),
                 );
-                hasher.update(self.config.minimum_delegation_amount().to_bytes().unwrap());
+                hasher.update(
+                    self.config
+                        .global_minimum_delegation_amount()
+                        .to_bytes()
+                        .unwrap(),
+                );
                 hasher.update(self.state_hash);
                 hasher.update(self.block_time.to_bytes().unwrap());
                 hasher.update(self.protocol_version.to_bytes().unwrap());

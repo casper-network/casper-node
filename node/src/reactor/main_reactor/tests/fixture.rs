@@ -103,7 +103,7 @@ impl TestFixture {
             .map(|(secret_key, stake)| {
                 (
                     PublicKey::from(secret_key.as_ref()),
-                    (U512::from(100_000_000_000_000_000u64), stake),
+                    (U512::from(700_000_000_000_000_000u64), stake),
                 )
             })
             .collect();
