@@ -424,7 +424,7 @@ copy_input = { base_cost = 20_000, per_byte = 0 }
 ret = { base_cost = 20_000, per_byte = 0 }
 revert = { base_cost = 20_000, per_byte = 150 }
 create = { base_cost = 120_000, per_byte = 10 }
-transfer = { base_cost = 100_000, per_byte = 100 }
+transfer = { base_cost = 2_500_000_000, per_byte = 0 }
 env_balance = { base_cost = 200_000, per_byte = 50 }
 upgrade = { base_cost = 420_000, per_byte = 20 }
 call = { base_cost = 100_000, per_byte = 100 }
