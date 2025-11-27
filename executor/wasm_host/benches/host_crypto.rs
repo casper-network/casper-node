@@ -46,22 +46,14 @@ fn recover_secp256k1_input() -> (Bytes, u32) {
 }
 
 fn alt_bn128_add_input() -> Bytes {
-    let x1 = U256::from_str(
-        "18b18acfb4c2c30276db5411368e7185b311dd124691610c5d3b74034e093dc9",
-    )
-    .expect("u256 x1");
-    let y1 = U256::from_str(
-        "063c909c4720840cb5134cb9f59fa749755796819658d32efc0d288198f37266",
-    )
-    .expect("u256 y1");
-    let x2 = U256::from_str(
-        "07c2b7f58a84bd6145f00c9c2bc0bb1a187f20ff2c92963a88019e7c6a014eed",
-    )
-    .expect("u256 x2");
-    let y2 = U256::from_str(
-        "06614e20c147e940f2d70da3f74c9a17df361706a4485c742bd6788478fa17d7",
-    )
-    .expect("u256 y2");
+    let x1 = U256::from_str("18b18acfb4c2c30276db5411368e7185b311dd124691610c5d3b74034e093dc9")
+        .expect("u256 x1");
+    let y1 = U256::from_str("063c909c4720840cb5134cb9f59fa749755796819658d32efc0d288198f37266")
+        .expect("u256 y1");
+    let x2 = U256::from_str("07c2b7f58a84bd6145f00c9c2bc0bb1a187f20ff2c92963a88019e7c6a014eed")
+        .expect("u256 x2");
+    let y2 = U256::from_str("06614e20c147e940f2d70da3f74c9a17df361706a4485c742bd6788478fa17d7")
+        .expect("u256 y2");
 
     let data = (
         u256_to_le_bytes(x1),
@@ -74,18 +66,12 @@ fn alt_bn128_add_input() -> Bytes {
 }
 
 fn alt_bn128_mul_input() -> Bytes {
-    let x = U256::from_str(
-        "2bd3e6d0f3b142924f5ca7b49ce5b9d54c4703d7ae5648e61d02268b1a0a9fb7",
-    )
-    .expect("u256 x");
-    let y = U256::from_str(
-        "21611ce0a6af85915e2f1d70300909ce2e49dfad4a4619c8390cae66cefdb204",
-    )
-    .expect("u256 y");
-    let scalar = U256::from_str(
-        "00000000000000000000000000000000000000000000000011138ce750fa15c2",
-    )
-    .expect("u256 scalar");
+    let x = U256::from_str("2bd3e6d0f3b142924f5ca7b49ce5b9d54c4703d7ae5648e61d02268b1a0a9fb7")
+        .expect("u256 x");
+    let y = U256::from_str("21611ce0a6af85915e2f1d70300909ce2e49dfad4a4619c8390cae66cefdb204")
+        .expect("u256 y");
+    let scalar = U256::from_str("00000000000000000000000000000000000000000000000011138ce750fa15c2")
+        .expect("u256 scalar");
 
     let data = (
         u256_to_le_bytes(x),
