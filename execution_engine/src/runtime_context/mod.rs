@@ -1350,6 +1350,19 @@ where
         Ok(())
     }
 
+    pub(crate) fn record_contract_install(
+        &mut self,
+        contract_hash: ContractHash,
+    ) -> Result<(), ExecError> {
+        let hash_addr = contract_hash.value();
+        let key = Key::Install(hash_addr);
+        let cl_value = CLValue::from_t(self.transaction_hash).map_err(ExecError::CLValue)?;
+        let stored_value = StoredValue::CLValue(cl_value);
+
+        // No need for key and stored value validation.
+        self.metered_write_gs_unsafe(key, stored_value)
+    }
+
     fn addressable_entity_to_validated_value(
         &self,
         entity: AddressableEntity,

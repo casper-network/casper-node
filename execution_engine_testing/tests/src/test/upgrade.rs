@@ -14,7 +14,8 @@ use casper_types::{
     addressable_entity::{AssociatedKeys, Weight},
     contracts::ContractPackageHash,
     runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, HoldBalanceHandling, Key,
-    PackageAddr, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp, ENTITY_INITIAL_VERSION,
+    KeyTag, PackageAddr, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp, TransactionHash,
+    ENTITY_INITIAL_VERSION,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -69,7 +70,27 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
             .build()
         };
 
+        let expected_transaction_hash = exec_request.session.transaction_hash;
         builder.exec(exec_request).expect_success().commit();
+
+        let install_key = *builder
+            .get_keys(KeyTag::Install)
+            .expect("must get keys")
+            .first()
+            .expect("must have one install key");
+
+        let actual_transaction_hash = builder
+            .query(None, install_key, &[])
+            .expect("must get stored value")
+            .as_cl_value()
+            .map(|cl_value| {
+                cl_value
+                    .to_t::<TransactionHash>()
+                    .expect("must get cl value")
+            })
+            .expect("must get transaction hash");
+
+        assert_eq!(expected_transaction_hash, actual_transaction_hash)
     }
 
     // Calling initial version from contract package hash, should have no effects

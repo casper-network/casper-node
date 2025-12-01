@@ -14,7 +14,7 @@ use super::{DeployHash, TransactionV1Hash};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest,
+    CLType, CLTyped, Digest, KEY_HASH_LENGTH,
 };
 
 const DEPLOY_TAG: u8 = 0;
@@ -158,6 +158,12 @@ impl FromBytes for TransactionHash {
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+impl CLTyped for TransactionHash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 

@@ -82,6 +82,7 @@ const BLOCK_GLOBAL_PROTOCOL_VERSION_PREFIX: &str = "block-protocol-version-";
 const BLOCK_GLOBAL_ADDRESSABLE_ENTITY_PREFIX: &str = "block-addressable-entity-";
 const STATE_PREFIX: &str = "state-";
 const TYPE_DEF_PREFIX: &str = "typedef-";
+const INSTALL_PREFIX: &str = "install-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -163,6 +164,7 @@ pub enum KeyTag {
     EntryPoint = 23,
     State = 24,
     TypeDefinitions = 25,
+    Install = 26,
 }
 
 impl KeyTag {
@@ -230,6 +232,7 @@ impl Display for KeyTag {
             KeyTag::State => write!(f, "State"),
             KeyTag::EntryPoint => write!(f, "EntryPoint"),
             KeyTag::TypeDefinitions => write!(f, "TypeDefinitions"),
+            KeyTag::Install => write!(f, "Install"),
         }
     }
 }
@@ -281,6 +284,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             tag if tag == KeyTag::State as u8 => KeyTag::State,
             tag if tag == KeyTag::TypeDefinitions as u8 => KeyTag::TypeDefinitions,
+            tag if tag == KeyTag::Install as u8 => KeyTag::Install,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -347,6 +351,8 @@ pub enum Key {
     State(StateFieldAddr),
     /// A `Key` under which a set of type definitions is stored.
     TypeDef(TypeUid),
+    /// A `Key` which records a transaction hash for a contract install
+    Install(HashAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -546,6 +552,7 @@ impl Key {
             Key::EntryPoint(_) => String::from("Key::EntryPoint"),
             Key::State(_) => String::from("Key::State"),
             Key::TypeDef(_) => String::from("Key::TypeDef"),
+            Key::Install(_) => String::from("Key::Install"),
         }
     }
 
@@ -676,6 +683,9 @@ impl Key {
             }
             Key::TypeDef(type_uid) => {
                 format!("{}{:08x}", TYPE_DEF_PREFIX, type_uid.value())
+            }
+            Key::Install(hash_addr) => {
+                format!("{}{}", INSTALL_PREFIX, base16::encode_lower(&hash_addr))
             }
         }
     }
@@ -1492,6 +1502,9 @@ impl Display for Key {
             Key::TypeDef(type_uid) => {
                 write!(f, "Key::TypeDef({})", type_uid)
             }
+            Key::Install(hash_addr) => {
+                write!(f, "Key::Install({})", base16::encode_lower(hash_addr))
+            }
         }
     }
 }
@@ -1531,6 +1544,7 @@ impl Tagged<KeyTag> for Key {
             Key::EntryPoint(_) => KeyTag::EntryPoint,
             Key::State(_) => KeyTag::State,
             Key::TypeDef(_) => KeyTag::TypeDefinitions,
+            Key::Install(_) => KeyTag::Install,
         }
     }
 }
@@ -1649,6 +1663,7 @@ impl ToBytes for Key {
             }
             Key::State(addr) => KEY_ID_SERIALIZED_LENGTH + addr.serialized_length(),
             Key::TypeDef(_) => KEY_TYPE_DEF_SERIALIZED_LENGTH,
+            Key::Install(_) => U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH,
         }
     }
 
@@ -1684,6 +1699,7 @@ impl ToBytes for Key {
             Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
             Key::State(addr) => addr.write_bytes(writer),
             Key::TypeDef(type_uid) => type_uid.write_bytes(writer),
+            Key::Install(hash_addr) => hash_addr.write_bytes(writer),
         }
     }
 }
@@ -1806,6 +1822,10 @@ impl FromBytes for Key {
                 let (type_uid, rem) = TypeUid::from_bytes(remainder)?;
                 Ok((Key::TypeDef(type_uid), rem))
             }
+            KeyTag::Install => {
+                let (hash, rem) = HashAddr::from_bytes(remainder)?;
+                Ok((Key::Install(hash), rem))
+            }
         }
     }
 }
@@ -1841,6 +1861,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::EntryPoint(_) => unimplemented!(),
         Key::State(_) => unimplemented!(),
         Key::TypeDef(_) => unimplemented!(),
+        Key::Install(_) => unimplemented!(),
     }
 }
 
@@ -1877,6 +1898,7 @@ impl Distribution<Key> for Standard {
             23 => Key::EntryPoint(rng.gen()),
             24 => Key::State(rng.gen()),
             25 => Key::TypeDef(TypeUid::new(rng.gen())),
+            26 => Key::Install(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1914,6 +1936,7 @@ mod serde_helpers {
         EntryPoint(&'a EntryPointAddr),
         State(&'a StateFieldAddr),
         TypeDef(&'a TypeUid),
+        Install(&'a HashAddr),
     }
 
     #[derive(Deserialize)]
@@ -1945,6 +1968,7 @@ mod serde_helpers {
         EntryPoint(EntryPointAddr),
         State(StateFieldAddr),
         TypeDef(TypeUid),
+        Install(HashAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1980,6 +2004,7 @@ mod serde_helpers {
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
                 Key::State(addr) => BinarySerHelper::State(addr),
                 Key::TypeDef(type_uid) => BinarySerHelper::TypeDef(type_uid),
+                Key::Install(hash_addr) => BinarySerHelper::Install(hash_addr),
             }
         }
     }
@@ -2019,6 +2044,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::State(addr) => Key::State(addr),
                 BinaryDeserHelper::TypeDef(type_uid) => Key::TypeDef(type_uid),
+                BinaryDeserHelper::Install(hash_addr) => Key::Hash(hash_addr),
             }
         }
     }
@@ -2118,6 +2144,7 @@ mod tests {
         [43; 32],
     ));
     const TYPE_DEF_KEY: Key = Key::TypeDef(TypeUid::new(0x0000_0042));
+    const INSTALL_KEY: Key = Key::Install([42; 32]);
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -2151,6 +2178,7 @@ mod tests {
         BALANCE_HOLD,
         STATE_KEY,
         TYPE_DEF_KEY,
+        INSTALL_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =

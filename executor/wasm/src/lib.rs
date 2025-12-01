@@ -1724,6 +1724,12 @@ impl Executor for ExecutorV2 {
                 addressable_entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
             )?;
+            let cl_value =
+                CLValue::from_t(transaction_hash).map_err(InstallContractError::CLValueError)?;
+            state.metered_write(
+                Key::Install(smart_contract_addr),
+                StoredValue::CLValue(cl_value),
+            )?;
             addressable_entity_key
         } else {
             let contract_entrypoints = ContractEntryPoints::from(entity_entrypoints);
@@ -1746,6 +1752,13 @@ impl Executor for ExecutorV2 {
 
             let contract_key = Key::Hash(smart_contract_addr);
             state.metered_write(contract_key, StoredValue::Contract(contract))?;
+            let cl_value =
+                CLValue::from_t(transaction_hash).map_err(InstallContractError::CLValueError)?;
+            state.metered_write(
+                Key::Install(smart_contract_addr),
+                StoredValue::CLValue(cl_value),
+            )?;
+
             contract_key
         };
 

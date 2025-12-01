@@ -2819,6 +2819,9 @@ where
             .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         let current_blocktime = self.context.get_block_info().block_time();
 
+        self.context
+            .record_contract_install(ContractHash::new(contract_hash_addr))?;
+
         match self.context.emit_messages_for_new_installed_version(
             current_blocktime,
             contract_package_key,
@@ -2992,6 +2995,8 @@ where
             }
         }
         let current_blocktime = self.context.get_block_info().block_time();
+        self.context
+            .record_contract_install(ContractHash::new(entity_addr.value()))?;
         match self.context.emit_messages_for_new_installed_version(
             current_blocktime,
             Key::Hash(package_hash.value()),
