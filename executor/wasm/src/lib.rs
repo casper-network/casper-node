@@ -7,7 +7,9 @@ use std::{
 use bytes::Bytes;
 use casper_contract_sdk::meta::{Meta, MetaPrimitive, MetaTypeDefinition};
 use casper_execution_engine::{
-    engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
+    engine_state::{
+        BlockInfo, Error as EngineError, Error, ExecutableItem, ExecutionEngineV1, WasmV1Result,
+    },
     execution::ExecError,
 };
 use casper_executor_wasm_common::{
@@ -1123,7 +1125,20 @@ impl ExecutorV2 {
             Err(global_state_error) => return Err(global_state_error.into()),
         };
 
-        let tracking_copy = TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity());
+        let mut tracking_copy = TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity());
+
+        if let Err(tce) = tracking_copy
+            .borrow_mut()
+            .authorized_runtime_footprint_by_account(
+                execute_request.runtime_native_config.protocol_version(),
+                execute_request.initiator,
+                &execute_request.authorization_keys,
+                &self.config().administrative_accounts,
+                execute_request.sandboxed,
+            )
+        {
+            return Err(InstallContractError::TrackingCopy(tce));
+        }
 
         match self.execute_with_tracking_copy(tracking_copy, execute_request) {
             Ok(ExecuteResult {
@@ -1172,7 +1187,7 @@ impl ExecutorV2 {
         R: StateProvider + CommitProvider,
         <R as StateProvider>::Reader: 'static,
     {
-        let tracking_copy = match state_provider.checkout(state_root_hash) {
+        let mut tracking_copy = match state_provider.checkout(state_root_hash) {
             Ok(Some(tracking_copy)) => {
                 TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity())
             }
@@ -1184,6 +1199,19 @@ impl ExecutorV2 {
             Err(error) => return Err(error.into()),
         };
         let sandboxed = install_request.sandboxed;
+
+        if let Err(tce) = tracking_copy
+            .borrow_mut()
+            .authorized_runtime_footprint_by_account(
+                install_request.runtime_native_config.protocol_version(),
+                install_request.initiator,
+                &install_request.authorization_keys,
+                &self.config().administrative_accounts,
+                sandboxed,
+            )
+        {
+            return Err(InstallContractError::TrackingCopy(tce));
+        }
 
         let res = self.install_contract(tracking_copy, install_request);
         match res {
