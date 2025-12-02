@@ -16,3 +16,6 @@ pub use iterable_set::IterableSet;
 
 #[cfg(feature = "testing")]
 pub use iterable_map::IterableMapEntry;
+
+#[cfg(feature = "testing")]
+pub use vector::compute_prefix_bytes_for_index;

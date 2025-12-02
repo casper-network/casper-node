@@ -673,16 +673,11 @@ where
     F: FnOnce() -> T + Send + UnwindSafe,
 {
     use std::panic;
-    let old_hook = panic::take_hook();
-    /*panic::set_hook(Box::new(|_| {
-        // Muffle panics
-    }));*/
     let call_result = panic::catch_unwind(func);
     let res = match call_result {
         Ok(t) => Ok(t),
         Err(error) => Err(NativeTrap::Panic(error)),
     };
-    panic::set_hook(old_hook);
     res
 }
 

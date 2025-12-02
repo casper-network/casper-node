@@ -46,6 +46,35 @@ impl CasperABI for TestKey {
     }
 }
 
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug)]
+pub(crate) struct VectorTestStruct {
+    pub(crate) field: u64,
+}
+
+impl IterableMapHash for VectorTestStruct {}
+
+impl TypeUid for VectorTestStruct {
+    const UID: Uid = Uid::from_name("VectorTestStruct");
+}
+
+impl CLTyped for VectorTestStruct {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32")))]
+impl CasperABI for VectorTestStruct {
+    fn definition() -> casper_contract_sdk::abi::Definition {
+        Definition::Struct {
+            items: vec![StructField {
+                name: "field1".into(),
+                decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+            }],
+        }
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 pub(crate) struct TestStruct {
     pub(crate) field1: u64,
