@@ -15,10 +15,12 @@ pub(crate) struct TestKey {
     pub(crate) id: u64,
     pub(crate) name: String,
 }
+
+impl IterableMapHash for TestKey {}
+
 impl TypeUid for TestKey {
     const UID: Uid = Uid::from_name("TestKey");
 }
-impl IterableMapHash for TestKey {}
 
 impl CLTyped for TestKey {
     fn cl_type() -> CLType {
@@ -37,6 +39,42 @@ impl CasperABI for TestKey {
                 },
                 StructField {
                     name: "name".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<String>().into(),
+                },
+            ],
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
+pub(crate) struct TestStruct {
+    pub(crate) field1: u64,
+    pub(crate) field2: String,
+}
+
+impl IterableMapHash for TestStruct {}
+
+impl TypeUid for TestStruct {
+    const UID: Uid = Uid::from_name("TestStruct");
+}
+
+impl CLTyped for TestStruct {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32")))]
+impl CasperABI for TestStruct {
+    fn definition() -> casper_contract_sdk::abi::Definition {
+        Definition::Struct {
+            items: vec![
+                StructField {
+                    name: "field1".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+                },
+                StructField {
+                    name: "field2".into(),
                     decl: casper_executor_wasm_common::type_uid::of::<String>().into(),
                 },
             ],

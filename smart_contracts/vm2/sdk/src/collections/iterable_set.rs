@@ -1,8 +1,13 @@
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition};
 use borsh::{BorshDeserialize, BorshSerialize};
+use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
 
 use super::{IterableMap, IterableMapHash};
-use crate::prelude::String;
+use crate::{compat::types::CLTyped, prelude::String};
 
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "crate::serializers::borsh")]
 /// An iterable set backed by a map.
 pub struct IterableSet<V> {
     pub(crate) map: IterableMap<V, ()>,
@@ -49,175 +54,38 @@ impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet
     }
 }
 
+impl<V> TypeUid for IterableSet<V>
+where
+    V: TypeUid,
+{
+    const UID: Uid = Uid::from_fields("IterabeSet", &[V::UID]);
+}
+
+impl<V: CLTyped> CLTyped for IterableSet<V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Any
+    }
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
-#[cfg(test)]
-mod tests {
-    /*#TODO fix native implementation
-    use super::*;
-    use crate::{
-        casper::native::dispatch,
-        prelude::{String, ToString, Vec},
-    };
-    use borsh::{BorshDeserialize, BorshSerialize};
-
-    #[test]
-    fn basic_insert_contains() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            assert!(!set.contains(&1));
-
-            set.insert(1);
-            assert!(set.contains(&1));
-
-            set.insert(2);
-            assert!(set.contains(&2));
-        })
-        .unwrap();
+impl<V: CasperABI> CasperABI for IterableSet<V> {
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        V::visit(visitor);
     }
 
-    #[test]
-    fn remove_elements() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            set.insert(1);
-            set.insert(2);
-
-            set.remove(&1);
-            assert!(!set.contains(&1));
-            assert!(set.contains(&2));
-
-            set.remove(&2);
-            assert!(set.is_empty());
-        })
-        .unwrap();
+    fn declaration() -> AbiDeclaration {
+        format!("IterableSet<{}>", V::declaration())
     }
 
-    #[test]
-    fn iterator_order_and_contents() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            set.insert(1);
-            set.insert(2);
-            set.insert(3);
+    #[inline]
+    fn definition() -> Definition {
+        use crate::abi::StructField;
 
-            let mut items: Vec<_> = set.iter().collect();
-            items.sort();
-            assert_eq!(items, vec![1, 2, 3]);
-        })
-        .unwrap();
+        Definition::Struct {
+            items: vec![StructField {
+                name: "map".into(),
+                decl: casper_executor_wasm_common::type_uid::of::<IterableMap<V, ()>>().into(),
+            }],
+        }
     }
-
-    #[test]
-    fn clear_functionality() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            set.insert(1);
-            set.insert(2);
-
-            assert!(!set.is_empty());
-            set.clear();
-            assert!(set.is_empty());
-            assert_eq!(set.iter().count(), 0);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn multiple_sets_independence() {
-        dispatch(|| {
-            let mut set1 = IterableSet::new("set1");
-            let mut set2 = IterableSet::new("set2");
-
-            set1.insert(1);
-            set2.insert(1);
-
-            assert!(set1.contains(&1));
-            assert!(set2.contains(&1));
-
-            set1.remove(&1);
-            assert!(!set1.contains(&1));
-            assert!(set2.contains(&1));
-        })
-        .unwrap();
-    }
-
-    #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
-    struct TestStruct {
-        field1: u64,
-        field2: String,
-    }
-
-    impl IterableMapHash for TestStruct {}
-
-    #[test]
-    fn struct_values() {
-        dispatch(|| {
-            let val1 = TestStruct {
-                field1: 1,
-                field2: "a".to_string(),
-            };
-            let val2 = TestStruct {
-                field1: 2,
-                field2: "b".to_string(),
-            };
-
-            let mut set = IterableSet::new("test_set");
-            set.insert(val1.clone());
-            set.insert(val2.clone());
-
-            assert!(set.contains(&val1));
-            assert!(set.contains(&val2));
-
-            let mut collected: Vec<_> = set.iter().collect();
-            collected.sort_by(|a, b| a.field1.cmp(&b.field1));
-            assert_eq!(collected, vec![val1, val2]);
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn duplicate_insertions() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            set.insert(1);
-            set.insert(1); // Should be no-op
-
-            assert_eq!(set.iter().count(), 1);
-            set.remove(&1);
-            assert!(set.is_empty());
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn empty_set_behavior() {
-        dispatch(|| {
-            let set = IterableSet::<u64>::new("test_set");
-            assert!(set.is_empty());
-            assert_eq!(set.iter().count(), 0);
-
-            let mut set = set;
-            set.remove(&999); // Shouldn't panic
-            assert!(set.is_empty());
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn complex_operations_sequence() {
-        dispatch(|| {
-            let mut set = IterableSet::new("test_set");
-            set.insert(1);
-            set.insert(2);
-            set.remove(&1);
-            set.insert(3);
-            set.clear();
-            set.insert(4);
-
-            let items: Vec<_> = set.iter().collect();
-            assert_eq!(items, vec![4]);
-        })
-        .unwrap();
-    }
-    */
 }

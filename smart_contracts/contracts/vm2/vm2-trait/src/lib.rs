@@ -241,16 +241,6 @@ mod tests {
         has_traits.increment();
     }
 
-    /*#TODO fix native implementation
-        #[test]
-        fn foo() {
-            let _ = dispatch_with(Environment::default(), || {
-                super::perform_test();
-            });
-
-            log!("Success");
-        }
-    */
     #[test]
     fn bar() {
         let inst = <HasTraitsRef as ContractRef>::new();
