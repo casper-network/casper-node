@@ -99,6 +99,7 @@ pub(crate) fn reinsert_removed_key_assert(reinsert_removed_key: &mut IterableMap
     reinsert_removed_key.insert(2, "bb".to_string());
     reinsert_removed_key.remove(&3);
     reinsert_removed_key.insert(3, "bbb".to_string());
+    assert_eq!(reinsert_removed_key.get(&3), Some("bbb".to_string()));
     let keys_and_values: Vec<(u64, String)> = reinsert_removed_key.iter().collect();
     assert_eq!(
         keys_and_values,

@@ -1,11 +1,13 @@
 use std::{env, path::PathBuf, sync::Arc};
 
 use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
-use casper_executor_wasm::testing::{
-    base_execute_builder, base_install_request_builder, make_address_generator,
-    make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
+use casper_executor_wasm::{
+    testing::{
+        base_execute_builder, base_install_request_builder, make_address_generator,
+        make_global_state_with_genesis, read_wasm, run_create_contract, run_wasm_session,
+    },
+    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
-use casper_executor_wasm::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
 
 use casper_executor_wasm::{chainspec_config, chainspec_config::ChainspecConfig};
 use casper_executor_wasm_interface::executor::ExecutionKind;

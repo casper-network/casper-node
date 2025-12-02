@@ -203,9 +203,7 @@ where
 
     /// Returns a value corresponding to the key.
     pub fn get(&self, key: &K) -> Option<V> {
-        // If a slot is writable, it implicitly belongs the key
-        let (_, at_ptr) = self.get_writable_slot(key);
-        at_ptr.and_then(|entry| entry.value)
+        self.find_slot(key).and_then(|(_, entry)| entry.value)
     }
 
     /// Removes a key from the map. Returns the associated value if the key exists.
@@ -225,39 +223,15 @@ where
             to_remove_tail,
         )));
 
-        // See if the removed entry is a part of a collision resolution chain
-        // by investigating its potential child.
-        let to_remove_ptr_child_prefix = self.create_prefix_from_ptr(&IterableMapPtr {
-            index: to_remove_ptr.index + 1,
-            ..to_remove_ptr
-        });
-        let to_remove_ptr_child_tail =
-            casper::generic_hash(&to_remove_ptr_child_prefix, HashAlgorithm::Blake2b).unwrap();
-        let to_remove_ptr_child_keyspace =
-            Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
-                *casper::get_callee().address(),
-                CollectionTypeTag::IterableMap,
-                [0u8; 8],
-                to_remove_ptr_child_tail,
-            )));
+        // Write a tombstone over the entry to delete
+        let tombstone = IterableMapEntry {
+            value: None,
+            ..at_remove_ptr
+        };
 
-        if self.get_entry(to_remove_ptr_child_keyspace).is_some() {
-            // A child exists, so we need to retain this element to maintain
-            // collision resolution soundness. Instead of purging, mark as
-            // tombstone.
-            let tombstone = IterableMapEntry {
-                value: None,
-                ..at_remove_ptr
-            };
-
-            // Write the updated value
-            let mut entry_bytes = Vec::new();
-            tombstone.serialize(&mut entry_bytes).unwrap();
-            casper::write(to_remove_context_key, &entry_bytes).unwrap();
-        } else {
-            // There is no child, so we can safely purge this entry entirely.
-            casper::remove(to_remove_context_key).unwrap();
-        }
+        let mut entry_bytes = Vec::new();
+        tombstone.serialize(&mut entry_bytes).unwrap();
+        casper::write(to_remove_context_key, &entry_bytes).unwrap();
 
         // Edge case when removing tail
         if self.tail_key_hash == Some(to_remove_ptr) {
@@ -439,13 +413,38 @@ where
             )));
 
             if let Some(entry) = self.get_entry(keyspace) {
-                // Existing value, check if the keys match
-                if entry.key == *key {
+                // Handle tombstones first
+                if entry.value.is_none() {
+                    // If the value is None, then this is a tombstone.
+                    // Treat it as a writable slot only if there is a child in the collision chain.
+                    // If there is no child, we treat it as empty space.
+                    let child_ptr = IterableMapPtr {
+                        index: bucket_ptr.index + 1,
+                        ..bucket_ptr
+                    };
+
+                    let child_prefix = self.create_prefix_from_ptr(&child_ptr);
+
+                    let child_tail =
+                        casper::generic_hash(&child_prefix, HashAlgorithm::Blake2b).unwrap();
+
+                    let child_keyspace =
+                        Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                            *casper::get_callee().address(),
+                            CollectionTypeTag::IterableMap,
+                            [0u8; 8],
+                            child_tail,
+                        )));
+
+                    if self.get_entry(child_keyspace).is_some() {
+                        // There is a child; retain the tombstone for collision chain integrity
+                        return (bucket_ptr, Some(entry));
+                    } else {
+                        // No child; treat as empty space
+                        return (bucket_ptr, None);
+                    }
+                } else if entry.key == *key {
                     // We have found an existing slot for that key, return it
-                    return (bucket_ptr, Some(entry));
-                } else if entry.value.is_none() {
-                    // If the value is None, then this is a tombstone, and we
-                    // can write over it.
                     return (bucket_ptr, Some(entry));
                 } else {
                     // We found a slot for this key hash, but the keys mismatch,
@@ -529,7 +528,7 @@ where
     K: TypeUid,
     V: TypeUid,
 {
-    const UID: Uid = Uid::from_fields("IterabeMap", &[K::UID, V::UID]);
+    const UID: Uid = Uid::from_fields("IterableMap", &[K::UID, V::UID]);
 }
 
 impl<K: CLTyped, V: CLTyped> CLTyped for IterableMap<K, V> {
