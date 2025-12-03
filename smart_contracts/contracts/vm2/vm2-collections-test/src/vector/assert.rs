@@ -1,4 +1,4 @@
-use core::{panic, ptr::NonNull};
+use core::ptr::NonNull;
 
 use alloc::{vec, vec::Vec};
 use casper_contract_sdk::{
@@ -54,7 +54,21 @@ pub(crate) fn should_retain_assert(vec: &mut Vector<u64>) {
     assert_eq!(vec, vec![2, 4]);
 }
 
-pub(crate) fn test_vec_assert(vec: &mut Vector<u64>) {
+// Assert for scenario in which deletes happen in previous
+// state hash
+pub(crate) fn test_vec_1_assert() {
+    assert_eq!(
+        get_vec_elements_from_storage("test_vec_1"),
+        vec![41, 43, 42, 111, 222, 333]
+    );
+
+    let vec2 = Vector::<u64>::new("test1");
+    assert_eq!(vec2.get(0), None);
+
+    assert_eq!(get_vec_elements_from_storage("test1"), Vec::<u64>::new());
+}
+
+pub(crate) fn test_vec_2_assert(vec: &mut Vector<u64>) {
     assert_eq!(vec.remove(5), Some(334));
     assert_eq!(vec.remove(55), None);
 
@@ -81,7 +95,7 @@ pub(crate) fn test_vec_assert(vec: &mut Vector<u64>) {
     }
 
     assert_eq!(
-        get_vec_elements_from_storage("test_vec"),
+        get_vec_elements_from_storage("test_vec_2"),
         vec![41, 43, 42, 111, 222, 333]
     );
 

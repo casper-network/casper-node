@@ -149,6 +149,17 @@ pub struct ExpectedCall {
     result_code: u32,
 }
 
+type CreateInputExpectationTuple<'a> = (
+    Option<&'a [u8]>,
+    u64,
+    Option<&'a str>,
+    Option<&'a [u8]>,
+    Option<&'a [u8; 32]>,
+    Option<&'a [u8]>,
+);
+
+type UpgradeInputExpectationTuple<'a> = (&'a [u8], Option<&'a str>, Option<&'a [u8]>);
+
 impl ExpectedCall {
     pub fn new(
         input_match: Option<Vec<u8>>,
@@ -362,33 +373,22 @@ impl ExpectedCall {
         )
     }
 
-    pub fn expect_read(key: Option<&Keyspace>, output: &[u8]) -> Self {
-        Self::expect_read_with_result_code(key, output, HOST_ERROR_SUCCESS)
-    }
-
-    pub fn expect_read_with_result_code(
+    pub fn expect_read(
         input_expectation: Option<&Keyspace>,
-        output: &[u8],
+        maybe_output: Option<&[u8]>,
         result_code: u32,
     ) -> Self {
         let input_data = input_expectation.map(|x| x.to_host_input_data().unwrap());
         Self::new(
             input_data,
             Some(GlobalStateFunctionOption::Read as u32),
-            Some(output.to_vec()),
+            maybe_output.map(|x| x.to_vec()),
             result_code,
         )
     }
 
     pub fn expect_create(
-        input_expectation: Option<(
-            Option<&[u8]>,
-            u64,
-            Option<&str>,
-            Option<&[u8]>,
-            Option<&[u8; 32]>,
-            Option<&[u8]>,
-        )>,
+        input_expectation: Option<CreateInputExpectationTuple>,
         output: Option<CreateResult>,
         result_code: u32,
     ) -> Self {
@@ -469,7 +469,7 @@ impl ExpectedCall {
     }
 
     pub fn expect_upgrade(
-        input_expectation: Option<(&[u8], Option<&str>, Option<&[u8]>)>,
+        input_expectation: Option<UpgradeInputExpectationTuple>,
         return_code: u32,
     ) -> Self {
         Self::new(
@@ -573,13 +573,12 @@ impl Environment for EnvironmentMock {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32 {
-        let expectation = self.deque_expectation().expect(
-            format!(
+        let expectation = self.deque_expectation().unwrap_or_else(|| {
+            panic!(
                 "Trying to call `casper_ffi` (ffi_opt={}) without enqueued mock results",
                 ffi_opt
             )
-            .as_str(),
-        );
+        });
         if let Some(expected_ffi_opt) = expectation.ffi_opt_match {
             assert_eq!(
                 expected_ffi_opt, ffi_opt,
@@ -674,11 +673,10 @@ where
 {
     use std::panic;
     let call_result = panic::catch_unwind(func);
-    let res = match call_result {
+    match call_result {
         Ok(t) => Ok(t),
         Err(error) => Err(NativeTrap::Panic(error)),
-    };
-    res
+    }
 }
 
 pub fn set_env<T: Environment + 'static>(stub: Arc<T>) {
@@ -736,12 +734,28 @@ mod tests {
         );
 
         let key_3 = Keyspace::NamedKey("abc");
-        env.add_expectation(ExpectedCall::expect_read(Some(&key_3), b"value 2"));
+        env.add_expectation(ExpectedCall::expect_read(
+            Some(&key_3),
+            Some(b"value 2"),
+            HOST_ERROR_SUCCESS,
+        ));
         assert_eq!(casper::read_into_vec(key_3), Ok(Some(b"value 2".to_vec())));
 
-        let key_3 = Keyspace::NamedKey("abc");
-        env.add_expectation(ExpectedCall::expect_read(Some(&key_3), &[]));
-        assert_eq!(casper::read_into_vec(key_3), Err(HostResult::InvalidInput));
+        let key_4 = Keyspace::NamedKey("abc2");
+        env.add_expectation(ExpectedCall::expect_read(
+            Some(&key_4),
+            Some(&[5]),
+            HOST_ERROR_SUCCESS,
+        ));
+        assert_eq!(casper::read_into_vec(key_4), Ok(Some(vec![5])));
+
+        let key_5 = Keyspace::NamedKey("abc3");
+        env.add_expectation(ExpectedCall::expect_read(
+            Some(&key_5),
+            None,
+            HOST_ERROR_INVALID_INPUT,
+        ));
+        assert_eq!(casper::read_into_vec(key_5), Err(HostResult::InvalidInput));
 
         env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo {
             protocol_version_major: 2,

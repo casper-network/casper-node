@@ -152,11 +152,11 @@ fn inserting_into_non_existing_vec_index_fails() {
         .expect("should build");
     let res = run_wasm_session(&mut executor, &global_state, state_root_hash, run_method);
     assert!(res.is_ok());
+
     if let Ok(res) = res {
-        let host_error = res.host_error;
-        assert!(host_error.is_some());
-        if let Some(err) = host_error {
-            println!("XXX {:?}", err);
-        }
+        assert!(matches!(
+            res.host_error,
+            Some(casper_executor_wasm_common::error::CallError::NotCallable)
+        ));
     }
 }

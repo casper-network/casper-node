@@ -354,6 +354,7 @@ pub(crate) fn host_write<S: GlobalStateReader + 'static>(
         Keyspace::EntryPoint(_) => return Ok(HOST_ERROR_INVALID_INPUT),
     };
 
+    error!("XXXX2");
     metered_write(caller, global_state_key, stored_value)?;
 
     Ok(HOST_ERROR_SUCCESS)

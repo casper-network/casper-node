@@ -368,7 +368,7 @@ pub enum GetEnvInfoError {
 
 thread_local! {
     /// Env info cache for the current execution
-    static ENV_INFO: RefCell<Option<EnvInfo>> = RefCell::new(None);
+    static ENV_INFO: RefCell<Option<EnvInfo>> = const {RefCell::new(None)};
 }
 
 /// Get the environment info.

@@ -1,4 +1,4 @@
-use casper_contract_sdk::{casper, collections::Vector};
+use casper_contract_sdk::collections::Vector;
 
 use crate::types::VectorTestStruct;
 
@@ -22,8 +22,51 @@ pub(crate) fn should_retain_prepare() -> Vector<u64> {
     vec
 }
 
-pub(crate) fn test_vec_prepare() -> Vector<u64> {
-    let mut vec = Vector::new("test_vec");
+pub(crate) fn test_vec_1_prepare() -> Vector<u64> {
+    let mut vec = Vector::new("test_vec_1");
+
+    assert!(vec.get(0).is_none());
+    vec.push(111);
+    assert_eq!(vec.get(0), Some(111));
+    vec.push(222);
+    assert_eq!(vec.get(1), Some(222));
+
+    vec.insert(0, 42);
+    vec.insert(0, 41);
+    vec.insert(1, 43);
+    vec.insert(5, 333);
+    vec.insert(5, 334);
+    assert_eq!(vec.remove(5), Some(334));
+    assert_eq!(vec.remove(55), None);
+
+    /*let to_return = vec.clone();
+        let mut iter = (&vec).iter();
+        assert_eq!(iter.next(), Some(41));
+        assert_eq!(iter.next(), Some(43));
+        assert_eq!(iter.next(), Some(42));
+        assert_eq!(iter.next(), Some(111));
+        assert_eq!(iter.next(), Some(222));
+        assert_eq!(iter.next(), Some(333));
+        assert_eq!(iter.next(), None);
+    */
+    {
+        let ser = borsh::to_vec(&vec).unwrap();
+        let deser: Vector<u64> = borsh::from_slice(&ser).unwrap();
+        let mut iter = deser.iter();
+        assert_eq!(iter.next(), Some(41));
+        assert_eq!(iter.next(), Some(43));
+        assert_eq!(iter.next(), Some(42));
+        assert_eq!(iter.next(), Some(111));
+        assert_eq!(iter.next(), Some(222));
+        assert_eq!(iter.next(), Some(333));
+        assert_eq!(iter.next(), None);
+    }
+
+    vec
+}
+
+pub(crate) fn test_vec_2_prepare() -> Vector<u64> {
+    let mut vec = Vector::new("test_vec_2");
 
     assert!(vec.get(0).is_none());
     vec.push(111);

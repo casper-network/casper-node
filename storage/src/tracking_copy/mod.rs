@@ -14,7 +14,7 @@ use std::{
     borrow::Borrow,
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     convert::{From, TryInto},
-    fmt::Debug,
+    fmt::{Debug, Display},
     sync::Arc,
 };
 
@@ -97,6 +97,27 @@ impl TrackingCopyQueryResult {
                 Err(TrackingCopyError::QueryDepthLimit { depth })
             }
             TrackingCopyQueryResult::Success { value, .. } => Ok(value),
+        }
+    }
+}
+
+#[derive(Error, Debug, PartialEq, Eq)]
+/// Enum encapsulating data returned by the cache
+pub enum CacheEntry<'a> {
+    /// This entry was pruned
+    Pruned,
+    /// Cache is not aware of this element
+    NotFound,
+    /// Cache contains an unpruned version of this entry
+    Exists(&'a StoredValue),
+}
+
+impl Display for CacheEntry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CacheEntry::Pruned => write!(f, "TrackingCopyEntry::Pruned"),
+            CacheEntry::NotFound => write!(f, "TrackingCopyEntry::NotFound"),
+            CacheEntry::Exists(_) => write!(f, "TrackingCopyEntry::Exists"),
         }
     }
 }
@@ -238,22 +259,27 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
 
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_prune(&mut self, key: Key) {
+        let kb = KeyWithByteRepr::new(key);
+        self.muts_cached.remove(&kb);
         self.prunes_cached.insert(key);
     }
 
     /// Gets value from `key` in the cache.
-    pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
+    pub fn get<'a>(&'a mut self, key: &Key) -> CacheEntry<'a> {
         if self.prunes_cached.contains(key) {
             // the item is marked for pruning and therefore
             // is no longer accessible.
-            return None;
+            return CacheEntry::Pruned;
         }
         let kb = KeyWithByteRepr::new(*key);
         if let Some(value) = self.muts_cached.get(&kb) {
-            return Some(value);
+            return CacheEntry::Exists(value);
         };
 
-        self.reads_cached.get_refresh(key).map(|v| &*v)
+        match self.reads_cached.get_refresh(key).map(|v| &*v) {
+            Some(v) => CacheEntry::Exists(v),
+            None => CacheEntry::NotFound,
+        }
     }
 
     /// Get cached items by prefix.
@@ -485,8 +511,12 @@ where
 
     /// Get record by key.
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
-        if let Some(value) = self.cache.get(key) {
+        let get = self.cache.get(key);
+        if let CacheEntry::Exists(value) = get {
             return Ok(Some(value.to_owned()));
+        }
+        if let CacheEntry::Pruned = get {
+            return Ok(None);
         }
         match self.reader.read(key) {
             Ok(ret) => {

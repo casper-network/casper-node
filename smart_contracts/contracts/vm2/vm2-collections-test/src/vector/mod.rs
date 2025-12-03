@@ -9,9 +9,10 @@ use prepare::*;
 
 #[casper]
 pub(crate) struct VectorTestData {
-    should_not_panic_with_empty: Vector<u64>,
     should_retain: Vector<u64>,
-    test_vec: Vector<u64>,
+    should_not_panic_with_empty: Vector<u64>,
+    test_vec_1: Vector<u64>,
+    test_vec_2: Vector<u64>,
     test_pop: Vector<u64>,
     test_contains: Vector<u64>,
     test_clear: Vector<u64>,
@@ -26,9 +27,10 @@ pub(crate) struct VectorTestData {
 impl VectorTestData {
     pub(crate) fn new() -> Self {
         Self {
-            should_not_panic_with_empty: should_not_panic_with_empty_prepare(),
             should_retain: should_retain_prepare(),
-            test_vec: test_vec_prepare(),
+            should_not_panic_with_empty: should_not_panic_with_empty_prepare(),
+            test_vec_1: test_vec_1_prepare(),
+            test_vec_2: test_vec_2_prepare(),
             test_pop: test_pop_prepare(),
             test_contains: test_contains_prepare(),
             test_clear: test_clear_prepare(),
@@ -44,7 +46,7 @@ impl VectorTestData {
     pub(crate) fn do_assertions(&mut self) {
         let should_not_panic_with_empty = &mut self.should_not_panic_with_empty;
         let should_retain = &mut self.should_retain;
-        let test_vec = &mut self.test_vec;
+        let test_vec_2 = &mut self.test_vec_2;
         let test_pop = &mut self.test_pop;
         let test_contains = &mut self.test_contains;
         let test_clear = &mut self.test_clear;
@@ -56,7 +58,8 @@ impl VectorTestData {
         let test_remove_invalid_index = &mut self.test_remove_invalid_index;
         should_not_panic_with_empty_assert(should_not_panic_with_empty);
         should_retain_assert(should_retain);
-        test_vec_assert(test_vec);
+        test_vec_1_assert();
+        test_vec_2_assert(test_vec_2);
         test_pop_assert(test_pop);
         test_contains_assert(test_contains);
         test_clear_assert(test_clear);
