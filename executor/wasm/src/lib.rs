@@ -7,9 +7,7 @@ use std::{
 use bytes::Bytes;
 use casper_contract_sdk::meta::{Meta, MetaPrimitive, MetaTypeDefinition};
 use casper_execution_engine::{
-    engine_state::{
-        BlockInfo, Error as EngineError, Error, ExecutableItem, ExecutionEngineV1, WasmV1Result,
-    },
+    engine_state::{BlockInfo, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
 };
 use casper_executor_wasm_common::{
@@ -1127,17 +1125,19 @@ impl ExecutorV2 {
 
         let mut tracking_copy = TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity());
 
-        if let Err(tce) = tracking_copy
-            .borrow_mut()
+        if tracking_copy
             .authorized_runtime_footprint_by_account(
                 execute_request.runtime_native_config.protocol_version(),
                 execute_request.initiator,
                 &execute_request.authorization_keys,
-                &self.config().administrative_accounts,
+                self.execution_engine_v1.config().administrative_accounts(),
                 execute_request.sandboxed,
             )
+            .is_err()
         {
-            return Err(InstallContractError::TrackingCopy(tce));
+            return Err(ExecuteWithProviderError::Execute(
+                ExecuteError::UnauthorizedEntity,
+            ));
         }
 
         match self.execute_with_tracking_copy(tracking_copy, execute_request) {
@@ -1200,16 +1200,13 @@ impl ExecutorV2 {
         };
         let sandboxed = install_request.sandboxed;
 
-        if let Err(tce) = tracking_copy
-            .borrow_mut()
-            .authorized_runtime_footprint_by_account(
-                install_request.runtime_native_config.protocol_version(),
-                install_request.initiator,
-                &install_request.authorization_keys,
-                &self.config().administrative_accounts,
-                sandboxed,
-            )
-        {
+        if let Err(tce) = tracking_copy.authorized_runtime_footprint_by_account(
+            install_request.runtime_native_config.protocol_version(),
+            install_request.initiator,
+            &install_request.authorization_keys,
+            self.execution_engine_v1.config().administrative_accounts(),
+            sandboxed,
+        ) {
             return Err(InstallContractError::TrackingCopy(tce));
         }
 

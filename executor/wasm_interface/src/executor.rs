@@ -564,6 +564,8 @@ pub enum ExecuteError {
     InvalidFFIOption(u32),
     #[error("unexpected output after vm1 return")]
     UnexpectedOutputAfterVm1Ret,
+    #[error("the initiator is unauthorized")]
+    UnauthorizedEntity,
 }
 
 #[derive(Debug, Error)]
