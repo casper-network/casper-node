@@ -21,7 +21,10 @@ use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::data_access_layer::{AuctionMethod, GenesisRequest, HandleFeeMode};
+use casper_storage::{
+    data_access_layer::{AuctionMethod, GenesisRequest, HandleFeeMode},
+    tracking_copy::TrackingCopyError,
+};
 
 use crate::lmdb_fixture;
 use casper_types::{
@@ -6063,7 +6066,7 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
             delegation_rate: 10,
             amount: U512::from(ADD_BID_AMOUNT_1),
             minimum_delegation_amount: None,
-            maximum_delegation_amount: Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5),
+            maximum_delegation_amount: Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10),
             minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
             reserved_slots: 0,
         },
@@ -6089,7 +6092,7 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
 
     assert_eq!(
         bid.maximum_delegation_amount(),
-        DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10
     );
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
@@ -6114,8 +6117,8 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
         AuctionMethod::Delegate {
             delegator: DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone()),
             validator: NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            amount: U512::from(bid.maximum_delegation_amount() - 5),
-            max_delegators_per_validator: 0,
+            amount: U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 9),
+            max_delegators_per_validator: builder.engine_config().max_delegators_per_validator(),
         },
     );
 
@@ -6134,5 +6137,6 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
         },
     );
 
-    assert!(!result.is_success())
+    assert!(!result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
 }

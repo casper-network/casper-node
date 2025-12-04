@@ -851,6 +851,7 @@ where
         let current_stake = delegator_bid.staked_amount();
         let total_stake = amount.saturating_add(current_stake);
         let validator_max = U512::from(validator_bid.maximum_delegation_amount());
+        println!("{:?} {:?}", total_stake, validator_max);
         if total_stake > validator_max {
             // Fill up the delegator stake upto the maximum limit and only transfer the difference
             // required.
@@ -872,6 +873,7 @@ where
         let reserved_slots_count = validator_bid.reserved_slots();
         let reservation_count = provider.reservation_count(&validator_bid_addr)?;
         let has_reservation = has_reservation(provider, &delegator_kind, &validator_public_key)?;
+        println!("{max_delegators_per_validator}, {delegator_count}");
         if delegator_count >= (max_delegators_per_validator - reserved_slots_count) as usize
             && !has_reservation
         {
