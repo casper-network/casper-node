@@ -21,10 +21,7 @@ use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::{
-    data_access_layer::{AuctionMethod, GenesisRequest, HandleFeeMode},
-    tracking_copy::TrackingCopyError,
-};
+use casper_storage::data_access_layer::{AuctionMethod, GenesisRequest, HandleFeeMode};
 
 use crate::lmdb_fixture;
 use casper_types::{
@@ -6153,8 +6150,8 @@ fn protocol_upgrade_corrects_out_of_bound_delegations_for_validators() {
         .query(
             None,
             Key::BidAddr(BidAddr::DelegatedAccount {
-                validator: NON_FOUNDER_VALIDATOR_1_ADDR.clone(),
-                delegator: BID_ACCOUNT_1_ADDR.clone(),
+                validator: *NON_FOUNDER_VALIDATOR_1_ADDR,
+                delegator: *BID_ACCOUNT_1_ADDR,
             }),
             &[],
         )
@@ -6167,7 +6164,7 @@ fn protocol_upgrade_corrects_out_of_bound_delegations_for_validators() {
     let validator_maximum_delegation_amount = builder
         .query(
             None,
-            Key::BidAddr(BidAddr::Validator(NON_FOUNDER_VALIDATOR_1_ADDR.clone())),
+            Key::BidAddr(BidAddr::Validator(*NON_FOUNDER_VALIDATOR_1_ADDR)),
             &[],
         )
         .expect("must have stored value")
@@ -6206,8 +6203,8 @@ fn protocol_upgrade_corrects_out_of_bound_delegations_for_validators() {
         .query(
             None,
             Key::BidAddr(BidAddr::DelegatedAccount {
-                validator: NON_FOUNDER_VALIDATOR_1_ADDR.clone(),
-                delegator: BID_ACCOUNT_1_ADDR.clone(),
+                validator: *NON_FOUNDER_VALIDATOR_1_ADDR,
+                delegator: *BID_ACCOUNT_1_ADDR,
             }),
             &[],
         )
@@ -6220,7 +6217,7 @@ fn protocol_upgrade_corrects_out_of_bound_delegations_for_validators() {
     let validator_maximum_delegation_amount = builder
         .query(
             None,
-            Key::BidAddr(BidAddr::Validator(NON_FOUNDER_VALIDATOR_1_ADDR.clone())),
+            Key::BidAddr(BidAddr::Validator(*NON_FOUNDER_VALIDATOR_1_ADDR)),
             &[],
         )
         .expect("must have stored value")
