@@ -6091,4 +6091,48 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
         bid.maximum_delegation_amount(),
         DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5
     );
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*BID_ACCOUNT_1_ADDR).into(),
+        AuctionMethod::Delegate {
+            delegator: DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone()),
+            validator: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            amount: U512::from(bid.maximum_delegation_amount() - 5),
+            max_delegators_per_validator: 0,
+        },
+    );
+
+    assert!(result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*BID_ACCOUNT_1_ADDR).into(),
+        AuctionMethod::Delegate {
+            delegator: DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone()),
+            validator: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            amount: U512::from(10),
+            max_delegators_per_validator: 0,
+        },
+    );
+
+    assert!(!result.is_success())
 }
