@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 19267
+activation_point = 20275
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -55,15 +55,15 @@ vesting_schedule_period = '0 weeks'
 unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
-# Annual issuance: 8%
+# Annual issuance: 0.25%
 # Minimum block time: 8000 milliseconds
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((8000)/31536000000)-1 is expressed as a fractional number below
+# (1+0.0025)^((8000)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((8000)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [11, 563427926]
+# Fraction((1 + 0.0025)**((8000)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [1, 1000000000]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
