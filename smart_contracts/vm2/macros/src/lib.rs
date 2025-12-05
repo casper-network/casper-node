@@ -275,25 +275,12 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
 
     let exported_func_name = format_ident!("__casper_export_{func_name}");
     quote! {
-        #[cfg(target_arch = "wasm32")]
         #[export_name = stringify!(#func_name)]
-        #[no_mangle]
-        pub extern "C" fn #exported_func_name() {
-            casper_contract_sdk::set_panic_hook();
-            #func
-
-            #[derive(casper_contract_sdk::serializers::borsh::BorshDeserialize)]
-            #[borsh(crate = "casper_contract_sdk::serializers::borsh")]
-            struct Arguments {
-                #(#arg_names: #arg_types,)*
-            }
-            let input = casper_contract_sdk::prelude::casper::copy_input();
-            let args: Arguments = casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
-            let _ret = #func_name(#(args.#arg_names,)*);
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
         pub fn #exported_func_name() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                casper_contract_sdk::set_panic_hook();
+            }
             #func
 
             #[derive(casper_contract_sdk::serializers::borsh::BorshDeserialize)]
@@ -1324,20 +1311,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 #handle_ret
                             }
 
-                            #[cfg(target_arch = "wasm32")]
-                            #[no_mangle]
-                            #vis extern "C" fn #dispatch_func_name<T>()
-                            where
-                                T: #trait_name
-                                    + #crate_path::serializers::borsh::BorshDeserialize
-                                    + #crate_path::serializers::borsh::BorshSerialize
-                                    + #crate_path::FieldStateAccess
-                                    + Default
-                            {
-                                #inner_dispatch_func_name::<T>()
-                            }
-
-                            #[cfg(not(target_arch = "wasm32"))]
                             #vis fn #dispatch_func_name<T>()
                             where
                                 T: #trait_name

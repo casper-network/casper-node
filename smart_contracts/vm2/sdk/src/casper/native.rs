@@ -16,6 +16,7 @@ use crate::{
         SystemContractOption,
     },
 };
+use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_contract_sdk_sys::{CreateResult, EnvInfo};
 use casper_executor_wasm_common::{error::HOST_ERROR_SUCCESS, keyspace::Keyspace};
@@ -155,7 +156,9 @@ pub struct ExpectedCall {
     output_data: Option<Vec<u8>>,
     result_code: u32,
 }
-struct CreateInputExpectation<'a> {
+
+#[derive(BorshSerialize)]
+pub struct CreateInputExpectation<'a> {
     code: Option<&'a [u8]>,
     transferred_value: u64,
     constructor: Option<&'a str>,
@@ -164,7 +167,8 @@ struct CreateInputExpectation<'a> {
     bundle_data: Option<&'a [u8]>,
 }
 
-struct UpgradeInputExpectation<'a> {
+#[derive(BorshSerialize)]
+pub struct UpgradeInputExpectation<'a> {
     code: &'a [u8],
     entry_point: Option<&'a str>,
     input_data: Option<&'a [u8]>,
