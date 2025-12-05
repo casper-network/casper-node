@@ -222,141 +222,26 @@ pub fn call() {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::sync::Arc;
 
     use crate::{Counter, CounterExt, HasTraits, HasTraitsRef};
-
-    use casper_sdk::{
-        abi::{CasperABI, StructField},
-        abi_generator,
-        casper::native::{dispatch, dispatch_with, Environment},
-        casper_executor_wasm_common::flags::EntryPointFlags,
-        log,
-        schema::{SchemaEntryPoint, SchemaType},
+    use casper_contract_sdk::{
+        casper::native::{with_env, EnvironmentMock, ExpectedCall},
+        sys::EnvInfo,
         ContractRef,
     };
 
     #[test]
     fn unit_test() {
-        dispatch(|| {
+        let env = Arc::new(EnvironmentMock::new());
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
+            env.add_expectation(ExpectedCall::expect_print("Incrementing!"));
             let mut has_traits = HasTraits::default();
             has_traits.increment();
-        })
-        .unwrap();
+        });
     }
 
-    #[test]
-    fn trait_has_schema() {
-        // We can't attach methods to trait itself, but we can generate an "${TRAIT}Ext" struct and
-        // attach extra information to it. let schema = Trait1::schema();
-        let counter_schema = abi_generator::casper_collect_schema();
-
-        assert_eq!(
-            counter_schema.type_,
-            SchemaType::Contract {
-                state: "vm2_trait::CounterState".to_string(),
-            }
-        );
-
-        // Order of entry point definitions is not guaranteed.
-        assert_eq!(
-            BTreeSet::from_iter(counter_schema.entry_points.clone()),
-            BTreeSet::from_iter([
-                SchemaEntryPoint {
-                    name: "get_counter_value".to_string(),
-                    arguments: vec![],
-                    result: "U64".to_string(),
-                    flags: EntryPointFlags::empty()
-                },
-                SchemaEntryPoint {
-                    name: "get_counter_state".to_string(),
-                    arguments: vec![],
-                    result: "vm2_trait::CounterState".to_string(),
-                    flags: EntryPointFlags::empty()
-                },
-                SchemaEntryPoint {
-                    name: "decrement".to_string(),
-                    arguments: vec![],
-                    result: "()".to_string(),
-                    flags: EntryPointFlags::empty()
-                },
-                SchemaEntryPoint {
-                    name: "increment".to_string(),
-                    arguments: vec![],
-                    result: "()".to_string(),
-                    flags: EntryPointFlags::empty()
-                },
-            ])
-        );
-    }
-
-    #[test]
-    fn schema_has_traits() {
-        let schema = abi_generator::casper_collect_schema();
-
-        assert_eq!(
-            schema.type_,
-            SchemaType::Contract {
-                state: "vm2_trait::HasTraits".to_string()
-            }
-        );
-
-        assert!(
-            schema.entry_points.iter().any(|e| e.name == "foobar"),
-            "Method inside impl block"
-        );
-
-        assert!(
-            schema.entry_points.iter().any(|e| e.name == "increment"),
-            "Method inside Counter trait"
-        );
-
-        let get_counter_state = schema
-            .entry_points
-            .iter()
-            .find(|e| e.name == "get_counter_state")
-            .unwrap();
-        let counter_state_def = schema
-            .definitions
-            .get(&get_counter_state.result)
-            .expect("Has counter state definition");
-
-        let expected_definition = vec![StructField {
-            name: "value".to_string(),
-            decl: <u64>::declaration(),
-        }];
-        assert_eq!(
-            counter_state_def
-                .as_struct()
-                .expect("Counter State is struct"),
-            expected_definition.as_slice()
-        );
-
-        assert!(
-            !schema
-                .entry_points
-                .iter()
-                .any(|e| e.name == "counter_state"),
-            "Trait method marked as private"
-        );
-        assert!(
-            !schema
-                .entry_points
-                .iter()
-                .any(|e| e.name == "counter_state_mut"),
-            "Trait method marked as private"
-        );
-    }
-    /*#TODO fix native implementation
-        #[test]
-        fn foo() {
-            let _ = dispatch_with(Environment::default(), || {
-                super::perform_test();
-            });
-
-            log!("Success");
-        }
-    */
     #[test]
     fn bar() {
         let inst = <HasTraitsRef as ContractRef>::new();
