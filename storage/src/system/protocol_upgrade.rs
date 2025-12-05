@@ -19,8 +19,9 @@ use casper_types::{
         auction::{
             BidAddr, BidAddrTag, BidKind, DelegatorBid, DelegatorKind,
             SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
-            SeigniorageRecipientsV2, Unbond, ValidatorBid, AUCTION_DELAY_KEY,
-            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, LOCKED_FUNDS_PERIOD_KEY,
+            SeigniorageRecipientsV2, Unbond, UnbondEra, UnbondKind, ValidatorBid,
+            AUCTION_DELAY_KEY, DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
@@ -33,9 +34,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersionKey,
-    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling, Groups, HashAddr,
-    Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
+    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling, Groups,
+    HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
@@ -212,6 +213,7 @@ where
             self.config.validator_minimum_bid_amount(),
             self.config.minimum_delegation_amount(),
             self.config.maximum_delegation_amount(),
+            system_entity_addresses.auction(),
         )?;
         self.handle_era_info_migration()?;
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
@@ -1226,10 +1228,11 @@ where
     pub fn handle_bids_migration(
         &mut self,
         validator_minimum: u64,
-        delegation_minimum: u64,
-        delegation_maximum: u64,
+        validator_delegation_minimum: u64,
+        validator_delegation_maximum: u64,
+        auction_hash: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
-        if delegation_maximum < delegation_minimum {
+        if validator_delegation_maximum < validator_delegation_minimum {
             return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
         }
         debug!("handle bids migration");
@@ -1264,7 +1267,10 @@ where
                     let inactive = validator_bid.staked_amount() < U512::from(validator_minimum);
                     validator_bid
                         .with_inactive(inactive)
-                        .with_min_max_delegation_amount(delegation_maximum, delegation_minimum)
+                        .with_min_max_delegation_amount(
+                            validator_delegation_maximum,
+                            validator_delegation_minimum,
+                        )
                 };
                 tc.write(
                     validator_bid_addr.into(),
@@ -1311,7 +1317,156 @@ where
                         validator_bid_key,
                         StoredValue::BidKind(BidKind::Validator(Box::new(inactive_bid))),
                     );
+                    continue;
                 }
+
+                let validator_delegation_maximum =
+                    U512::from(validator_bid.maximum_delegation_amount());
+                let validator_delegation_minimum =
+                    U512::from(validator_bid.minimum_delegation_amount());
+
+                // Correct accounts over the max
+                {
+                    let validator_bid_addr = *validator_bid_key
+                        .as_bid_addr()
+                        .ok_or(ProtocolUpgradeError::UnexpectedKeyVariant)?;
+
+                    let prefix = validator_bid_addr
+                        .delegated_account_prefix()
+                        .map_err(|_| ProtocolUpgradeError::UnexpectedKeyVariant)?;
+                    let mut delegated_account_keys = tc
+                        .get_by_byte_prefix(&prefix)
+                        .map_err(|_| ProtocolUpgradeError::UnexpectedKeyVariant)?;
+
+                    let prefix = validator_bid_addr
+                        .delegated_purse_prefix()
+                        .map_err(|_| ProtocolUpgradeError::UnexpectedKeyVariant)?;
+                    let mut delegated_purse_keys = tc
+                        .get_by_byte_prefix(&prefix)
+                        .map_err(|_| ProtocolUpgradeError::UnexpectedKeyVariant)?;
+
+                    delegated_account_keys.append(&mut delegated_purse_keys);
+
+                    let mut delegators = vec![];
+                    for delegator_key in delegated_account_keys {
+                        if let Some(StoredValue::BidKind(BidKind::Delegator(delegator_bid))) = tc
+                            .get(&delegator_key)
+                            .map_err(|_| ProtocolUpgradeError::UnexpectedKeyVariant)?
+                        {
+                            delegators.push(*delegator_bid.clone())
+                        }
+                    }
+
+                    for mut delegator in delegators {
+                        let delegator_staked_amount = delegator.staked_amount();
+                        let unbond_amount =
+                            if delegator_staked_amount < validator_delegation_minimum {
+                                // fully unbond the staked amount as it is below the min
+                                delegator_staked_amount
+                            } else if delegator_staked_amount > validator_delegation_maximum {
+                                // partially unbond the staked amount to not exceed the max
+                                delegator_staked_amount.saturating_sub(validator_delegation_maximum)
+                            } else {
+                                // nothing to unbond
+                                U512::zero()
+                            };
+                        // skip delegators within the range
+                        if unbond_amount.is_zero() {
+                            continue;
+                        }
+
+                        let unbond_kind = delegator.unbond_kind();
+
+                        let auction_named_keys =
+                            tc.get_named_keys(EntityAddr::System(auction_hash))?;
+                        let era_end = {
+                            let key = auction_named_keys
+                                .get(ERA_END_TIMESTAMP_MILLIS_KEY)
+                                .expect("era end key must exist in mint contract's named keys");
+
+                            tc.read(key)
+                                .map_err(ProtocolUpgradeError::TrackingCopy)?
+                                .ok_or(ProtocolUpgradeError::UnexpectedKeyVariant)?
+                                .as_cl_value()
+                                .ok_or(ProtocolUpgradeError::UnexpectedStoredValueVariant)?
+                                .to_t::<u64>()
+                                .map_err(|err| ProtocolUpgradeError::CLValue(err.to_string()))?
+                        };
+
+                        let current_era = {
+                            let key = auction_named_keys
+                                .get(ERA_ID_KEY)
+                                .expect("era end key must exist in mint contract's named keys");
+
+                            tc.read(key)
+                                .map_err(ProtocolUpgradeError::TrackingCopy)?
+                                .ok_or(ProtocolUpgradeError::UnexpectedKeyVariant)?
+                                .as_cl_value()
+                                .ok_or(ProtocolUpgradeError::UnexpectedStoredValueVariant)?
+                                .to_t::<EraId>()
+                                .map_err(|err| ProtocolUpgradeError::CLValue(err.to_string()))?
+                        };
+
+                        let validator_public_key = validator_bid.validator_public_key().clone();
+                        let bid_addr = match &unbond_kind {
+                            UnbondKind::Validator(_) => continue,
+                            UnbondKind::DelegatedPublicKey(pk) => BidAddr::UnbondAccount {
+                                validator: validator_public_key.to_account_hash(),
+                                unbonder: pk.to_account_hash(),
+                            },
+                            UnbondKind::DelegatedPurse(addr) => BidAddr::UnbondPurse {
+                                validator: validator_public_key.to_account_hash(),
+                                unbonder: *addr,
+                            },
+                        };
+
+                        let bonding_purse = *delegator.bonding_purse();
+                        let unbond_era =
+                            UnbondEra::new(bonding_purse, current_era, unbond_amount, None);
+
+                        let unbond = match tc
+                            .read(&Key::BidAddr(bid_addr))
+                            .map_err(ProtocolUpgradeError::TrackingCopy)?
+                        {
+                            Some(StoredValue::BidKind(BidKind::Unbond(unbond))) => {
+                                let mut eras = unbond.take_eras();
+                                eras.push(unbond_era);
+                                Unbond::new(validator_public_key, unbond_kind, eras)
+                            }
+                            Some(_) => continue,
+                            None => {
+                                Unbond::new(validator_public_key, unbond_kind, vec![unbond_era])
+                            }
+                        };
+
+                        tc.write(
+                            Key::BidAddr(bid_addr),
+                            StoredValue::BidKind(BidKind::Unbond(Box::new(unbond))),
+                        );
+
+                        let updated_stake = match delegator.decrease_stake(unbond_amount, era_end) {
+                            Ok(updated_stake) => updated_stake,
+                            Err(error) => {
+                                error!("could not decrease stake for validator; {:?}", error);
+                                continue;
+                            }
+                        };
+
+                        let delegator_bid_addr = delegator.bid_addr();
+                        if updated_stake.is_zero() {
+                            debug!("pruning delegator bid {delegator_bid_addr}");
+                            tc.prune(Key::BidAddr(delegator_bid_addr));
+                        } else {
+                            debug!(
+                "forced undelegation for {delegator_bid_addr} reducing {delegator_staked_amount} by {unbond_amount} to {updated_stake}",
+            );
+                            tc.write(
+                                Key::BidAddr(delegator_bid_addr),
+                                StoredValue::BidKind(BidKind::Delegator(Box::new(delegator))),
+                            );
+                        }
+                    }
+                };
             }
         }
 

@@ -840,12 +840,6 @@ where
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
     let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
-    if amount < U512::from(validator_bid.minimum_delegation_amount()) {
-        return Err(Error::DelegationAmountTooSmall.into());
-    }
-    if amount > U512::from(validator_bid.maximum_delegation_amount()) {
-        return Err(Error::DelegationAmountTooLarge.into());
-    }
 
     // is there already a record for this delegator?
     let delegator_bid_key =
@@ -854,9 +848,24 @@ where
     let (target, delegator_bid) = if let Some(BidKind::Delegator(mut delegator_bid)) =
         provider.read_bid(&delegator_bid_key)?
     {
+        let current_stake = delegator_bid.staked_amount();
+        let total_stake = amount.saturating_add(current_stake);
+        let validator_max = U512::from(validator_bid.maximum_delegation_amount());
+        if total_stake > validator_max {
+            // Fill up the delegator stake upto the maximum limit and only transfer the difference
+            // required.
+            return Err(Error::DelegationAmountTooLarge.into());
+        };
         delegator_bid.increase_stake(amount)?;
         (*delegator_bid.bonding_purse(), delegator_bid)
     } else {
+        // Early checks for a new delegator entry into a validators set.
+        if amount < U512::from(validator_bid.minimum_delegation_amount()) {
+            return Err(Error::DelegationAmountTooSmall.into());
+        }
+        if amount > U512::from(validator_bid.maximum_delegation_amount()) {
+            return Err(Error::DelegationAmountTooLarge.into());
+        }
         // is this validator over the delegator limit
         // or is there a reservation for given delegator public key?
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;

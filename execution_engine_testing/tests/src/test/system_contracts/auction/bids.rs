@@ -30,7 +30,7 @@ use casper_types::{
     api_error::ApiError,
     runtime_args,
     system::auction::{
-        self, BidKind, BidsExt, DelegationRate, DelegatorKind, EraValidators,
+        self, BidAddr, BidKind, BidsExt, DelegationRate, DelegatorKind, EraValidators,
         Error as AuctionError, UnbondKind, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT,
         ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
@@ -6063,7 +6063,7 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
             delegation_rate: 10,
             amount: U512::from(ADD_BID_AMOUNT_1),
             minimum_delegation_amount: None,
-            maximum_delegation_amount: Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5),
+            maximum_delegation_amount: Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10),
             minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
             reserved_slots: 0,
         },
@@ -6089,6 +6089,143 @@ fn should_correctly_allow_validator_to_change_delegator_min_max_limits() {
 
     assert_eq!(
         bid.maximum_delegation_amount(),
-        DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 5
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT + 10
     );
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*BID_ACCOUNT_1_ADDR).into(),
+        AuctionMethod::Delegate {
+            delegator: DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone()),
+            validator: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            amount: U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT + 9),
+            max_delegators_per_validator: builder.engine_config().max_delegators_per_validator(),
+        },
+    );
+
+    assert!(result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+
+    let result = builder.bidding(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        (*BID_ACCOUNT_1_ADDR).into(),
+        AuctionMethod::Delegate {
+            delegator: DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone()),
+            validator: NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            amount: U512::from(10),
+            max_delegators_per_validator: 0,
+        },
+    );
+
+    assert!(!result.is_success());
+    builder.commit_transforms(builder.get_post_state_hash(), result.effects());
+}
+
+#[ignore]
+#[test]
+fn protocol_upgrade_corrects_out_of_bound_delegations_for_validators() {
+    const DELEGATOR_AMOUNT_FIXTURE: &str = "delegator_amount";
+
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(DELEGATOR_AMOUNT_FIXTURE);
+
+    let pre_upgrade_delegator_bid = builder
+        .query(
+            None,
+            Key::BidAddr(BidAddr::DelegatedAccount {
+                validator: *NON_FOUNDER_VALIDATOR_1_ADDR,
+                delegator: *BID_ACCOUNT_1_ADDR,
+            }),
+            &[],
+        )
+        .expect("must have stored value")
+        .as_bid_kind()
+        .expect("must be bid kind")
+        .staked_amount()
+        .expect("must have staked amount");
+
+    let validator_maximum_delegation_amount = builder
+        .query(
+            None,
+            Key::BidAddr(BidAddr::Validator(*NON_FOUNDER_VALIDATOR_1_ADDR)),
+            &[],
+        )
+        .expect("must have stored value")
+        .as_bid_kind()
+        .expect("must be bid kind")
+        .as_validator_bid()
+        .expect("must be validator_bid")
+        .maximum_delegation_amount();
+
+    assert!(pre_upgrade_delegator_bid > U512::from(validator_maximum_delegation_amount));
+
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version = ProtocolVersion::from_parts(
+        current_protocol_version.value().major,
+        current_protocol_version.value().minor + 1,
+        0,
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(current_protocol_version)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(1))
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
+            .with_validator_minimum_bid_amount(0)
+            .build()
+    };
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let pre_upgrade_delegator_bid = builder
+        .query(
+            None,
+            Key::BidAddr(BidAddr::DelegatedAccount {
+                validator: *NON_FOUNDER_VALIDATOR_1_ADDR,
+                delegator: *BID_ACCOUNT_1_ADDR,
+            }),
+            &[],
+        )
+        .expect("must have stored value")
+        .as_bid_kind()
+        .expect("must be bid kind")
+        .staked_amount()
+        .expect("must have staked amount");
+
+    let validator_maximum_delegation_amount = builder
+        .query(
+            None,
+            Key::BidAddr(BidAddr::Validator(*NON_FOUNDER_VALIDATOR_1_ADDR)),
+            &[],
+        )
+        .expect("must have stored value")
+        .as_bid_kind()
+        .expect("must be bid kind")
+        .as_validator_bid()
+        .expect("must be validator_bid")
+        .maximum_delegation_amount();
+
+    assert!(pre_upgrade_delegator_bid <= U512::from(validator_maximum_delegation_amount));
 }

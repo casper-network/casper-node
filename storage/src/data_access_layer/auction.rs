@@ -463,4 +463,13 @@ impl BiddingResult {
             BiddingResult::Success { effects, .. } => effects.clone(),
         }
     }
+
+    /// Returns the tracking copy error if present.
+    pub fn maybe_error(&self) -> Option<TrackingCopyError> {
+        if let Self::Failure(tce) = self {
+            return Some(tce.clone());
+        }
+
+        None
+    }
 }
