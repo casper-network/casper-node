@@ -511,23 +511,20 @@ where
 
     /// Get record by key.
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
-        let get = self.cache.get(key);
-        if let CacheEntry::Exists(value) = get {
-            return Ok(Some(value.to_owned()));
-        }
-        if let CacheEntry::Pruned = get {
-            return Ok(None);
-        }
-        match self.reader.read(key) {
-            Ok(ret) => {
-                if let Some(value) = ret {
-                    self.cache.insert_read(*key, value.to_owned());
-                    Ok(Some(value))
-                } else {
-                    Ok(None)
+        match self.cache.get(key) {
+            CacheEntry::Pruned => Ok(None),
+            CacheEntry::NotFound => match self.reader.read(key) {
+                Ok(ret) => {
+                    if let Some(value) = ret {
+                        self.cache.insert_read(*key, value.to_owned());
+                        Ok(Some(value))
+                    } else {
+                        Ok(None)
+                    }
                 }
-            }
-            Err(err) => Err(TrackingCopyError::Storage(err)),
+                Err(err) => Err(TrackingCopyError::Storage(err)),
+            },
+            CacheEntry::Exists(stored_value) => Ok(Some(stored_value.to_owned())),
         }
     }
 

@@ -155,17 +155,20 @@ pub struct ExpectedCall {
     output_data: Option<Vec<u8>>,
     result_code: u32,
 }
+struct CreateInputExpectation<'a> {
+    code: Option<&'a [u8]>,
+    transferred_value: u64,
+    constructor: Option<&'a str>,
+    constructor_data: Option<&'a [u8]>,
+    seed: Option<&'a [u8; 32]>,
+    bundle_data: Option<&'a [u8]>,
+}
 
-type CreateInputExpectationTuple<'a> = (
-    Option<&'a [u8]>,
-    u64,
-    Option<&'a str>,
-    Option<&'a [u8]>,
-    Option<&'a [u8; 32]>,
-    Option<&'a [u8]>,
-);
-
-type UpgradeInputExpectationTuple<'a> = (&'a [u8], Option<&'a str>, Option<&'a [u8]>);
+struct UpgradeInputExpectation<'a> {
+    code: &'a [u8],
+    entry_point: Option<&'a str>,
+    input_data: Option<&'a [u8]>,
+}
 
 impl ExpectedCall {
     pub fn new(
@@ -395,7 +398,7 @@ impl ExpectedCall {
     }
 
     pub fn expect_create(
-        input_expectation: Option<CreateInputExpectationTuple>,
+        input_expectation: Option<CreateInputExpectation>,
         output: Option<CreateResult>,
         result_code: u32,
     ) -> Self {
@@ -476,7 +479,7 @@ impl ExpectedCall {
     }
 
     pub fn expect_upgrade(
-        input_expectation: Option<UpgradeInputExpectationTuple>,
+        input_expectation: Option<UpgradeInputExpectation>,
         return_code: u32,
     ) -> Self {
         Self::new(
