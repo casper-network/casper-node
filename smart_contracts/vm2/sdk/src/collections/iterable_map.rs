@@ -95,7 +95,7 @@ impl IterableMapHash for String {}
 ///
 /// Under the hood, this is a singly-linked HashMap with linear probing for collision resolution.
 /// Supports full traversal, typically in reverse-insertion order.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub struct IterableMap<K, V> {
     pub(crate) prefix: String,
@@ -108,7 +108,7 @@ pub struct IterableMap<K, V> {
 }
 
 /// Single entry in `IterableMap`. Stores the value and the hash of the previous entry's key.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub struct IterableMapEntry<K, V> {
     pub(crate) key: K,

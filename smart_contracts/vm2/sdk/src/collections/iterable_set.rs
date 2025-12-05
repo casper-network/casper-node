@@ -6,14 +6,14 @@ use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
 use super::{IterableMap, IterableMapHash};
 use crate::{compat::types::CLTyped, prelude::String};
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 /// An iterable set backed by a map.
 pub struct IterableSet<V> {
     pub(crate) map: IterableMap<V, ()>,
 }
 
-impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet<V> {
+impl<V: IterableMapHash + BorshSerialize + BorshDeserialize> IterableSet<V> {
     /// Creates an empty [IterableMap] with the given prefix.
     pub fn new<S: Into<String>>(prefix: S) -> Self {
         Self {

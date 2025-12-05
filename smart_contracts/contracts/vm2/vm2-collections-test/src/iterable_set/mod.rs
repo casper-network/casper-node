@@ -2,7 +2,6 @@ mod assert;
 mod prepare;
 
 use crate::types::*;
-use alloc::vec;
 use assert::*;
 use casper_contract_sdk::{collections::IterableSet, macros::casper};
 use prepare::*;

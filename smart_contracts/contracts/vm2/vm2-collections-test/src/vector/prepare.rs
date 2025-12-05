@@ -39,16 +39,6 @@ pub(crate) fn test_vec_1_prepare() -> Vector<u64> {
     assert_eq!(vec.remove(5), Some(334));
     assert_eq!(vec.remove(55), None);
 
-    /*let to_return = vec.clone();
-        let mut iter = (&vec).iter();
-        assert_eq!(iter.next(), Some(41));
-        assert_eq!(iter.next(), Some(43));
-        assert_eq!(iter.next(), Some(42));
-        assert_eq!(iter.next(), Some(111));
-        assert_eq!(iter.next(), Some(222));
-        assert_eq!(iter.next(), Some(333));
-        assert_eq!(iter.next(), None);
-    */
     {
         let ser = borsh::to_vec(&vec).unwrap();
         let deser: Vector<u64> = borsh::from_slice(&ser).unwrap();

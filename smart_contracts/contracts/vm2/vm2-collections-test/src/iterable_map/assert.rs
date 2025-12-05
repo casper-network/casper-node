@@ -35,12 +35,10 @@ pub(crate) fn fetching_test_assert(fetching_test: &mut IterableMap<u64, String>)
 
 pub(crate) fn remove_middle_entry_assert(remove_middle_entry: &mut IterableMap<u64, String>) {
     assert_eq!(remove_middle_entry.remove(&2), Some("b".to_string()));
-    //#TODO REMOVE DIDN'T REMOVE!
-    //assert_eq!(remove_middle_entry.get(&2), None);
-    //assert!(!remove_middle_entry.contains_key(&2));
+    assert_eq!(remove_middle_entry.get(&2), None);
+    assert!(!remove_middle_entry.contains_key(&2));
     assert_eq!(remove_middle_entry.len(), 2);
-    //#TODO Second remove panics!!
-    //assert_eq!(remove_middle_entry.remove(&2), None);
+    assert_eq!(remove_middle_entry.remove(&2), None);
     assert_eq!(remove_middle_entry.get(&1), Some("a".to_string()));
     assert_eq!(remove_middle_entry.get(&3), Some("c".to_string()));
 }
@@ -57,8 +55,7 @@ pub(crate) fn clear_removes_all_entries_assert(to_clear: &mut IterableMap<u64, S
     to_clear.clear();
     assert!(to_clear.is_empty());
     assert_eq!(to_clear.iter().count(), 0);
-    //#TODO CLEAR DIDNT REMOVE!
-    //assert_eq!(to_clear.get(&1), None);
+    assert_eq!(to_clear.get(&1), None);
 }
 
 pub(crate) fn insert_after_remove_updates_head_assert(
