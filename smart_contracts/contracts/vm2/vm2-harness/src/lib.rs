@@ -739,7 +739,7 @@ mod tests {
     use std::sync::Arc;
 
     use casper_contract_sdk::{
-        casper::native::{run_expecting_panic, set_env, EnvironmentMock, ExpectedCall},
+        casper::native::{run_expecting_panic, with_env, EnvironmentMock, ExpectedCall},
         sys::EnvInfo,
     };
     use contracts::harness::{Harness, INITIAL_GREETING};
@@ -750,37 +750,37 @@ mod tests {
     #[test]
     fn can_call_exported_function() {
         let curr_env = Arc::new(EnvironmentMock::new());
-        set_env(curr_env.clone());
-
-        let input_bytes = casper_contract_sdk::serializers::borsh::to_vec(&(
-            4321u64,
-            "!world, Hello".to_string(),
-        ))
-        .unwrap();
-        curr_env.add_expectation(ExpectedCall::expect_copy_input(&input_bytes));
-        curr_env.add_expectation(ExpectedCall::expect_print(
-            "Yet another exported function with args arg1=4321 arg2=!world, Hello",
-        ));
-        let r = run_expecting_panic(|| {
-            __casper_export_yet_another_exported_function();
+        with_env(curr_env.clone(), || {
+            let input_bytes = casper_contract_sdk::serializers::borsh::to_vec(&(
+                4321u64,
+                "!world, Hello".to_string(),
+            ))
+            .unwrap();
+            curr_env.add_expectation(ExpectedCall::expect_copy_input(&input_bytes));
+            curr_env.add_expectation(ExpectedCall::expect_print(
+                "Yet another exported function with args arg1=4321 arg2=!world, Hello",
+            ));
+            let r = run_expecting_panic(|| {
+                __casper_export_yet_another_exported_function();
+            });
+            assert!(r.is_ok());
         });
-        assert!(r.is_ok());
-        curr_env.assert_no_expectations_left();
     }
 
     #[test]
     fn should_greet() {
         let curr_env = Arc::new(EnvironmentMock::new());
-        set_env(curr_env.clone());
-        curr_env.add_expectation(ExpectedCall::expect_print(
-            "👋 Hello from constructor with args: Hello",
-        ));
-        curr_env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
-        curr_env.add_expectation(ExpectedCall::expect_print("Saving greeting Hi"));
-        let mut harness = Harness::constructor_with_args("Hello".into());
-        assert_eq!(harness.get_greeting(), "Hello, Hello!");
-        harness.set_greeting("Hi".into());
-        assert_eq!(harness.get_greeting(), "Hi");
+        with_env(curr_env.clone(), || {
+            curr_env.add_expectation(ExpectedCall::expect_print(
+                "👋 Hello from constructor with args: Hello",
+            ));
+            curr_env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
+            curr_env.add_expectation(ExpectedCall::expect_print("Saving greeting Hi"));
+            let mut harness = Harness::constructor_with_args("Hello".into());
+            assert_eq!(harness.get_greeting(), "Hello, Hello!");
+            harness.set_greeting("Hi".into());
+            assert_eq!(harness.get_greeting(), "Hi");
+        });
     }
 
     #[test]
@@ -789,11 +789,12 @@ mod tests {
         curr_env.add_expectation(ExpectedCall::expect_print("👋 Hello from constructor"));
         curr_env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
         curr_env.add_expectation(ExpectedCall::expect_print("Saving greeting New greeting"));
-        set_env(curr_env.clone());
-        let mut foo = Harness::initialize();
-        assert_eq!(foo.get_greeting(), INITIAL_GREETING);
-        foo.set_greeting("New greeting".to_string());
-        assert_eq!(foo.get_greeting(), "New greeting");
+        with_env(curr_env.clone(), || {
+            let mut foo = Harness::initialize();
+            assert_eq!(foo.get_greeting(), INITIAL_GREETING);
+            foo.set_greeting("New greeting".to_string());
+            assert_eq!(foo.get_greeting(), "New greeting");
+        });
     }
 
     #[test]

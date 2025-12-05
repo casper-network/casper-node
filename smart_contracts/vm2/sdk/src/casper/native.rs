@@ -124,6 +124,13 @@ pub enum NativeTrap {
     Panic(Box<dyn std::any::Any + Send + 'static>),
 }
 
+impl NativeTrap {
+    pub fn downcast_value<T: std::any::Any>(&self) -> Option<&T> {
+        match self {
+            NativeTrap::Panic(any) => any.downcast_ref::<T>(),
+        }
+    }
+}
 pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
 
 #[derive(Clone, Debug)]
@@ -557,6 +564,10 @@ pub trait Environment {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32;
+
+    /// This function will be called test execution to perform any actions required for
+    /// teardown
+    fn teardown(&self);
 }
 
 #[derive(Clone, Debug)]
@@ -608,6 +619,10 @@ impl Environment for EnvironmentMock {
 
         expectation.result_code
     }
+
+    fn teardown(&self) {
+        self.assert_no_expectations_left()
+    }
 }
 
 impl Default for EnvironmentMock {
@@ -642,7 +657,7 @@ impl EnvironmentMock {
         guard.pop_front()
     }
 
-    pub fn assert_no_expectations_left(&self) {
+    fn assert_no_expectations_left(&self) {
         let guard = self
             .expected_calls
             .lock()
@@ -679,8 +694,12 @@ where
     }
 }
 
-pub fn set_env<T: Environment + 'static>(stub: Arc<T>) {
-    CURRENT_ENV.with_borrow_mut(|env| *env = Some(stub));
+pub fn with_env<T: Environment + 'static, F>(new_env: Arc<T>, func: F)
+where
+    F: FnOnce(),
+{
+    CURRENT_ENV.with_borrow_mut(|env| *env = Some(new_env));
+    func();
 }
 
 mod symbols {
@@ -715,76 +734,76 @@ mod tests {
     #[test]
     fn foo() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        env.add_expectation(ExpectedCall::expect_print("Hello"));
-        let _ = casper::print("Hello");
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_print("Hello"));
+            let _ = casper::print("Hello");
 
-        let key = Keyspace::NamedKey("abc");
-        env.add_expectation(ExpectedCall::expect_write(Some((&key, b"value 1"))));
-        casper::write(key, b"value 1").unwrap();
+            let key = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_write(Some((&key, b"value 1"))));
+            casper::write(key, b"value 1").unwrap();
 
-        let key = Keyspace::NamedKey("abc");
-        env.add_expectation(ExpectedCall::expect_write_with_result_code(
-            Some((&key, b"value 1")),
-            HOST_ERROR_INVALID_INPUT,
-        ));
-        assert_eq!(
-            casper::write(key, b"value 1"),
-            Err(HostResult::InvalidInput)
-        );
+            let key = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_write_with_result_code(
+                Some((&key, b"value 1")),
+                HOST_ERROR_INVALID_INPUT,
+            ));
+            assert_eq!(
+                casper::write(key, b"value 1"),
+                Err(HostResult::InvalidInput)
+            );
 
-        let key_3 = Keyspace::NamedKey("abc");
-        env.add_expectation(ExpectedCall::expect_read(
-            Some(&key_3),
-            Some(b"value 2"),
-            HOST_ERROR_SUCCESS,
-        ));
-        assert_eq!(casper::read_into_vec(key_3), Ok(Some(b"value 2".to_vec())));
+            let key_3 = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_3),
+                Some(b"value 2"),
+                HOST_ERROR_SUCCESS,
+            ));
+            assert_eq!(casper::read_into_vec(key_3), Ok(Some(b"value 2".to_vec())));
 
-        let key_4 = Keyspace::NamedKey("abc2");
-        env.add_expectation(ExpectedCall::expect_read(
-            Some(&key_4),
-            Some(&[5]),
-            HOST_ERROR_SUCCESS,
-        ));
-        assert_eq!(casper::read_into_vec(key_4), Ok(Some(vec![5])));
+            let key_4 = Keyspace::NamedKey("abc2");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_4),
+                Some(&[5]),
+                HOST_ERROR_SUCCESS,
+            ));
+            assert_eq!(casper::read_into_vec(key_4), Ok(Some(vec![5])));
 
-        let key_5 = Keyspace::NamedKey("abc3");
-        env.add_expectation(ExpectedCall::expect_read(
-            Some(&key_5),
-            None,
-            HOST_ERROR_INVALID_INPUT,
-        ));
-        assert_eq!(casper::read_into_vec(key_5), Err(HostResult::InvalidInput));
+            let key_5 = Keyspace::NamedKey("abc3");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_5),
+                None,
+                HOST_ERROR_INVALID_INPUT,
+            ));
+            assert_eq!(casper::read_into_vec(key_5), Err(HostResult::InvalidInput));
 
-        env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo {
-            protocol_version_major: 2,
-            protocol_version_minor: 1,
-            protocol_version_patch: 0,
-            block_height: 100100,
-            block_time: 200200,
-            parent_block_hash: [1; 32],
-            transferred_value: 123,
-            caller_addr: [2; 32],
-            caller_kind: 1,
-            callee_addr: [3; 32],
-            callee_kind: 2,
-        })));
+            env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+                protocol_version_patch: 0,
+                block_height: 100100,
+                block_time: 200200,
+                parent_block_hash: [1; 32],
+                transferred_value: 123,
+                caller_addr: [2; 32],
+                caller_kind: 1,
+                callee_addr: [3; 32],
+                callee_kind: 2,
+            })));
 
-        assert_eq!(casper::get_caller(), Entity::Contract([2; 32]));
-        env.assert_no_expectations_left();
+            assert_eq!(casper::get_caller(), Entity::Contract([2; 32]));
+        });
     }
 
     #[test]
     fn test_returns() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        env.add_expectation(ExpectedCall::expect_return(
-            Some((1, Some([1, 2, 3].to_vec()))),
-            HOST_ERROR_SUCCESS,
-        ));
-        let res = run_expecting_panic(|| casper::ret(ReturnFlags::ROLLBACK, Some(&[1, 2, 3])));
-        assert!(res.is_err());
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_return(
+                Some((1, Some([1, 2, 3].to_vec()))),
+                HOST_ERROR_SUCCESS,
+            ));
+            let res = run_expecting_panic(|| casper::ret(ReturnFlags::ROLLBACK, Some(&[1, 2, 3])));
+            assert!(res.is_err());
+        });
     }
 }

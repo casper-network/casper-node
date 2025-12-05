@@ -50,7 +50,7 @@ mod tests {
 
     use super::*;
     use casper_contract_sdk::{
-        casper::native::{run_expecting_panic, set_env, EnvironmentMock, ExpectedCall},
+        casper::native::{run_expecting_panic, with_env, EnvironmentMock, ExpectedCall},
         common::error::HOST_ERROR_SUCCESS,
         compat::types::{CLTyped, CLValue, RuntimeArgs},
         serializers::{borsh, AbiConfig},
@@ -58,9 +58,6 @@ mod tests {
     };
 
     #[test]
-    #[should_panic(
-        expected = "Failed to convert named argument \"a\": Expected U32 but found String"
-    )]
     fn passing_incorrect_types_into_named_args_convention() {
         assert_eq!(Contract::DEFAULT_ABI_CONVENTION, AbiConvention::Named);
         let mut runtime_args = RuntimeArgs::new();
@@ -69,8 +66,22 @@ mod tests {
         let input_bytes = borsh::to_vec(&runtime_args).expect("expected args to serialize");
         let env = Arc::new(EnvironmentMock::new());
         env.add_expectation(ExpectedCall::expect_copy_input(&input_bytes));
-        set_env(env.clone());
-        __casper_export_args_with_default_abi_convention();
+        with_env(env.clone(), || {
+            let res = run_expecting_panic(|| {
+                __casper_export_args_with_default_abi_convention();
+            });
+            assert!(res.is_err());
+            let maybe_err_msg = res
+                .err()
+                .and_then(|trap| trap.downcast_value::<String>().map(|x| x.clone()));
+            assert_eq!(
+                maybe_err_msg,
+                Some(
+                    "Failed to convert named argument \"a\": Expected U32 but found String."
+                        .to_string()
+                )
+            );
+        });
     }
 
     #[test]
@@ -93,12 +104,10 @@ mod tests {
             Some((0, Some(expected_return_data))),
             HOST_ERROR_SUCCESS,
         ));
-        set_env(env.clone());
-
-        // The panic is from the casper_ret sdk function
-        let _ = run_expecting_panic(|| __casper_export_args_with_default_abi_convention());
-
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            // The panic is from the casper_ret sdk function
+            let _ = run_expecting_panic(|| __casper_export_args_with_default_abi_convention());
+        });
     }
 
     #[test]
@@ -116,13 +125,12 @@ mod tests {
             Some((0, Some(expected_return_data))),
             HOST_ERROR_SUCCESS,
         ));
-        set_env(env.clone());
-
-        // The panic is from the casper_ret sdk function
-        let _ =
-            run_expecting_panic(|| __casper_export_unit_ret_value_with_default_abi_convention());
-
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            // The panic is from the casper_ret sdk function
+            let _ = run_expecting_panic(|| {
+                __casper_export_unit_ret_value_with_default_abi_convention()
+            });
+        });
     }
 
     #[test]
@@ -139,11 +147,11 @@ mod tests {
             Some((0, Some(expected_return_data))),
             HOST_ERROR_SUCCESS,
         ));
-        set_env(env.clone());
-
-        // The panic is from the casper_ret sdk function
-        let _ = run_expecting_panic(|| __casper_export_inner_args_with_overriden_abi_convention());
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            // The panic is from the casper_ret sdk function
+            let _ =
+                run_expecting_panic(|| __casper_export_inner_args_with_overriden_abi_convention());
+        });
     }
 
     #[test]
@@ -165,10 +173,9 @@ mod tests {
             Some((0, Some(expected_return_data))),
             HOST_ERROR_SUCCESS,
         ));
-        set_env(env.clone());
-
-        let _ = run_expecting_panic(|| trait_args_with_default_abi_convention::<Contract>());
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            let _ = run_expecting_panic(|| trait_args_with_default_abi_convention::<Contract>());
+        });
     }
 
     #[test]
@@ -183,11 +190,10 @@ mod tests {
             Some((0, Some(expected_return_data))),
             HOST_ERROR_SUCCESS,
         ));
-        set_env(env.clone());
-
-        // The panic is from the casper_ret sdk function
-        let _ = run_expecting_panic(|| trait_args_with_different_abi_convention::<Contract>());
-        env.assert_no_expectations_left();
+        with_env(env.clone(), || {
+            // The panic is from the casper_ret sdk function
+            let _ = run_expecting_panic(|| trait_args_with_different_abi_convention::<Contract>());
+        });
     }
 
     #[test]

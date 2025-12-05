@@ -226,7 +226,7 @@ mod tests {
 
     use crate::{Counter, CounterExt, HasTraits, HasTraitsRef};
     use casper_contract_sdk::{
-        casper::native::{set_env, EnvironmentMock, ExpectedCall},
+        casper::native::{with_env, EnvironmentMock, ExpectedCall},
         sys::EnvInfo,
         ContractRef,
     };
@@ -234,11 +234,12 @@ mod tests {
     #[test]
     fn unit_test() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
-        env.add_expectation(ExpectedCall::expect_print("Incrementing!"));
-        let mut has_traits = HasTraits::default();
-        has_traits.increment();
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
+            env.add_expectation(ExpectedCall::expect_print("Incrementing!"));
+            let mut has_traits = HasTraits::default();
+            has_traits.increment();
+        });
     }
 
     #[test]

@@ -369,7 +369,7 @@ mod tests {
     use super::*;
 
     use casper_contract_sdk::casper::{
-        native::{set_env, EnvironmentMock},
+        native::{with_env, EnvironmentMock},
         Entity,
     };
 
@@ -382,240 +382,253 @@ mod tests {
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_faucet_creation() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
-        let info = faucet.get_faucet_info();
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            let info = faucet.get_faucet_info();
 
-        assert_eq!(info.available_amount, 1_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, 3600000);
-        assert_eq!(info.remaining_requests, 10);
-        assert_eq!(info.authorized_account, None);
+            assert_eq!(info.available_amount, 1_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, 3600000);
+            assert_eq!(info.remaining_requests, 10);
+            assert_eq!(info.authorized_account, None);
 
-        // Check that the caller has admin role (which should be granted by constructor)
-        let actual_caller = casper::get_caller();
-        assert!(faucet.has_role(actual_caller, ADMIN_ROLE));
-        assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
+            // Check that the caller has admin role (which should be granted by constructor)
+            let actual_caller = casper::get_caller();
+            assert!(faucet.has_role(actual_caller, ADMIN_ROLE));
+            assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_faucet_creation_with_default_time_interval() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, None);
-        let info = faucet.get_faucet_info();
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, None);
+            let info = faucet.get_faucet_info();
 
-        assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
+            assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_default_faucet_creation() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::default_faucet();
+            let info = faucet.get_faucet_info();
 
-        let faucet = FaucetContract::default_faucet();
-        let info = faucet.get_faucet_info();
-
-        assert_eq!(info.available_amount, 1_000_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
-        assert_eq!(info.remaining_requests, 10);
+            assert_eq!(info.available_amount, 1_000_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
+            assert_eq!(info.remaining_requests, 10);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_complete_flow_regular_user_eligibility() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        // Install faucet
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            // Install faucet
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Check initial state
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.remaining_requests, 10);
+            // Check initial state
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.remaining_requests, 10);
 
-        // Check that regular user can request tokens
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
-        assert!(eligibility.reason.contains("requests remaining"));
+            // Check that regular user can request tokens
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
+            assert!(eligibility.reason.contains("requests remaining"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_eligibility_installer_has_unlimited_access() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3_600_000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3_600_000));
 
-        // Check that installer has unlimited access
-        let eligibility = faucet.can_request_tokens(INSTALLER);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("unlimited access"));
+            // Check that installer has unlimited access
+            let eligibility = faucet.can_request_tokens(INSTALLER);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_regular_user_eligibility() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Test eligibility for regular user
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
-        assert!(eligibility.reason.contains("requests remaining"));
+            // Test eligibility for regular user
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
+            assert!(eligibility.reason.contains("requests remaining"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_no_remaining_requests() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Exhaust all requests
-        for _ in 0..10 {
-            faucet.decrease_remaining_requests();
-        }
+            // Exhaust all requests
+            for _ in 0..10 {
+                faucet.decrease_remaining_requests();
+            }
 
-        // Check that user cannot request tokens
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(!eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("No requests remaining"));
+            // Check that user cannot request tokens
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(!eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("No requests remaining"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_installer_privileges() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Test installer privileges
-        let eligibility = faucet.can_request_tokens(INSTALLER);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 0); // Installer doesn't get fixed amounts
-        assert!(eligibility.reason.contains("unlimited access"));
+            // Test installer privileges
+            let eligibility = faucet.can_request_tokens(INSTALLER);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 0); // Installer doesn't get fixed amounts
+            assert!(eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_authorized_account() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Set authorized account
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+            // Set authorized account
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        // Test authorized account privileges
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 0); // Authorized account doesn't get fixed amounts
-        assert!(eligibility.reason.contains("unlimited access"));
+            // Test authorized account privileges
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 0); // Authorized account doesn't get fixed amounts
+            assert!(eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_blocked_when_authorized_set() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Set authorized account
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+            // Set authorized account
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        // Test that regular users are blocked
-        let eligibility = faucet.can_request_tokens(BOB);
-        assert!(!eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("Authorized account is set"));
+            // Test that regular users are blocked
+            let eligibility = faucet.can_request_tokens(BOB);
+            assert!(!eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("Authorized account is set"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_request_tokens_logic_time_interval_reset() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 2, Some(1000)); // 1 second interval
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 2, Some(1000)); // 1 second interval
 
-        // Exhaust requests
-        for _ in 0..2 {
-            faucet.decrease_remaining_requests();
-        }
+            // Exhaust requests
+            for _ in 0..2 {
+                faucet.decrease_remaining_requests();
+            }
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.remaining_requests, 0);
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.remaining_requests, 0);
 
-        // Check eligibility after time interval would reset
-        let future_time = faucet.state.last_distribution_time + 2000;
-        let eligibility = faucet.can_request_tokens_at_time(ALICE, future_time);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 500_000);
-        assert!(eligibility.reason.contains("after interval reset"));
+            // Check eligibility after time interval would reset
+            let future_time = faucet.state.last_distribution_time + 2000;
+            let eligibility = faucet.can_request_tokens_at_time(ALICE, future_time);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 500_000);
+            assert!(eligibility.reason.contains("after interval reset"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_set_variables_success() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        let result = faucet.set_variables(Some(2_000_000), Some(20), Some(7200000));
-        assert!(result.is_ok());
+            let result = faucet.set_variables(Some(2_000_000), Some(20), Some(7200000));
+            assert!(result.is_ok());
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.available_amount, 2_000_000);
-        assert_eq!(info.distributions_per_interval, 20);
-        assert_eq!(info.time_interval, 7200000);
-        assert_eq!(info.remaining_requests, 20);
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.available_amount, 2_000_000);
+            assert_eq!(info.distributions_per_interval, 20);
+            assert_eq!(info.time_interval, 7200000);
+            assert_eq!(info.remaining_requests, 20);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_set_variables_partial_update() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Update only available amount
-        let result = faucet.set_variables(Some(2_000_000), None, None);
-        assert!(result.is_ok());
+            // Update only available amount
+            let result = faucet.set_variables(Some(2_000_000), None, None);
+            assert!(result.is_ok());
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.available_amount, 2_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, 3600000);
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.available_amount, 2_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, 3600000);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_set_variables_invalid_values() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        assert_eq!(
-            faucet.set_variables(Some(0), None, None),
-            Err(FaucetError::InvalidAvailableAmount)
-        );
+            assert_eq!(
+                faucet.set_variables(Some(0), None, None),
+                Err(FaucetError::InvalidAvailableAmount)
+            );
 
-        assert_eq!(
-            faucet.set_variables(None, Some(0), None),
-            Err(FaucetError::InvalidDistributionsPerInterval)
-        );
+            assert_eq!(
+                faucet.set_variables(None, Some(0), None),
+                Err(FaucetError::InvalidDistributionsPerInterval)
+            );
 
-        assert_eq!(
-            faucet.set_variables(None, None, Some(0)),
-            Err(FaucetError::InvalidTimeInterval)
-        );
+            assert_eq!(
+                faucet.set_variables(None, None, Some(0)),
+                Err(FaucetError::InvalidTimeInterval)
+            );
+        });
     }
 
     #[test]
@@ -623,54 +636,57 @@ mod tests {
     fn test_set_variables_unauthorized() {
         // Test access control by verifying the logic works correctly
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // ALICE created the contract so she has admin role
-        assert!(faucet.has_role(ALICE, ADMIN_ROLE));
+            // ALICE created the contract so she has admin role
+            assert!(faucet.has_role(ALICE, ADMIN_ROLE));
 
-        // Test that other users don't have admin role
-        assert!(!faucet.has_role(BOB, ADMIN_ROLE));
-        assert!(!faucet.has_role(CHARLIE, ADMIN_ROLE));
+            // Test that other users don't have admin role
+            assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+            assert!(!faucet.has_role(CHARLIE, ADMIN_ROLE));
 
-        // Verify the require_role method works correctly
-        assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
+            // Verify the require_role method works correctly
+            assert_eq!(faucet.require_role(ADMIN_ROLE), Ok(()));
 
-        // Test that the access control system correctly identifies roles
-        assert!(faucet.has_role(ALICE, ADMIN_ROLE));
-        assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+            // Test that the access control system correctly identifies roles
+            assert!(faucet.has_role(ALICE, ADMIN_ROLE));
+            assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_set_authorized_account_success() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        let result = faucet.set_authorized_account(Some(ALICE));
-        assert!(result.is_ok());
+            let result = faucet.set_authorized_account(Some(ALICE));
+            assert!(result.is_ok());
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.authorized_account, Some(ALICE));
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.authorized_account, Some(ALICE));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_set_authorized_account_clear() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Set authorized account
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+            // Set authorized account
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        // Clear authorized account
-        let result = faucet.set_authorized_account(None);
-        assert!(result.is_ok());
+            // Clear authorized account
+            let result = faucet.set_authorized_account(None);
+            assert!(result.is_ok());
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.authorized_account, None);
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.authorized_account, None);
+        });
     }
 
     #[test]
@@ -678,283 +694,296 @@ mod tests {
     fn test_set_authorized_account_unauthorized() {
         // Create faucet with BOB as admin, then test access control
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            // BOB should have admin role
+            assert!(faucet.has_role(BOB, ADMIN_ROLE));
 
-        // BOB should have admin role
-        assert!(faucet.has_role(BOB, ADMIN_ROLE));
+            // Test that other users don't have admin role
+            assert!(!faucet.has_role(ALICE, ADMIN_ROLE));
+            assert!(!faucet.has_role(INSTALLER, ADMIN_ROLE));
 
-        // Test that other users don't have admin role
-        assert!(!faucet.has_role(ALICE, ADMIN_ROLE));
-        assert!(!faucet.has_role(INSTALLER, ADMIN_ROLE));
+            // The current caller (BOB) should be able to set authorized account
+            let result = faucet.set_authorized_account(Some(ALICE));
+            assert!(result.is_ok());
 
-        // The current caller (BOB) should be able to set authorized account
-        let result = faucet.set_authorized_account(Some(ALICE));
-        assert!(result.is_ok());
-
-        // Verify the change was made
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.authorized_account, Some(ALICE));
+            // Verify the change was made
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.authorized_account, Some(ALICE));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_regular_user() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
-        assert!(eligibility.reason.contains("requests remaining"));
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
+            assert!(eligibility.reason.contains("requests remaining"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_installer() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        let eligibility = faucet.can_request_tokens(INSTALLER);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 0); // Installer doesn't get fixed amounts
-        assert!(eligibility.reason.contains("unlimited access"));
+            let eligibility = faucet.can_request_tokens(INSTALLER);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 0); // Installer doesn't get fixed amounts
+            assert!(eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_authorized_account() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 0); // Authorized account doesn't get fixed amounts
-        assert!(eligibility.reason.contains("unlimited access"));
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 0); // Authorized account doesn't get fixed amounts
+            assert!(eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_blocked_by_authorized_account() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        let eligibility = faucet.can_request_tokens(BOB);
-        assert!(!eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("Authorized account is set"));
+            let eligibility = faucet.can_request_tokens(BOB);
+            assert!(!eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("Authorized account is set"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_no_requests_remaining() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Exhaust all requests
-        for _ in 0..10 {
-            faucet.decrease_remaining_requests();
-        }
+            // Exhaust all requests
+            for _ in 0..10 {
+                faucet.decrease_remaining_requests();
+            }
 
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(!eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("No requests remaining"));
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(!eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("No requests remaining"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_can_request_tokens_after_time_reset() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(1000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(1000));
 
-        // Exhaust all requests
-        for _ in 0..10 {
-            faucet.decrease_remaining_requests();
-        }
+            // Exhaust all requests
+            for _ in 0..10 {
+                faucet.decrease_remaining_requests();
+            }
 
-        // Check eligibility after time interval
-        let future_time = faucet.state.last_distribution_time + 2000;
-        let eligibility = faucet.can_request_tokens_at_time(ALICE, future_time);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 100_000);
-        assert!(eligibility.reason.contains("after interval reset"));
+            // Check eligibility after time interval
+            let future_time = faucet.state.last_distribution_time + 2000;
+            let eligibility = faucet.can_request_tokens_at_time(ALICE, future_time);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 100_000);
+            assert!(eligibility.reason.contains("after interval reset"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_distribution_amount_calculation() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 4, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 4, Some(3600000));
 
-        let amount = faucet.calculate_distribution_amount().unwrap();
-        assert_eq!(amount, 250_000);
+            let amount = faucet.calculate_distribution_amount().unwrap();
+            assert_eq!(amount, 250_000);
 
-        let faucet_zero = FaucetContract::new(1_000_000, 0, Some(3600000));
-        let amount_zero = faucet_zero.calculate_distribution_amount().unwrap();
-        assert_eq!(amount_zero, 0);
+            let faucet_zero = FaucetContract::new(1_000_000, 0, Some(3600000));
+            let amount_zero = faucet_zero.calculate_distribution_amount().unwrap();
+            assert_eq!(amount_zero, 0);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_remaining_requests_management() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 3, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 3, Some(3600000));
 
-        assert_eq!(faucet.state.remaining_requests, 3);
+            assert_eq!(faucet.state.remaining_requests, 3);
 
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 2);
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 2);
 
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 1);
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 1);
 
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 0);
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 0);
 
-        // Should not go below zero
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 0);
+            // Should not go below zero
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 0);
 
-        faucet.reset_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 3);
+            faucet.reset_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 3);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_caller_type_classification() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Test installer
-        let caller_type = faucet.get_caller_privileges(&INSTALLER);
-        assert_eq!(caller_type, CallerType::Installer);
+            // Test installer
+            let caller_type = faucet.get_caller_privileges(&INSTALLER);
+            assert_eq!(caller_type, CallerType::Installer);
 
-        // Test regular user
-        let caller_type = faucet.get_caller_privileges(&ALICE);
-        assert_eq!(caller_type, CallerType::RegularUser);
+            // Test regular user
+            let caller_type = faucet.get_caller_privileges(&ALICE);
+            assert_eq!(caller_type, CallerType::RegularUser);
 
-        // Test authorized account
-        faucet.set_authorized_account(Some(BOB)).unwrap();
-        let caller_type = faucet.get_caller_privileges(&BOB);
-        assert_eq!(caller_type, CallerType::Authorized);
+            // Test authorized account
+            faucet.set_authorized_account(Some(BOB)).unwrap();
+            let caller_type = faucet.get_caller_privileges(&BOB);
+            assert_eq!(caller_type, CallerType::Authorized);
 
-        // Test regular user after authorized account is set
-        let caller_type = faucet.get_caller_privileges(&ALICE);
-        assert_eq!(caller_type, CallerType::RegularUser);
+            // Test regular user after authorized account is set
+            let caller_type = faucet.get_caller_privileges(&ALICE);
+            assert_eq!(caller_type, CallerType::RegularUser);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_access_control_non_installer_lacks_roles() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Regular users should not have roles
-        assert!(!faucet.has_role(ALICE, ADMIN_ROLE));
-        assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+            // Regular users should not have roles
+            assert!(!faucet.has_role(ALICE, ADMIN_ROLE));
+            assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_zero_distributions_per_interval() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let faucet = FaucetContract::new(1_000_000, 0, Some(3600000));
+        with_env(env.clone(), || {
+            let faucet = FaucetContract::new(1_000_000, 0, Some(3600000));
 
-        let amount = faucet.calculate_distribution_amount().unwrap();
-        assert_eq!(amount, 0);
+            let amount = faucet.calculate_distribution_amount().unwrap();
+            assert_eq!(amount, 0);
 
-        // When distributions_per_interval is 0, regular users cannot request tokens
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(!eligibility.can_request);
-        assert_eq!(eligibility.amount, 0);
-        assert!(eligibility.reason.contains("No requests remaining"));
+            // When distributions_per_interval is 0, regular users cannot request tokens
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(!eligibility.can_request);
+            assert_eq!(eligibility.amount, 0);
+            assert!(eligibility.reason.contains("No requests remaining"));
 
-        // But the installer should still have unlimited access
-        let installer_eligibility = faucet.can_request_tokens(INSTALLER);
-        assert!(installer_eligibility.can_request);
-        assert_eq!(installer_eligibility.amount, 0);
-        assert!(installer_eligibility.reason.contains("unlimited access"));
+            // But the installer should still have unlimited access
+            let installer_eligibility = faucet.can_request_tokens(INSTALLER);
+            assert!(installer_eligibility.can_request);
+            assert_eq!(installer_eligibility.amount, 0);
+            assert!(installer_eligibility.reason.contains("unlimited access"));
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_get_faucet_info_complete() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Set some state
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
-        faucet.state.last_distribution_time = 1000;
+            // Set some state
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
+            faucet.state.last_distribution_time = 1000;
 
-        let info = faucet.get_faucet_info();
+            let info = faucet.get_faucet_info();
 
-        assert_eq!(info.available_amount, 1_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, 3600000);
-        assert_eq!(info.remaining_requests, 10);
-        assert_eq!(info.last_distribution_time, 1000);
-        assert_eq!(info.authorized_account, Some(ALICE));
-        assert_eq!(info.next_reset_time, 1000 + 3600000);
+            assert_eq!(info.available_amount, 1_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, 3600000);
+            assert_eq!(info.remaining_requests, 10);
+            assert_eq!(info.last_distribution_time, 1000);
+            assert_eq!(info.authorized_account, Some(ALICE));
+            assert_eq!(info.next_reset_time, 1000 + 3600000);
+        });
     }
 
     #[test]
     #[ignore = "TODO this test needs to be fixed once we have integration tests capabilities"]
     fn test_multiple_users_eligibility_over_time() {
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 3, Some(1000)); // 3 distributions per 1 second
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 3, Some(1000)); // 3 distributions per 1 second
 
-        // Initially all users should be eligible
-        assert!(faucet.can_request_tokens(ALICE).can_request);
-        assert!(faucet.can_request_tokens(BOB).can_request);
-        assert!(faucet.can_request_tokens(CHARLIE).can_request);
+            // Initially all users should be eligible
+            assert!(faucet.can_request_tokens(ALICE).can_request);
+            assert!(faucet.can_request_tokens(BOB).can_request);
+            assert!(faucet.can_request_tokens(CHARLIE).can_request);
 
-        // Simulate exhausting all requests
-        for _ in 0..3 {
-            faucet.decrease_remaining_requests();
-        }
+            // Simulate exhausting all requests
+            for _ in 0..3 {
+                faucet.decrease_remaining_requests();
+            }
 
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.remaining_requests, 0);
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.remaining_requests, 0);
 
-        // Users should not be eligible
-        assert!(!faucet.can_request_tokens(ALICE).can_request);
-        assert!(!faucet.can_request_tokens(BOB).can_request);
-        assert!(!faucet.can_request_tokens(CHARLIE).can_request);
+            // Users should not be eligible
+            assert!(!faucet.can_request_tokens(ALICE).can_request);
+            assert!(!faucet.can_request_tokens(BOB).can_request);
+            assert!(!faucet.can_request_tokens(CHARLIE).can_request);
 
-        // After time interval, users should be eligible again
-        let future_time = faucet.state.last_distribution_time + 2000;
-        assert!(
-            faucet
-                .can_request_tokens_at_time(ALICE, future_time)
-                .can_request
-        );
-        assert!(
-            faucet
-                .can_request_tokens_at_time(BOB, future_time)
-                .can_request
-        );
-        assert!(
-            faucet
-                .can_request_tokens_at_time(CHARLIE, future_time)
-                .can_request
-        );
+            // After time interval, users should be eligible again
+            let future_time = faucet.state.last_distribution_time + 2000;
+            assert!(
+                faucet
+                    .can_request_tokens_at_time(ALICE, future_time)
+                    .can_request
+            );
+            assert!(
+                faucet
+                    .can_request_tokens_at_time(BOB, future_time)
+                    .can_request
+            );
+            assert!(
+                faucet
+                    .can_request_tokens_at_time(CHARLIE, future_time)
+                    .can_request
+            );
+        });
     }
 
     #[test]
@@ -962,63 +991,64 @@ mod tests {
     fn test_request_tokens_with_different_callers() {
         // Test installer behavior, zero transferred value validation
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // Test zero amount validation
-        let result = faucet.request_tokens(Some(ALICE));
-        assert_eq!(result, Err(FaucetError::ZeroAmount));
+            // Test zero amount validation
+            let result = faucet.request_tokens(Some(ALICE));
+            assert_eq!(result, Err(FaucetError::ZeroAmount));
 
-        // Test installer cannot fund itself
-        let result = faucet.request_tokens(Some(INSTALLER));
-        assert_eq!(result, Err(FaucetError::ZeroAmount));
+            // Test installer cannot fund itself
+            let result = faucet.request_tokens(Some(INSTALLER));
+            assert_eq!(result, Err(FaucetError::ZeroAmount));
 
-        // Test caller type identification
+            // Test caller type identification
 
-        let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // ALICE created the contract so she has admin role
-        assert!(faucet.has_role(ALICE, ADMIN_ROLE));
+            // ALICE created the contract so she has admin role
+            assert!(faucet.has_role(ALICE, ADMIN_ROLE));
 
-        // Test caller type classification
-        let caller_type = faucet.get_caller_privileges(&ALICE);
-        assert_eq!(caller_type, CallerType::Installer);
+            // Test caller type classification
+            let caller_type = faucet.get_caller_privileges(&ALICE);
+            assert_eq!(caller_type, CallerType::Installer);
 
-        let caller_type = faucet.get_caller_privileges(&BOB);
-        assert_eq!(caller_type, CallerType::RegularUser);
+            let caller_type = faucet.get_caller_privileges(&BOB);
+            assert_eq!(caller_type, CallerType::RegularUser);
 
-        // Test that different users have different privileges
-        assert!(!faucet.has_role(BOB, ADMIN_ROLE));
-        assert!(!faucet.has_role(CHARLIE, ADMIN_ROLE));
+            // Test that different users have different privileges
+            assert!(!faucet.has_role(BOB, ADMIN_ROLE));
+            assert!(!faucet.has_role(CHARLIE, ADMIN_ROLE));
 
-        // Test authorized account scenario
+            // Test authorized account scenario
 
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // BOB created the contract so he has admin role
-        assert!(faucet.has_role(BOB, ADMIN_ROLE));
+            // BOB created the contract so he has admin role
+            assert!(faucet.has_role(BOB, ADMIN_ROLE));
 
-        // Set authorized account
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+            // Set authorized account
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        // Test caller type classification
-        let caller_type = faucet.get_caller_privileges(&BOB);
-        assert_eq!(caller_type, CallerType::Installer);
+            // Test caller type classification
+            let caller_type = faucet.get_caller_privileges(&BOB);
+            assert_eq!(caller_type, CallerType::Installer);
 
-        let caller_type = faucet.get_caller_privileges(&ALICE);
-        assert_eq!(caller_type, CallerType::Authorized);
+            let caller_type = faucet.get_caller_privileges(&ALICE);
+            assert_eq!(caller_type, CallerType::Authorized);
 
-        let caller_type = faucet.get_caller_privileges(&CHARLIE);
-        assert_eq!(caller_type, CallerType::RegularUser);
+            let caller_type = faucet.get_caller_privileges(&CHARLIE);
+            assert_eq!(caller_type, CallerType::RegularUser);
 
-        // Test eligibility when authorized account is set
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert!(eligibility.reason.contains("unlimited access"));
+            // Test eligibility when authorized account is set
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert!(eligibility.reason.contains("unlimited access"));
 
-        let eligibility = faucet.can_request_tokens(CHARLIE);
-        assert!(!eligibility.can_request);
-        assert!(eligibility.reason.contains("Authorized account is set"));
+            let eligibility = faucet.can_request_tokens(CHARLIE);
+            assert!(!eligibility.can_request);
+            assert!(eligibility.reason.contains("Authorized account is set"));
+        });
     }
 
     #[test]
@@ -1026,26 +1056,27 @@ mod tests {
     fn test_request_tokens_blocked_by_authorized_account() {
         // Test the logic when authorized account is set
         let env = Arc::new(EnvironmentMock::new());
-        set_env(env.clone());
-        let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+        with_env(env.clone(), || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
 
-        // CHARLIE created the contract so he has admin role
-        assert!(faucet.has_role(CHARLIE, ADMIN_ROLE));
+            // CHARLIE created the contract so he has admin role
+            assert!(faucet.has_role(CHARLIE, ADMIN_ROLE));
 
-        // Set up authorized account
-        faucet.set_authorized_account(Some(ALICE)).unwrap();
+            // Set up authorized account
+            faucet.set_authorized_account(Some(ALICE)).unwrap();
 
-        // Test eligibility for different user types
-        let eligibility = faucet.can_request_tokens(CHARLIE);
-        assert!(eligibility.can_request);
-        assert!(eligibility.reason.contains("unlimited access"));
+            // Test eligibility for different user types
+            let eligibility = faucet.can_request_tokens(CHARLIE);
+            assert!(eligibility.can_request);
+            assert!(eligibility.reason.contains("unlimited access"));
 
-        let eligibility = faucet.can_request_tokens(ALICE);
-        assert!(eligibility.can_request);
-        assert!(eligibility.reason.contains("unlimited access"));
+            let eligibility = faucet.can_request_tokens(ALICE);
+            assert!(eligibility.can_request);
+            assert!(eligibility.reason.contains("unlimited access"));
 
-        let eligibility = faucet.can_request_tokens(BOB);
-        assert!(!eligibility.can_request);
-        assert!(eligibility.reason.contains("Authorized account is set"));
+            let eligibility = faucet.can_request_tokens(BOB);
+            assert!(!eligibility.can_request);
+            assert!(eligibility.reason.contains("Authorized account is set"));
+        });
     }
 }
