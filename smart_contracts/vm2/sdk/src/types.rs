@@ -6,6 +6,8 @@ use casper_executor_wasm_common::{
         CALLEE_API_ERROR, CALLEE_CODE_NOT_FOUND, CALLEE_ENTITY_NOT_FOUND, CALLEE_GAS_DEPLETED,
         CALLEE_INPUT_INVALID, CALLEE_LOCKED_PACKAGE, CALLEE_NOT_CALLABLE,
         CALLEE_NO_ACTIVE_CONTRACT, CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
+        CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE, CALLEE_REVERT_ERROR,
+        CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
     },
     keyspace::Keyspace,
 };
@@ -235,6 +237,7 @@ impl TryFrom<u32> for CallError {
             CALLEE_CODE_NOT_FOUND => Ok(Self::CodeNotFound),
             CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
             CALLEE_LOCKED_PACKAGE => Ok(Self::LockedPackage),
+            CALLEE_REVERT_ERROR => Ok(Self::CalleeReverted),
             _ => Err(()),
         }
     }

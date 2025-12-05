@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    cell::Cell,
+    time::{Duration, Instant},
+};
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use pprof::criterion::{Output, PProfProfiler};
@@ -43,6 +46,34 @@ fn write_sequential(
     root_hash
 }
 
+fn record_iteration_stats(
+    total_duration: &Cell<Duration>,
+    total_iterations: &Cell<u64>,
+    iteration_duration: Duration,
+    iteration_count: u64,
+) {
+    total_duration.set(total_duration.get() + iteration_duration);
+    total_iterations.set(total_iterations.get() + iteration_count);
+}
+
+fn report_average_time(label: &str, batch_size: u32, total_duration: Duration, iterations: u64) {
+    if iterations == 0 {
+        println!("{label} (batch size {batch_size}) did not record any timed iterations");
+        return;
+    }
+
+    let avg_secs = total_duration.as_secs_f64() / iterations as f64;
+    let avg_per_key_ns = (avg_secs * 1_000_000_000.0) / batch_size as f64;
+    let throughput = batch_size as f64 / avg_secs;
+
+    println!(
+        "{label} (batch size {batch_size}): average batch time = {:.4} ms | avg per key = {:.2} ns | throughput ≈ {:.2} writes/s",
+        avg_secs * 1_000.0,
+        avg_per_key_ns,
+        throughput
+    );
+}
+
 fn create_empty_store() -> (LmdbEnvironment, LmdbTrieStore) {
     let _temp_dir = tempdir().unwrap();
     let environment = LmdbEnvironment::new(_temp_dir.path(), DB_SIZE, MAX_READERS, true).unwrap();
@@ -73,7 +104,12 @@ fn sequential_write_bench(c: &mut Criterion, rng: &mut TestRng) {
             sequential_write_group.sample_size(30);
         }
 
+        let total_duration = Cell::new(Duration::default());
+        let total_iterations = Cell::new(0u64);
+
         sequential_write_group.bench_function(format!("write_sequential_{}", batch_size), |b| {
+            let total_duration = &total_duration;
+            let total_iterations = &total_iterations;
             b.iter_custom(|iter| {
                 let mut total = Duration::default();
                 for _ in 0..iter {
@@ -88,9 +124,18 @@ fn sequential_write_bench(c: &mut Criterion, rng: &mut TestRng) {
                     total = total.checked_add(start.elapsed()).unwrap();
                 }
 
+                record_iteration_stats(total_duration, total_iterations, total, iter);
+
                 total
             })
         });
+
+        report_average_time(
+            "sequential_write",
+            batch_size,
+            total_duration.get(),
+            total_iterations.get(),
+        );
     }
     sequential_write_group.finish();
 }
@@ -106,7 +151,12 @@ fn batch_write_with_empty_store(c: &mut Criterion, rng: &mut TestRng) {
             batch_write_group.sample_size(30);
         }
 
+        let total_duration = Cell::new(Duration::default());
+        let total_iterations = Cell::new(0u64);
+
         batch_write_group.bench_function(format!("write_batch_{}", batch_size), |b| {
+            let total_duration = &total_duration;
+            let total_iterations = &total_iterations;
             b.iter_custom(|iter| {
                 let mut total = Duration::default();
                 for _ in 0..iter {
@@ -127,9 +177,18 @@ fn batch_write_with_empty_store(c: &mut Criterion, rng: &mut TestRng) {
                     total = total.checked_add(start.elapsed()).unwrap();
                 }
 
+                record_iteration_stats(total_duration, total_iterations, total, iter);
+
                 total
             })
         });
+
+        report_average_time(
+            "batch_write_empty_store",
+            batch_size,
+            total_duration.get(),
+            total_iterations.get(),
+        );
     }
     batch_write_group.finish();
 }
@@ -145,7 +204,12 @@ fn batch_write_with_populated_store(c: &mut Criterion, rng: &mut TestRng) {
             batch_write_group.sample_size(30);
         }
 
+        let total_duration = Cell::new(Duration::default());
+        let total_iterations = Cell::new(0u64);
+
         batch_write_group.bench_function(format!("write_batch_{}", batch_size), |b| {
+            let total_duration = &total_duration;
+            let total_iterations = &total_iterations;
             b.iter_custom(|iter| {
                 let mut total = Duration::default();
                 for _ in 0..iter {
@@ -174,9 +238,18 @@ fn batch_write_with_populated_store(c: &mut Criterion, rng: &mut TestRng) {
                     total = total.checked_add(start.elapsed()).unwrap();
                 }
 
+                record_iteration_stats(total_duration, total_iterations, total, iter);
+
                 total
             })
         });
+
+        report_average_time(
+            "batch_write_populated_store",
+            batch_size,
+            total_duration.get(),
+            total_iterations.get(),
+        );
     }
     batch_write_group.finish();
 }

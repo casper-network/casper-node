@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use super::MetaTransaction;
 use bytes::Bytes;
@@ -21,9 +21,10 @@ use casper_storage::{
     AddressGeneratorBuilder,
 };
 use casper_types::{
-    bytesrepr::ToBytes, contract_messages::Messages, execution::Effects, BlockHash, Digest, Gas,
-    Key, TransactionArgs, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionRuntimeParams, TransactionTarget, U512,
+    account::AccountHash, bytesrepr::ToBytes, contract_messages::Messages, execution::Effects,
+    BlockHash, BlockTime, Digest, Gas, Key, TransactionArgs, TransactionEntryPoint,
+    TransactionHash, TransactionInvocationTarget, TransactionRuntimeParams, TransactionTarget,
+    U512,
 };
 use thiserror::Error;
 use tracing::info;
@@ -87,6 +88,15 @@ impl WasmV2Result {
             }
         }
     }
+
+    pub(crate) fn output(&self) -> Option<&Bytes> {
+        match self {
+            WasmV2Result::Install(_) => None,
+            WasmV2Result::Execute(execute_with_provider_result) => {
+                execute_with_provider_result.output()
+            }
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -141,6 +151,7 @@ pub(crate) enum InvalidRequest {
 }
 
 impl WasmV2Request {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         gas_limit: Gas,
         network_name: impl Into<Arc<str>>,
@@ -148,11 +159,55 @@ impl WasmV2Request {
         state_root_hash: Digest,
         parent_block_hash: BlockHash,
         block_height: u64,
+        block_time: BlockTime,
         transaction: &MetaTransaction,
     ) -> Result<Self, InvalidRequest> {
         let transaction_hash = transaction.hash();
         let initiator_addr = transaction.initiator_addr();
+        let value = transaction
+            .transferred_value()
+            .ok_or(InvalidRequest::ExpectedTransferredValue)?;
+        let transaction_target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
+        let entry_point = transaction.entry_point();
+        let signers = transaction.signers();
+        let session_args = transaction.session_args().into_owned();
+        Self::new_with_args(
+            gas_limit,
+            network_name,
+            runtime_native_config,
+            state_root_hash,
+            parent_block_hash,
+            block_height,
+            transaction_hash,
+            initiator_addr.account_hash(),
+            session_args,
+            value,
+            transaction_target,
+            entry_point,
+            block_time,
+            signers,
+            false,
+        )
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_args(
+        gas_limit: Gas,
+        network_name: impl Into<Arc<str>>,
+        runtime_native_config: RuntimeNativeConfig,
+        state_root_hash: Digest,
+        parent_block_hash: BlockHash,
+        block_height: u64,
+        transaction_hash: TransactionHash,
+        initiator_addr: AccountHash,
+        session_args: TransactionArgs,
+        transferred_value: u64,
+        transaction_target: TransactionTarget,
+        entry_point: TransactionEntryPoint,
+        block_time: BlockTime,
+        signers: BTreeSet<AccountHash>,
+        sandboxed: bool,
+    ) -> Result<Self, InvalidRequest> {
         let gas_limit: u64 = gas_limit
             .value()
             .try_into()
@@ -162,9 +217,7 @@ impl WasmV2Request {
             .seed_with(transaction_hash.as_ref())
             .build();
 
-        let session_args = transaction.session_args();
-
-        let input_data = match session_args.into_owned() {
+        let input_data = match session_args {
             TransactionArgs::Named(named_args) => {
                 // Named arguments are expected to be in the form of a map.
                 // This is the case for VmCasperV1 runtime.
@@ -176,10 +229,6 @@ impl WasmV2Request {
 
             TransactionArgs::Bytesrepr(bytes) => bytes.take_inner().into(),
         };
-
-        let value = transaction
-            .transferred_value()
-            .ok_or(InvalidRequest::ExpectedTransferredValue)?;
 
         enum Target {
             Install {
@@ -198,10 +247,9 @@ impl WasmV2Request {
             },
         }
 
-        let transaction_target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
         let target = match transaction_target {
             TransactionTarget::Native => todo!(), //
-            TransactionTarget::Stored { id, runtime: _ } => match transaction.entry_point() {
+            TransactionTarget::Stored { id, runtime: _ } => match entry_point {
                 TransactionEntryPoint::Custom(entry_point) => Target::Stored {
                     id: id.clone(),
                     entry_point: entry_point.clone(),
@@ -225,7 +273,7 @@ impl WasmV2Request {
                         bundle_data,
                     },
                 is_install_upgrade: _, // TODO: Handle this
-            } => match transaction.entry_point() {
+            } => match entry_point {
                 TransactionEntryPoint::Call => Target::Session {
                     module_bytes: module_bytes.clone().take_inner().into(),
                 },
@@ -276,24 +324,21 @@ impl WasmV2Request {
                     builder = builder.with_bundle_data(bundle_data);
                 }
 
-                // Value is expected to be the same as transferred value, it's just taken through
-                // different API.
-                debug_assert_eq!(transferred_value, value);
-
                 let install_request = builder
-                    .with_initiator(initiator_addr.account_hash())
+                    .with_initiator(initiator_addr)
                     .with_gas_limit(gas_limit)
                     .with_transaction_hash(transaction_hash)
                     .with_wasm_bytes(module_bytes)
                     .with_address_generator(address_generator)
-                    .with_transferred_value(value)
+                    .with_transferred_value(transferred_value)
                     .with_chain_name(network_name)
-                    .with_block_time(transaction.timestamp().into())
+                    .with_block_time(block_time)
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
                     .with_runtime_native_config(runtime_native_config)
-                    .with_authorization_keys(transaction.signers())
+                    .with_authorization_keys(signers)
+                    .with_sandboxed(sandboxed)
                     .build()
                     .expect("should build");
 
@@ -302,7 +347,7 @@ impl WasmV2Request {
             Target::Session { .. } | Target::Stored { .. } => {
                 let mut builder = ExecuteRequestBuilder::default();
 
-                let initiator_account_hash = &initiator_addr.account_hash();
+                let initiator_account_hash = &initiator_addr;
 
                 let initiator_key = Key::Account(*initiator_account_hash);
 
@@ -313,13 +358,14 @@ impl WasmV2Request {
                     .with_initiator(*initiator_account_hash)
                     .with_caller_key(initiator_key)
                     .with_chain_name(network_name)
-                    .with_transferred_value(value)
-                    .with_block_time(transaction.timestamp().into())
+                    .with_transferred_value(transferred_value)
+                    .with_block_time(block_time)
                     .with_input(input_data)
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
-                    .with_runtime_native_config(runtime_native_config);
+                    .with_runtime_native_config(runtime_native_config)
+                    .with_sandboxed(sandboxed);
                 let execution_kind = match target {
                     Target::Session { module_bytes } => ExecutionKind::SessionBytes(module_bytes),
                     Target::Stored {
@@ -337,7 +383,7 @@ impl WasmV2Request {
 
                 builder = builder.with_execution_kind(execution_kind);
 
-                let authorization_keys = transaction.signers();
+                let authorization_keys = signers;
 
                 let execute_request = builder
                     .with_authorization_keys(authorization_keys)

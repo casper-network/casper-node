@@ -21,8 +21,7 @@ use thiserror::Error;
 
 use crate::{
     install::{InstallContractError, InstallContractRequest, InstallContractResult},
-    CallError, FatalHostError, GasUsage, SandboxedExecutionRequest, SandboxedExecutionResult,
-    WasmPreparationError,
+    CallError, FatalHostError, GasUsage, WasmPreparationError,
 };
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -589,17 +588,6 @@ pub trait Executor: Clone + Send {
         tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
-
-    /// Execute a contract in sandboxed mode.
-    ///
-    /// This method executes a smart contract in a sandbox that cannot call or message outward,
-    /// or mutate state.
-    fn execute_sandbox<R: GlobalStateReader + 'static>(
-        &self,
-        tracking_copy: TrackingCopy<R>,
-        runtime_native_config: RuntimeNativeConfig,
-        request: SandboxedExecutionRequest,
-    ) -> Result<SandboxedExecutionResult, ExecuteError>;
 
     fn install_contract<R: GlobalStateReader + 'static>(
         &self,

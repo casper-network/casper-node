@@ -18,7 +18,6 @@ use casper_types::{
 use crate::{
     global_state_query_result::GlobalStateQueryResult,
     node_status::NodeStatus,
-    sandboxed_execution::SandboxedExecutionResult,
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
@@ -123,8 +122,6 @@ pub enum ResponseType {
     AddressableEntityInformation,
     /// Bids information.
     BidsInformation,
-    /// Result of a sandboxed contract execution.
-    SandboxedExecutionResult,
 }
 
 impl ResponseType {
@@ -235,9 +232,6 @@ impl TryFrom<u8> for ResponseType {
                 Ok(ResponseType::AddressableEntityInformation)
             }
             x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
-            x if x == ResponseType::SandboxedExecutionResult as u8 => {
-                Ok(ResponseType::SandboxedExecutionResult)
-            }
             _ => Err(()),
         }
     }
@@ -303,7 +297,6 @@ impl fmt::Display for ResponseType {
             ResponseType::BidsInformation => {
                 write!(f, "BidsInformation")
             }
-            ResponseType::SandboxedExecutionResult => write!(f, "CallSandboxedResult"),
         }
     }
 }
@@ -400,10 +393,6 @@ impl PayloadEntity for GetTrieFullResult {
 
 impl PayloadEntity for SpeculativeExecutionResult {
     const RESPONSE_TYPE: ResponseType = ResponseType::SpeculativeExecutionResult;
-}
-
-impl PayloadEntity for SandboxedExecutionResult {
-    const RESPONSE_TYPE: ResponseType = ResponseType::SandboxedExecutionResult;
 }
 
 impl PayloadEntity for NodeStatus {

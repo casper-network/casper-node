@@ -33,17 +33,14 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
-    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    PublicKey, RefundHandling, Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID,
-    U512,
+    BlockHash, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EntityAddr,
+    EraEndV2, EraId, FeeHandling, Gas, Key, PublicKey, RefundHandling, Transaction,
+    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
-    types::{SpeculativeExecutionResult, StepOutcome},
-    utils::{self, calculate_prune_eras},
-    BlockExecutionError, Metrics, StateResultError, APPROVALS_CHECKSUM_NAME,
-    EXECUTION_RESULTS_CHECKSUM_NAME,
+    types::StepOutcome, utils::calculate_prune_eras, BlockExecutionError, Metrics,
+    StateResultError, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
     components::fetcher::FetchItem,
@@ -669,6 +666,7 @@ pub fn execute_finalized_block(
                     state_root_hash,
                     parent_block_hash,
                     block_height,
+                    block_time,
                     &transaction,
                 ) {
                     Ok(wasm_v2_request) => {
@@ -1320,100 +1318,6 @@ pub fn execute_finalized_block(
         execution_artifacts: artifacts,
         step_outcome,
     })
-}
-
-/// Execute the transaction without committing the effects.
-/// Intended to be used for discovery operations on read-only nodes.
-///
-/// Returns effects of the execution.
-pub(super) fn speculatively_execute<S>(
-    state_provider: &S,
-    chainspec: &Chainspec,
-    execution_engine_v1: &ExecutionEngineV1,
-    block_header: BlockHeader,
-    input_transaction: Transaction,
-) -> SpeculativeExecutionResult
-where
-    S: StateProvider,
-{
-    let transaction_config = &chainspec.transaction_config;
-    let maybe_transaction = MetaTransaction::from_transaction(
-        &input_transaction,
-        chainspec.core_config.pricing_handling,
-        transaction_config,
-    );
-    if let Err(error) = maybe_transaction {
-        return SpeculativeExecutionResult::invalid_transaction(error);
-    }
-    let transaction = maybe_transaction.unwrap();
-    let state_root_hash = block_header.state_root_hash();
-    let parent_block_hash = block_header.block_hash();
-    let block_height = block_header.height();
-    let block_time = block_header
-        .timestamp()
-        .saturating_add(chainspec.core_config.minimum_block_time);
-    let gas_limit = match input_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
-        Ok(gas_limit) => gas_limit,
-        Err(_) => {
-            return SpeculativeExecutionResult::invalid_gas_limit(input_transaction);
-        }
-    };
-
-    if transaction.is_deploy_transaction() {
-        if transaction.is_native() {
-            let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
-            let protocol_version = chainspec.protocol_version();
-            let runtime_native_config = RuntimeNativeConfig::from_chainspec(chainspec);
-            let transaction_hash = transaction.hash();
-            let initiator_addr = transaction.initiator_addr();
-            let authorization_keys = transaction.authorization_keys();
-            let runtime_args = match transaction.session_args().as_named() {
-                Some(runtime_args) => runtime_args.clone(),
-                None => {
-                    return SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::V1(
-                        InvalidTransactionV1::ExpectedNamedArguments,
-                    ));
-                }
-            };
-
-            let result = state_provider.transfer(TransferRequest::with_runtime_args(
-                runtime_native_config.clone(),
-                *state_root_hash,
-                protocol_version,
-                transaction_hash,
-                initiator_addr.clone(),
-                authorization_keys,
-                runtime_args,
-            ));
-            SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_transfer_result(
-                limit,
-                result,
-                block_header.block_hash(),
-            )))
-        } else {
-            let block_info = BlockInfo::new(
-                *state_root_hash,
-                block_time.into(),
-                parent_block_hash,
-                block_height,
-                execution_engine_v1.config().protocol_version(),
-            );
-            let session_input_data = transaction.to_session_input_data();
-            let wasm_v1_result =
-                match WasmV1Request::new_session(block_info, gas_limit, &session_input_data) {
-                    Ok(wasm_v1_request) => {
-                        execution_engine_v1.execute(state_provider, wasm_v1_request)
-                    }
-                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-                };
-            SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
-                wasm_v1_result,
-                block_header.block_hash(),
-            )))
-        }
-    } else {
-        SpeculativeExecutionResult::ReceivedV1Transaction
-    }
 }
 
 fn invoked_contract_will_pay(

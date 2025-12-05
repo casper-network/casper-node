@@ -1,9 +1,9 @@
 use casper_types::{
-    account::AccountHash,
-    bytesrepr,
-    bytesrepr::{Bytes, FromBytes, ToBytes},
-    BlockHash, BlockTime, Digest, Gas, HashAddr,
+    account::AccountHash, bytesrepr::Bytes as BytesreprBytes, contract_messages::Messages,
+    execution::Effects, BlockHash, BlockTime, ContractRuntimeTag, Digest, Gas, ProtocolVersion,
+    RuntimeArgs, TransactionArgs, TransactionEntryPoint, TransactionTarget, Transfer,
 };
+use std::collections::BTreeSet;
 
 /// Errors that can occur during sandboxed execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,10 +26,12 @@ pub enum SandboxedExecutionError {
     EntityNotFound,
     /// Tried to upgrade a contract in a locked package.
     LockedPackage,
-    /// Api error occurred.
-    Api(String),
     /// Input invalid
     InputInvalid,
+    /// V1 execution engine error
+    V1EngineError(String),
+    /// System is callee and signaled vm instance kill.
+    Revert(String),
 }
 
 impl core::fmt::Display for SandboxedExecutionError {
@@ -44,8 +46,11 @@ impl core::fmt::Display for SandboxedExecutionError {
             SandboxedExecutionError::NoActiveContract => write!(f, "no active contract"),
             SandboxedExecutionError::EntityNotFound => write!(f, "entity not found"),
             SandboxedExecutionError::LockedPackage => write!(f, "locked package"),
-            SandboxedExecutionError::Api(api_error) => write!(f, "{}", api_error),
             SandboxedExecutionError::InputInvalid => write!(f, "input invalid"),
+            SandboxedExecutionError::V1EngineError(engine_error) => {
+                write!(f, "V1 execution error: {}", engine_error)
+            }
+            SandboxedExecutionError::Revert(revert_error) => write!(f, "{}", revert_error),
         }
     }
 }
@@ -55,103 +60,74 @@ impl core::fmt::Display for SandboxedExecutionError {
 /// mutation of state are supported.
 #[derive(Debug, PartialEq)]
 pub struct SandboxedExecutionRequest {
+    /// Identifier of the block at which global state the execution should happen
+    pub state_hash: Digest,
+    /// Height of the block
+    pub block_height: u64,
+    /// Block time
+    pub block_time: BlockTime,
+    /// Parent hash
+    pub parent_block_hash: BlockHash,
+    /// Protocol version
+    pub protocol_version: ProtocolVersion,
+    /// gas limit
+    pub gas_limit: Gas,
+    /// Transaction target
+    pub target: TransactionTarget,
+    /// Entry point
+    pub entry_point: TransactionEntryPoint,
     /// The address of the account that would initiate the contract call.
     pub initiator: AccountHash,
-    /// The address of the contract to query.
-    pub contract_address: HashAddr,
-    /// The entry point to call.
-    pub entry_point: String,
     /// Input data for the query.
-    pub input: Bytes,
-    /// Gas limit for the query execution.
-    ///
-    /// This prevents infinite loops and resource exhaustion attacks.
-    /// The caller is not charged actual tokens, but must provide a limit
-    /// to protect against malicious contracts that could stall the node.
-    pub gas_limit: u64,
-    /// Block time for the query context.
-    pub block_time: BlockTime,
-    /// State root hash to query against.
-    pub state_hash: Digest,
-    /// Parent block hash for context.
-    pub parent_block_hash: BlockHash,
-    /// Block height for context.
-    pub block_height: u64,
-    /// Chain name for context.
-    pub chain_name: String,
+    pub args: TransactionArgs,
+    /// Authorization keys
+    pub authorization_keys: BTreeSet<AccountHash>,
 }
 
-impl ToBytes for SandboxedExecutionRequest {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut writer = bytesrepr::allocate_buffer(self)?;
-        self.initiator.write_bytes(&mut writer)?;
-        self.contract_address.write_bytes(&mut writer)?;
-        self.entry_point.write_bytes(&mut writer)?;
-        self.input.write_bytes(&mut writer)?;
-        self.gas_limit.write_bytes(&mut writer)?;
-        self.block_time.write_bytes(&mut writer)?;
-        self.state_hash.write_bytes(&mut writer)?;
-        self.parent_block_hash.write_bytes(&mut writer)?;
-        self.block_height.write_bytes(&mut writer)?;
-        self.chain_name.write_bytes(&mut writer)?;
-        Ok(writer)
+impl SandboxedExecutionRequest {
+    pub fn get_contract_runtime_tag(&self) -> Option<ContractRuntimeTag> {
+        match &self.target {
+            TransactionTarget::Native => None,
+            TransactionTarget::Stored { id: _, runtime } => Some(runtime.contract_runtime_tag()),
+            TransactionTarget::Session {
+                is_install_upgrade: _,
+                module_bytes: _,
+                runtime,
+            } => Some(runtime.contract_runtime_tag()),
+        }
     }
 
-    fn serialized_length(&self) -> usize {
-        self.initiator.serialized_length()
-            + self.contract_address.serialized_length()
-            + self.entry_point.serialized_length()
-            + self.input.serialized_length()
-            + self.gas_limit.serialized_length()
-            + self.block_time.serialized_length()
-            + self.state_hash.serialized_length()
-            + self.parent_block_hash.serialized_length()
-            + self.block_height.serialized_length()
-            + self.chain_name.serialized_length()
+    pub fn entry_point_name(&self) -> String {
+        match &self.entry_point {
+            TransactionEntryPoint::Custom(x) => x.to_string(),
+            _ => "call".to_string(),
+        }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.initiator.write_bytes(writer)?;
-        self.contract_address.write_bytes(writer)?;
-        self.entry_point.write_bytes(writer)?;
-        self.input.write_bytes(writer)?;
-        self.gas_limit.write_bytes(writer)?;
-        self.block_time.write_bytes(writer)?;
-        self.state_hash.write_bytes(writer)?;
-        self.parent_block_hash.write_bytes(writer)?;
-        self.block_height.write_bytes(writer)?;
-        self.chain_name.write_bytes(writer)
+    pub fn rutime_args(&self) -> Option<RuntimeArgs> {
+        match &self.args {
+            TransactionArgs::Named(runtime_args) => Some(runtime_args.clone()),
+            TransactionArgs::Bytesrepr(_) => None,
+        }
     }
 }
 
-impl FromBytes for SandboxedExecutionRequest {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (initiator, remainder) = FromBytes::from_bytes(bytes)?;
-        let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
-        let (entry_point, remainder) = FromBytes::from_bytes(remainder)?;
-        let (input, remainder) = FromBytes::from_bytes(remainder)?;
-        let (gas_limit, remainder) = FromBytes::from_bytes(remainder)?;
-        let (block_time, remainder) = FromBytes::from_bytes(remainder)?;
-        let (state_hash, remainder) = FromBytes::from_bytes(remainder)?;
-        let (parent_block_hash, remainder) = FromBytes::from_bytes(remainder)?;
-        let (block_height, remainder) = FromBytes::from_bytes(remainder)?;
-        let (chain_name, remainder) = FromBytes::from_bytes(remainder)?;
-        Ok((
-            SandboxedExecutionRequest {
-                initiator,
-                contract_address,
-                entry_point,
-                input,
-                gas_limit,
-                block_time,
-                state_hash,
-                parent_block_hash,
-                block_height,
-                chain_name,
-            },
-            remainder,
-        ))
-    }
+/// Wrapper struct on the results of executing a transaction
+/// in sandboxed mode
+#[derive(Debug)]
+pub struct SuccessfullResultOutput {
+    /// bytes output from the executions
+    pub output: BytesreprBytes,
+    /// List of transfers that happened during execution.
+    pub transfers: Vec<Transfer>,
+    /// Gas limit.
+    pub limit: Gas,
+    /// Gas consumed.
+    pub consumed: Gas,
+    /// Execution effects.
+    pub effects: Effects,
+    /// Messages emitted during execution.
+    pub messages: Messages,
 }
 
 /// Result of a sandboxed execution.
@@ -160,7 +136,7 @@ pub struct SandboxedExecutionResult {
     /// Error while executing, if any.
     pub error: Option<SandboxedExecutionError>,
     /// Output data returned by the contract.
-    pub output: Option<Bytes>,
+    pub output: Option<SuccessfullResultOutput>,
     /// Gas usage tracked during execution.
     pub gas_usage: Gas,
 }
@@ -172,8 +148,8 @@ impl SandboxedExecutionResult {
     }
 
     /// Returns the output data if the execution succeeded.
-    pub fn output(&self) -> Option<&Bytes> {
-        self.output.as_ref()
+    pub fn output(&self) -> Option<&BytesreprBytes> {
+        self.output.as_ref().map(|x| &x.output)
     }
 
     /// Returns the gas spent.
@@ -191,15 +167,16 @@ impl SandboxedExecutionResult {
 #[derive(Default)]
 pub struct SandboxedExecutionRequestBuilder {
     initiator: Option<AccountHash>,
-    contract_address: Option<HashAddr>,
-    entry_point: Option<String>,
-    input: Option<Bytes>,
-    gas_limit: Option<u64>,
-    block_time: Option<BlockTime>,
     state_hash: Option<Digest>,
-    parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
-    chain_name: Option<String>,
+    block_time: Option<BlockTime>,
+    parent_block_hash: Option<BlockHash>,
+    protocol_version: Option<ProtocolVersion>,
+    target: Option<TransactionTarget>,
+    entry_point: Option<TransactionEntryPoint>,
+    gas_limit: Option<Gas>,
+    args: Option<TransactionArgs>,
+    authorization_keys: Option<BTreeSet<AccountHash>>,
 }
 
 impl SandboxedExecutionRequestBuilder {
@@ -212,92 +189,54 @@ impl SandboxedExecutionRequestBuilder {
 
     /// Set the contract address to query.
     #[must_use]
-    pub fn with_contract_address(mut self, contract_address: HashAddr) -> Self {
-        self.contract_address = Some(contract_address);
+    pub fn with_target(mut self, target: TransactionTarget) -> Self {
+        self.target = Some(target);
         self
     }
 
     /// Set the entry point to call.
     #[must_use]
-    pub fn with_entry_point(mut self, entry_point: String) -> Self {
+    pub fn with_entry_point(mut self, entry_point: TransactionEntryPoint) -> Self {
         self.entry_point = Some(entry_point);
         self
     }
 
     /// Set the input data.
     #[must_use]
-    pub fn with_input(mut self, input: Bytes) -> Self {
-        self.input = Some(input);
-        self
-    }
-
-    /// Set the gas limit.
-    #[must_use]
-    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
-        self.gas_limit = Some(gas_limit);
-        self
-    }
-
-    /// Set the block time.
-    #[must_use]
-    pub fn with_block_time(mut self, block_time: BlockTime) -> Self {
-        self.block_time = Some(block_time);
-        self
-    }
-
-    /// Set the state hash.
-    #[must_use]
-    pub fn with_state_hash(mut self, state_hash: Digest) -> Self {
-        self.state_hash = Some(state_hash);
-        self
-    }
-
-    /// Set the parent block hash.
-    #[must_use]
-    pub fn with_parent_block_hash(mut self, parent_block_hash: BlockHash) -> Self {
-        self.parent_block_hash = Some(parent_block_hash);
-        self
-    }
-
-    /// Set the block height.
-    #[must_use]
-    pub fn with_block_height(mut self, block_height: u64) -> Self {
-        self.block_height = Some(block_height);
-        self
-    }
-
-    /// Set the chain name.
-    #[must_use]
-    pub fn with_chain_name<T: Into<String>>(mut self, chain_name: T) -> Self {
-        self.chain_name = Some(chain_name.into());
+    pub fn with_args(mut self, args: TransactionArgs) -> Self {
+        self.args = Some(args);
         self
     }
 
     /// Build the `SandboxedExecutionRequest`.
     pub fn build(self) -> Result<SandboxedExecutionRequest, &'static str> {
-        let initiator = self.initiator.ok_or("Initiator is not set")?;
-        let contract_address = self.contract_address.ok_or("Contract address is not set")?;
-        let entry_point = self.entry_point.ok_or("Entry point is not set")?;
-        let input = self.input.ok_or("Input is not set")?;
-        let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
-        let block_time = self.block_time.ok_or("Block time is not set")?;
-        let state_hash = self.state_hash.ok_or("State hash is not set")?;
+        let initiator = self.initiator.ok_or("initiator is not set")?;
+        let state_hash = self.state_hash.ok_or("state_hash is not set")?;
+        let block_height = self.block_height.ok_or("block_height is not set")?;
+        let block_time = self.block_time.ok_or("block_time is not set")?;
         let parent_block_hash = self
             .parent_block_hash
-            .ok_or("Parent block hash is not set")?;
-        let block_height = self.block_height.ok_or("Block height is not set")?;
-        let chain_name = self.chain_name.ok_or("Chain name is not set")?;
+            .ok_or("parent_block_hash is not set")?;
+        let protocol_version = self.protocol_version.ok_or("protocol_version is not set")?;
+        let target = self.target.ok_or("target is not set")?;
+        let entry_point = self.entry_point.ok_or("entry_point is not set")?;
+        let args = self.args.ok_or("args is not set")?;
+        let gas_limit = self.gas_limit.ok_or("gas_limit is not set")?;
+        let authorization_keys = self
+            .authorization_keys
+            .ok_or("authorization_keys is not set")?;
         Ok(SandboxedExecutionRequest {
-            initiator,
-            contract_address,
-            entry_point,
-            input,
-            gas_limit,
-            block_time,
             state_hash,
-            parent_block_hash,
             block_height,
-            chain_name,
+            block_time,
+            parent_block_hash,
+            protocol_version,
+            target,
+            entry_point,
+            initiator,
+            args,
+            gas_limit,
+            authorization_keys,
         })
     }
 }
