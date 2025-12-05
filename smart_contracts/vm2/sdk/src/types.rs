@@ -3,10 +3,8 @@ use core::marker::PhantomData;
 use casper_contract_macros::TypeUid;
 use casper_executor_wasm_common::{
     error::{
-        CALLEE_API_ERROR, CALLEE_CODE_NOT_FOUND, CALLEE_ENTITY_NOT_FOUND, CALLEE_GAS_DEPLETED,
-        CALLEE_INPUT_INVALID, CALLEE_LOCKED_PACKAGE, CALLEE_NOT_CALLABLE,
-        CALLEE_NO_ACTIVE_CONTRACT, CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
-        CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID, CALLEE_NOT_CALLABLE, CALLEE_REVERT_ERROR,
+        CALLEE_CODE_NOT_FOUND, CALLEE_ENTITY_NOT_FOUND, CALLEE_GAS_DEPLETED, CALLEE_INPUT_INVALID,
+        CALLEE_LOCKED_PACKAGE, CALLEE_NOT_CALLABLE, CALLEE_NO_ACTIVE_CONTRACT, CALLEE_REVERT_ERROR,
         CALLEE_ROLLED_BACK, CALLEE_TRAPPED,
     },
     keyspace::Keyspace,
@@ -232,7 +230,6 @@ impl TryFrom<u32> for CallError {
             CALLEE_GAS_DEPLETED => Ok(Self::CalleeGasDepleted),
             CALLEE_NOT_CALLABLE => Ok(Self::NotCallable),
             CALLEE_INPUT_INVALID => Ok(Self::InputInvalid),
-            CALLEE_API_ERROR => Ok(Self::CalleeReverted),
             CALLEE_NO_ACTIVE_CONTRACT => Ok(Self::NoActiveContract),
             CALLEE_CODE_NOT_FOUND => Ok(Self::CodeNotFound),
             CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
