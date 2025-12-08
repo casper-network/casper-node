@@ -235,6 +235,10 @@ impl TryFrom<u32> for CallError {
             CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
             CALLEE_LOCKED_PACKAGE => Ok(Self::LockedPackage),
             CALLEE_REVERT_ERROR => Ok(Self::CalleeReverted),
+            CALLEE_NO_ACTIVE_CONTRACT => Ok(Self::NoActiveContract),
+            CALLEE_CODE_NOT_FOUND => Ok(Self::CodeNotFound),
+            CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
+            CALLEE_LOCKED_PACKAGE => Ok(Self::LockedPackage),
             _ => Err(()),
         }
     }

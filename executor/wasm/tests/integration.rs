@@ -2414,6 +2414,75 @@ fn calling_session_should_produce_entry_point_called_and_ret() {
     assert_eq!(ep_calls_and_rets, vec![call, session_return]);
 }
 
+#[test]
+fn calling_session_should_not_perform_an_install() {
+    let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must get chainspec config");
+
+    let mut executor = make_executor(&chainspec_config);
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let vm2_returner = read_wasm("vm2_returner.wasm");
+
+    let install_request = base_install_request_builder(&chainspec_config)
+        .with_wasm_bytes(vm2_returner.wasm)
+        .with_bundle_data(vm2_returner.meta.expect("should have bundle"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+    let vm2_returner_caller = read_wasm("vm2_returner_caller.wasm");
+    let input: Bytes = create_result
+        .smart_contract_addr()
+        .to_bytes()
+        .unwrap()
+        .into();
+    let execute_request = base_execute_builder(&chainspec_config)
+        .with_state_hash(state_root_hash)
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_execution_kind(ExecutionKind::SessionBytes(vm2_returner_caller.wasm))
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .with_runtime_native_config(make_runtime_config(&chainspec_config))
+        .with_input(input)
+        .build()
+        .expect("should build");
+    let result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    let transforms = result.effects().transforms();
+    assert!(!transforms.iter().any(|transform: &TransformV2| {
+        matches!(
+            transform.kind(),
+            TransformKindV2::Write(StoredValue::ContractPackage(_))
+        ) || matches!(
+            transform.kind(),
+            TransformKindV2::Write(StoredValue::SmartContract(_))
+        )
+    }));
+}
+
 fn get_contract_package_and_wasms(
     state_hash: Digest,
     global_state: &LmdbGlobalState,
