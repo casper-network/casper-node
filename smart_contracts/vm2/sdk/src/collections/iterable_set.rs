@@ -1,14 +1,19 @@
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition};
 use borsh::{BorshDeserialize, BorshSerialize};
+use casper_executor_wasm_common::type_uid::{TypeUid, Uid};
 
 use super::{IterableMap, IterableMapHash};
-use crate::prelude::String;
+use crate::{compat::types::CLTyped, prelude::String};
 
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[borsh(crate = "crate::serializers::borsh")]
 /// An iterable set backed by a map.
 pub struct IterableSet<V> {
     pub(crate) map: IterableMap<V, ()>,
 }
 
-impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet<V> {
+impl<V: IterableMapHash + BorshSerialize + BorshDeserialize> IterableSet<V> {
     /// Creates an empty [IterableMap] with the given prefix.
     pub fn new<S: Into<String>>(prefix: S) -> Self {
         Self {
@@ -46,5 +51,41 @@ impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet
     /// Clears the set, removing all values.
     pub fn clear(&mut self) {
         self.map.clear();
+    }
+}
+
+impl<V> TypeUid for IterableSet<V>
+where
+    V: TypeUid,
+{
+    const UID: Uid = Uid::from_fields("IterabeSet", &[V::UID]);
+}
+
+impl<V: CLTyped> CLTyped for IterableSet<V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Any
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl<V: CasperABI> CasperABI for IterableSet<V> {
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        V::visit(visitor);
+    }
+
+    fn declaration() -> AbiDeclaration {
+        format!("IterableSet<{}>", V::declaration())
+    }
+
+    #[inline]
+    fn definition() -> Definition {
+        use crate::abi::StructField;
+
+        Definition::Struct {
+            items: vec![StructField {
+                name: "map".into(),
+                decl: casper_executor_wasm_common::type_uid::of::<IterableMap<V, ()>>().into(),
+            }],
+        }
     }
 }

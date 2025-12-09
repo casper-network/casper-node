@@ -1,7 +1,6 @@
 use crate::{
     casper::{self, read_into_vec},
     compat::types::{CLType, CLTyped},
-    log,
     prelude::{borrow::ToOwned, cmp::Ordering, marker::PhantomData, Box, String, Vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
@@ -15,7 +14,7 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 use crate::abi::{AbiDeclaration, CasperABI, Definition, StructField};
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub struct Vector<T> {
     pub(crate) prefix: String,
@@ -72,19 +71,8 @@ where
 
     /// Appends an element to the back of a collection.
     pub fn push(&mut self, value: T) {
-        let prefix_bytes = self.compute_prefix_bytes_for_index(self.length);
-        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
-        let addr = CollectionAddrInner::new(
-            *casper::get_callee().address(),
-            CollectionTypeTag::Vector,
-            collection_prefix,
-            casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
-        );
-        casper::write(
-            Keyspace::Context(ContextAddr::from(addr)),
-            &borsh::to_vec(&value).unwrap(),
-        )
-        .unwrap();
+        let addr = self.calculate_addr(self.length);
+        casper::write(Keyspace::Context(addr), &borsh::to_vec(&value).unwrap()).unwrap();
         self.length += 1;
     }
 
@@ -108,20 +96,11 @@ where
 
     /// Returns an element at index, deserialized.
     pub fn get(&self, index: u64) -> Option<T> {
-        let prefix = self.compute_prefix_bytes_for_index(index);
-        let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
-        let addr = CollectionAddrInner::new(
-            *casper::get_callee().address(),
-            CollectionTypeTag::Vector,
-            collection_prefix,
-            casper::generic_hash(&prefix, crate::types::HashAlgorithm::Blake2b).unwrap(),
-        );
-        let item_keyspace = Keyspace::Context(ContextAddr::from(addr));
-        log!("Foooo");
-        read_into_vec(item_keyspace).unwrap().map(|vec| {
-            log!("vec {:?}", vec);
-            borsh::from_slice(&vec).unwrap()
-        })
+        let addr = self.calculate_addr(index);
+        let item_keyspace = Keyspace::Context(addr);
+        read_into_vec(item_keyspace)
+            .unwrap()
+            .map(|vec| borsh::from_slice(&vec).unwrap())
     }
 
     /// Returns an iterator over self, with elements deserialized.
@@ -152,15 +131,8 @@ where
     /// from the global state.
     pub fn clear(&mut self) {
         for i in 0..self.length {
-            let prefix_bytes = self.compute_prefix_bytes_for_index(i);
-            let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
-            let addr = CollectionAddrInner::new(
-                *casper::get_callee().address(),
-                CollectionTypeTag::Vector,
-                collection_prefix,
-                casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
-            );
-            casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
+            let addr = self.calculate_addr(i);
+            casper::remove(Keyspace::Context(addr)).unwrap();
         }
         self.length = 0;
     }
@@ -242,7 +214,6 @@ where
         if index >= self.length {
             return None;
         }
-
         let value_to_remove = self.get(index).unwrap();
 
         // Shift elements to the left
@@ -251,20 +222,10 @@ where
                 self.write(i, next_value);
             }
         }
-
         // Remove the last element from storage
         self.length -= 1;
-        let addr = CollectionAddrInner::new(
-            *casper::get_callee().address(),
-            CollectionTypeTag::Vector,
-            [0u8; 8],
-            casper::generic_hash(
-                &self.compute_prefix_bytes_for_index(self.length),
-                crate::types::HashAlgorithm::Blake2b,
-            )
-            .unwrap(),
-        );
-        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
+        let addr = self.calculate_addr(self.length);
+        casper::remove(Keyspace::Context(addr)).unwrap();
 
         Some(value_to_remove)
     }
@@ -286,17 +247,8 @@ where
         }
 
         self.length -= 1;
-        let addr = CollectionAddrInner::new(
-            *casper::get_callee().address(),
-            CollectionTypeTag::Vector,
-            [0u8; 8],
-            casper::generic_hash(
-                &self.compute_prefix_bytes_for_index(self.length),
-                crate::types::HashAlgorithm::Blake2b,
-            )
-            .unwrap(),
-        );
-        casper::remove(Keyspace::Context(ContextAddr::from(addr))).unwrap();
+        let addr = self.calculate_addr(self.length);
+        casper::remove(Keyspace::Context(addr)).unwrap();
 
         Some(value_to_remove)
     }
@@ -322,6 +274,11 @@ where
     }
 
     fn write(&self, index: u64, value: T) {
+        let addr = self.calculate_addr(index);
+        casper::write(Keyspace::Context(addr), &borsh::to_vec(&value).unwrap()).unwrap();
+    }
+
+    fn calculate_addr(&self, index: u64) -> ContextAddr {
         let prefix_bytes = self.compute_prefix_bytes_for_index(index);
         let collection_prefix = fnv1a_hash_str_64(self.prefix.as_str()).to_le_bytes();
         let addr = CollectionAddrInner::new(
@@ -330,15 +287,21 @@ where
             collection_prefix,
             casper::generic_hash(&prefix_bytes, crate::types::HashAlgorithm::Blake2b).unwrap(),
         );
-        casper::write(
-            Keyspace::Context(ContextAddr::from(addr)),
-            &borsh::to_vec(&value).unwrap(),
-        )
-        .unwrap();
+        ContextAddr::from(addr)
     }
 }
 
+#[cfg(feature = "testing")]
+pub fn compute_prefix_bytes_for_index(prefix: &str, index: u64) -> Vec<u8> {
+    compute_prefix_bytes_for_index_inner(prefix, index)
+}
+
+#[cfg(not(feature = "testing"))]
 fn compute_prefix_bytes_for_index(prefix: &str, index: u64) -> Vec<u8> {
+    compute_prefix_bytes_for_index_inner(prefix, index)
+}
+
+fn compute_prefix_bytes_for_index_inner(prefix: &str, index: u64) -> Vec<u8> {
     let mut prefix_bytes = prefix.as_bytes().to_owned();
     prefix_bytes.extend(&index.to_le_bytes());
     prefix_bytes

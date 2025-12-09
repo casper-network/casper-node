@@ -15,7 +15,7 @@ use casper_contract_sdk::{
     meta::{MetaDefinition, MetaPrimitive, MetaTypeDefinition},
     prelude::Entity,
     serializers::borsh,
-    types::{Address, CallError, HashAlgorithm, NamedKey, PublicKey},
+    types::{Address, CallError, HashAlgorithm, PublicKey},
 };
 
 use casper_executor_wasm_common::{
@@ -736,84 +736,65 @@ pub fn yet_another_exported_function(arg1: u64, arg2: String) {
 
 #[cfg(test)]
 mod tests {
-    use casper::native::{dispatch_with, Environment};
-    use casper_contract_sdk::casper::native::{self, dispatch};
+    use std::sync::Arc;
+
+    use casper_contract_sdk::{
+        casper::native::{run_expecting_panic, with_env, EnvironmentMock, ExpectedCall},
+        sys::EnvInfo,
+    };
     use contracts::harness::{Harness, INITIAL_GREETING};
+
+    use crate::__casper_export_yet_another_exported_function;
 
     use super::*;
     #[test]
     fn can_call_exported_function() {
-        super::yet_another_exported_function(1234u64, "Hello, world!".to_string());
-
-        let input_data = casper_contract_sdk::serializers::borsh::to_vec(&(
-            4321u64,
-            "!world, Hello".to_string(),
-        ))
-        .unwrap();
-
-        dispatch_with(Environment::default().with_input_data(input_data), || {
-            native::invoke_export_by_name("yet_another_exported_function");
-        })
-        .unwrap();
+        let curr_env = Arc::new(EnvironmentMock::new());
+        with_env(curr_env.clone(), || {
+            let input_bytes = casper_contract_sdk::serializers::borsh::to_vec(&(
+                4321u64,
+                "!world, Hello".to_string(),
+            ))
+            .unwrap();
+            curr_env.add_expectation(ExpectedCall::expect_copy_input(&input_bytes));
+            curr_env.add_expectation(ExpectedCall::expect_print(
+                "Yet another exported function with args arg1=4321 arg2=!world, Hello",
+            ));
+            let r = run_expecting_panic(|| {
+                __casper_export_yet_another_exported_function();
+            });
+            assert!(r.is_ok());
+        });
     }
 
     #[test]
     fn should_greet() {
-        let mut harness = Harness::constructor_with_args("Hello".into());
-        assert_eq!(harness.get_greeting(), "Hello");
-        harness.set_greeting("Hi".into());
-        assert_eq!(harness.get_greeting(), "Hi");
+        let curr_env = Arc::new(EnvironmentMock::new());
+        with_env(curr_env.clone(), || {
+            curr_env.add_expectation(ExpectedCall::expect_print(
+                "👋 Hello from constructor with args: Hello",
+            ));
+            curr_env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
+            curr_env.add_expectation(ExpectedCall::expect_print("Saving greeting Hi"));
+            let mut harness = Harness::constructor_with_args("Hello".into());
+            assert_eq!(harness.get_greeting(), "Hello, Hello!");
+            harness.set_greeting("Hi".into());
+            assert_eq!(harness.get_greeting(), "Hi");
+        });
     }
 
     #[test]
     fn unittest() {
-        dispatch(|| {
+        let curr_env = Arc::new(EnvironmentMock::new());
+        curr_env.add_expectation(ExpectedCall::expect_print("👋 Hello from constructor"));
+        curr_env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
+        curr_env.add_expectation(ExpectedCall::expect_print("Saving greeting New greeting"));
+        with_env(curr_env.clone(), || {
             let mut foo = Harness::initialize();
             assert_eq!(foo.get_greeting(), INITIAL_GREETING);
             foo.set_greeting("New greeting".to_string());
             assert_eq!(foo.get_greeting(), "New greeting");
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn foo() {
-        assert_eq!(Harness::default().into_greeting(), "Default value");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use casper_contract_sdk::casper::native::{self, dispatch};
-
-    use crate::contracts::harness::{Harness, INITIAL_GREETING};
-
-    #[test]
-    fn test() {
-        dispatch(|| {
-            native::invoke_export_by_name("call");
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn should_greet() {
-        let mut harness = Harness::constructor_with_args("Hello".into());
-        assert_eq!(harness.get_greeting(), "Hello");
-        harness.set_greeting("Hi".into());
-        assert_eq!(harness.get_greeting(), "Hi");
-    }
-
-    #[test]
-    fn unittest() {
-        dispatch(|| {
-            let mut foo = Harness::initialize();
-            assert_eq!(foo.get_greeting(), INITIAL_GREETING);
-            foo.set_greeting("New greeting".to_string());
-            assert_eq!(foo.get_greeting(), "New greeting");
-        })
-        .unwrap();
+        });
     }
 
     #[test]

@@ -2,6 +2,8 @@ pub mod altbn128;
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
 
+use core::cell::RefCell;
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 use crate::abi::{ABITypeInfo, CasperABI, EnumVariant};
 use crate::{
@@ -71,7 +73,6 @@ pub fn copy_input() -> Vec<u8> {
 pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
     let args = (flags.bits(), data);
     let arg_bytes = borsh::to_vec(&args).expect("Expected borsh to work");
-
     let _ = casper_ffi(IOFunctionOption::Return.into(), &arg_bytes);
 
     unreachable!()
@@ -367,18 +368,37 @@ pub enum GetEnvInfoError {
     UnexpectedResultCode(u32),
 }
 
+thread_local! {
+    /// Env info cache for the current execution
+    static ENV_INFO: RefCell<Option<EnvInfo>> = const {RefCell::new(None)};
+}
+
 /// Get the environment info.
 pub fn get_env_info() -> Result<EnvInfo, GetEnvInfoError> {
-    let (output_data, res) = casper_ffi(GlobalStateFunctionOption::GetInfo.into(), &[]);
-    if res == 0 {
-        if let Some(output_data) = output_data {
-            borsh::from_slice(&output_data).map_err(|_| GetEnvInfoError::EnvInfoUnparseable)
+    // The assumption is that fetching env_info data is idempotent in the
+    // scope of one wasm execution
+    ENV_INFO.with_borrow_mut(|el| {
+        if let Some(env_info) = el {
+            Ok(env_info.clone())
         } else {
-            Err(GetEnvInfoError::NoData)
+            let (output_data, res) = casper_ffi(GlobalStateFunctionOption::GetInfo.into(), &[]);
+            if res == 0 {
+                if let Some(output_data) = output_data {
+                    let env_info_res: Result<EnvInfo, GetEnvInfoError> =
+                        borsh::from_slice(&output_data)
+                            .map_err(|_| GetEnvInfoError::EnvInfoUnparseable);
+                    if let Ok(env_info) = &env_info_res {
+                        *el = Some(env_info.clone())
+                    }
+                    env_info_res
+                } else {
+                    Err(GetEnvInfoError::NoData)
+                }
+            } else {
+                Err(GetEnvInfoError::UnexpectedResultCode(res))
+            }
         }
-    } else {
-        Err(GetEnvInfoError::UnexpectedResultCode(res))
-    }
+    })
 }
 
 /// Get the caller.

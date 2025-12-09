@@ -1,10 +1,16 @@
-use crate::prelude::{marker::PhantomData, *};
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+use crate::abi::{ABIVisitor, AbiDeclaration, CasperABI, Definition};
+use crate::{
+    compat::types::CLTyped,
+    prelude::{marker::PhantomData, *},
+};
 
 use crate::types::HashAlgorithm;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
-use casper_executor_wasm_common::keyspace::{
-    CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace,
+use casper_executor_wasm_common::{
+    keyspace::{CollectionAddrInner, CollectionTypeTag, ContextAddr, Keyspace},
+    type_uid::{TypeUid, Uid},
 };
 use const_fnv1a_hash::fnv1a_hash_64;
 
@@ -22,7 +28,35 @@ pub struct IterableMapPtr {
     /// in a bucket
     pub(crate) index: u64,
 }
+impl TypeUid for IterableMapPtr {
+    const UID: Uid = Uid::from_fields("IterableMapPtr", &[]);
+}
 
+impl CLTyped for IterableMapPtr {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Any
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl CasperABI for IterableMapPtr {
+    fn definition() -> Definition {
+        use crate::abi::StructField;
+
+        Definition::Struct {
+            items: vec![
+                StructField {
+                    name: "hash".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+                },
+                StructField {
+                    name: "index".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<u64>().into(),
+                },
+            ],
+        }
+    }
+}
 /// Trait for types that can be used as keys in [IterableMap].
 /// Must produce a deterministic hash.
 ///
@@ -61,7 +95,7 @@ impl IterableMapHash for String {}
 ///
 /// Under the hood, this is a singly-linked HashMap with linear probing for collision resolution.
 /// Supports full traversal, typically in reverse-insertion order.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub struct IterableMap<K, V> {
     pub(crate) prefix: String,
@@ -74,12 +108,23 @@ pub struct IterableMap<K, V> {
 }
 
 /// Single entry in `IterableMap`. Stores the value and the hash of the previous entry's key.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[borsh(crate = "crate::serializers::borsh")]
 pub struct IterableMapEntry<K, V> {
     pub(crate) key: K,
     pub(crate) value: Option<V>,
     pub(crate) previous: Option<IterableMapPtr>,
+}
+
+impl<K, V> IterableMapEntry<K, V> {
+    #[cfg(feature = "testing")]
+    pub fn get_previous(&self) -> &Option<IterableMapPtr> {
+        &self.previous
+    }
+    #[cfg(feature = "testing")]
+    pub fn get_value(&self) -> &Option<V> {
+        &self.value
+    }
 }
 
 impl<K, V> IterableMap<K, V>
@@ -158,9 +203,7 @@ where
 
     /// Returns a value corresponding to the key.
     pub fn get(&self, key: &K) -> Option<V> {
-        // If a slot is writable, it implicitly belongs the key
-        let (_, at_ptr) = self.get_writable_slot(key);
-        at_ptr.and_then(|entry| entry.value)
+        self.find_slot(key).and_then(|(_, entry)| entry.value)
     }
 
     /// Removes a key from the map. Returns the associated value if the key exists.
@@ -180,39 +223,15 @@ where
             to_remove_tail,
         )));
 
-        // See if the removed entry is a part of a collision resolution chain
-        // by investigating its potential child.
-        let to_remove_ptr_child_prefix = self.create_prefix_from_ptr(&IterableMapPtr {
-            index: to_remove_ptr.index + 1,
-            ..to_remove_ptr
-        });
-        let to_remove_ptr_child_tail =
-            casper::generic_hash(&to_remove_ptr_child_prefix, HashAlgorithm::Blake2b).unwrap();
-        let to_remove_ptr_child_keyspace =
-            Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
-                *casper::get_callee().address(),
-                CollectionTypeTag::IterableMap,
-                [0u8; 8],
-                to_remove_ptr_child_tail,
-            )));
+        // Write a tombstone over the entry to delete
+        let tombstone = IterableMapEntry {
+            value: None,
+            ..at_remove_ptr
+        };
 
-        if self.get_entry(to_remove_ptr_child_keyspace).is_some() {
-            // A child exists, so we need to retain this element to maintain
-            // collision resolution soundness. Instead of purging, mark as
-            // tombstone.
-            let tombstone = IterableMapEntry {
-                value: None,
-                ..at_remove_ptr
-            };
-
-            // Write the updated value
-            let mut entry_bytes = Vec::new();
-            tombstone.serialize(&mut entry_bytes).unwrap();
-            casper::write(to_remove_context_key, &entry_bytes).unwrap();
-        } else {
-            // There is no child, so we can safely purge this entry entirely.
-            casper::remove(to_remove_context_key).unwrap();
-        }
+        let mut entry_bytes = Vec::new();
+        tombstone.serialize(&mut entry_bytes).unwrap();
+        casper::write(to_remove_context_key, &entry_bytes).unwrap();
 
         // Edge case when removing tail
         if self.tail_key_hash == Some(to_remove_ptr) {
@@ -368,7 +387,17 @@ where
 
     /// Find the next slot we can safely write to. This is either a slot already owned and
     /// assigned to the key, a vacant tombstone, or empty memory.
+    #[cfg(feature = "testing")]
+    pub fn get_writable_slot(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
+        self.get_writable_slot_inner(key)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn get_writable_slot(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
+        self.get_writable_slot_inner(key)
+    }
+
+    fn get_writable_slot_inner(&self, key: &K) -> (IterableMapPtr, Option<IterableMapEntry<K, V>>) {
         let mut bucket_ptr = self.create_root_ptr_from_key(key);
 
         // Probe until we find either an existing slot, a tombstone or empty space.
@@ -384,13 +413,38 @@ where
             )));
 
             if let Some(entry) = self.get_entry(keyspace) {
-                // Existing value, check if the keys match
-                if entry.key == *key {
+                // Handle tombstones first
+                if entry.value.is_none() {
+                    // If the value is None, then this is a tombstone.
+                    // Treat it as a writable slot only if there is a child in the collision chain.
+                    // If there is no child, we treat it as empty space.
+                    let child_ptr = IterableMapPtr {
+                        index: bucket_ptr.index + 1,
+                        ..bucket_ptr
+                    };
+
+                    let child_prefix = self.create_prefix_from_ptr(&child_ptr);
+
+                    let child_tail =
+                        casper::generic_hash(&child_prefix, HashAlgorithm::Blake2b).unwrap();
+
+                    let child_keyspace =
+                        Keyspace::Context(ContextAddr::from(CollectionAddrInner::new(
+                            *casper::get_callee().address(),
+                            CollectionTypeTag::IterableMap,
+                            [0u8; 8],
+                            child_tail,
+                        )));
+
+                    if self.get_entry(child_keyspace).is_some() {
+                        // There is a child; retain the tombstone for collision chain integrity
+                        return (bucket_ptr, Some(entry));
+                    } else {
+                        // No child; treat as empty space
+                        return (bucket_ptr, None);
+                    }
+                } else if entry.key == *key {
                     // We have found an existing slot for that key, return it
-                    return (bucket_ptr, Some(entry));
-                } else if entry.value.is_none() {
-                    // If the value is None, then this is a tombstone, and we
-                    // can write over it.
                     return (bucket_ptr, Some(entry));
                 } else {
                     // We found a slot for this key hash, but the keys mismatch,
@@ -406,7 +460,16 @@ where
         }
     }
 
+    #[cfg(feature = "testing")]
+    pub fn get_entry(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
+        self.get_entry_inner(keyspace)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn get_entry(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
+        self.get_entry_inner(keyspace)
+    }
+    fn get_entry_inner(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
         match read_into_vec(keyspace) {
             Ok(Some(vec)) => {
                 let entry: IterableMapEntry<K, V> = borsh::from_slice(&vec).unwrap();
@@ -422,14 +485,34 @@ where
         self.create_prefix_from_ptr(&ptr)
     }
 
+    #[cfg(feature = "testing")]
+    pub fn create_root_ptr_from_key(&self, key: &K) -> IterableMapPtr {
+        self.create_root_ptr_from_key_inner(key)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn create_root_ptr_from_key(&self, key: &K) -> IterableMapPtr {
+        self.create_root_ptr_from_key_inner(key)
+    }
+
+    fn create_root_ptr_from_key_inner(&self, key: &K) -> IterableMapPtr {
         IterableMapPtr {
             hash: key.compute_hash(),
             index: 0,
         }
     }
 
+    #[cfg(feature = "testing")]
+    pub fn create_prefix_from_ptr(&self, hash: &IterableMapPtr) -> Vec<u8> {
+        self.create_prefix_from_ptr_inner(hash)
+    }
+
+    #[cfg(not(feature = "testing"))]
     fn create_prefix_from_ptr(&self, hash: &IterableMapPtr) -> Vec<u8> {
+        self.create_prefix_from_ptr_inner(hash)
+    }
+
+    pub fn create_prefix_from_ptr_inner(&self, hash: &IterableMapPtr) -> Vec<u8> {
         let mut context_key = Vec::new();
         context_key.extend(self.prefix.as_bytes());
         context_key.extend(b"_");
@@ -437,6 +520,54 @@ where
         context_key.extend(b"_");
         context_key.put_u64_le(hash.index);
         context_key
+    }
+}
+
+impl<K, V> TypeUid for IterableMap<K, V>
+where
+    K: TypeUid,
+    V: TypeUid,
+{
+    const UID: Uid = Uid::from_fields("IterableMap", &[K::UID, V::UID]);
+}
+
+impl<K: CLTyped, V: CLTyped> CLTyped for IterableMap<K, V> {
+    fn cl_type() -> crate::compat::types::CLType {
+        crate::compat::types::CLType::Map {
+            key: Box::new(K::cl_type()),
+            value: Box::new(V::cl_type()),
+        }
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
+impl<K: CasperABI, V: CasperABI> CasperABI for IterableMap<K, V> {
+    fn visit(visitor: &mut dyn ABIVisitor) {
+        K::visit(visitor);
+        V::visit(visitor);
+    }
+
+    fn declaration() -> AbiDeclaration {
+        format!("IterableMap<{}, {}>", K::declaration(), V::declaration())
+    }
+
+    #[inline]
+    fn definition() -> Definition {
+        use crate::abi::StructField;
+
+        Definition::Struct {
+            items: vec![
+                StructField {
+                    name: "prefix".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<String>().into(),
+                },
+                StructField {
+                    name: "tail_key_hash".into(),
+                    decl: casper_executor_wasm_common::type_uid::of::<Option<IterableMapPtr>>()
+                        .into(),
+                },
+            ],
+        }
     }
 }
 
@@ -514,4 +645,9 @@ where
             Err(_) => None,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests for functionality of this collection are in `vm2-collections-test` contract
 }
