@@ -52,6 +52,7 @@ pub struct ExecuteRequestBuilder {
     session_entry_point: String,
     session_args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
+    sandboxed: bool,
 }
 
 const DEFAULT_GAS_LIMIT: u64 = 5_000_u64 * 10u64.pow(9);
@@ -130,6 +131,7 @@ impl ExecuteRequestBuilder {
             session_entry_point: session.entry_point,
             session_args: session.args,
             authorization_keys,
+            sandboxed: false,
         }
     }
 
@@ -206,6 +208,7 @@ impl ExecuteRequestBuilder {
             session_entry_point: session.entry_point,
             session_args: session.args,
             authorization_keys,
+            sandboxed: false,
         }
     }
 
@@ -512,6 +515,7 @@ impl ExecuteRequestBuilder {
             session_entry_point,
             session_args,
             authorization_keys,
+            sandboxed,
         } = self;
 
         let block_info = BlockInfo::new(
@@ -531,6 +535,7 @@ impl ExecuteRequestBuilder {
             args: payment_args,
             authorization_keys: authorization_keys.clone(),
             phase: Phase::Payment,
+            sandboxed,
         });
 
         let session = WasmV1Request {
@@ -543,6 +548,7 @@ impl ExecuteRequestBuilder {
             args: session_args,
             authorization_keys,
             phase: Phase::Session,
+            sandboxed,
         };
 
         ExecuteRequest {

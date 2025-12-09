@@ -117,7 +117,7 @@ pub const CALLEE_TRAPPED: u32 = 2;
 pub const CALLEE_INPUT_INVALID: u32 = 3;
 pub const CALLEE_GAS_DEPLETED: u32 = 4;
 pub const CALLEE_NOT_CALLABLE: u32 = 5;
-pub const CALLEE_API_ERROR: u32 = 6;
+pub const CALLEE_REVERT_ERROR: u32 = 6;
 pub const CALLEE_NO_ACTIVE_CONTRACT: u32 = 7;
 pub const CALLEE_CODE_NOT_FOUND: u32 = 8;
 pub const CALLEE_ENTITY_NOT_FOUND: u32 = 9;
@@ -173,7 +173,7 @@ impl CallError {
             Self::CodeNotFound => CALLEE_CODE_NOT_FOUND,
             Self::EntityNotFound => CALLEE_ENTITY_NOT_FOUND,
             Self::LockedPackage => CALLEE_LOCKED_PACKAGE,
-            Self::Revert(_) => CALLEE_API_ERROR,
+            Self::Revert(_) => CALLEE_REVERT_ERROR,
         }
     }
 }

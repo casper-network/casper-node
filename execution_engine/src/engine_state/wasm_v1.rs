@@ -229,8 +229,11 @@ pub enum InvalidRequest {
 }
 
 #[derive(Debug, Clone)]
+/// Enum tag to discern if session code is install/upgrade or not
 pub enum SessionKind {
+    /// install/upgrade variant
     InstallUpgradeBytecode,
+    /// Non install/upgrade variant
     GenericBytecode,
 }
 
@@ -350,6 +353,8 @@ pub struct WasmV1Request {
     pub authorization_keys: BTreeSet<AccountHash>,
     /// Execution phase.
     pub phase: Phase,
+    /// Is sandbox execution
+    pub sandboxed: bool,
 }
 
 impl WasmV1Request {
@@ -414,6 +419,7 @@ impl WasmV1Request {
             entry_point: executable_info.entry_point().clone(),
             args: executable_info.args().clone(),
             phase: executable_info.phase(),
+            sandboxed: false,
         }
     }
 

@@ -417,24 +417,25 @@ cost = 150
 size_multiplier = 100
 
 [wasm.v2.host_ffi_opt_costs]
-read = { base_cost = 1_000_000, per_byte = 2_000 }
-write = { base_cost = 1_000_000, per_byte = 2_000 }
-remove = { base_cost = 1_000_000, per_byte = 2_000 }
-copy_input = { base_cost = 1_000_000, per_byte = 2_000 }
-ret = { base_cost = 1_000_000, per_byte = 2_000 }
-create = { base_cost = 1_000_000, per_byte = 2_000 }
-transfer = { base_cost = 1_000_000, per_byte = 2_000 }
-env_balance = { base_cost = 1_000_000, per_byte = 2_000 }
-upgrade = { base_cost = 1_000_000, per_byte = 2_000 }
-call = { base_cost = 1_000_000, per_byte = 2_000 }
-print = { base_cost = 1_000_000, per_byte = 2_000 }
-emit = { base_cost = 1_000_000, per_byte = 2_000 }
-env_info = { base_cost = 1_000_000, per_byte = 2_000 }
-generic_hash = { base_cost = 1_000_000, per_byte = 2_000 }
-recover_secp256k1 = { base_cost = 1_000_000, per_byte = 2_000 }
-alt_bn128_add = { base_cost = 1_000_000, per_byte = 2_000 }
-alt_bn128_mul = { base_cost = 1_000_000, per_byte = 2_000 }
-alt_bn128_pairing = { base_cost = 1_000_000, per_byte = 2_000 }
+read = { base_cost = 150_000, per_byte = 500 }
+write = { base_cost = 240_000, per_byte = 1_000 }
+remove = { base_cost = 280_000, per_byte = 250 }
+copy_input = { base_cost = 20_000, per_byte = 0 }
+ret = { base_cost = 20_000, per_byte = 0 }
+revert = { base_cost = 20_000, per_byte = 150 }
+create = { base_cost = 120_000, per_byte = 10 }
+transfer = { base_cost = 2_500_000_000, per_byte = 0 }
+env_balance = { base_cost = 200_000, per_byte = 50 }
+upgrade = { base_cost = 420_000, per_byte = 20 }
+call = { base_cost = 100_000, per_byte = 100 }
+print = { base_cost = 20_000, per_byte = 50 }
+emit = { base_cost = 380_000, per_byte = 50 }
+env_info = { base_cost = 20_000, per_byte = 0 }
+generic_hash = { base_cost = 500_000, per_byte = 1_000 }
+recover_secp256k1 = { base_cost = 4_000_000, per_byte = 2_000 }
+alt_bn128_add = { base_cost = 1_200_000, per_byte = 1_000 }
+alt_bn128_mul = { base_cost = 3_000_000, per_byte = 1_000 }
+alt_bn128_pairing = { base_cost = 2_000_000, per_byte = 1_500 }
 
 [wasm.messages_limits]
 max_topic_name_size = 256

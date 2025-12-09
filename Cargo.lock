@@ -926,6 +926,7 @@ dependencies = [
  "casper-executor-wasm-interface",
  "casper-storage",
  "casper-types",
+ "criterion",
  "either",
  "keccak-asm",
  "num-derive",
@@ -7274,6 +7275,16 @@ dependencies = [
  "casper-contract-sdk",
  "casper-contract-sdk-contrib",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-collections-test"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "casper-executor-wasm-common",
+ "const-fnv1a-hash",
 ]
 
 [[package]]

@@ -606,6 +606,8 @@ pub(crate) fn host_env_balance<S: GlobalStateReader + 'static>(
     ))
 }
 
+/// Please note that the returning EnvInfo structure
+/// cannot hold any data that can change in course of one wasm execution.
 pub(crate) fn host_env_info<S: GlobalStateReader + 'static>(
     caller: &mut impl Caller<Context = Context<S>>,
 ) -> VMResult<(Option<Bytes>, u32)> {

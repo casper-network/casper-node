@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
 };
 
 use casper_binary_port::{BinaryResponse, Command, GetRequest};
@@ -18,7 +18,6 @@ pub(crate) enum Event {
     },
     HandleRequest {
         request: Command,
-        peer_ip: IpAddr,
         responder: Responder<BinaryResponse>,
     },
 }
@@ -28,57 +27,29 @@ impl Display for Event {
         match self {
             Event::Initialize => write!(f, "initialize"),
             Event::AcceptConnection { peer, .. } => write!(f, "accept connection from {}", peer),
-            Event::HandleRequest {
-                request, peer_ip, ..
-            } => match request {
+            Event::HandleRequest { request, .. } => match request {
                 Command::Get(request) => match request {
                     GetRequest::Record {
                         record_type_tag,
                         key,
                     } => {
-                        write!(
-                            f,
-                            "get record with tag {} ({}) from {}",
-                            record_type_tag,
-                            key.len(),
-                            peer_ip
-                        )
+                        write!(f, "get record with tag {} ({})", record_type_tag, key.len(),)
                     }
                     GetRequest::Information { info_type_tag, key } => {
-                        write!(
-                            f,
-                            "get info with tag {} ({}) from {}",
-                            info_type_tag,
-                            key.len(),
-                            peer_ip
-                        )
+                        write!(f, "get info with tag {} ({})", info_type_tag, key.len(),)
                     }
                     GetRequest::State(state_request) => {
-                        write!(f, "get state ({}) from {}", state_request.as_ref(), peer_ip)
+                        write!(f, "get state ({})", state_request.as_ref())
                     }
                     GetRequest::Trie { trie_key } => {
-                        write!(f, "get trie ({}) from {}", trie_key, peer_ip)
+                        write!(f, "get trie ({})", trie_key)
                     }
                 },
                 Command::TryAcceptTransaction { transaction, .. } => {
-                    write!(
-                        f,
-                        "try accept transaction ({}) from {}",
-                        transaction.hash(),
-                        peer_ip
-                    )
+                    write!(f, "try accept transaction ({})", transaction.hash(),)
                 }
                 Command::TrySpeculativeExec { transaction, .. } => {
-                    write!(
-                        f,
-                        "try speculative exec ({}) from {}",
-                        transaction.hash(),
-                        peer_ip
-                    )
-                }
-
-                Command::TrySandboxedExecution { .. } => {
-                    write!(f, "try sandboxed execution from {}", peer_ip)
+                    write!(f, "try speculative exec ({})", transaction.hash(),)
                 }
             },
         }

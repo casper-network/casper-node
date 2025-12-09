@@ -17,6 +17,7 @@ use casper_types::bytesrepr::Error as BytesreprError;
 pub use sandboxed_execution::SandboxedExecutionRequestBuilder;
 pub use sandboxed_execution::{
     SandboxedExecutionError, SandboxedExecutionRequest, SandboxedExecutionResult,
+    SuccessfullResultOutput,
 };
 
 use crate::install::InstallContractError;

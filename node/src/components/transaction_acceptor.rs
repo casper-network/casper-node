@@ -239,6 +239,7 @@ impl TransactionAcceptor {
                     let error = Error::parameter_failure(&block_header, parameter_failure);
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
+
                 let protocol_version = block_header.protocol_version();
                 let balance_handling = BalanceHandling::Available;
                 let proof_handling = ProofHandling::NoProofs;
@@ -857,16 +858,6 @@ impl TransactionAcceptor {
         };
         if let Err(error) = is_valid {
             return self.reject_transaction(effect_builder, *event_metadata, error);
-        }
-
-        // If this has been received from the speculative exec server, we just want to call the
-        // responder and finish.  Otherwise store the transaction and announce it if required.
-        if let Source::SpeculativeExec = event_metadata.source {
-            if let Some(responder) = event_metadata.maybe_responder {
-                return responder.respond(Ok(())).ignore();
-            }
-            error!("speculative exec source should always have a responder");
-            return Effects::new();
         }
 
         effect_builder

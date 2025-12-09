@@ -9,7 +9,7 @@ use rand::distributions::{Alphanumeric, DistString};
 #[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::Effects,
     BlockHash, Digest, Gas, InvalidTransaction, Transfer,
@@ -23,6 +23,7 @@ static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::ne
         Gas::zero(),
         Effects::new(),
         Messages::new(),
+        None,
         None,
     )
 });
@@ -43,9 +44,12 @@ pub struct SpeculativeExecutionResult {
     messages: Messages,
     /// Did the wasm execute successfully?
     error: Option<String>,
+    /// Bytes output of the execution
+    output: Option<Bytes>,
 }
 
 impl SpeculativeExecutionResult {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         block_hash: BlockHash,
         transfers: Vec<Transfer>,
@@ -54,6 +58,7 @@ impl SpeculativeExecutionResult {
         effects: Effects,
         messages: Messages,
         error: Option<String>,
+        output: Option<Bytes>,
     ) -> Self {
         SpeculativeExecutionResult {
             transfers,
@@ -63,6 +68,7 @@ impl SpeculativeExecutionResult {
             messages,
             error,
             block_hash,
+            output,
         }
     }
 
@@ -96,7 +102,21 @@ impl SpeculativeExecutionResult {
                 let count = rng.gen_range(16..128);
                 Some(Alphanumeric.sample_string(rng, count))
             },
+            output: if rng.gen() {
+                None
+            } else {
+                use casper_types::bytesrepr::Bytes;
+                Some(Bytes::from(vec![1, 2, 4, 5, 6, 7, 100]))
+            },
         }
+    }
+
+    pub fn error(&self) -> Option<&String> {
+        self.error.as_ref()
+    }
+
+    pub fn output(&self) -> Option<&Bytes> {
+        self.output.as_ref()
     }
 }
 
@@ -110,6 +130,7 @@ impl From<InvalidTransaction> for SpeculativeExecutionResult {
             messages: Default::default(),
             error: Some(format!("{}", invalid_transaction)),
             block_hash: Default::default(),
+            output: None,
         }
     }
 }
@@ -129,6 +150,7 @@ impl ToBytes for SpeculativeExecutionResult {
             + ToBytes::serialized_length(&self.messages)
             + ToBytes::serialized_length(&self.error)
             + ToBytes::serialized_length(&self.block_hash)
+            + ToBytes::serialized_length(&self.output)
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -138,7 +160,8 @@ impl ToBytes for SpeculativeExecutionResult {
         self.effects.write_bytes(writer)?;
         self.messages.write_bytes(writer)?;
         self.error.write_bytes(writer)?;
-        self.block_hash.write_bytes(writer)
+        self.block_hash.write_bytes(writer)?;
+        self.output.write_bytes(writer)
     }
 }
 
@@ -151,6 +174,7 @@ impl FromBytes for SpeculativeExecutionResult {
         let (messages, bytes) = Messages::from_bytes(bytes)?;
         let (error, bytes) = Option::<String>::from_bytes(bytes)?;
         let (block_hash, bytes) = BlockHash::from_bytes(bytes)?;
+        let (output, bytes) = Option::<Bytes>::from_bytes(bytes)?;
         Ok((
             SpeculativeExecutionResult {
                 transfers,
@@ -160,6 +184,7 @@ impl FromBytes for SpeculativeExecutionResult {
                 messages,
                 error,
                 block_hash,
+                output,
             },
             bytes,
         ))

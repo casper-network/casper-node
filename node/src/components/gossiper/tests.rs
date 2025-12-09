@@ -267,10 +267,8 @@ impl reactor::Reactor for Reactor {
             ),
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                is_speculative,
                 responder,
             }) => {
-                assert!(!is_speculative);
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source: Source::Client,
@@ -336,9 +334,7 @@ fn announce_transaction_received(
     transaction: &Transaction,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = transaction.clone();
-    |effect_builder: EffectBuilder<Event>| {
-        effect_builder.try_accept_transaction(txn, false).ignore()
-    }
+    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_transaction(txn).ignore()
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {

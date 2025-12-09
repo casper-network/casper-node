@@ -32,16 +32,14 @@ use crate::{
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
 
-use casper_binary_port::SpeculativeExecutionResult;
-use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
+use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_storage::{
     data_access_layer::{
         DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        TransferResult,
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig};
+use casper_types::{BlockHash, Chainspec, Digest, EraId, Key, ProtocolUpgradeConfig};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -555,44 +553,6 @@ pub(super) fn calculate_prune_eras(
     }
 
     Some(range.map(EraId::new).map(Key::EraInfo).collect())
-}
-
-pub(crate) fn spec_exec_from_transfer_result(
-    limit: Gas,
-    transfer_result: TransferResult,
-    block_hash: BlockHash,
-) -> SpeculativeExecutionResult {
-    let transfers = transfer_result.transfers().to_owned();
-    let consumed = limit;
-    let effects = transfer_result.effects().to_owned();
-    let messages = vec![];
-    let error_msg = transfer_result
-        .error()
-        .to_owned()
-        .map(|err| format!("{:?}", err));
-
-    SpeculativeExecutionResult::new(
-        block_hash, transfers, limit, consumed, effects, messages, error_msg,
-    )
-}
-
-pub(crate) fn spec_exec_from_wasm_v1_result(
-    wasm_v1_result: WasmV1Result,
-    block_hash: BlockHash,
-) -> SpeculativeExecutionResult {
-    let transfers = wasm_v1_result.transfers().to_owned();
-    let limit = wasm_v1_result.limit().to_owned();
-    let consumed = wasm_v1_result.consumed().to_owned();
-    let effects = wasm_v1_result.effects().to_owned();
-    let messages = wasm_v1_result.messages().to_owned();
-    let error_msg = wasm_v1_result
-        .error()
-        .to_owned()
-        .map(|err| format!("{:?}", err));
-
-    SpeculativeExecutionResult::new(
-        block_hash, transfers, limit, consumed, effects, messages, error_msg,
-    )
 }
 
 #[cfg(test)]
