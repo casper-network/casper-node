@@ -1722,7 +1722,9 @@ fn escrow() {
 }
 
 #[test]
-fn should_not_fail_without_account() {
+fn should_fail_without_account() {
+    // When transferred value is provided we fetch the underlying account, if global state doesn't
+    // hold it the execution should fail
     let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must get chainspec config");
     let executor = make_executor(&chainspec_config);
@@ -1749,6 +1751,7 @@ fn should_not_fail_without_account() {
         .with_state_hash(Digest::from_raw([0; 32]))
         .with_block_height(1)
         .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .with_transferred_value(1555)
         .build()
         .expect("should build");
 
