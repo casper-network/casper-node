@@ -224,6 +224,7 @@ impl TryFrom<u32> for CallError {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
+        #[allow(unreachable_patterns)]
         match value {
             CALLEE_ROLLED_BACK => Ok(Self::CalleeRolledBack),
             CALLEE_TRAPPED => Ok(Self::CalleeTrapped),
@@ -235,6 +236,10 @@ impl TryFrom<u32> for CallError {
             CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
             CALLEE_LOCKED_PACKAGE => Ok(Self::LockedPackage),
             CALLEE_REVERT_ERROR => Ok(Self::CalleeReverted),
+            CALLEE_NO_ACTIVE_CONTRACT => Ok(Self::NoActiveContract),
+            CALLEE_CODE_NOT_FOUND => Ok(Self::CodeNotFound),
+            CALLEE_ENTITY_NOT_FOUND => Ok(Self::EntityNotFound),
+            CALLEE_LOCKED_PACKAGE => Ok(Self::LockedPackage),
             _ => Err(()),
         }
     }

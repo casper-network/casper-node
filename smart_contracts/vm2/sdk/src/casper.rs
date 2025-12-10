@@ -223,7 +223,8 @@ pub(crate) fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
     if result_code == HOST_ERROR_SUCCESS {
         Ok(())
     } else {
-        Err(CallError::try_from(result_code).expect("Unexpected error code"))
+        Err(CallError::try_from(result_code)
+            .unwrap_or_else(|_| panic!("Unexpected error code: {}", result_code)))
     }
 }
 
