@@ -62,8 +62,6 @@ struct TraitMeta {
     abi_convention: Option<syn::Path>,
 }
 
-
-
 #[derive(Debug, FromMeta)]
 struct ImplTraitForContractMeta {
     /// Fully qualified path of the trait.

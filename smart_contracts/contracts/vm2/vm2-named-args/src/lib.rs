@@ -42,8 +42,7 @@ impl Contract {
 
     // Explicit Positional ABI with unit return
     #[casper(abi_convention = AbiConvention::Positional)]
-    pub fn positional_unit_no_args() {
-    }
+    pub fn positional_unit_no_args() {}
 }
 
 #[casper]
@@ -57,8 +56,7 @@ pub fn positional_export_inc(x: u32) -> u32 {
 
 // Default (Positional) export with unit return.
 #[casper(export)]
-pub fn positional_export_no_args_unit() {
-}
+pub fn positional_export_no_args_unit() {}
 
 // Named export
 #[casper(export, abi_convention = AbiConvention::Named)]
@@ -270,7 +268,10 @@ mod tests {
         let env = Arc::new(EnvironmentMock::new());
         env.add_expectation(ExpectedCall::expect_copy_input(&[]));
         env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo::default())));
-        env.add_expectation(ExpectedCall::expect_return(Some((0, None)), HOST_ERROR_SUCCESS));
+        env.add_expectation(ExpectedCall::expect_return(
+            Some((0, None)),
+            HOST_ERROR_SUCCESS,
+        ));
         with_env(env.clone(), || {
             let _ = run_expecting_panic(|| __casper_export_positional_unit_no_args());
         });
@@ -317,7 +318,10 @@ mod tests {
     fn test_positional_export_unit_ret_calls_ret_none() {
         let env = Arc::new(EnvironmentMock::new());
         env.add_expectation(ExpectedCall::expect_copy_input(&[]));
-        env.add_expectation(ExpectedCall::expect_return(Some((0, None)), HOST_ERROR_SUCCESS));
+        env.add_expectation(ExpectedCall::expect_return(
+            Some((0, None)),
+            HOST_ERROR_SUCCESS,
+        ));
         with_env(env.clone(), || {
             let _ = run_expecting_panic(|| __casper_export_positional_export_no_args_unit());
         });
