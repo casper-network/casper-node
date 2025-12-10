@@ -224,6 +224,7 @@ impl TryFrom<u32> for CallError {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
+        #[allow(unreachable_patterns)]
         match value {
             CALLEE_ROLLED_BACK => Ok(Self::CalleeRolledBack),
             CALLEE_TRAPPED => Ok(Self::CalleeTrapped),

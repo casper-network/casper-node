@@ -318,8 +318,6 @@ impl ExecutorV2 {
             execution_stack,
         } = execute_request;
 
-        let (entity_addr, source_purse) = get_purse_for_entity(&mut tracking_copy, caller_key)?;
-
         let (wasm_bytes, export_name) = {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
@@ -472,6 +470,8 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
+                            let (entity_addr, source_purse) =
+                                get_purse_for_entity(&mut tracking_copy, caller_key)?;
                             // TODO: consult w/ Michal re: charge timing
                             let gas_usage = GasUsage::new_from_limit(gas_limit);
 
@@ -551,6 +551,8 @@ impl ExecutorV2 {
                         })? {
                             Some(StoredValue::ByteCode(bytecode)) => {
                                 if transferred_value != 0 {
+                                    let (entity_addr, source_purse) =
+                                        get_purse_for_entity(&mut tracking_copy, caller_key)?;
                                     // TODO: consult w/ Michal re: charge timing
                                     let gas_usage = GasUsage::new_from_limit(gas_limit);
 
