@@ -45,7 +45,6 @@ cfg_if::cfg_if! {
     }
     else {
         pub fn set_panic_hook() {
-            // TODO: What to do?
         }
     }
 }
