@@ -62,16 +62,7 @@ struct TraitMeta {
     abi_convention: Option<syn::Path>,
 }
 
-#[derive(Debug, FromMeta)]
-enum ItemFnMeta {
-    Export,
-}
 
-#[derive(Debug, FromMeta)]
-struct FnCommonMeta {
-    #[darling(default)]
-    abi_convention: Option<syn::Path>,
-}
 
 #[derive(Debug, FromMeta)]
 struct ImplTraitForContractMeta {
@@ -149,10 +140,33 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
             generate_impl_for_contract(entry_points)
         }
     } else if let Ok(func) = syn::parse::<ItemFn>(item.clone()) {
-        let func_meta = ItemFnMeta::from_list(&attr_args).unwrap();
-        let fn_common = FnCommonMeta::from_list(&attr_args).unwrap();
-        match func_meta {
-            ItemFnMeta::Export => generate_export_function(&func, fn_common.abi_convention),
+        let mut is_export = false;
+        let mut abi_convention: Option<syn::Path> = None;
+        for meta in &attr_args {
+            match meta {
+                ast::NestedMeta::Meta(syn::Meta::Path(path)) => {
+                    if path.is_ident("export") {
+                        is_export = true;
+                    }
+                }
+                ast::NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
+                    if nv.path.is_ident("abi_convention") {
+                        if let syn::Expr::Path(expr_path) = &nv.value {
+                            abi_convention = Some(expr_path.path.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if is_export {
+            generate_export_function(&func, abi_convention)
+        } else {
+            let err = syn::Error::new(
+                Span::call_site(),
+                "Unsupported function attribute; expected #[casper(export ...)]",
+            );
+            TokenStream::from(err.to_compile_error())
         }
     } else {
         let err = syn::Error::new(
