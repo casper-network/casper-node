@@ -63,11 +63,6 @@ struct TraitMeta {
 }
 
 #[derive(Debug, FromMeta)]
-enum ItemFnMeta {
-    Export,
-}
-
-#[derive(Debug, FromMeta)]
 struct ImplTraitForContractMeta {
     /// Fully qualified path of the trait.
     #[darling(default)]
@@ -143,9 +138,33 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
             generate_impl_for_contract(entry_points)
         }
     } else if let Ok(func) = syn::parse::<ItemFn>(item.clone()) {
-        let func_meta = ItemFnMeta::from_list(&attr_args).unwrap();
-        match func_meta {
-            ItemFnMeta::Export => generate_export_function(&func),
+        let mut is_export = false;
+        let mut abi_convention: Option<syn::Path> = None;
+        for meta in &attr_args {
+            match meta {
+                ast::NestedMeta::Meta(syn::Meta::Path(path)) => {
+                    if path.is_ident("export") {
+                        is_export = true;
+                    }
+                }
+                ast::NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
+                    if nv.path.is_ident("abi_convention") {
+                        if let syn::Expr::Path(expr_path) = &nv.value {
+                            abi_convention = Some(expr_path.path.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if is_export {
+            generate_export_function(&func, abi_convention)
+        } else {
+            let err = syn::Error::new(
+                Span::call_site(),
+                "Unsupported function attribute; expected #[casper(export ...)]",
+            );
+            TokenStream::from(err.to_compile_error())
         }
     } else {
         let err = syn::Error::new(
@@ -248,7 +267,7 @@ fn process_casper_message_for_struct(
     .into()
 }
 
-fn generate_export_function(func: &ItemFn) -> TokenStream {
+fn generate_export_function(func: &ItemFn, abi_convention: Option<syn::Path>) -> TokenStream {
     let func_name = &func.sig.ident;
     let mut arg_names = Vec::new();
     let mut arg_types = Vec::new();
@@ -271,6 +290,42 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
         syn::ReturnType::Type(_, ty) => quote! { #ty },
     };
 
+    let resolve_abi_convention = match abi_convention {
+        Some(convention_path) => quote! { #convention_path },
+        None => quote! { casper_contract_sdk::serializers::AbiConvention::Positional },
+    };
+
+    // Generate return handling tokens
+    let handle_ret = match &func.sig.output {
+        syn::ReturnType::Default => {
+            quote! {
+                match resolved_abi_convention {
+                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                        casper_contract_sdk::casper::ret(flags, None)
+                    }
+                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                        let ret_bytes = casper_contract_sdk::serializers::borsh::to_vec(&casper_contract_sdk::compat::types::CLValue::UNIT).expect("Failed to serialize return CLValue");
+                        casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
+                    }
+                }
+            }
+        }
+        syn::ReturnType::Type(_, _ty) => {
+            quote! {
+                let ret_bytes = match resolved_abi_convention {
+                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                        casper_contract_sdk::serializers::borsh::to_vec(&_ret).expect("Failed to serialize return value")
+                    }
+                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                        let ret_clvalue = casper_contract_sdk::compat::types::CLValue::from_t(&_ret).expect("Failed to convert return value to CLValue");
+                        casper_contract_sdk::serializers::borsh::to_vec(&ret_clvalue).expect("Failed to serialize return CLValue")
+                    }
+                };
+                casper_contract_sdk::casper::ret(flags, Some(&ret_bytes))
+            }
+        }
+    };
+
     let _ctor_name = format_ident!("{func_name}_ctor");
 
     let exported_func_name = format_ident!("__casper_export_{func_name}");
@@ -288,9 +343,38 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
             struct Arguments {
                 #(#arg_names: #arg_types,)*
             }
+
+            let mut flags = casper_contract_sdk::common::flags::ReturnFlags::empty();
             let input = casper_contract_sdk::prelude::casper::copy_input();
-            let args: Arguments = casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+            let resolved_abi_convention = #resolve_abi_convention;
+            let args: Arguments = {
+                match resolved_abi_convention {
+                    casper_contract_sdk::serializers::AbiConvention::Positional => {
+                        casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap()
+                    }
+                    casper_contract_sdk::serializers::AbiConvention::Named => {
+                        let runtime_args: casper_contract_sdk::compat::types::RuntimeArgs =
+                            casper_contract_sdk::serializers::borsh::from_slice(&input).unwrap();
+                        #(
+                            let #arg_names: #arg_types = {
+                                let cl_value = runtime_args.get(stringify!(#arg_names)).unwrap_or_else(|| panic!(concat!("Failed to get named argument \"", stringify!(#arg_names), "\"")));
+                                cl_value.to_t::<#arg_types>().unwrap_or_else(|error| {
+                                    panic!(concat!("Failed to convert named argument \"", stringify!(#arg_names), "\": {}"), error)
+                                })
+                            };
+                        )*
+                        Arguments {
+                            #(
+                                #arg_names,
+                            )*
+                        }
+                    }
+                }
+            };
+
             let _ret = #func_name(#(args.#arg_names,)*);
+
+            #handle_ret
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -324,7 +408,7 @@ fn generate_export_function(func: &ItemFn) -> TokenStream {
                     },
                     )*
                 ],
-                abi_convention: casper_contract_sdk::serializers::AbiConvention::Positional, // todo
+                abi_convention: #resolve_abi_convention,
                 result_decl: {
                     casper_contract_sdk::abi::collector::AbiType {
                         type_name: core::any::type_name::<#ret>,
@@ -511,7 +595,7 @@ fn generate_impl_for_contract(mut entry_points: ItemImpl) -> TokenStream {
                             Some(quote! {
                                 match #resolve_abi_convention {
                                     casper_contract_sdk::serializers::AbiConvention::Positional => {
-                                        // Do nothing as lack of ret is synonymous with returning empty bytes (unit serializes to empty buffer)
+                                        casper_contract_sdk::casper::ret(flags, None)
                                     }
                                     casper_contract_sdk::serializers::AbiConvention::Named => {
                                         // For a named ABI convention we'd always ret with the bytes of unit CLValue.
@@ -1204,7 +1288,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             Some(quote! {
                                 match #resolve_abi_convention {
                                     casper_contract_sdk::serializers::AbiConvention::Positional => {
-                                        // Do nothing as lack of ret is synonymous with returning empty bytes (unit serializes to empty buffer)
+                                        casper_contract_sdk::casper::ret(flags, None)
                                     }
                                     casper_contract_sdk::serializers::AbiConvention::Named => {
                                         // For a named ABI convention we'd always ret with the bytes of unit CLValue.
