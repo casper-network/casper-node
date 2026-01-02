@@ -892,7 +892,8 @@ impl TestScenario {
                     | TestScenario::FromClientRepeatedValidTransaction(_)
                     | TestScenario::FromClientValidTransaction(_)
                     | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
-                    | TestScenario::FromClientSignedByAdmin(..) => true,
+                    | TestScenario::FromClientSignedByAdmin(..)
+                    | TestScenario::VmCasperV2ByPackageHash => true,
             TestScenario::FromPeerInvalidTransaction(_)
                     | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientInsufficientBalance(_)
@@ -944,8 +945,7 @@ impl TestScenario {
                     | TestScenario::WasmTransactionWithTooBigPayment
                     | TestScenario::WasmDeployWithTooBigPayment
                     | TestScenario::RedelegateExceedingMaximumDelegation { .. }
-                    | TestScenario::DelegateExceedingMaximumDelegation { .. }
-                    | TestScenario::VmCasperV2ByPackageHash => false,
+                    | TestScenario::DelegateExceedingMaximumDelegation { .. } => false,
             TestScenario::V1ByPackage(hash_or_name, _, _, scenario, ..) => {
                 match hash_or_name {
                     HashOrName::Hash => match scenario {
@@ -1583,8 +1583,7 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::WasmTransactionWithTooBigPayment
             | TestScenario::WasmDeployWithTooBigPayment
             | TestScenario::RedelegateExceedingMaximumDelegation { .. }
-            | TestScenario::DelegateExceedingMaximumDelegation { .. }
-            | TestScenario::VmCasperV2ByPackageHash => {
+            | TestScenario::DelegateExceedingMaximumDelegation { .. } => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -1688,7 +1687,8 @@ async fn run_transaction_acceptor_without_timeout(
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromClientValidTransaction(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
-            | TestScenario::FromClientSignedByAdmin(_) => {
+            | TestScenario::FromClientSignedByAdmin(_)
+            | TestScenario::VmCasperV2ByPackageHash => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -2977,17 +2977,9 @@ async fn should_reject_native_redelegate_with_exceeding_amount() {
 }
 
 #[tokio::test]
-async fn foobar() {
+async fn should_accept_vm2_call_by_package_hash() {
     let result = run_transaction_acceptor(TestScenario::VmCasperV2ByPackageHash).await;
-    assert!(
-        matches!(
-            result,
-            Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-                InvalidTransactionV1::UnsupportedInvocationTarget { id: Some(_) }
-            )))
-        ),
-        "{result:?}"
-    );
+    assert!(result.is_ok(), "{result:?}");
 }
 
 #[tokio::test]

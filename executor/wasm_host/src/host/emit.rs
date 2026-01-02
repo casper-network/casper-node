@@ -210,6 +210,8 @@ fn context_to_entity_addr(callee: &Key) -> EntityAddr {
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
         Key::Hash(hash_addr) => EntityAddr::SmartContract(*hash_addr),
         Key::AddressableEntity(smart_contract_addr) => *smart_contract_addr,
+        //#TODO not sure if this is correct... The caller should be the contract IMHO
+        Key::Package(package_addr) => EntityAddr::SmartContract(package_addr.value()),
         _ => {
             // This should never happen, as the caller is always an account or a smart contract.
             panic!("Unexpected callee variant: {:?}", callee)

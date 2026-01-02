@@ -7,7 +7,7 @@ use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
-        ExecuteWithProviderResult, ExecutionKind,
+        ExecuteWithProviderResult, ExecutionKind, PackagePointer,
     },
     install::{
         InstallContractError, InstallContractRequest, InstallContractRequestBuilder,
@@ -148,7 +148,7 @@ pub(crate) enum InvalidRequest {
     ExpectedTransferredValue,
     #[error("Expected V2 runtime")]
     ExpectedV2Runtime,
-    #[error("Invalida input")]
+    #[error("Invalid input")]
     InvalidaInput,
 }
 
@@ -382,8 +382,38 @@ impl WasmV2Request {
                         id: TransactionInvocationTarget::ByHash(smart_contract_addr),
                         entry_point,
                     } => ExecutionKind::Stored {
-                        address: smart_contract_addr,
+                        package_pointer: PackagePointer::HashAddr(smart_contract_addr),
                         entry_point: entry_point.clone(),
+                        version: None,
+                        protocol_version_major: None,
+                    },
+                    Target::Stored {
+                        id:
+                            TransactionInvocationTarget::ByPackageHash {
+                                addr,
+                                version,
+                                protocol_version_major,
+                            },
+                        entry_point,
+                    } => ExecutionKind::Stored {
+                        package_pointer: PackagePointer::HashAddr(addr.value()),
+                        entry_point: entry_point.clone(),
+                        version,
+                        protocol_version_major,
+                    },
+                    Target::Stored {
+                        id:
+                            TransactionInvocationTarget::ByPackageName {
+                                name,
+                                version,
+                                protocol_version_major,
+                            },
+                        entry_point,
+                    } => ExecutionKind::Stored {
+                        package_pointer: PackagePointer::NamedKeyName(name),
+                        entry_point: entry_point.clone(),
+                        version,
+                        protocol_version_major,
                     },
                     Target::Stored { id, entry_point } => {
                         todo!("Unsupported target {entry_point} {id:?}")

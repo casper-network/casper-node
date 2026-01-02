@@ -1,0 +1,13 @@
+[package]
+name = "vm2-store-named-key"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+casper-executor-wasm-common = { path = "../../../../executor/wasm_common" }
+casper-contract-sdk = { path = "../../../vm2/sdk" }
+casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }

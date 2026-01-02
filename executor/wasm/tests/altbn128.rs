@@ -7,7 +7,9 @@ use casper_executor_wasm::testing::{
 };
 
 use casper_executor_wasm::{chainspec_config, chainspec_config::ChainspecConfig};
-use casper_executor_wasm_interface::executor::{ExecuteWithProviderError, ExecutionKind};
+use casper_executor_wasm_interface::executor::{
+    ExecuteWithProviderError, ExecutionKind, PackagePointer,
+};
 use casper_storage::global_state::state::CommitProvider;
 use once_cell::sync::Lazy;
 
@@ -174,8 +176,10 @@ fn run_pairing_endpoint_test<T: BorshSerialize>(
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "pairing".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_serialized_input(input)
         .expect("expected serialized input to be correct")

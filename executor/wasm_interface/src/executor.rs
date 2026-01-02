@@ -411,6 +411,7 @@ pub enum GlobalStateMethods {
     GetBalance,
     GetInfo,
     Create,
+    StorePackageUnderKey,
 }
 
 /// Available options for interacting with functions interacting
@@ -504,6 +505,12 @@ impl From<FFIMenu> for u32 {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackagePointer {
+    HashAddr(HashAddr),
+    NamedKeyName(String),
+}
+
 /// Target for Wasm execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
@@ -511,10 +518,15 @@ pub enum ExecutionKind {
     SessionBytes(Bytes),
     /// Execute a stored contract by its address.
     Stored {
-        /// Address of the contract's package.
-        address: HashAddr,
+        /// Either Address of the contract's package or name of the NamedKey which holds the
+        /// package key.
+        package_pointer: PackagePointer,
         /// Entry point to call.
         entry_point: String,
+        /// version of the contract, `latest matching` if None
+        version: Option<u32>,
+        /// version of the protocol version, `latest matching` if None
+        protocol_version_major: Option<u32>,
     },
     /// Interact with the system.
     System(SystemContractMenu),
@@ -629,6 +641,7 @@ enum FFIPrimitiveValue {
     GlobalStateGetBalance = 403,
     GlobalStateGetInfo = 404,
     GlobalStateCreate = 405,
+    GlobalStateStorePackageUnderKey = 406,
     /* Control values */
     ControlCall = 500,
     ControlUpgrade = 501,
@@ -680,6 +693,9 @@ impl From<&FFIPrimitiveValue> for FFIMenu {
             }
             FFIPrimitiveValue::GlobalStateGetInfo => Self::GlobalState(GlobalStateMethods::GetInfo),
             FFIPrimitiveValue::GlobalStateCreate => Self::GlobalState(GlobalStateMethods::Create),
+            FFIPrimitiveValue::GlobalStateStorePackageUnderKey => {
+                Self::GlobalState(GlobalStateMethods::StorePackageUnderKey)
+            }
             FFIPrimitiveValue::ControlCall => Self::Control(ControlMethods::Call),
             FFIPrimitiveValue::ControlUpgrade => Self::Control(ControlMethods::Upgrade),
             FFIPrimitiveValue::IOReturn => Self::IO(IOMethods::Return),
@@ -726,6 +742,7 @@ impl From<&FFIMenu> for FFIPrimitiveValue {
                 GlobalStateMethods::GetBalance => Self::GlobalStateGetBalance,
                 GlobalStateMethods::GetInfo => Self::GlobalStateGetInfo,
                 GlobalStateMethods::Create => Self::GlobalStateCreate,
+                GlobalStateMethods::StorePackageUnderKey => Self::GlobalStateStorePackageUnderKey,
             },
             FFIMenu::Control(control_methods) => match control_methods {
                 ControlMethods::Call => Self::ControlCall,

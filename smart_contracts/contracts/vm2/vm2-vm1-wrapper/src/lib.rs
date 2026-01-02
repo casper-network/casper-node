@@ -27,6 +27,8 @@ impl Vm1Wrapper {
             0,
             "counter_get",
             &EMPTY_RUNTIME_ARGS,
+            None,
+            None,
         );
         log!("counter_get_result_before: {:?}", counter_get_result_1);
         let _ = host_error.expect("No error 1");
@@ -36,6 +38,8 @@ impl Vm1Wrapper {
             0,
             "counter_inc",
             &EMPTY_RUNTIME_ARGS,
+            None,
+            None,
         );
         log!("inc_result {:?}", inc_result_1);
         assert_eq!(inc_result_1, Some(CL_VALUE_UNIT_BYTES.to_vec()));
@@ -46,6 +50,8 @@ impl Vm1Wrapper {
             0,
             "counter_get",
             &EMPTY_RUNTIME_ARGS,
+            None,
+            None,
         );
         let _ = host_error.expect("No error 3");
         log!("counter_get_result_after: {:?}", counter_get_result_2);
@@ -56,6 +62,8 @@ impl Vm1Wrapper {
             0,
             "counter_inc",
             &EMPTY_RUNTIME_ARGS,
+            None,
+            None,
         );
         log!("inc_result {:?}", inc_result_2);
         assert_eq!(inc_result_2, Some(CL_VALUE_UNIT_BYTES.to_vec()));
@@ -66,6 +74,8 @@ impl Vm1Wrapper {
             0,
             "counter_get",
             &EMPTY_RUNTIME_ARGS,
+            None,
+            None,
         );
         let _ = host_error.expect("No error 3");
         log!("counter_get_result_after: {:?}", counter_get_result_3);

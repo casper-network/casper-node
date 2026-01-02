@@ -1,19 +1,24 @@
 mod asertions;
 mod utils;
+
 use asertions::{
     ExecResultCost, PublicKeyBalanceChange, PublicKeyTotalMeetsAvailable, TotalSupplyChange,
     TransactionFailure, TransactionSuccessful,
 };
 use casper_types::{
-    testing::TestRng, FeeHandling, Gas, PricingMode, PublicKey, RefundHandling, TimeDiff,
-    Transaction, U512,
+    bytesrepr::{Bytes, ToBytes},
+    execution::{RetValue, TransformKindV2},
+    testing::TestRng,
+    EntityAddr, ExecutionInfo, FeeHandling, Gas, Key, PricingHandling, PricingMode, PublicKey,
+    RefundHandling, StoredValue, TimeDiff, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionRuntimeParams, TransactionV1Config, U512,
 };
 use num_rational::Ratio;
 use utils::{build_wasm_transction, RunUntilCondition, TestScenarioBuilder};
 
 use crate::{
     reactor::main_reactor::tests::{
-        transaction_scenario::asertions::BalanceChange,
+        transaction_scenario::asertions::{BalanceChange, ExecutionResultHasRet},
         transactions::{
             invalid_wasm_txn, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY, BOB_SECRET_KEY,
             CHARLIE_PUBLIC_KEY, MIN_GAS_PRICE,
@@ -22,6 +27,7 @@ use crate::{
     },
     testing::LARGE_WASM_LANE_ID,
     types::transaction::transaction_v1_builder::TransactionV1Builder,
+    utils::RESOURCES_PATH,
 };
 
 #[tokio::test]
@@ -318,4 +324,864 @@ async fn should_not_refund_erroneous_wasm_burn_fixed() {
             gas_limit_y,
         ))
         .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_can_be_called_using_by_package_hash() {
+    let module_bytes = read_wasm("vm2_upgradable.wasm");
+    let mut rng = TestRng::new();
+    let builder = TestScenarioBuilder::new().with_enable_vm2(true);
+
+    let mut test_scenario = builder.build(&mut rng).await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            10_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    let execution_infos = test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let package_hash = peel_package_hash_info(execution_infos);
+
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByHash(package_hash),
+            "get",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes(10_u8.to_bytes().unwrap().into()),
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_can_be_called_using_by_package_hash_with_version() {
+    let module_bytes = read_wasm("vm2_upgradable.wasm");
+    let mut rng = TestRng::new();
+    let builder = TestScenarioBuilder::new().with_enable_vm2(true);
+
+    let mut test_scenario = builder.build(&mut rng).await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            10_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    let execution_infos = test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let package_hash = peel_package_hash_info(execution_infos);
+
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(1),
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "get",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes(10_u8.to_bytes().unwrap().into()),
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_calling_by_hash_nonexistent_fails() {
+    let module_bytes = read_wasm("vm2_upgradable.wasm");
+    let mut rng = TestRng::new();
+    let builder = TestScenarioBuilder::new().with_enable_vm2(true);
+
+    let mut test_scenario = builder.build(&mut rng).await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            10_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    let execution_infos = test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let package_hash = peel_package_hash_info(execution_infos);
+
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(100), //Nonexistent version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "get",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "no active contract",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_calling_by_hash_after_upgrade() {
+    let module_bytes = read_wasm("vm2_upgradable.wasm");
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_enable_vm2(true)
+        .with_transaction_v1_config(TransactionV1Config::very_big_wasm_lane())
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            0_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    let execution_infos = test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let package_hash = peel_package_hash_info(execution_infos);
+
+    let new_code = Bytes::from(read_wasm("vm2_upgradable_v2.wasm"));
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: None,
+                protocol_version_major: None,
+            },
+            "perform_upgrade",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            new_code.to_bytes().unwrap().into(),
+        ))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(2), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes("v2".to_bytes().unwrap().into()),
+        ))
+        .await;
+
+    // The old version (1) should be disabled by the upgrade
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(1), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "no active contract",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_calling_by_name_after_upgrade() {
+    let module_bytes = read_wasm("vm2_upgradable_storing_package.wasm");
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_enable_vm2(true)
+        .with_transaction_v1_config(TransactionV1Config::very_big_wasm_lane())
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            0_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+
+    let new_code = Bytes::from(read_wasm("vm2_upgradable_v2.wasm"));
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: None,
+                protocol_version_major: None,
+            },
+            "perform_upgrade",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            new_code.to_bytes().unwrap().into(),
+        ))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: Some(2), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes("v2".to_bytes().unwrap().into()),
+        ))
+        .await;
+    // The old version (1) should be disabled by the upgrade
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: Some(1), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "no active contract",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_calling_by_name_with_addressable_entity_after_upgrade() {
+    let module_bytes = read_wasm("vm2_upgradable_storing_package.wasm");
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_addressable_entity(true)
+        .with_enable_vm2(true)
+        .with_transaction_v1_config(TransactionV1Config::very_big_wasm_lane())
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            0_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+
+    let new_code = Bytes::from(read_wasm("vm2_upgradable_v2.wasm"));
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: None,
+                protocol_version_major: None,
+            },
+            "perform_upgrade",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            new_code.to_bytes().unwrap().into(),
+        ))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: Some(2), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes("v2".to_bytes().unwrap().into()),
+        ))
+        .await;
+
+    // The old version (1) should be disabled by the upgrade
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageName {
+                name: "package".to_string(),
+                version: Some(1), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "no active contract",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn vm2_contract_calling_by_hash_with_addressable_entity_after_upgrade() {
+    let module_bytes = read_wasm("vm2_upgradable.wasm");
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_addressable_entity(true)
+        .with_enable_vm2(true)
+        .with_transaction_v1_config(TransactionV1Config::very_big_wasm_lane())
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            module_bytes.into(),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_entry_point(TransactionEntryPoint::Custom("new".to_string()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            0_u8.to_bytes().unwrap().into(),
+        ))
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    let execution_infos = test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let package_hash = peel_package_hash_info(execution_infos);
+
+    let new_code = Bytes::from(read_wasm("vm2_upgradable_v2.wasm"));
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: None,
+                protocol_version_major: None,
+            },
+            "perform_upgrade",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(
+            new_code.to_bytes().unwrap().into(),
+        ))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(2), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+    test_scenario
+        .assert(ExecutionResultHasRet::new(
+            hash,
+            RetValue::Bytes("v2".to_bytes().unwrap().into()),
+        ))
+        .await;
+
+    // The old version (1) should be disabled by the upgrade
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByPackageHash {
+                addr: package_hash.into(),
+                version: Some(1), //Existing version
+                protocol_version_major: Some(test_scenario.get_protocol_version().destructure().0),
+            },
+            "version",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+                bundle_data: None,
+            },
+        )
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_transaction_args(casper_types::TransactionArgs::Bytesrepr(vec![].into()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "no active contract",
+        ))
+        .await;
+}
+
+fn peel_package_hash_info(execution_infos: Vec<ExecutionInfo>) -> [u8; 32] {
+    let ei = execution_infos
+        .first()
+        .expect("Expecting at least one ExecutionInfo");
+    let er = ei
+        .execution_result
+        .clone()
+        .expect("Expected execution result");
+    match er {
+        casper_types::execution::ExecutionResult::V1(_) => {
+            panic!("Shouldn't happen")
+        }
+        casper_types::execution::ExecutionResult::V2(execution_result_v2) => {
+            let effects = execution_result_v2.effects;
+            let transforms = effects.transforms();
+            *transforms
+                .iter()
+                .filter_map(|el| {
+                    if matches!(
+                        el.kind(),
+                        TransformKindV2::Write(StoredValue::SmartContract(_))
+                    ) || matches!(
+                        el.kind(),
+                        TransformKindV2::Write(StoredValue::ContractPackage(_))
+                    ) {
+                        Some(match el.key() {
+                            Key::Hash(package_hash) => *package_hash,
+                            Key::AddressableEntity(EntityAddr::SmartContract(package_hash)) => {
+                                *package_hash
+                            }
+                            Key::Package(package_hash) => package_hash.value(),
+                            _ => {
+                                todo!()
+                            }
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<[u8; 32]>>()
+                .first()
+                .expect("Expected to find key under which the package was stored")
+        }
+    }
+}
+
+fn read_wasm(file_name: &str) -> Vec<u8> {
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join(file_name);
+    std::fs::read(contract_file).expect("couldn't read module bytes")
 }

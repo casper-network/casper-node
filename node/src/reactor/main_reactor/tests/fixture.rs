@@ -176,11 +176,13 @@ impl TestFixture {
             transaction_v1_override,
             vm_casper_v2,
             node_config_override,
+            addressable_entity_enabled,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
         }
         info!(?block_gas_limit);
+        chainspec.core_config.addressable_entity_enabled = addressable_entity_enabled;
         chainspec.core_config.minimum_block_time = minimum_block_time;
         chainspec.core_config.minimum_era_height = minimum_era_height;
         chainspec.core_config.unbonding_delay = unbonding_delay;

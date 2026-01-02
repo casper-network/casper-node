@@ -26,7 +26,7 @@ use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{
     executor::{
         AuctionMethods, ExecuteError, ExecuteRequest, ExecuteWithProviderError, ExecutionKind,
-        FFIMenu, MintMethods,
+        FFIMenu, MintMethods, PackagePointer,
     },
     install::{InstallContractError, InstallContractRequest},
 };
@@ -113,8 +113,10 @@ fn vm2_should_return_output_to_caller() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "entry_point_without_state_with_args_and_output".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -176,8 +178,10 @@ fn vm2_rollback_should_return_to_caller_with_data() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "emit_rollback_with_data".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -240,8 +244,10 @@ fn vm2_revert_should_abort_whole_stack() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "emit_revert".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -942,8 +948,10 @@ fn counter() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "increment".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -974,8 +982,10 @@ fn counter() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "get".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -1035,8 +1045,10 @@ fn counter() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_hash.value(),
+            package_pointer: PackagePointer::HashAddr(contract_hash.value()),
             entry_point: "decrement".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -1158,8 +1170,10 @@ fn upgradable() {
     let version_before_upgrade = {
         let execute_request = base_execute_builder(&chainspec_config)
             .with_execution_kind(ExecutionKind::Stored {
-                address: upgradable_address,
+                package_pointer: PackagePointer::HashAddr(upgradable_address),
                 entry_point: "version".to_string(),
+                version: None,
+                protocol_version_major: None,
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1183,8 +1197,10 @@ fn upgradable() {
         // Increment the value
         let execute_request = base_execute_builder(&chainspec_config)
             .with_execution_kind(ExecutionKind::Stored {
-                address: upgradable_address,
+                package_pointer: PackagePointer::HashAddr(upgradable_address),
                 entry_point: "increment".to_string(),
+                version: None,
+                protocol_version_major: None,
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1209,8 +1225,10 @@ fn upgradable() {
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: upgradable_address,
+            package_pointer: PackagePointer::HashAddr(upgradable_address),
             entry_point: "perform_upgrade".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
@@ -1231,8 +1249,10 @@ fn upgradable() {
     let version_after_upgrade = {
         let execute_request = base_execute_builder(&chainspec_config)
             .with_execution_kind(ExecutionKind::Stored {
-                address: upgradable_address,
+                package_pointer: PackagePointer::HashAddr(upgradable_address),
                 entry_point: "version".to_string(),
+                version: None,
+                protocol_version_major: None,
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1256,8 +1276,10 @@ fn upgradable() {
         // Increment the value
         let execute_request = base_execute_builder(&chainspec_config)
             .with_execution_kind(ExecutionKind::Stored {
-                address: upgradable_address,
+                package_pointer: PackagePointer::HashAddr(upgradable_address),
                 entry_point: "increment_by".to_string(),
+                version: None,
+                protocol_version_major: None,
             })
             .with_serialized_input((10u64,))
             .expect("expected serialized input to be correct")
@@ -1398,8 +1420,10 @@ fn backwards_compatibility() {
 
     let call_request = base_execute_builder(&chainspec_config)
         .with_execution_kind(ExecutionKind::Stored {
-            address: proxy_address,
+            package_pointer: PackagePointer::HashAddr(proxy_address),
             entry_point: "perform_test".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_input(Bytes::new())
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1473,8 +1497,10 @@ fn non_existing_smart_contract_does_not_panic() {
     let non_existing_address = [255; 32];
     let execute_request = base_execute_builder(&chainspec_config)
         .with_execution_kind(ExecutionKind::Stored {
-            address: non_existing_address,
+            package_pointer: PackagePointer::HashAddr(non_existing_address),
             entry_point: "non_existing".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_input(Bytes::new())
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1530,8 +1556,10 @@ fn casper_return_writes_to_execution_journal() {
     // Execute the contract to trigger the return
     let execute_request = base_execute_builder(&chainspec_config)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "ret".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_input(Bytes::new())
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1621,8 +1649,10 @@ fn casper_return_fails_if_contract_uses_unsupported_flags() {
     // Execute the contract to trigger the return
     let execute_request = base_execute_builder(&chainspec_config)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "ret_faulty_flags".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_input(Bytes::new())
         .with_gas_limit(DEFAULT_GAS_LIMIT)
@@ -1692,8 +1722,10 @@ fn escrow() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: *contract_hash,
+            package_pointer: PackagePointer::HashAddr(*contract_hash),
             entry_point: "deposit_tokens".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_serialized_input(())
         .expect("expected serialized input to be correct")
@@ -1818,8 +1850,10 @@ fn supports_named_args_convention() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: *contract_hash,
+            package_pointer: PackagePointer::HashAddr(*contract_hash),
             entry_point: "deposit_tokens".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_serialized_input(())
         .unwrap()
@@ -1990,8 +2024,10 @@ fn installing_contract_should_produce_system_messages_after_upgrade() {
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: upgradable_address,
+            package_pointer: PackagePointer::HashAddr(upgradable_address),
             entry_point: "perform_upgrade".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_serialized_input((new_code,))
@@ -2116,8 +2152,10 @@ fn calling_upgrade_contract_should_produce_ret_and_call_result() {
     let execute_request = base_execute_builder(&chainspec_config)
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: upgradable_address,
+            package_pointer: PackagePointer::HashAddr(upgradable_address),
             entry_point: "perform_upgrade".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
         .with_serialized_input((new_code,))
@@ -2291,8 +2329,10 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_execution_kind(ExecutionKind::Stored {
-            address: *caller_create_result.smart_contract_addr(),
+            package_pointer: PackagePointer::HashAddr(*caller_create_result.smart_contract_addr()),
             entry_point: "inc_and_get".to_string(),
+            version: None,
+            protocol_version_major: None,
         })
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))

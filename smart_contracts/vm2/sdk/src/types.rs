@@ -161,11 +161,11 @@ impl<T: BorshSerialize + BorshDeserialize> NamedKey<T> {
 
     pub fn write(&self, value: T) {
         let bytes = borsh::to_vec(&value).unwrap();
-        casper::write(Keyspace::NamedKey(self.name), &bytes).unwrap();
+        casper::write(Keyspace::NamedValue(self.name), &bytes).unwrap();
     }
 
     pub fn read(&self) -> Option<T> {
-        let bytes = casper::read_into_vec(Keyspace::NamedKey(self.name)).ok()??;
+        let bytes = casper::read_into_vec(Keyspace::NamedValue(self.name)).ok()??;
         Some(borsh::from_slice(&bytes).unwrap())
     }
 }
@@ -354,6 +354,7 @@ pub enum GlobalStateFunctionOption {
     GetBalance = 403,
     GetInfo = 404,
     Create = 405,
+    StorePackageUnderKey = 406,
 }
 
 impl From<GlobalStateFunctionOption> for u32 {
@@ -378,6 +379,8 @@ impl TryFrom<u32> for GlobalStateFunctionOption {
             Ok(GlobalStateFunctionOption::GetInfo)
         } else if value == 405 {
             Ok(GlobalStateFunctionOption::Create)
+        } else if value == 406 {
+            Ok(GlobalStateFunctionOption::StorePackageUnderKey)
         } else {
             Err(())
         }

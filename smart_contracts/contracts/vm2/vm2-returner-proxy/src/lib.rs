@@ -22,7 +22,7 @@ impl ReturnerProxyContract {
             "Proxy trying to call do_return, address: {:?}",
             self.address
         ));
-        let (data, res) = casper::casper_call(&self.address, 0, "do_return", &[]);
+        let (data, res) = casper::casper_call(&self.address, 0, "do_return", &[], None, None);
         res.unwrap();
         borsh::from_slice(&data.unwrap()).unwrap()
     }
@@ -32,6 +32,6 @@ impl ReturnerProxyContract {
             "Proxy trying to call do_not_return, address: {:?}",
             self.address
         ));
-        _ = casper::casper_call(&self.address, 0, "do_not_return", &[]);
+        _ = casper::casper_call(&self.address, 0, "do_not_return", &[], None, None);
     }
 }

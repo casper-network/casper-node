@@ -37,15 +37,15 @@ const TRANSACTION_COUNT_INDEX: usize = 4;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct TransactionLaneDefinition {
     /// The lane identifier
-    pub id: u8,
+    id: u8,
     /// The maximum length of a transaction in bytes
-    pub max_transaction_length: u64,
+    max_transaction_length: u64,
     /// The max args length size in bytes
-    pub max_transaction_args_length: u64,
+    max_transaction_args_length: u64,
     /// The maximum gas limit
-    pub max_transaction_gas_limit: u64,
+    max_transaction_gas_limit: u64,
     /// The maximum number of transactions
-    pub max_transaction_count: u64,
+    max_transaction_count: u64,
 }
 
 impl TryFrom<Vec<u64>> for TransactionLaneDefinition {
@@ -116,6 +116,21 @@ impl TransactionLaneDefinition {
     /// Returns id
     pub fn id(&self) -> u8 {
         self.id
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_count(&mut self, max_transaction_count: u64) {
+        self.max_transaction_count = max_transaction_count;
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_gas_limit(&mut self, max_transaction_gas_limit: u64) {
+        self.max_transaction_gas_limit = max_transaction_gas_limit;
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_length(&mut self, max_transaction_length: u64) {
+        self.max_transaction_length = max_transaction_length;
     }
 }
 
@@ -514,6 +529,24 @@ impl TransactionV1Config {
                     .cmp(&b.max_transaction_gas_limit)
             })
             .cloned()
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn very_big_wasm_lane() -> Self {
+        let mut default = Self::default();
+        // Using `set_wasm_lanes` to make sure caches are refreshed
+        default.set_wasm_lanes(
+            // The division here is to avoid overflowing when
+            // adding capacity of lanes
+            vec![TransactionLaneDefinition::new(
+                15,
+                u64::MAX / 5,
+                u64::MAX / 5,
+                u64::MAX / 5,
+                100,
+            )],
+        );
+        default
     }
 }
 

@@ -160,11 +160,11 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
         return false;
     }
     for wasm_lane_config in transaction_config.transaction_v1_config.wasm_lanes().iter() {
-        if RESERVED_LANE_IDS.contains(&wasm_lane_config.id) {
-            error!("One of the defined wasm lanes has declared an id that is reserved for system lanes. Offending lane id: {}", wasm_lane_config.id);
+        if RESERVED_LANE_IDS.contains(&wasm_lane_config.id()) {
+            error!("One of the defined wasm lanes has declared an id that is reserved for system lanes. Offending lane id: {}", wasm_lane_config.id());
             return false;
         }
-        let max_transaction_length = wasm_lane_config.max_transaction_length;
+        let max_transaction_length = wasm_lane_config.max_transaction_length();
         if seen_max_transaction_size.contains(&max_transaction_length) {
             error!("Found wasm lane configuration that has non-unique max_transaction_length. Duplicate value: {}", max_transaction_length);
             return false;
@@ -175,7 +175,7 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
     let mut seen_max_gas_prices = HashSet::new();
     for wasm_lane_config in transaction_config.transaction_v1_config.wasm_lanes().iter() {
         //No need to check reserved lanes, we just did that
-        let max_transaction_gas_limit = wasm_lane_config.max_transaction_gas_limit;
+        let max_transaction_gas_limit = wasm_lane_config.max_transaction_gas_limit();
         if seen_max_gas_prices.contains(&max_transaction_gas_limit) {
             error!("Found wasm lane configuration that has non-unique max_transaction_gas_limit. Duplicate value: {}", max_transaction_gas_limit);
             return false;
@@ -732,27 +732,9 @@ mod tests {
     #[test]
     fn should_fail_when_wasm_lanes_have_duplicate_max_transaction_length() {
         let mut v1_config = TransactionV1Config::default();
-        let definition_1 = TransactionLaneDefinition {
-            id: 3,
-            max_transaction_length: 100,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 100,
-            max_transaction_count: 10,
-        };
-        let definition_2 = TransactionLaneDefinition {
-            id: 4,
-            max_transaction_length: 10000,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 101,
-            max_transaction_count: 10,
-        };
-        let definition_3 = TransactionLaneDefinition {
-            id: 5,
-            max_transaction_length: 1000,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 102,
-            max_transaction_count: 10,
-        };
+        let definition_1 = TransactionLaneDefinition::new(3, 100, 100, 100, 10);
+        let definition_2 = TransactionLaneDefinition::new(4, 10000, 100, 101, 10);
+        let definition_3 = TransactionLaneDefinition::new(5, 1000, 100, 102, 10);
         v1_config.set_wasm_lanes(vec![
             definition_1.clone(),
             definition_2.clone(),
@@ -764,7 +746,7 @@ mod tests {
         };
         assert!(validate_transaction_config(&transaction_config));
         let mut definition_2 = definition_2.clone();
-        definition_2.max_transaction_length = definition_1.max_transaction_length;
+        definition_2.set_max_transaction_length(definition_1.max_transaction_length());
         v1_config.set_wasm_lanes(vec![
             definition_1.clone(),
             definition_2.clone(),
@@ -780,27 +762,9 @@ mod tests {
     #[test]
     fn should_fail_when_wasm_lanes_have_duplicate_max_gas_price() {
         let mut v1_config = TransactionV1Config::default();
-        let definition_1 = TransactionLaneDefinition {
-            id: 3,
-            max_transaction_length: 100,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 100,
-            max_transaction_count: 10,
-        };
-        let definition_2 = TransactionLaneDefinition {
-            id: 4,
-            max_transaction_length: 10000,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 101,
-            max_transaction_count: 10,
-        };
-        let definition_3 = TransactionLaneDefinition {
-            id: 5,
-            max_transaction_length: 1000,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 102,
-            max_transaction_count: 10,
-        };
+        let definition_1 = TransactionLaneDefinition::new(3, 100, 100, 100, 10);
+        let definition_2 = TransactionLaneDefinition::new(4, 10000, 100, 101, 10);
+        let definition_3 = TransactionLaneDefinition::new(5, 1000, 100, 102, 10);
         v1_config.set_wasm_lanes(vec![
             definition_1.clone(),
             definition_2.clone(),
@@ -812,7 +776,7 @@ mod tests {
         };
         assert!(validate_transaction_config(&transaction_config));
         let mut definition_2 = definition_2.clone();
-        definition_2.max_transaction_gas_limit = definition_1.max_transaction_gas_limit;
+        definition_2.set_max_transaction_gas_limit(definition_1.max_transaction_gas_limit());
         v1_config.set_wasm_lanes(vec![
             definition_1.clone(),
             definition_2.clone(),
@@ -834,13 +798,7 @@ mod tests {
 
     fn fail_validation_with_lane_id(lane_id: u8) {
         let mut v1_config = TransactionV1Config::default();
-        let definition_1 = TransactionLaneDefinition {
-            id: lane_id,
-            max_transaction_length: 100,
-            max_transaction_args_length: 100,
-            max_transaction_gas_limit: 100,
-            max_transaction_count: 10,
-        };
+        let definition_1 = TransactionLaneDefinition::new(lane_id, 100, 100, 100, 10);
         v1_config.set_wasm_lanes(vec![definition_1.clone()]);
         let transaction_config = TransactionConfig {
             transaction_v1_config: v1_config.clone(),

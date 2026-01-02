@@ -38,6 +38,7 @@ pub(crate) struct ConfigsOverride {
     pub transaction_v1_override: Option<TransactionV1Config>,
     pub vm_casper_v2: bool,
     pub node_config_override: NodeConfigOverride,
+    pub addressable_entity_enabled: bool,
 }
 
 impl ConfigsOverride {
@@ -136,6 +137,19 @@ impl ConfigsOverride {
         self.node_config_override = config;
         self
     }
+
+    pub(crate) fn with_vm_casper_v2(mut self, vm_casper_v2: bool) -> Self {
+        self.vm_casper_v2 = vm_casper_v2;
+        self
+    }
+
+    pub(crate) fn with_addressable_entity_enabled(
+        mut self,
+        addressable_entity_enabled: bool,
+    ) -> Self {
+        self.addressable_entity_enabled = addressable_entity_enabled;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -168,6 +182,7 @@ impl Default for ConfigsOverride {
             transaction_v1_override: None,
             vm_casper_v2: false,
             node_config_override: NodeConfigOverride::default(),
+            addressable_entity_enabled: false,
         }
     }
 }

@@ -369,6 +369,7 @@ pub enum ErrorCode {
     #[error("Transaction attempts to set a delegation amount above the highest allowed value")]
     InvalidDelegationAmount = 116,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
+    // This code is not used, but we had a production release with it so we can't reuse it
     UnsupportedInvocationTarget = 117,
 }
 
@@ -567,9 +568,6 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::InvalidReservedSlots { .. } => ErrorCode::InvalidReservedSlots,
             InvalidTransactionV1::InvalidDelegationAmount { .. } => {
                 ErrorCode::InvalidDelegationAmount
-            }
-            InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
-                ErrorCode::UnsupportedInvocationTarget
             }
             InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
             _other => ErrorCode::InvalidTransactionUnspecified,

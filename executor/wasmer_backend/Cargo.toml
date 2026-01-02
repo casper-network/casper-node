@@ -20,9 +20,10 @@ regex = "1.11"
 wasmer = { version = "5.0.4", default-features = false, features = [
     "singlepass",
 ] }
-wasmer-compiler-singlepass = "5.0.4"
+rkyv = "0.8.13" # defining this dependency directly due to RUSTSEC-2026-0001 coming from wasmer-types and wasmer-compiler-singlepass
+wasmer-compiler-singlepass = "5.0.6"
 wasmer-middlewares = "5.0.4"
-wasmer-types = "5.0.4"
+wasmer-types = "5.0.6"
 tracing = "0.1.41"
 
 [dev-dependencies]

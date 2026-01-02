@@ -117,17 +117,23 @@ impl MinimalHostWrapper {
     }
 
     pub fn call(&self) {
-        casper::casper_call(&[0u8; 32], 0, "", &[]).1.ok();
+        casper::casper_call(&[0u8; 32], 0, "", &[], None, None)
+            .1
+            .ok();
     }
 
     pub fn call_add_bid(&self) {
         // public key must match initiator's account hash
-        casper::casper_call(&[0u8; 32], 0, "", &[]).1.ok();
+        casper::casper_call(&[0u8; 32], 0, "", &[], None, None)
+            .1
+            .ok();
     }
 
     pub fn call_delegate(&self) {
         // should be able to send delegate from purse?
-        casper::casper_call(&[0u8; 32], 0, "", &[]).1.ok();
+        casper::casper_call(&[0u8; 32], 0, "", &[], None, None)
+            .1
+            .ok();
     }
 
     pub fn input(&self) {
