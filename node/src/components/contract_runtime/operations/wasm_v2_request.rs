@@ -148,6 +148,8 @@ pub(crate) enum InvalidRequest {
     ExpectedTransferredValue,
     #[error("Expected V2 runtime")]
     ExpectedV2Runtime,
+    #[error("Invalida input")]
+    InvalidaInput,
 }
 
 impl WasmV2Request {
@@ -272,20 +274,28 @@ impl WasmV2Request {
                         seed,
                         bundle_data,
                     },
-                is_install_upgrade: _, // TODO: Handle this
-            } => match entry_point {
-                TransactionEntryPoint::Call => Target::Session {
-                    module_bytes: module_bytes.clone().take_inner().into(),
-                },
-                TransactionEntryPoint::Custom(entry_point) => Target::Install {
-                    module_bytes: module_bytes.clone().take_inner().into(),
-                    entry_point: entry_point.to_string(),
-                    transferred_value,
-                    seed,
-                    bundle_data: bundle_data.map(|bytes| bytes.take_inner().into()),
-                },
-                _ => todo!(),
-            },
+                is_install_upgrade,
+            } => {
+                if is_install_upgrade {
+                    let entry_point_name = match entry_point {
+                        TransactionEntryPoint::Custom(entry_point) => entry_point,
+                        // For vm2 session install/upgrade we expect a constructor name
+                        // to be specified verbatim in the TransactionEntryPoint::Custom variant
+                        _ => return Err(InvalidRequest::InvalidaInput),
+                    };
+                    Target::Install {
+                        module_bytes: module_bytes.clone().take_inner().into(),
+                        entry_point: entry_point_name,
+                        transferred_value,
+                        seed,
+                        bundle_data: bundle_data.map(|bytes| bytes.take_inner().into()),
+                    }
+                } else {
+                    Target::Session {
+                        module_bytes: module_bytes.clone().take_inner().into(),
+                    }
+                }
+            }
         };
 
         info!(%transaction_hash, "executing v1 contract");

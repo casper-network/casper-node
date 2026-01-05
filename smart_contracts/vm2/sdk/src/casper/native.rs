@@ -1,28 +1,27 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    convert::Infallible,
+    collections::{BTreeMap, VecDeque},
     fmt,
-    panic::{self, UnwindSafe},
+    panic::UnwindSafe,
     ptr::{self, NonNull},
     slice,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex},
 };
 
-use crate::linkme::distributed_slice;
-use bytes::Bytes;
-use casper_executor_wasm_common::{
-    error::{
-        CALLEE_ROLLED_BACK, CALLEE_SUCCEEDED, CALLEE_TRAPPED, HOST_ERROR_INTERNAL,
-        HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
+use crate::{
+    linkme::distributed_slice,
+    types::{
+        ControlFunctionOption, CryptoFunctionOption, DelegatorKind, EmitFunctionOption, EntityAddr,
+        GlobalStateFunctionOption, HashAlgorithm, IOFunctionOption, PublicKey, Reservation,
+        SystemContractOption,
     },
-    flags::ReturnFlags,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use rand::Rng;
+use borsh::BorshSerialize;
+use bytes::Bytes;
+use casper_contract_sdk_sys::{CreateResult, EnvInfo};
+use casper_executor_wasm_common::{error::HOST_ERROR_SUCCESS, keyspace::Keyspace};
 
 use super::Entity;
-use crate::types::Address;
 
 #[repr(C)]
 pub struct Param {
@@ -121,52 +120,18 @@ impl fmt::Debug for EntryPoint {
     }
 }
 
-/// Invokes an export by its name.
-///
-/// This function is used to invoke an export by its name regardless of its location in the smart
-/// contract.
-pub fn invoke_export_by_name(name: &str) {
-    let all_entry_points = ENTRY_POINTS.iter().collect::<Vec<_>>();
-
-    let exports_by_name: Vec<_> = all_entry_points
-        .iter()
-        .filter(|export| export.kind.name() == name)
-        .collect();
-
-    if exports_by_name.len() != 1 {
-        panic!(
-            "Expected exactly one export {} found, but got {:?} ({:?})",
-            name, exports_by_name, all_entry_points
-        );
-    }
-
-    let result = dispatch_export_call(exports_by_name[0].fptr);
-
-    match result {
-        Ok(()) => {}
-        Err(trap) => {
-            match trap {
-                NativeTrap::Panic(panic_payload) => {
-                    // Re-raise the panic so it can be caught by test's #[should_panic]
-                    std::panic::resume_unwind(panic_payload);
-                }
-                other_trap => {
-                    // For non-panic traps, set them in LAST_TRAP
-                    LAST_TRAP.with(|last_trap| {
-                        last_trap.borrow_mut().replace(other_trap);
-                    });
-                }
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum NativeTrap {
-    Return(ReturnFlags, Bytes),
     Panic(Box<dyn std::any::Any + Send + 'static>),
 }
 
+impl NativeTrap {
+    pub fn downcast_value<T: std::any::Any>(&self) -> Option<&T> {
+        match self {
+            NativeTrap::Panic(any) => any.downcast_ref::<T>(),
+        }
+    }
+}
 pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
 
 #[derive(Clone, Debug)]
@@ -183,867 +148,669 @@ impl From<&Param> for NativeParam {
 }
 
 #[derive(Clone, Debug)]
-pub struct Environment {
-    pub db: Arc<RwLock<Container>>,
-    contracts: Arc<RwLock<BTreeSet<Address>>>,
-    // input_data: Arc<RwLock<Option<Bytes>>>,
-    input_data: Option<Bytes>,
-    caller: Entity,
-    callee: Entity,
+pub struct ExpectedCall {
+    /// If None, the input data will not be checked
+    input_match: Option<Vec<u8>>,
+    /// If None, the ffi opt will not be checked
+    ffi_opt_match: Option<u32>,
+    output_data: Option<Vec<u8>>,
+    result_code: u32,
 }
 
-impl Default for Environment {
+#[derive(BorshSerialize)]
+pub struct CreateInputExpectation<'a> {
+    code: Option<&'a [u8]>,
+    transferred_value: u64,
+    constructor: Option<&'a str>,
+    constructor_data: Option<&'a [u8]>,
+    seed: Option<&'a [u8; 32]>,
+    bundle_data: Option<&'a [u8]>,
+}
+
+#[derive(BorshSerialize)]
+pub struct UpgradeInputExpectation<'a> {
+    code: &'a [u8],
+    entry_point: Option<&'a str>,
+    input_data: Option<&'a [u8]>,
+}
+
+impl ExpectedCall {
+    pub fn new(
+        input_match: Option<Vec<u8>>,
+        ffi_opt_match: Option<u32>,
+        output_data: Option<Vec<u8>>,
+        result_code: u32,
+    ) -> Self {
+        Self {
+            input_match,
+            ffi_opt_match,
+            output_data,
+            result_code,
+        }
+    }
+
+    pub fn success(
+        input_match: Option<Vec<u8>>,
+        ffi_opt_match: Option<u32>,
+        output_data: Option<Vec<u8>>,
+    ) -> Self {
+        Self::new(input_match, ffi_opt_match, output_data, 0)
+    }
+
+    pub fn expect_transfer(
+        input_expectation: Option<(&EntityAddr, u64)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation
+            .map(|(entity_addr, amount)| borsh::to_vec(&(entity_addr, amount)).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Transfer as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_transfer_purse(
+        input_expectation: Option<([u8; 32], u64)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation
+            .map(|(target_purse, amount)| borsh::to_vec(&(target_purse, amount)).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::TransferPurse as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_burn(input_expectation: Option<u64>, result_code: u32) -> Self {
+        let input = input_expectation.map(|amount| borsh::to_vec(&amount).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Burn as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_activate_bid(input_expectation: Option<&PublicKey>, result_code: u32) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::ActivateBid as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_bid(
+        input_expectation: Option<(&PublicKey, u8, u64, u64, u64, u32)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Bid as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_withdraw(input_expectation: Option<(&PublicKey, u64)>, result_code: u32) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Withdraw as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_delegate(
+        input_expectation: Option<(&DelegatorKind, &PublicKey, u64)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Delegate as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_undelegate(
+        input_expectation: Option<(&DelegatorKind, &PublicKey, u64)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Undelegate as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_redelegate(
+        input_expectation: Option<(&DelegatorKind, &PublicKey, u64)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::Redelegate as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_add_reservation(
+        input_expectation: Option<&Reservation>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::AddReservation as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_cancel_reservation(
+        input_expectation: Option<(&PublicKey, &DelegatorKind)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::CancelReservation as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_change_public_key(
+        input_expectation: Option<(&PublicKey, &PublicKey)>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(SystemContractOption::ChangePublicKey as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_print(text: &str) -> Self {
+        Self::success(
+            Some(text.as_bytes().to_vec()),
+            Some(EmitFunctionOption::PrintStd as u32),
+            Some(vec![]),
+        )
+    }
+
+    pub fn expect_native(input_expectation: Option<(String, Vec<u8>)>, result_code: u32) -> Self {
+        let input = input_expectation
+            .map(|(topic_name, message)| borsh::to_vec(&(topic_name, message)).unwrap());
+        Self::new(
+            input,
+            Some(EmitFunctionOption::Native as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_write(input: Option<(&Keyspace, &[u8])>) -> Self {
+        Self::expect_write_with_result_code(input, HOST_ERROR_SUCCESS)
+    }
+
+    pub fn expect_write_with_result_code(
+        input_expectation: Option<(&Keyspace, &[u8])>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|(key, value)| {
+            let mut input_data = key.to_host_input_data().unwrap();
+            borsh::to_writer(&mut input_data, value).unwrap();
+            input_data
+        });
+
+        Self::new(
+            input,
+            Some(GlobalStateFunctionOption::Write as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_read(
+        input_expectation: Option<&Keyspace>,
+        maybe_output: Option<&[u8]>,
+        result_code: u32,
+    ) -> Self {
+        let input_data = input_expectation.map(|x| x.to_host_input_data().unwrap());
+        Self::new(
+            input_data,
+            Some(GlobalStateFunctionOption::Read as u32),
+            maybe_output.map(|x| x.to_vec()),
+            result_code,
+        )
+    }
+
+    pub fn expect_create(
+        input_expectation: Option<CreateInputExpectation>,
+        output: Option<CreateResult>,
+        result_code: u32,
+    ) -> Self {
+        let input_data = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input_data,
+            Some(GlobalStateFunctionOption::Create as u32),
+            output.map(|x| borsh::to_vec(&x).unwrap()),
+            result_code,
+        )
+    }
+
+    pub fn expect_remove(input: Option<Keyspace>) -> Self {
+        Self::expect_remove_with_result_code(input, HOST_ERROR_SUCCESS)
+    }
+
+    pub fn expect_remove_with_result_code(
+        input_expectation: Option<Keyspace>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|key| key.to_host_input_data().unwrap());
+        Self::new(
+            input,
+            Some(GlobalStateFunctionOption::Remove as u32),
+            Some(vec![]),
+            result_code,
+        )
+    }
+
+    pub fn expect_get_balance(
+        input_expectation: Option<(u32, [u8; 32])>,
+        output: Option<u64>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+        Self::new(
+            input,
+            Some(GlobalStateFunctionOption::GetBalance as u32),
+            output.map(|v| v.to_le_bytes().to_vec()),
+            result_code,
+        )
+    }
+
+    pub fn expect_return(
+        input_expectation: Option<(u32, Option<Vec<u8>>)>,
+        return_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|input| borsh::to_vec(&input).unwrap());
+
+        Self::new(
+            input,
+            Some(IOFunctionOption::Return as u32),
+            None,
+            return_code,
+        )
+    }
+
+    pub fn expect_revert(input_expectation: Option<&[u8]>, return_code: u32) -> Self {
+        Self::new(
+            input_expectation.map(|x| borsh::to_vec(&x).unwrap()),
+            Some(IOFunctionOption::Revert as u32),
+            None,
+            return_code,
+        )
+    }
+
+    pub fn expect_call(
+        input_expectation: Option<([u8; 32], &[u8], &str, u64)>,
+        output: Option<&[u8]>,
+        return_code: u32,
+    ) -> Self {
+        Self::new(
+            input_expectation.map(|x| borsh::to_vec(&x).unwrap()),
+            Some(ControlFunctionOption::Call as u32),
+            output.map(|x| x.to_vec()),
+            return_code,
+        )
+    }
+
+    pub fn expect_upgrade(
+        input_expectation: Option<UpgradeInputExpectation>,
+        return_code: u32,
+    ) -> Self {
+        Self::new(
+            input_expectation.map(|x| borsh::to_vec(&x).unwrap()),
+            Some(ControlFunctionOption::Call as u32),
+            None,
+            return_code,
+        )
+    }
+
+    pub fn expect_get_info(output: Option<EnvInfo>) -> Self {
+        Self::expect_get_info_with_result_code(output, HOST_ERROR_SUCCESS)
+    }
+
+    pub fn expect_get_info_with_result_code(output: Option<EnvInfo>, result_code: u32) -> Self {
+        let output_data = output
+            .map(|out| {
+                borsh::to_vec(&(
+                    out.protocol_version_major,
+                    out.protocol_version_minor,
+                    out.protocol_version_patch,
+                    out.block_height,
+                    out.block_time,
+                    out.parent_block_hash,
+                    out.transferred_value,
+                    out.caller_addr,
+                    out.caller_kind,
+                    out.callee_addr,
+                    out.callee_kind,
+                ))
+                .unwrap()
+            })
+            .unwrap_or_default();
+        Self::new(
+            Some(vec![]),
+            Some(GlobalStateFunctionOption::GetInfo as u32),
+            Some(output_data),
+            result_code,
+        )
+    }
+
+    pub fn expect_copy_input(input_to_copy: &[u8]) -> Self {
+        Self::expect_copy_input_with_result_code(input_to_copy, HOST_ERROR_SUCCESS)
+    }
+
+    pub fn expect_copy_input_with_result_code(input_to_copy: &[u8], result_code: u32) -> Self {
+        Self::new(
+            Some(vec![]),
+            Some(IOFunctionOption::CopyInput as u32),
+            Some(input_to_copy.to_vec()),
+            result_code,
+        )
+    }
+
+    pub fn expect_generic_hash(
+        input_expectation: Option<(&[u8], HashAlgorithm)>,
+        output: Option<Vec<u8>>,
+        result_code: u32,
+    ) -> Self {
+        let input = input_expectation.map(|(input_data, input_algorithm)| {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&(input_algorithm as u32).to_le_bytes());
+            bytes.extend_from_slice(&(input_data.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(input_data);
+            bytes
+        });
+        Self::new(
+            input,
+            Some(CryptoFunctionOption::GenericHash as u32),
+            output,
+            result_code,
+        )
+    }
+}
+
+pub trait Environment {
+    /// # Safety
+    /// Implementations of this function potentially can dereference `input_ptr` reading
+    /// `input_size` bytes of memory.
+    unsafe fn casper_ffi(
+        &self,
+        ffi_opt: u32,
+        input_ptr: *const u8,
+        input_size: usize,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> u32;
+
+    /// This function will be called test execution to perform any actions required for
+    /// teardown
+    fn teardown(&self);
+}
+
+#[derive(Clone, Debug)]
+pub struct EnvironmentMock {
+    expected_calls: Arc<Mutex<VecDeque<ExpectedCall>>>,
+}
+
+impl Environment for EnvironmentMock {
+    unsafe fn casper_ffi(
+        &self,
+        ffi_opt: u32,
+        input_ptr: *const u8,
+        input_size: usize,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> u32 {
+        let expectation = self.deque_expectation().unwrap_or_else(|| {
+            panic!(
+                "Trying to call `casper_ffi` (ffi_opt={}) without enqueued mock results",
+                ffi_opt
+            )
+        });
+        if let Some(expected_ffi_opt) = expectation.ffi_opt_match {
+            assert_eq!(
+                expected_ffi_opt, ffi_opt,
+                "Expected casper_ffi to be called with ffi_opt={}. got {}",
+                expected_ffi_opt, ffi_opt
+            );
+        }
+        if let Some(expected_input) = expectation.input_match {
+            let input = if input_size > 0 {
+                if input_ptr.is_null() {
+                    panic!("Trying to dereference a null pointer")
+                }
+                unsafe { slice::from_raw_parts(input_ptr, input_size) }.to_owned()
+            } else {
+                vec![]
+            };
+            assert_eq!(expected_input, input);
+        }
+        if let Some(output_data) = expectation.output_data {
+            let ptr = NonNull::new(alloc(output_data.len(), alloc_ctx as _));
+            if let Some(ptr) = ptr {
+                unsafe {
+                    ptr::copy_nonoverlapping(output_data.as_ptr(), ptr.as_ptr(), output_data.len());
+                }
+            }
+        }
+
+        expectation.result_code
+    }
+
+    fn teardown(&self) {
+        self.assert_no_expectations_left()
+    }
+}
+
+impl Default for EnvironmentMock {
     fn default() -> Self {
         Self {
-            db: Default::default(),
-            contracts: Default::default(),
-            input_data: Default::default(),
-            caller: DEFAULT_ADDRESS,
-            callee: DEFAULT_ADDRESS,
+            expected_calls: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
 
 pub const DEFAULT_ADDRESS: Entity = Entity::Account([42; 32]);
 
-impl Environment {
+impl EnvironmentMock {
     #[must_use]
-    pub fn new(db: Container, caller: Entity) -> Self {
-        Self {
-            db: Arc::new(RwLock::new(db)),
-            contracts: Default::default(),
-            input_data: Default::default(),
-            caller,
-            callee: caller,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    #[must_use]
-    pub fn with_caller(&self, caller: Entity) -> Self {
-        let mut env = self.clone();
-        env.caller = caller;
-        env
+    pub fn add_expectation(&self, expected_call: ExpectedCall) {
+        let mut guard = self
+            .expected_calls
+            .lock()
+            .expect("Expected the mutex to not be poisoned");
+        guard.push_back(expected_call);
     }
 
-    #[must_use]
-    pub fn smart_contract(&self, callee: Entity) -> Self {
-        let mut env = self.clone();
-        env.caller = self.callee;
-        env.callee = callee;
-        env
+    pub fn deque_expectation(&self) -> Option<ExpectedCall> {
+        let mut guard = self
+            .expected_calls
+            .lock()
+            .expect("Expected the mutex to not be poisoned");
+        guard.pop_front()
     }
 
-    #[must_use]
-    pub fn session(&self, callee: Entity) -> Self {
-        let mut env = self.clone();
-        env.caller = callee;
-        env.callee = callee;
-        env
-    }
-
-    #[must_use]
-    pub fn with_callee(&self, callee: Entity) -> Self {
-        let mut env = self.clone();
-        env.callee = callee;
-        env
-    }
-
-    #[must_use]
-    pub fn with_input_data(&self, input_data: Vec<u8>) -> Self {
-        let mut env = self.clone();
-        env.input_data = Some(Bytes::from(input_data));
-        env
-    }
-}
-
-impl Environment {
-    fn key_prefix(&self, key: &[u8]) -> Vec<u8> {
-        let entity = self.callee;
-
-        let mut bytes = Vec::new();
-        bytes.extend(entity.tag().to_le_bytes());
-        bytes.extend(entity.address());
-        bytes.extend(key);
-
-        bytes
-    }
-
-    fn casper_read(
-        &self,
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        info: *mut casper_contract_sdk_sys::ReadInfo,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> Result<u32, NativeTrap> {
-        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
-        let key_bytes = self.key_prefix(key_bytes);
-
-        let Ok(db) = self.db.read() else {
-            return Ok(HOST_ERROR_INTERNAL);
-        };
-
-        let value = match db.get(&key_space) {
-            Some(values) => values.get(key_bytes.as_slice()).cloned(),
-            None => return Ok(HOST_ERROR_NOT_FOUND),
-        };
-        match value {
-            Some(tagged_value) => {
-                let ptr = NonNull::new(alloc(tagged_value.len(), alloc_ctx as _));
-
-                if let Some(ptr) = ptr {
-                    unsafe {
-                        (*info).data_ptr = ptr.as_ptr();
-                        (*info).data_size = tagged_value.len();
-                    }
-
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            tagged_value.as_ptr(),
-                            ptr.as_ptr(),
-                            tagged_value.len(),
-                        );
-                    }
-                }
-
-                Ok(HOST_ERROR_SUCCESS)
-            }
-            None => Ok(HOST_ERROR_NOT_FOUND),
-        }
-    }
-
-    fn casper_write(
-        &self,
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        value_ptr: *const u8,
-        value_size: usize,
-    ) -> Result<u32, NativeTrap> {
-        assert!(!key_ptr.is_null());
-        assert!(!value_ptr.is_null());
-        // let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
-        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
-        let key_bytes = self.key_prefix(&key_bytes);
-
-        let value_bytes = unsafe { slice::from_raw_parts(value_ptr, value_size) };
-
-        let mut db = self.db.write().unwrap();
-        db.entry(key_space).or_default().insert(
-            Bytes::from(key_bytes.to_vec()),
-            Bytes::from(value_bytes.to_vec()),
-        );
-        Ok(HOST_ERROR_SUCCESS)
-    }
-
-    fn casper_remove(
-        &self,
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-    ) -> Result<u32, NativeTrap> {
-        assert!(!key_ptr.is_null());
-        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
-        let key_bytes = self.key_prefix(key_bytes);
-
-        let mut db = self.db.write().unwrap();
-        if let Some(values) = db.get_mut(&key_space) {
-            values.remove(key_bytes.as_slice());
-            Ok(HOST_ERROR_SUCCESS)
-        } else {
-            Ok(HOST_ERROR_NOT_FOUND)
-        }
-    }
-
-    fn casper_print(&self, msg_ptr: *const u8, msg_size: usize) -> Result<(), NativeTrap> {
-        let msg_bytes = unsafe { slice::from_raw_parts(msg_ptr, msg_size) };
-        let msg = std::str::from_utf8(msg_bytes).expect("Valid UTF-8 string");
-        println!("💻 {msg}");
-        Ok(())
-    }
-
-    fn casper_return(
-        &self,
-        flags: u32,
-        data_ptr: *const u8,
-        data_len: usize,
-    ) -> Result<Infallible, NativeTrap> {
-        let maybe_flags = ReturnFlags::from_bits(flags);
-        let return_flags = match maybe_flags {
-            Some(flags) => flags,
-            None => {
-                return Err(NativeTrap::Panic(Box::new(format!(
-                    "Attempted to pass return flags which are not supported, raw flags: {}",
-                    flags
-                ))))
-            }
-        };
-        let data = if data_ptr.is_null() {
-            Bytes::new()
-        } else {
-            Bytes::copy_from_slice(unsafe { slice::from_raw_parts(data_ptr, data_len) })
-        };
-        Err(NativeTrap::Return(return_flags, data))
-    }
-
-    fn casper_copy_input(
-        &self,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> Result<*mut u8, NativeTrap> {
-        let input_data = self.input_data.clone();
-        let input_data = input_data.as_ref().cloned().unwrap_or_default();
-        let ptr = NonNull::new(alloc(input_data.len(), alloc_ctx as _));
-
-        match ptr {
-            Some(ptr) => {
-                if !input_data.is_empty() {
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            input_data.as_ptr(),
-                            ptr.as_ptr(),
-                            input_data.len(),
-                        );
-                    }
-                }
-                Ok(unsafe { ptr.as_ptr().add(input_data.len()) })
-            }
-            None => Ok(ptr::null_mut()),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn casper_create(
-        &self,
-        code_ptr: *const u8,
-        code_size: usize,
-        transferred_value: u64,
-        constructor_ptr: *const u8,
-        constructor_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        seed_ptr: *const u8,
-        seed_size: usize,
-        result_ptr: *mut casper_contract_sdk_sys::CreateResult,
-    ) -> Result<u32, NativeTrap> {
-        // let manifest =
-        //     NonNull::new(manifest_ptr as *mut casper_contract_sdk_sys::Manifest).expect("Manifest
-        // instance");
-        let code = if code_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(code_ptr, code_size) })
-        };
-
-        if code.is_some() {
-            panic!("Supplying code is not supported yet in native mode");
-        }
-
-        let constructor = if constructor_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(constructor_ptr, constructor_size) })
-        };
-
-        let input_data = if input_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
-        };
-
-        let _seed = if seed_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(seed_ptr, seed_size) })
-        };
-
-        assert_eq!(
-            transferred_value, 0,
-            "Creating new contracts with transferred value is not supported in native mode"
-        );
-
-        let mut rng = rand::thread_rng();
-        let contract_address = rng.gen();
-        let package_address = rng.gen();
-
-        let mut result = NonNull::new(result_ptr).expect("Valid pointer");
-        unsafe {
-            result.as_mut().contract_address = package_address;
-        }
-
-        let mut contracts = self.contracts.write().unwrap();
-        contracts.insert(contract_address);
-
-        if let Some(entry_point) = constructor {
-            let entry_point = ENTRY_POINTS
-                .iter()
-                .find(|export| export.kind.name().as_bytes() == entry_point)
-                .expect("Entry point exists");
-
-            let mut stub = with_current_environment(|stub| stub);
-            stub.input_data = input_data.map(Bytes::copy_from_slice);
-
-            stub.caller = stub.callee;
-            stub.callee = Entity::Contract(package_address);
-
-            // stub.callee
-            // Call constructor, expect a trap
-            let result = dispatch_with(stub, || {
-                // TODO: Handle panic inside constructor
-                (entry_point.fptr)();
-            });
-
-            match result {
-                Ok(()) => {}
-                Err(NativeTrap::Return(flags, bytes)) => {
-                    if flags.contains(ReturnFlags::ROLLBACK) {
-                        todo!("Constructor returned with a revert flag");
-                    }
-                    assert!(bytes.is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
-                }
-                Err(NativeTrap::Panic(_panic)) => {
-                    todo!();
-                }
-            }
-        }
-
-        Ok(HOST_ERROR_SUCCESS)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn casper_call(
-        &self,
-        address_ptr: *const u8,
-        address_size: usize,
-        transferred_value: u64,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
-                                                                         * data */
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> Result<u32, NativeTrap> {
-        let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
-        let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
-        let entry_point = {
-            let entry_point_ptr = NonNull::new(entry_point_ptr.cast_mut()).expect("Valid pointer");
-            let entry_point =
-                unsafe { slice::from_raw_parts(entry_point_ptr.as_ptr(), entry_point_size) };
-            let entry_point = std::str::from_utf8(entry_point).expect("Valid UTF-8 string");
-            entry_point.to_string()
-        };
-
-        assert_eq!(
-            transferred_value, 0,
-            "Transferred value is not supported in native mode"
-        );
-
-        let export = ENTRY_POINTS
-            .iter()
-            .find(|export|
-                matches!(export.kind, EntryPointKind::SmartContract { name, .. } | EntryPointKind::TraitImpl { name, .. }
-                    if name == entry_point)
-            )
-            .expect("Existing entry point");
-
-        let mut new_stub = with_current_environment(|stub| stub.clone());
-        new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
-        new_stub.caller = new_stub.callee;
-        new_stub.callee = Entity::Contract(address.try_into().expect("Size to match"));
-
-        let ret = dispatch_with(new_stub, || {
-            // We need to convert any panic inside the entry point into a native trap. This probably
-            // should be done in a more configurable way.
-            dispatch_export_call(|| {
-                (export.fptr)();
-            })
-        });
-
-        let unfolded = match ret {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) | Err(error) => Err(error),
-        };
-
-        match unfolded {
-            Ok(()) => Ok(CALLEE_SUCCEEDED),
-            Err(NativeTrap::Return(flags, bytes)) => {
-                let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx.cast_mut()));
-                if let Some(output_ptr) = ptr {
-                    unsafe {
-                        ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr.as_ptr(), bytes.len());
-                    }
-                }
-
-                if flags.contains(ReturnFlags::ROLLBACK) {
-                    Ok(CALLEE_ROLLED_BACK)
-                } else {
-                    Ok(CALLEE_SUCCEEDED)
-                }
-            }
-            Err(NativeTrap::Panic(panic)) => {
-                eprintln!("Panic {panic:?}");
-                Ok(CALLEE_TRAPPED)
-            }
-        }
-    }
-
-    #[doc = r"Obtain data from the blockchain environemnt of current wasm invocation.
-
-Example paths:
-
-* `env_read([CASPER_CALLER], 1, nullptr, &caller_addr)` -> read caller's address into
-  `caller_addr` memory.
-* `env_read([CASPER_CHAIN, BLOCK_HASH, 0], 3, nullptr, &block_hash)` -> read hash of the
-  current block into `block_hash` memory.
-* `env_read([CASPER_CHAIN, BLOCK_HASH, 5], 3, nullptr, &block_hash)` -> read hash of the 5th
-  block from the current one into `block_hash` memory.
-* `env_read([CASPER_AUTHORIZED_KEYS], 1, nullptr, &authorized_keys)` -> read list of
-  authorized keys into `authorized_keys` memory."]
-    fn casper_env_read(
-        &self,
-        _env_path: *const u64,
-        _env_path_size: usize,
-        _alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
-        _alloc_ctx: *const core::ffi::c_void,
-    ) -> Result<*mut u8, NativeTrap> {
-        todo!()
-    }
-
-    fn casper_env_info(&self, info_ptr: *const u8, info_size: u32) -> Result<u32, NativeTrap> {
-        assert_eq!(
-            info_size as usize,
-            size_of::<casper_contract_sdk_sys::EnvInfo>()
-        );
-        let mut env_info = NonNull::new(info_ptr as *mut u8)
-            .expect("Valid ptr")
-            .cast::<casper_contract_sdk_sys::EnvInfo>();
-        let env_info = unsafe { env_info.as_mut() };
-        *env_info = casper_contract_sdk_sys::EnvInfo {
-            block_time: 0,
-            transferred_value: 0,
-            caller_addr: *self.caller.address(),
-            caller_kind: self.caller.tag(),
-            callee_addr: *self.callee.address(),
-            callee_kind: self.callee.tag(),
-            protocol_version_major: 2,
-            protocol_version_minor: 1,
-            protocol_version_patch: 0,
-            parent_block_hash: [0xAB; 32],
-            block_height: 1,
-        };
-        Ok(HOST_ERROR_SUCCESS)
+    fn assert_no_expectations_left(&self) {
+        let guard = self
+            .expected_calls
+            .lock()
+            .expect("Expected the mutex to not be poisoned");
+        assert!(guard.is_empty())
     }
 }
 
 thread_local! {
-    pub(crate) static LAST_TRAP: RefCell<Option<NativeTrap>> = const { RefCell::new(None) };
-    static ENV_STACK: RefCell<VecDeque<Environment>> = RefCell::new(VecDeque::from_iter([
-        // Stack of environments has a default element so unit tests do not require extra effort.
-        // Environment::default()
-    ]));
+    static CURRENT_ENV: RefCell<Option<Arc<dyn Environment>>> = RefCell::new(None);
 }
 
-pub fn with_current_environment<T>(f: impl FnOnce(Environment) -> T) -> T {
-    ENV_STACK.with(|stack| {
-        let stub = {
-            let borrowed = stack.borrow();
-            let front = borrowed.front().expect("Stub exists").clone();
-            front
-        };
-        f(stub)
+pub fn with_environment<T>(f: impl FnOnce(&dyn Environment) -> T) -> T {
+    CURRENT_ENV.with_borrow(|env| match env {
+        Some(env) => f(env.as_ref()),
+        None => {
+            panic!("Couldn't execute with_environment since there is no environment")
+        }
     })
 }
 
-pub fn current_environment() -> Environment {
-    with_current_environment(|env| env)
-}
-
-fn handle_ret_with<T>(value: Result<T, NativeTrap>, ret: impl FnOnce() -> T) -> T {
-    match value {
-        Ok(result) => {
-            LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
-            result
-        }
-        Err(trap) => {
-            let result = ret();
-            LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(trap));
-            result
-        }
-    }
-}
-
-fn dispatch_export_call<F>(func: F) -> Result<(), NativeTrap>
+/// This function runs a lambda capturing any panics. It then wraps the panic in a `NativeTrap` and
+/// resturns. This function replaces default panic hook, so it will muffle any stack traces of error
+/// messages.
+pub fn run_expecting_panic<F, T>(func: F) -> Result<T, NativeTrap>
 where
-    F: FnOnce() + Send + UnwindSafe,
+    F: FnOnce() -> T + Send + UnwindSafe,
 {
-    let call_result = panic::catch_unwind(|| {
-        func();
-    });
+    use std::panic;
+    let call_result = panic::catch_unwind(func);
     match call_result {
-        Ok(()) => {
-            let last_trap = LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
-            match last_trap {
-                Some(last_trap) => Err(last_trap),
-                None => Ok(()),
-            }
-        }
+        Ok(t) => Ok(t),
         Err(error) => Err(NativeTrap::Panic(error)),
     }
 }
 
-fn handle_ret<T: Default>(value: Result<T, NativeTrap>) -> T {
-    handle_ret_with(value, || T::default())
-}
-
-/// Dispatches a function with a default environment.
-pub fn dispatch<T>(f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
-    dispatch_with(Environment::default(), f)
-}
-
-/// Dispatches a function with a given environment.
-pub fn dispatch_with<T>(stub: Environment, f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
-    ENV_STACK.with(|stack| {
-        let mut borrowed = stack.borrow_mut();
-        borrowed.push_front(stub);
-    });
-
-    // Clear previous trap (if present)
-    LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
-
-    // Call a function
-    let result = f();
-
-    // Check if a trap was set and return it if so (otherwise return the result).
-    let last_trap = LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
-
-    let result = if let Some(trap) = last_trap {
-        Err(trap)
-    } else {
-        Ok(result)
-    };
-
-    // Pop the stub from the stack
-    ENV_STACK.with(|stack| {
-        let mut borrowed = stack.borrow_mut();
-        borrowed.pop_front();
-    });
-
-    result
+pub fn with_env<T: Environment + 'static, F>(new_env: Arc<T>, func: F)
+where
+    F: FnOnce(),
+{
+    CURRENT_ENV.with_borrow_mut(|env| *env = Some(new_env));
+    func();
 }
 
 mod symbols {
-    // TODO: Figure out how to use for_each_host_function macro here and deal with never type in
-    // casper_return
-    #[no_mangle]
-    /// Read value from a storage available for caller's entity address.
-    pub extern "C" fn casper_read(
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        info: *mut ::casper_contract_sdk_sys::ReadInfo,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> u32 {
-        let _name = "casper_read";
-        let _args = (&key_space, &key_ptr, &key_size, &info, &alloc, &alloc_ctx);
-        let _call_result = with_current_environment(|stub| {
-            stub.casper_read(key_space, key_ptr, key_size, info, alloc, alloc_ctx)
-        });
-        crate::casper::native::handle_ret(_call_result)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_write(
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        value_ptr: *const u8,
-        value_size: usize,
-    ) -> u32 {
-        let _name = "casper_write";
-        let _args = (&key_space, &key_ptr, &key_size, &value_ptr, &value_size);
-        let _call_result = with_current_environment(|stub| {
-            stub.casper_write(key_space, key_ptr, key_size, value_ptr, value_size)
-        });
-        crate::casper::native::handle_ret(_call_result)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_remove(key_space: u64, key_ptr: *const u8, key_size: usize) -> u32 {
-        let _name = "casper_remove";
-        let _args = (&key_space, &key_ptr, &key_size);
-        let _call_result =
-            with_current_environment(|stub| stub.casper_remove(key_space, key_ptr, key_size));
-        crate::casper::native::handle_ret(_call_result)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) {
-        let _name = "casper_print";
-        let _args = (&msg_ptr, &msg_size);
-        let _call_result = with_current_environment(|stub| stub.casper_print(msg_ptr, msg_size));
-        crate::casper::native::handle_ret(_call_result);
-    }
-
-    use casper_executor_wasm_common::error::HOST_ERROR_SUCCESS;
-
-    use crate::casper::native::LAST_TRAP;
-
-    #[no_mangle]
-    pub extern "C" fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) {
-        let _name = "casper_return";
-        let _args = (&flags, &data_ptr, &data_len);
-        let _call_result =
-            with_current_environment(|stub| stub.casper_return(flags, data_ptr, data_len));
-        let err = _call_result.unwrap_err(); // SAFE
-        LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_copy_input(
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> *mut u8 {
-        let _name = "casper_copy_input";
-        let _args = (&alloc, &alloc_ctx);
-        let _call_result =
-            with_current_environment(|stub| stub.casper_copy_input(alloc, alloc_ctx));
-        crate::casper::native::handle_ret_with(_call_result, ptr::null_mut)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_create(
-        code_ptr: *const u8,
-        code_size: usize,
-        transferred_value: u64,
-        constructor_ptr: *const u8,
-        constructor_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        seed_ptr: *const u8,
-        seed_size: usize,
-        result_ptr: *mut casper_contract_sdk_sys::CreateResult,
-    ) -> u32 {
-        let _call_result = with_current_environment(|stub| {
-            stub.casper_create(
-                code_ptr,
-                code_size,
-                transferred_value,
-                constructor_ptr,
-                constructor_size,
-                input_ptr,
-                input_size,
-                seed_ptr,
-                seed_size,
-                result_ptr,
-            )
-        });
-        crate::casper::native::handle_ret(_call_result)
-    }
+    use crate::casper::native::with_environment;
 
     #[no_mangle]
     pub extern "C" fn casper_ffi(
-        _system_contract_opt: u32,
-        _input_ptr: *const u8,
-        _input_size: usize,
-        _alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-        _alloc_ctx: *const core::ffi::c_void,
-    ) -> u32 {
-        todo!()
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_call(
-        address_ptr: *const u8,
-        address_size: usize,
-        transferred_value: u64,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
+        ffi_opt: u32,
         input_ptr: *const u8,
         input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
-                                                                         * data */
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32 {
-        let _call_result = with_current_environment(|stub| {
-            stub.casper_call(
-                address_ptr,
-                address_size,
-                transferred_value,
-                entry_point_ptr,
-                entry_point_size,
-                input_ptr,
-                input_size,
-                alloc,
-                alloc_ctx,
-            )
-        });
-        crate::casper::native::handle_ret(_call_result)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_upgrade(
-        _code_ptr: *const u8,
-        _code_size: usize,
-        _entry_point_ptr: *const u8,
-        _entry_point_size: usize,
-        _input_ptr: *const u8,
-        _input_size: usize,
-    ) -> u32 {
-        todo!()
-    }
-
-    use core::slice;
-    use std::ptr;
-
-    use super::with_current_environment;
-
-    #[no_mangle]
-    pub extern "C" fn casper_env_read(
-        env_path: *const u64,
-        env_path_size: usize,
-        alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
-        alloc_ctx: *const core::ffi::c_void,
-    ) -> *mut u8 {
-        let _name = "casper_env_read";
-        let _args = (&env_path, &env_path_size, &alloc, &alloc_ctx);
-        let _call_result = with_current_environment(|stub| {
-            stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx)
-        });
-        crate::casper::native::handle_ret_with(_call_result, ptr::null_mut)
-    }
-    #[no_mangle]
-    pub extern "C" fn casper_env_balance(
-        _entity_kind: u32,
-        _entity_addr_ptr: *const u8,
-        _entity_addr_len: usize,
-    ) -> u64 {
-        todo!()
-    }
-    #[no_mangle]
-    pub extern "C" fn casper_emit(
-        topic_ptr: *const u8,
-        topic_size: usize,
-        data_ptr: *const u8,
-        data_size: usize,
-    ) -> u32 {
-        let topic = unsafe { slice::from_raw_parts(topic_ptr, topic_size) };
-        let data = unsafe { slice::from_raw_parts(data_ptr, data_size) };
-        let topic = std::str::from_utf8(topic).expect("Valid UTF-8 string");
-        println!("Emitting event with topic: {topic:?} and data: {data:?}");
-        HOST_ERROR_SUCCESS
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_env_info(info_ptr: *const u8, info_size: u32) -> u32 {
-        let ret = with_current_environment(|env| env.casper_env_info(info_ptr, info_size));
-        crate::casper::native::handle_ret(ret)
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_generic_hash(
-        _in_ptr: *const u8,
-        _in_size: u32,
-        _out_ptr: *const u8,
-        _algorithm: u32,
-    ) -> u32 {
-        todo!()
-    }
-
-    #[no_mangle]
-    pub fn casper_recover_secp256k1(
-        _message_ptr: *const u8,
-        _message_size: usize,
-        _signature_ptr: *const u8,
-        _signature_size: usize,
-        _public_key_ptr: *const u8,
-        _recovery_id: u32,
-    ) -> u32 {
-        todo!()
+        with_environment(|mock| unsafe {
+            mock.casper_ffi(ffi_opt, input_ptr, input_size, alloc, alloc_ctx)
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use casper_executor_wasm_common::{
+        error::{HostResult, HOST_ERROR_INVALID_INPUT},
+        flags::ReturnFlags,
+        keyspace::Keyspace,
+    };
+
+    use crate::casper;
+
     use super::*;
 
-    /*#TODO fix native implementation
     #[test]
     fn foo() {
-        dispatch(|| {
+        let env = Arc::new(EnvironmentMock::new());
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_print("Hello"));
             let _ = casper::print("Hello");
-            casper::write(Keyspace::Context(b"test"), b"value 1").unwrap();
 
-            let change_context_1 =
-                with_current_environment(|stub| stub.smart_contract(Entity::Contract([1; 32])));
+            let key = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_write(Some((&key, b"value 1"))));
+            casper::write(key, b"value 1").unwrap();
 
-            dispatch_with(change_context_1, || {
-                casper::write(Keyspace::Context(b"test"), b"value 2").unwrap();
-            })
-            .unwrap();
-
-            let change_context_1 =
-                with_current_environment(|stub| stub.smart_contract(Entity::Contract([1; 32])));
-            dispatch_with(change_context_1, || {
-                assert_eq!(
-                    casper::read_into_vec(Keyspace::Context(b"test")),
-                    Ok(Some(b"value 2".to_vec()))
-                );
-                assert_eq!(
-                    casper::read_into_vec(Keyspace::State),
-                    Ok(Some(b"state".to_vec()))
-                );
-            })
-            .unwrap();
-
-            assert_eq!(casper::get_caller(), DEFAULT_ADDRESS);
+            let key = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_write_with_result_code(
+                Some((&key, b"value 1")),
+                HOST_ERROR_INVALID_INPUT,
+            ));
             assert_eq!(
-                casper::read_into_vec(Keyspace::Context(b"test")),
-                Ok(Some(b"value 1".to_vec()))
+                casper::write(key, b"value 1"),
+                Err(HostResult::InvalidInput)
             );
-        })
-        .unwrap();
-    }
-     */
-    #[test]
-    fn test() {
-        dispatch_with(Environment::default(), || {
-            let msg = "Hello";
-            let () = with_current_environment(|stub| stub.casper_print(msg.as_ptr(), msg.len()))
-                .expect("Ok");
-        })
-        .unwrap();
+
+            let key_3 = Keyspace::NamedKey("abc");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_3),
+                Some(b"value 2"),
+                HOST_ERROR_SUCCESS,
+            ));
+            assert_eq!(casper::read_into_vec(key_3), Ok(Some(b"value 2".to_vec())));
+
+            let key_4 = Keyspace::NamedKey("abc2");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_4),
+                Some(&[5]),
+                HOST_ERROR_SUCCESS,
+            ));
+            assert_eq!(casper::read_into_vec(key_4), Ok(Some(vec![5])));
+
+            let key_5 = Keyspace::NamedKey("abc3");
+            env.add_expectation(ExpectedCall::expect_read(
+                Some(&key_5),
+                None,
+                HOST_ERROR_INVALID_INPUT,
+            ));
+            assert_eq!(casper::read_into_vec(key_5), Err(HostResult::InvalidInput));
+
+            env.add_expectation(ExpectedCall::expect_get_info(Some(EnvInfo {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+                protocol_version_patch: 0,
+                block_height: 100100,
+                block_time: 200200,
+                parent_block_hash: [1; 32],
+                transferred_value: 123,
+                caller_addr: [2; 32],
+                caller_kind: 1,
+                callee_addr: [3; 32],
+                callee_kind: 2,
+            })));
+
+            assert_eq!(casper::get_caller(), Entity::Contract([2; 32]));
+        });
     }
 
     #[test]
     fn test_returns() {
-        dispatch_with(Environment::default(), || {
-            let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
-        })
-        .unwrap();
-    }
-
-    #[test]
-    fn test_returns_unsupported_flags() {
-        let all_flags = ReturnFlags::all().bits();
-        let faulty_flags = all_flags << 1;
-        if all_flags == faulty_flags {
-            unreachable!("Shifting ReturnFlags::all by 1 byte yields ReturnFlags::all and cannot be used to construct faulty_flags, replace with different value.")
-        }
-
-        let ret = dispatch_with(Environment::default(), || {
-            with_current_environment(|stub| stub.casper_return(faulty_flags, ptr::null(), 0))
+        let env = Arc::new(EnvironmentMock::new());
+        with_env(env.clone(), || {
+            env.add_expectation(ExpectedCall::expect_return(
+                Some((1, Some([1, 2, 3].to_vec()))),
+                HOST_ERROR_SUCCESS,
+            ));
+            let res = run_expecting_panic(|| casper::ret(ReturnFlags::ROLLBACK, Some(&[1, 2, 3])));
+            assert!(res.is_err());
         });
-        assert!(ret.is_ok());
-        let inner_result = ret.ok().unwrap();
-        assert!(inner_result.is_err());
-        let inner_err = inner_result.err().unwrap();
-        let expected_err = NativeTrap::Panic(Box::new(format!(
-            "Attempted to pass return flags which are not supported, raw flags: {}",
-            1
-        )));
-        assert_eq!(format!("{inner_err:?}"), format!("{expected_err:?}"))
     }
 }
