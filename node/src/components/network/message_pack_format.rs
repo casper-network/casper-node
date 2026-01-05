@@ -38,6 +38,6 @@ where
 
     #[inline]
     fn deserialize(self: Pin<&mut Self>, src: &BytesMut) -> Result<M, Self::Error> {
-        rmp_serde::from_read_ref(src).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        rmp_serde::from_slice(src).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 }
