@@ -1032,6 +1032,14 @@ impl Key {
             }
         }
 
+        if let Some(hex) = input.strip_prefix(INSTALL_PREFIX) {
+            let addr = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Hash(error.to_string()))?;
+            let hash_addr = HashAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Hash(error.to_string()))?;
+            return Ok(Key::Install(hash_addr));
+        }
+
         Err(FromStrError::UnknownPrefix)
     }
 
@@ -2044,7 +2052,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::State(addr) => Key::State(addr),
                 BinaryDeserHelper::TypeDef(type_uid) => Key::TypeDef(type_uid),
-                BinaryDeserHelper::Install(hash_addr) => Key::Hash(hash_addr),
+                BinaryDeserHelper::Install(hash_addr) => Key::Install(hash_addr),
             }
         }
     }
