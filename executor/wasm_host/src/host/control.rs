@@ -9,7 +9,9 @@ use casper_executor_wasm_common::{
     },
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{
+        ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor, PackagePointer,
+    },
     Caller, FatalHostError, VMError, VMResult,
 };
 use casper_storage::global_state::GlobalStateReader;
@@ -31,15 +33,30 @@ pub(crate) fn host_call<S: GlobalStateReader + 'static>(
     caller: &mut impl Caller<Context = Context<S>>,
     input: Bytes,
 ) -> VMResult<(Option<Bytes>, u32)> {
-    let (smart_contract_addr, input_data, entry_point_name, transferred_value) =
-        match bytesrepr::deserialize_from_slice::<&Bytes, (HashAddr, BytesreprBytes, String, u64)>(
-            &input,
-        ) {
-            Ok(res) => res,
-            Err(_) => {
-                return Ok((None, CALLEE_INPUT_INVALID));
-            }
-        };
+    let (
+        smart_contract_addr,
+        input_data,
+        entry_point_name,
+        transferred_value,
+        version,
+        protocol_version_major,
+    ) = match bytesrepr::deserialize_from_slice::<
+        &Bytes,
+        (
+            HashAddr,
+            BytesreprBytes,
+            String,
+            u64,
+            Option<u32>,
+            Option<u32>,
+        ),
+    >(&input)
+    {
+        Ok(res) => res,
+        Err(_) => {
+            return Ok((None, CALLEE_INPUT_INVALID));
+        }
+    };
     // 1. Look up address in the storage
     // 1a. if it's VM1 contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
@@ -64,8 +81,10 @@ pub(crate) fn host_call<S: GlobalStateReader + 'static>(
         .with_caller_key(caller.context().callee)
         .with_gas_limit(gas_limit)
         .with_execution_kind(ExecutionKind::Stored {
-            address: smart_contract_addr,
+            package_pointer: PackagePointer::HashAddr(smart_contract_addr),
             entry_point: entry_point_name.clone(),
+            version,
+            protocol_version_major,
         })
         .with_transferred_value(transferred_value)
         .with_input(input_data)
@@ -380,8 +399,10 @@ pub(crate) fn host_upgrade<S: GlobalStateReader + 'static>(
             .with_caller_key(caller.context().callee)
             .with_gas_limit(gas_limit)
             .with_execution_kind(ExecutionKind::Stored {
-                address: smart_contract_addr,
+                package_pointer: PackagePointer::HashAddr(smart_contract_addr),
                 entry_point: entry_point_name.clone(),
+                version: None,
+                protocol_version_major: None,
             })
             .with_input(input_data.unwrap_or_default())
             // Upgrade entry point is executed with zero value as it does not seem to make sense to

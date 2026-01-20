@@ -51,7 +51,9 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let spec_override = match gas_price_scenario {
         GasPriceScenario::SlotUtilization => {
             let mut transaction_config = TransactionV1Config::default();
-            transaction_config.native_mint_lane.max_transaction_count = 1;
+            transaction_config
+                .native_mint_lane
+                .set_max_transaction_count(1);
             ConfigsOverride::default().with_transaction_v1_config(transaction_config)
         }
         GasPriceScenario::SizeUtilization(block_size) => {
@@ -244,7 +246,9 @@ async fn gas_price_calc_should_not_stall_network() {
     let minimum_era_height = 5;
 
     let mut transaction_config = TransactionV1Config::default();
-    transaction_config.native_mint_lane.max_transaction_count = 1;
+    transaction_config
+        .native_mint_lane
+        .set_max_transaction_count(1);
 
     let spec_override = ConfigsOverride::default()
         .with_transaction_v1_config(transaction_config)

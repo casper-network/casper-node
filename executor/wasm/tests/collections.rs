@@ -10,7 +10,7 @@ use casper_executor_wasm::{
 };
 
 use casper_executor_wasm::{chainspec_config, chainspec_config::ChainspecConfig};
-use casper_executor_wasm_interface::executor::ExecutionKind;
+use casper_executor_wasm_interface::executor::{ExecutionKind, PackagePointer};
 use casper_storage::global_state::state::CommitProvider;
 use once_cell::sync::Lazy;
 
@@ -77,8 +77,10 @@ fn should_run_test_suite() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "assertions".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");
@@ -145,8 +147,10 @@ fn inserting_into_non_existing_vec_index_fails() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "test_remove_invalid_index_prepare".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");

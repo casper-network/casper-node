@@ -25,7 +25,7 @@ use casper_executor_wasm_interface::{
         AuctionMethods, ControlMethods, CryptoMethods, EmitMethods, ExecuteError, ExecuteRequest,
         ExecuteRequestBuilder, ExecuteResult, ExecuteWithProviderError, ExecuteWithProviderResult,
         ExecutionKind, Executor, FFIMenu, GlobalStateMethods, IOMethods, MintMethods,
-        SystemContractMenu,
+        PackagePointer, SystemContractMenu,
     },
     install::{
         InstallContractError, InstallContractRequest, InstallContractResult,
@@ -47,6 +47,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityEntryPoint, EntryPoints as EntityEntryPoints,
+        NamedKeyAddr,
     },
     bytesrepr::{self, ToBytes},
     contract_messages::{MessageAddr, MessageTopicSummary},
@@ -57,13 +58,13 @@ use casper_types::{
     execution::RetValue,
     AddressableEntity, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType,
     CLValue, Contract, ContractRuntimeTag, ContractWasmHash, Digest, EntityAddr,
-    EntityEntryPointV2, EntityEntryPointV2Flags, EntityKind, EntryPointAccess, EntryPointAddr,
-    EntryPointPayment, EntryPointType, EntryPointValue, Gas, Groups, HostFFIFunctionCost,
-    InitiatorAddr, Key, MessageLimits, MintCosts, NamedKeys, Package, PackageAddr, PackageStatus,
-    Parameter, Parameters, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, TypeDefinition, TypeDefinitionKind, TypeEnumVariant,
-    TypePrimitive, TypeStructField, TypeUid, URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE,
-    U512,
+    EntityEntryPointV2, EntityEntryPointV2Flags, EntityKind, EntityVersion, EntityVersionKey,
+    EntityVersions, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
+    EntryPointValue, Gas, Groups, HashAddr, HostFFIFunctionCost, InitiatorAddr, Key, MessageLimits,
+    MintCosts, NamedKeys, Package, PackageAddr, PackageStatus, Parameter, Parameters, Phase,
+    ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget,
+    TypeDefinition, TypeDefinitionKind, TypeEnumVariant, TypePrimitive, TypeStructField, TypeUid,
+    URef, WasmV2Config, NAME_FOR_V2_CONTRACT_MAIN_PURSE, U512,
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -322,12 +323,28 @@ impl ExecutorV2 {
             if let ExecutionKind::SessionBytes(wasm_bytes) = &execution_kind {
                 (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
             } else if let ExecutionKind::Stored {
-                address: contract_package_addr,
+                package_pointer,
                 entry_point,
+                version,
+                protocol_version_major,
             } = &execution_kind
             {
-                let smart_contract_key = Key::Package((*contract_package_addr).into());
-                let vm1_key = Key::Hash(*contract_package_addr);
+                let contract_package_addr = if let Some(contract_package_addr) = self
+                    .resolve_stored_package_hash(package_pointer, &caller_key, &mut tracking_copy)
+                {
+                    contract_package_addr
+                } else {
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::CodeNotFound),
+                        output: None,
+                        gas_usage: GasUsage::new(gas_limit, gas_limit),
+                        effects: tracking_copy.effects(),
+                        cache: tracking_copy.cache(),
+                        messages: tracking_copy.messages(),
+                    });
+                };
+                let smart_contract_key = Key::Package(contract_package_addr.into());
+                let vm1_key = Key::Hash(contract_package_addr);
 
                 let contract = match tracking_copy
                     .read_first(&[&vm1_key, &smart_contract_key])
@@ -339,28 +356,27 @@ impl ExecutorV2 {
                         ExecuteError::Fatal(FatalHostError::TrackingCopy)
                     })? {
                     Some(StoredValue::SmartContract(smart_contract_package)) => {
-                        let enabled_versions = smart_contract_package.enabled_versions();
-                        let maybe_contract_hash = enabled_versions.latest();
-                        let contract_hash = if let Some(contract_hash) = maybe_contract_hash {
-                            contract_hash
-                        } else {
-                            //#TODO this probably should not be a node stopping error?
-                            error!(
-                            "Couldn't find an active version for smart contract under path {:?}",
-                            [&vm1_key, &smart_contract_key]
+                        let package: Package = smart_contract_package;
+                        let res = self.determine_hash_addr_based_on_versions(
+                            &package,
+                            *protocol_version_major,
+                            *version,
                         );
-                            return Ok(ExecuteResult {
-                                host_error: Some(CallError::NoActiveContract),
-                                output: None,
-                                gas_usage: GasUsage::new(gas_limit, gas_limit),
-                                effects: tracking_copy.effects(),
-                                cache: tracking_copy.cache(),
-                                messages: tracking_copy.messages(),
-                            });
+                        let contract_hash = match res {
+                            Ok(hash) => hash,
+                            Err(call_error) => {
+                                return Ok(ExecuteResult {
+                                    host_error: Some(call_error),
+                                    output: None,
+                                    gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                    effects: tracking_copy.effects(),
+                                    cache: tracking_copy.cache(),
+                                    messages: tracking_copy.messages(),
+                                });
+                            }
                         };
-                        let entity_addr = EntityAddr::SmartContract(contract_hash.value());
+                        let entity_addr = EntityAddr::SmartContract(contract_hash);
                         let latest_version_key = Key::AddressableEntity(entity_addr);
-                        assert_eq!(&entity_addr.value(), contract_package_addr);
                         tracking_copy
                             .read(&latest_version_key)
                             .map_err(|read_err| {
@@ -369,30 +385,30 @@ impl ExecutorV2 {
                             })?
                     }
                     Some(StoredValue::ContractPackage(smart_contract_package)) => {
-                        let contract_hash = if let Some((_, contract_hash)) =
-                            smart_contract_package.enabled_versions().iter().last()
-                        {
-                            *contract_hash
-                        } else {
-                            //#TODO this probably should not be a node stopping error?
-                            error!(
-                            "Couldn't find an active version for smart contract under path {:?}",
-                            [&vm1_key, &smart_contract_key]
+                        let package: Package = smart_contract_package.into();
+                        let res = self.determine_hash_addr_based_on_versions(
+                            &package,
+                            *protocol_version_major,
+                            *version,
                         );
-                            return Ok(ExecuteResult {
-                                host_error: Some(CallError::NoActiveContract),
-                                output: None,
-                                gas_usage: GasUsage::new(gas_limit, gas_limit),
-                                effects: tracking_copy.effects(),
-                                cache: tracking_copy.cache(),
-                                messages: tracking_copy.messages(),
-                            });
+                        let contract_hash = match res {
+                            Ok(hash) => hash,
+                            Err(call_error) => {
+                                return Ok(ExecuteResult {
+                                    host_error: Some(call_error),
+                                    output: None,
+                                    gas_usage: GasUsage::new(gas_limit, gas_limit),
+                                    effects: tracking_copy.effects(),
+                                    cache: tracking_copy.cache(),
+                                    messages: tracking_copy.messages(),
+                                });
+                            }
                         };
-                        let latest_version_key = Key::Hash(contract_hash.value());
+                        let matching_contract_key = Key::Hash(contract_hash);
                         tracking_copy
-                            .read(&latest_version_key)
+                            .read(&matching_contract_key)
                             .map_err(|read_err| {
-                                error!("Error when fetching smart contract {latest_version_key}. Details {read_err}");
+                                error!("Error when fetching smart contract {matching_contract_key}. Details {read_err}");
                                 ExecuteError::Fatal(FatalHostError::TrackingCopy)
                             })?
                     }
@@ -416,7 +432,7 @@ impl ExecutorV2 {
                                     self.execution_engine_v1.config().protocol_version(),
                                 );
 
-                                let entity_addr = EntityAddr::Package(*contract_package_addr);
+                                let entity_addr = EntityAddr::Package(contract_package_addr);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -463,7 +479,7 @@ impl ExecutorV2 {
 
                         let wasm_bytes = stored_value
                             .into_byte_code()
-                            .ok_or({
+                            .ok_or_else(|| {
                                 error!("Couldn't wasm stored value into ByteCode");
                                 ExecuteError::Fatal(FatalHostError::TypeConversion)
                             })?
@@ -639,7 +655,7 @@ impl ExecutorV2 {
                                     self.execution_engine_v1.config().protocol_version(),
                                 );
 
-                                let entity_addr = EntityAddr::SmartContract(*contract_package_addr);
+                                let entity_addr = EntityAddr::SmartContract(contract_package_addr);
 
                                 return self.execute_vm1_wasm_byte_code(
                                     initiator,
@@ -691,14 +707,28 @@ impl ExecutorV2 {
         // Derive callee key from the execution target.
         let (callee_key, entry_point_name) = match &execution_kind {
             ExecutionKind::Stored {
-                address: smart_contract_package_addr,
+                package_pointer,
                 entry_point,
                 ..
             } => {
-                let key = if tracking_copy.addressable_entity_enabled() {
-                    Key::Package((*smart_contract_package_addr).into())
+                let contract_package_addr = if let Some(contract_package_addr) = self
+                    .resolve_stored_package_hash(package_pointer, &caller_key, &mut tracking_copy)
+                {
+                    contract_package_addr
                 } else {
-                    Key::Hash(*smart_contract_package_addr)
+                    return Ok(ExecuteResult {
+                        host_error: Some(CallError::CodeNotFound),
+                        output: None,
+                        gas_usage: GasUsage::new(gas_limit, gas_limit),
+                        effects: tracking_copy.effects(),
+                        cache: tracking_copy.cache(),
+                        messages: tracking_copy.messages(),
+                    });
+                };
+                let key = if tracking_copy.addressable_entity_enabled() {
+                    Key::Package(contract_package_addr.into())
+                } else {
+                    Key::Hash(contract_package_addr)
                 };
                 (key, entry_point.clone())
             }
@@ -971,6 +1001,9 @@ impl ExecutorV2 {
                         GlobalStateMethods::Create => {
                             config.wasm_config.host_ffi_opt_costs().create
                         }
+                        GlobalStateMethods::StorePackageUnderKey => {
+                            config.wasm_config.host_ffi_opt_costs().write
+                        }
                     },
                     FFIMenu::Control(control_methods) => match control_methods {
                         ControlMethods::Call => config.wasm_config.host_ffi_opt_costs().call,
@@ -1148,6 +1181,174 @@ impl ExecutorV2 {
             },
             Err(error) => Err(ExecuteWithProviderError::Execute(error)),
         }
+    }
+
+    fn determine_hash_addr_based_on_versions(
+        &self,
+        package: &Package,
+        protocol_version_major: Option<u32>,
+        version: Option<u32>,
+    ) -> Result<HashAddr, CallError> {
+        let enabled_versions = package.enabled_versions();
+        let entity_version_key = match (version, protocol_version_major) {
+            (Some(entity_version), Some(major)) => EntityVersionKey::new(major, entity_version),
+            (None, Some(major)) => package.current_entity_version_for(major),
+            (Some(entity_version), None) => {
+                match self
+                    .get_protocol_version_for_entity_version(entity_version, &enabled_versions)
+                {
+                    Ok(entity_version_key) => entity_version_key,
+                    Err(err) => {
+                        return Err(err);
+                    }
+                }
+            }
+            (None, None) => match package.current_entity_version() {
+                Some(v) => v,
+                None => {
+                    return Err(CallError::NoActiveContract);
+                }
+            },
+        };
+        if package.is_version_missing(entity_version_key) {
+            return Err(CallError::NoActiveContract);
+        }
+
+        if !package.is_version_enabled(entity_version_key) {
+            return Err(CallError::NoActiveContract);
+        }
+
+        Ok(package
+            .lookup_entity_hash(entity_version_key)
+            .copied()
+            .ok_or(CallError::NoActiveContract)?
+            .value())
+    }
+
+    fn get_protocol_version_for_entity_version(
+        &self,
+        entity_version: EntityVersion,
+        enabled_versions: &EntityVersions,
+    ) -> Result<EntityVersionKey, CallError> {
+        let current_protocol_version_major = self
+            .execution_engine_v1
+            .config()
+            .protocol_version()
+            .destructure()
+            .0;
+
+        let mut possible_versions = vec![];
+
+        for protocol_version_major in (1..=current_protocol_version_major).rev() {
+            let entity_version_key = EntityVersionKey::new(protocol_version_major, entity_version);
+            // If there is a corresponding addr then its an enabled valid entity version key
+            if enabled_versions.get(&entity_version_key).is_some() {
+                possible_versions.push(entity_version_key)
+            }
+        }
+
+        if possible_versions.len() > 1
+            && self
+                .execution_engine_v1
+                .config()
+                .trap_on_ambiguous_entity_version()
+        {
+            return Err(CallError::NoActiveContract);
+        }
+
+        // If possible versions has more than one, then the element to be popped
+        // will be the version key which has the same entity version, but the highest protocol
+        // version If there is only one version key matching the entity version then we will
+        // correctly pop the singular element in the possible versions.
+        // This sort is load bearing.
+        possible_versions.sort();
+        if let Some(possible_version) = possible_versions.pop() {
+            Ok(possible_version)
+        } else {
+            Err(CallError::NoActiveContract)
+        }
+    }
+
+    fn resolve_stored_package_hash<R: GlobalStateReader + 'static>(
+        &self,
+        package_pointer: &PackagePointer,
+        caller_key: &Key,
+        tracking_copy: &mut TrackingCopy<R>,
+    ) -> Option<HashAddr> {
+        let is_addressable_entity = tracking_copy.addressable_entity_enabled();
+        let contract_package_addr = match package_pointer {
+            PackagePointer::HashAddr(hash_addr) => *hash_addr,
+            PackagePointer::NamedKeyName(name) => {
+                let global_state_key = match caller_key {
+                    Key::Account(_) | Key::Hash(_) | Key::Package(_) if !is_addressable_entity => {
+                        *caller_key
+                    }
+                    Key::Account(hash) if is_addressable_entity => {
+                        let entity_addr = EntityAddr::Account(hash.value());
+                        let digest = Digest::hash(name.as_bytes());
+                        Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                            entity_addr,
+                            digest.value(),
+                        ))
+                    }
+                    Key::Hash(hash) if is_addressable_entity => {
+                        let entity_addr = EntityAddr::SmartContract(*hash);
+                        let digest = Digest::hash(name.as_bytes());
+                        Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                            entity_addr,
+                            digest.value(),
+                        ))
+                    }
+                    Key::Package(package_addr) if is_addressable_entity => {
+                        let entity_addr = EntityAddr::SmartContract(package_addr.value());
+                        let digest = Digest::hash(name.as_bytes());
+                        Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                            entity_addr,
+                            digest.value(),
+                        ))
+                    }
+                    Key::AddressableEntity(entity_addr) => {
+                        let digest = Digest::hash(name.as_bytes());
+                        Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                            *entity_addr,
+                            digest.value(),
+                        ))
+                    }
+                    _ => {
+                        // This should never happen, as the caller is always an account or a smart
+                        // contract.
+                        panic!("Unexpected callee variant: {:?}", caller_key)
+                    }
+                };
+                let global_state_read_result = tracking_copy.read(&global_state_key);
+                let maybe_named_key = match global_state_read_result {
+                    Ok(Some(StoredValue::Account(account))) => {
+                        account.named_keys().get(name).cloned()
+                    }
+                    Ok(Some(StoredValue::Contract(contract))) => {
+                        contract.named_keys().get(name).cloned()
+                    }
+                    Ok(Some(StoredValue::NamedKey(named_key_value))) => {
+                        let key = if let Ok(key) = named_key_value.get_key() {
+                            key
+                        } else {
+                            return None;
+                        };
+                        Some(key)
+                    }
+                    _ => None,
+                };
+                match maybe_named_key {
+                    Some(key) => match key {
+                        Key::Package(package_addr) => package_addr.value(),
+                        Key::Hash(package_addr) => package_addr,
+                        _ => return None,
+                    },
+                    None => return None,
+                }
+            }
+        };
+        Some(contract_package_addr)
     }
 }
 
@@ -1758,8 +1959,10 @@ impl Executor for ExecutorV2 {
                 .with_initiator(initiator)
                 .with_caller_key(caller_key)
                 .with_execution_kind(ExecutionKind::Stored {
-                    address: package_addr,
+                    package_pointer: PackagePointer::HashAddr(package_addr),
                     entry_point: entry_point_name,
+                    version: None,
+                    protocol_version_major: None,
                 })
                 .with_gas_limit(state.gas_usage.remaining_points())
                 .with_input(input)

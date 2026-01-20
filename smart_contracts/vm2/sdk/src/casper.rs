@@ -148,6 +148,26 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), HostResult> {
     result_from_code(ret)
 }
 
+/// Write to the global state.
+pub fn store_package_under_key(named_key: &str) -> Result<(), HostResult> {
+    let input_data = borsh::to_vec(named_key).expect("Expected borsh to work");
+    extern "C" fn alloc_cb(_len: usize, _ctx: *mut c_void) -> *mut u8 {
+        // Write shouldn't have any output data and should not return anything
+        ptr::null_mut()
+    }
+    let ctx = &None::<u8> as *const _ as *mut _;
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_ffi(
+            GlobalStateFunctionOption::StorePackageUnderKey.into(),
+            input_data.as_ptr(),
+            input_data.len(),
+            alloc_cb,
+            ctx,
+        )
+    };
+    result_from_code(ret)
+}
+
 /// Remove from the global state.
 pub fn remove(key: Keyspace) -> Result<(), HostResult> {
     let input_data = key.to_host_input_data().expect("Expected borsh to work");
@@ -251,9 +271,18 @@ pub fn casper_call(
     transferred_value: u64,
     entry_point: &str,
     input_data: &[u8],
+    contract_version: Option<u32>,
+    contract_protocol_version_major: Option<u32>,
 ) -> (Option<Vec<u8>>, Result<(), CallError>) {
-    let input_data =
-        borsh::to_vec(&(address, input_data, entry_point, transferred_value)).expect("borsh");
+    let input_data = borsh::to_vec(&(
+        address,
+        input_data,
+        entry_point,
+        transferred_value,
+        contract_version,
+        contract_protocol_version_major,
+    ))
+    .expect("borsh");
     let (output_data, result_code) = casper_ffi(ControlFunctionOption::Call.into(), &input_data);
     (output_data, call_result_from_code(result_code))
 }
@@ -343,6 +372,8 @@ pub fn call<T: ToCallData>(
     contract_address: &Address,
     transferred_value: u64,
     call_data: T,
+    contract_version: Option<u32>,
+    contract_protocol_version_major: Option<u32>,
 ) -> Result<CallResult<T>, CallError> {
     let input_data = call_data.input_data().unwrap_or_default();
 
@@ -351,6 +382,8 @@ pub fn call<T: ToCallData>(
         transferred_value,
         call_data.entry_point(),
         &input_data,
+        contract_version,
+        contract_protocol_version_major,
     );
     match result_code {
         Ok(()) | Err(CallError::CalleeRolledBack) => Ok(CallResult::<T> {

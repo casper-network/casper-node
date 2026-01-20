@@ -10,8 +10,8 @@ use casper_executor_wasm::{
     ExecutorV2,
 };
 use casper_executor_wasm_interface::{
-    executor::ExecutionKind,
-    install::{InstallContractResult, InstallContractWithProviderResult},
+    executor::{ExecutionKind, PackagePointer},
+    install::InstallContractWithProviderResult,
 };
 use casper_storage::{
     data_access_layer::{QueryRequest, QueryResult},
@@ -95,8 +95,10 @@ fn should_store_state_after_changes() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "spanish".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");
@@ -115,8 +117,10 @@ fn should_store_state_after_changes() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "french".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");
@@ -176,8 +180,10 @@ fn should_fetch_data_with_contract_method() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "spanish".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");
@@ -196,8 +202,10 @@ fn should_fetch_data_with_contract_method() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_transferred_value(0)
         .with_execution_kind(ExecutionKind::Stored {
-            address: contract_address,
+            package_pointer: PackagePointer::HashAddr(contract_address),
             entry_point: "get".to_owned(),
+            version: None,
+            protocol_version_major: None,
         })
         .build()
         .expect("should build");

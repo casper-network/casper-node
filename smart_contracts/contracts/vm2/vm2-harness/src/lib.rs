@@ -581,8 +581,14 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             &mut counter,
             "Calling non-existing entrypoint does not crash",
         );
-        let (output, result) =
-            casper::casper_call(&flipper_address, 0, "non_existing_entrypoint", &[]);
+        let (output, result) = casper::casper_call(
+            &flipper_address,
+            0,
+            "non_existing_entrypoint",
+            &[],
+            None,
+            None,
+        );
         assert_eq!(result, Err(CallError::NotCallable));
         assert_eq!(output, None);
     }

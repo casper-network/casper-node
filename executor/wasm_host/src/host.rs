@@ -30,7 +30,8 @@ use crate::{
         },
         emit::{emit, print_std},
         global_state::{
-            host_create, host_env_balance, host_env_info, host_read, host_remove, host_write,
+            host_create, host_env_balance, host_env_info, host_read, host_remove,
+            host_store_package_under_key, host_write,
         },
         io::{host_copy_input, host_return, host_revert},
     },
@@ -82,6 +83,8 @@ fn context_to_entity_addr<S: GlobalStateReader>(context: &Context<S>) -> EntityA
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
         Key::Hash(hash_addr) => EntityAddr::SmartContract(hash_addr),
         Key::AddressableEntity(smart_contract_addr) => smart_contract_addr,
+        //#TODO not sure if this is correct... The caller should be the contract IMHO
+        Key::Package(package_addr) => EntityAddr::SmartContract(package_addr.value()),
         _ => {
             // This should never happen, as the caller is always an account or a smart contract.
             panic!("Unexpected callee variant: {:?}", context.callee)
@@ -193,6 +196,9 @@ pub fn casper_ffi<S: GlobalStateReader + 'static>(
             GlobalStateMethods::GetBalance => host_env_balance(&mut caller, input_data),
             GlobalStateMethods::GetInfo => host_env_info(&mut caller),
             GlobalStateMethods::Create => host_create(&mut caller, input_data),
+            GlobalStateMethods::StorePackageUnderKey => {
+                host_store_package_under_key(&mut caller, input_data).map(|code| (None, code))
+            }
         },
         FFIMenu::Control(control_methods) => match control_methods {
             ControlMethods::Call => host_call(&mut caller, input_data),

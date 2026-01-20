@@ -426,7 +426,7 @@ impl Deploy {
             .get_lane_by_id(lane_id)
             .ok_or(InvalidDeploy::NoLaneMatch)?;
 
-        self.is_valid_size(lane_definition.max_transaction_length as u32)?;
+        self.is_valid_size(lane_definition.max_transaction_length() as u32)?;
 
         let header = self.header();
         let chain_name = &chainspec.network_config.name;
@@ -486,11 +486,11 @@ impl Deploy {
                 got: Box::new(gas_limit.value()),
             });
         }
-        let lane_limit = lane_definition.max_transaction_gas_limit;
+        let lane_limit = lane_definition.max_transaction_gas_limit();
         let lane_limit_as_gas = Gas::new(lane_limit);
         if gas_limit > lane_limit_as_gas {
             debug!(
-                calculated_lane = lane_definition.id,
+                calculated_lane = lane_definition.id(),
                 payment_amount = %gas_limit,
                 %block_gas_limit,
                     "transaction gas limit exceeds lane limit"
@@ -1529,7 +1529,7 @@ impl GasLimited for Deploy {
                 let lane_definition = v1_config
                     .get_lane_by_id(lane_id)
                     .ok_or(InvalidDeploy::NoLaneMatch)?;
-                let computation_limit = lane_definition.max_transaction_gas_limit;
+                let computation_limit = lane_definition.max_transaction_gas_limit();
                 Gas::new(computation_limit)
             } // legacy deploys do not support prepaid
         };
@@ -2290,7 +2290,7 @@ mod tests {
             .transaction_v1_config
             .get_max_wasm_lane_by_gas_limit()
             .unwrap();
-        let amount = U512::from(max_lane.max_transaction_gas_limit + 1);
+        let amount = U512::from(max_lane.max_transaction_gas_limit() + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -2351,7 +2351,7 @@ mod tests {
             .transaction_v1_config
             .get_max_wasm_lane_by_gas_limit()
             .unwrap();
-        let amount = U512::from(max_lane.max_transaction_gas_limit);
+        let amount = U512::from(max_lane.max_transaction_gas_limit());
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),

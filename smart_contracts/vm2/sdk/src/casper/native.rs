@@ -745,11 +745,11 @@ mod tests {
             env.add_expectation(ExpectedCall::expect_print("Hello"));
             let _ = casper::print("Hello");
 
-            let key = Keyspace::NamedKey("abc");
+            let key = Keyspace::NamedValue("abc");
             env.add_expectation(ExpectedCall::expect_write(Some((&key, b"value 1"))));
             casper::write(key, b"value 1").unwrap();
 
-            let key = Keyspace::NamedKey("abc");
+            let key = Keyspace::NamedValue("abc");
             env.add_expectation(ExpectedCall::expect_write_with_result_code(
                 Some((&key, b"value 1")),
                 HOST_ERROR_INVALID_INPUT,
@@ -759,7 +759,7 @@ mod tests {
                 Err(HostResult::InvalidInput)
             );
 
-            let key_3 = Keyspace::NamedKey("abc");
+            let key_3 = Keyspace::NamedValue("abc");
             env.add_expectation(ExpectedCall::expect_read(
                 Some(&key_3),
                 Some(b"value 2"),
@@ -767,7 +767,7 @@ mod tests {
             ));
             assert_eq!(casper::read_into_vec(key_3), Ok(Some(b"value 2".to_vec())));
 
-            let key_4 = Keyspace::NamedKey("abc2");
+            let key_4 = Keyspace::NamedValue("abc2");
             env.add_expectation(ExpectedCall::expect_read(
                 Some(&key_4),
                 Some(&[5]),
@@ -775,7 +775,7 @@ mod tests {
             ));
             assert_eq!(casper::read_into_vec(key_4), Ok(Some(vec![5])));
 
-            let key_5 = Keyspace::NamedKey("abc3");
+            let key_5 = Keyspace::NamedValue("abc3");
             env.add_expectation(ExpectedCall::expect_read(
                 Some(&key_5),
                 None,

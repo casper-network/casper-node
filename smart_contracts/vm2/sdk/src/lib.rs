@@ -261,6 +261,8 @@ impl<T: ContractRef> CallBuilder<T> {
             &self.address,
             self.transferred_value.unwrap_or(0),
             call_data,
+            None,
+            None,
         )
     }
 
@@ -277,6 +279,8 @@ impl<T: ContractRef> CallBuilder<T> {
             &self.address,
             self.transferred_value.unwrap_or(0),
             call_data,
+            None,
+            None,
         )?;
         call_result.into_result()
     }

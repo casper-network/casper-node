@@ -101,7 +101,7 @@ pub enum Keyspace<'a> {
     /// Structured context address.
     Context(ContextAddr),
     /// Human-readable named key.
-    NamedKey(&'a str),
+    NamedValue(&'a str),
     /// Retrieves contract's type definitions.
     TypeDef(Uid),
     /// Stores contract's entry points.
@@ -113,7 +113,7 @@ impl Keyspace<'_> {
     pub fn as_tag(&self) -> KeyspaceTag {
         match self {
             Keyspace::Context(_) => KeyspaceTag::Context,
-            Keyspace::NamedKey(_) => KeyspaceTag::NamedKey,
+            Keyspace::NamedValue(_) => KeyspaceTag::NamedKey,
             Keyspace::TypeDef(_) => KeyspaceTag::TypeDef,
             Keyspace::EntryPoint(_) => KeyspaceTag::EntryPoint,
         }
@@ -129,15 +129,15 @@ impl Keyspace<'_> {
             Keyspace::Context(key_bytes) => {
                 borsh::to_vec(&(KeyspaceTag::Context as u64, borsh::to_vec(key_bytes)?))
             }
-            Keyspace::NamedKey(key_bytes) => {
-                borsh::to_vec(&(KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()))
-            }
             Keyspace::TypeDef(typedef) => borsh::to_vec(&(
                 KeyspaceTag::TypeDef as u64,
                 typedef.into_raw().to_le_bytes().to_vec(),
             )),
             Keyspace::EntryPoint(entry_point_name) => {
                 borsh::to_vec(&(KeyspaceTag::EntryPoint as u64, entry_point_name))
+            }
+            Keyspace::NamedValue(key_bytes) => {
+                borsh::to_vec(&(KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()))
             }
         }
     }
@@ -150,55 +150,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_as_tag_state() {
-        let keyspace = Keyspace::State;
-        assert_eq!(keyspace.as_tag(), KeyspaceTag::State);
-    }
-
-    #[test]
     fn test_as_tag_context() {
-        let data = [1, 2, 3];
-        let keyspace = Keyspace::Context(&data);
+        let context_addr = ContextAddr::StateAddr(StateAddrInner::new("abc"));
+        let keyspace = Keyspace::Context(context_addr);
         assert_eq!(keyspace.as_tag(), KeyspaceTag::Context);
     }
 
     #[test]
     fn test_as_tag_named_key() {
         let name = "my_key";
-        let keyspace = Keyspace::NamedKey(name);
+        let keyspace = Keyspace::NamedValue(name);
         assert_eq!(keyspace.as_tag(), KeyspaceTag::NamedKey);
     }
 
     #[test]
-    fn test_as_u64_state() {
-        let keyspace = Keyspace::State;
-        assert_eq!(keyspace.as_u64(), 0);
-    }
-
-    #[test]
     fn test_as_u64_context() {
-        let data = [1, 2, 3];
-        let keyspace = Keyspace::Context(&data);
-        assert_eq!(keyspace.as_u64(), 1);
+        let context_addr = ContextAddr::StateAddr(StateAddrInner::new("abc"));
+        let keyspace = Keyspace::Context(context_addr);
+        assert_eq!(keyspace.as_u64(), 0);
     }
 
     #[test]
     fn test_as_u64_named_key() {
         let name = "my_key";
-        let keyspace = Keyspace::NamedKey(name);
+        let keyspace = Keyspace::NamedValue(name);
         assert_eq!(keyspace.as_u64(), 2);
     }
 
     #[test]
-    fn test_as_u64_all_named_keys() {
+    fn test_as_u64_type_def() {
         let keyspace = Keyspace::TypeDef(Uid::from_name("foobar"));
-        assert_eq!(keyspace.as_u64(), 4);
+        assert_eq!(keyspace.as_u64(), 3);
     }
 
     #[test]
     fn test_as_u64_entry_point() {
         let name = "my_entry_point";
         let keyspace = Keyspace::EntryPoint(name);
-        assert_eq!(keyspace.as_u64(), 5);
+        assert_eq!(keyspace.as_u64(), 4);
     }
 }

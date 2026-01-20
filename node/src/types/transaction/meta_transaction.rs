@@ -512,20 +512,20 @@ mod proptests {
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
             let mut transaction_config = TransactionConfig::default();
             transaction_config.transaction_v1_config.set_wasm_lanes(vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: u64::MAX/2,
-                    max_transaction_args_length: 10000,
-                    max_transaction_gas_limit: u64::MAX/2,
-                    max_transaction_count: 10,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: u64::MAX,
-                    max_transaction_args_length: 10000,
-                    max_transaction_gas_limit: u64::MAX,
-                    max_transaction_count: 10,
-                },
+                TransactionLaneDefinition::new(
+                     3,
+                     u64::MAX/2,
+                     10000,
+                     u64::MAX/2,
+                     10,
+                ),
+                TransactionLaneDefinition::new(
+                     4,
+                     u64::MAX,
+                     10000,
+                     u64::MAX,
+                     10,
+                ),
                 ]);
             let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);

@@ -6,10 +6,10 @@ pub mod exports {
     #[casper(export)]
     pub fn call(address: Address) {
         let _ = casper::print(&format!("trying to call address {:?}", address));
-        casper::casper_call(&address, 0, "do_return", &[])
+        casper::casper_call(&address, 0, "do_return", &[], None, None)
             .1
             .unwrap();
-        casper::casper_call(&address, 0, "do_not_return", &[])
+        casper::casper_call(&address, 0, "do_not_return", &[], None, None)
             .1
             .unwrap();
     }

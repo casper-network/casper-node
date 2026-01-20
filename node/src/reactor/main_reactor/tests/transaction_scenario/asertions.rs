@@ -3,7 +3,10 @@ use crate::reactor::main_reactor::tests::transactions::{
     assert_exec_result_cost, exec_result_is_success, BalanceAmount,
 };
 use async_trait::async_trait;
-use casper_types::{Gas, PublicKey, TransactionHash, U512};
+use casper_types::{
+    execution::{RetValue, TransformKindV2},
+    Gas, PublicKey, TransactionHash, U512,
+};
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 
@@ -33,11 +36,22 @@ impl Assertion for TransactionSuccessful {
 
 pub(crate) struct TransactionFailure {
     hash: TransactionHash,
+    expected_error_message: Option<String>,
 }
 
 impl TransactionFailure {
     pub(crate) fn new(hash: TransactionHash) -> Self {
-        Self { hash }
+        Self {
+            hash,
+            expected_error_message: None,
+        }
+    }
+
+    pub(crate) fn expected_error_message(hash: TransactionHash, error_message: &str) -> Self {
+        Self {
+            hash,
+            expected_error_message: Some(error_message.to_string()),
+        }
     }
 }
 
@@ -49,7 +63,16 @@ impl Assertion for TransactionFailure {
         let exec_info = current_state.exec_infos.get(&self.hash).unwrap();
         assert!(exec_info.execution_result.is_some());
         let result = exec_info.execution_result.as_ref().unwrap();
-        assert!(!exec_result_is_success(result));
+        let error_msg = match result {
+            casper_types::execution::ExecutionResult::V1(_) => todo!(),
+            casper_types::execution::ExecutionResult::V2(execution_result_v2) => {
+                execution_result_v2.error_message.clone()
+            }
+        };
+        assert!(error_msg.is_some());
+        if let Some(msg) = &self.expected_error_message {
+            assert_eq!(error_msg.unwrap(), msg.to_string());
+        }
     }
 }
 
@@ -224,5 +247,44 @@ impl Assertion for PublicKeyTotalMeetsAvailable {
         let after_total = balance.total;
         let after_available = balance.available;
         assert_eq!(after_total, after_available);
+    }
+}
+
+pub(crate) struct ExecutionResultHasRet {
+    hash: TransactionHash,
+    expected_ret_val: RetValue,
+}
+
+impl ExecutionResultHasRet {
+    pub(crate) fn new(hash: TransactionHash, expected_ret_val: RetValue) -> Self {
+        Self {
+            hash,
+            expected_ret_val,
+        }
+    }
+}
+
+#[async_trait]
+impl Assertion for ExecutionResultHasRet {
+    async fn assert(&self, snapshots_at_heights: BTreeMap<u64, TestStateSnapshot>) {
+        let current_state = snapshots_at_heights.last_key_value().unwrap().1;
+        assert!(current_state.exec_infos.contains_key(&self.hash));
+        let exec_info = current_state.exec_infos.get(&self.hash).unwrap();
+        assert!(exec_info.execution_result.is_some());
+        let result = exec_info.execution_result.as_ref().unwrap();
+        assert!(exec_result_is_success(result));
+        match result {
+            casper_types::execution::ExecutionResult::V1(_) => todo!(),
+            casper_types::execution::ExecutionResult::V2(execution_result_v2) => {
+                let maybe_last_ret = execution_result_v2.effects.transforms().iter().filter(|el|{
+                    matches!(el.kind(), TransformKindV2::Ret(v) if *v == self.expected_ret_val)
+                }).last();
+                assert!(maybe_last_ret.is_some());
+                let last = maybe_last_ret.unwrap();
+                assert!(
+                    matches!(last.kind(), TransformKindV2::Ret(v) if *v == self.expected_ret_val)
+                );
+            }
+        }
     }
 }

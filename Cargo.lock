@@ -968,6 +968,7 @@ dependencies = [
  "casper-storage",
  "casper-types",
  "regex",
+ "rkyv",
  "tracing",
  "wasmer",
  "wasmer-compiler-singlepass",
@@ -5501,13 +5502,13 @@ dependencies = [
 
 [[package]]
 name = "rkyv"
-version = "0.8.11"
+version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19f5c3e5da784cd8c69d32cdc84673f3204536ca56e1fa01be31a74b92c932ac"
+checksum = "8b2e88acca7157d83d789836a3987dafc12bc3d88a050e54b8fe9ea4aaa29d20"
 dependencies = [
  "bytecheck 0.8.1",
  "bytes",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.0",
  "indexmap 2.11.3",
  "munge",
  "ptr_meta 0.3.0",
@@ -5520,9 +5521,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv_derive"
-version = "0.8.11"
+version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4270433626cffc9c4c1d3707dd681f2a2718d3d7b09ad754bec137acecda8d22"
+checksum = "7f6dffea3c91fa91a3c0fc8a061b0e27fef25c6304728038a6d6bcb1c58ba9bd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7398,6 +7399,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-store-named-key"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
+ "casper-executor-wasm-common",
+]
+
+[[package]]
 name = "vm2-system-caller"
 version = "0.1.0"
 dependencies = [
@@ -7417,6 +7427,14 @@ dependencies = [
 
 [[package]]
 name = "vm2-upgradable"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-macros",
+ "casper-contract-sdk",
+]
+
+[[package]]
+name = "vm2-upgradable-storing-package"
 version = "0.1.0"
 dependencies = [
  "casper-contract-macros",
