@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '2.1.1'
+version = '2.1.2'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -74,7 +74,7 @@ minimum_delegation_amount = 500_000_000_000
 maximum_delegation_amount = 1_000_000_000_000_000_000
 # Minimum bid amount allowed in motes. Withdrawing one's bid to an amount strictly less than
 # the value specified will be treated as a full unbond of a validator and their associated delegators
-minimum_bid_amount = 10_000_000_000_000
+minimum_bid_amount = 500_000_000_000
 # Global state prune batch size (0 = this feature is off)
 prune_batch_size = 0
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
