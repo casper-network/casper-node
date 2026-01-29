@@ -207,7 +207,7 @@ bind_address = '0.0.0.0:35000'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['135.148.34.2:35000','135.148.34.29:35000','51.91.83.147:35000','51.75.241.109:35000']
+known_addresses = ['135.148.34.2:35000','135.148.34.29:35000','188.165.231.104:35000','49.12.126.24:35000']
 
 # Minimum number of fully-connected peers to consider network component initialized.
 min_peers_for_initialization = 3
