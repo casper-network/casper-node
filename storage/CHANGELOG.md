@@ -11,6 +11,22 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 4.0.1
+
+### Changed
+* Changed the withdraw bid behavior to return an UnbondingAmountTooLarge error instead of forcing a unbonding of the valdiator's bid 
+
+### Fixed
+* Fixed an issue in the storage create which allowed delegators to exceed the maximum limit set by the validator for the validator's bid
+
+## 4.0.0
+
+### Added
+* Added `maximum_delegation_amount` field to the runtime native config struct.
+
+### Fixed
+* Fixed an issue regarding incorrect setting of delegator min max limits on validator bids
+
 ## 3.0.0
 
 ### Changed
