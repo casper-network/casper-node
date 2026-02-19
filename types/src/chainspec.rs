@@ -15,6 +15,7 @@ mod next_upgrade;
 mod pricing_handling;
 mod protocol_config;
 mod refund_handling;
+mod rewards_handling;
 mod transaction_config;
 mod upgrade_config;
 mod vacancy_config;

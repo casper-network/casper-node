@@ -639,6 +639,21 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
+        let total = {
+            let mut ret = U512::zero();
+            for rewards_vec in rewards.values() {
+                for reward in rewards_vec {
+                    ret += *reward
+                }
+            }
+
+            ret
+        };
+        let total = Ratio::new(total, U512::one());
+        let skim = Ratio::new(U512::from(50), U512::one());
+
+        let _share = (skim * total).to_integer();
+
         debug!("reading seigniorage recipients snapshot");
         let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let current_era_id = detail::get_era_id(self)?;
