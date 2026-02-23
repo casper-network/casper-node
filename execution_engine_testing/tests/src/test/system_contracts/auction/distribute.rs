@@ -25,8 +25,8 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    AccessRights, EntityAddr, EraId, ProtocolVersion, PublicKey, RewardsHandling, SecretKey,
-    Timestamp, URef, DEFAULT_MINIMUM_BID_AMOUNT, U512,
+    AccessRights, CLValue, EntityAddr, EraId, Key, ProtocolVersion, PublicKey, RewardsHandling,
+    SecretKey, StoredValue, Timestamp, URef, DEFAULT_MINIMUM_BID_AMOUNT, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -1811,6 +1811,14 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
         ret
     };
     let sustain_purse = URef::new([6u8; 32], AccessRights::READ_ADD_WRITE);
+    builder.write_data_and_commit(
+        vec![(
+            Key::Balance([6u8; 32]),
+            StoredValue::CLValue(CLValue::from_t(U512::from(0)).unwrap()),
+        )]
+        .into_iter(),
+    );
+
     let block_rewards_request = builder.distribute_with_rewards_handling(
         None,
         ProtocolVersion::V2_0_0,
@@ -1928,7 +1936,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
-    //assert_eq!(delegator_2_updated_stake, delegator_2_expected_payout);
+    assert_eq!(delegator_2_updated_stake, delegator_2_expected_payout);
 
     let era_info = get_era_info(&mut builder);
 
