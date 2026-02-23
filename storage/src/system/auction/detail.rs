@@ -14,7 +14,7 @@ use casper_types::{
         AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    AccessRights, ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+    AccessRights, ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, RewardsHandling, URef, U512,
 };
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
@@ -1581,14 +1581,26 @@ pub fn reward(
     era_id: EraId,
     rewards: &[U512],
     seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
+    rewards_handling: RewardsHandling,
 ) -> Result<Option<U512>, Error> {
-    let validator_rewards =
-        match rewards_per_validator(validator, era_id, rewards, seigniorage_recipients_snapshot) {
-            Ok(rewards) => rewards,
-            Err(Error::ValidatorNotFound) => return Ok(None),
-            Err(Error::MissingSeigniorageRecipients) => return Ok(None),
-            Err(err) => return Err(err),
-        };
+    let rewards_ratio = match rewards_handling {
+        RewardsHandling::Standard => Ratio::new(U512::zero(), U512::zero()),
+        RewardsHandling::Sustain { ratio, .. } => {
+            Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
+        }
+    };
+    let validator_rewards = match rewards_per_validator(
+        validator,
+        era_id,
+        rewards,
+        seigniorage_recipients_snapshot,
+        rewards_ratio,
+    ) {
+        Ok(rewards) => rewards,
+        Err(Error::ValidatorNotFound) => return Ok(None),
+        Err(Error::MissingSeigniorageRecipients) => return Ok(None),
+        Err(err) => return Err(err),
+    };
 
     let reward = validator_rewards
         .into_iter()
@@ -1614,6 +1626,7 @@ pub(crate) fn rewards_per_validator(
     era_id: EraId,
     rewards: &[U512],
     seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
+    rewards_ratio: Ratio<U512>,
 ) -> Result<Vec<RewardsPerValidator>, Error> {
     let mut results = Vec::with_capacity(rewards.len());
 
@@ -1626,7 +1639,8 @@ pub(crate) fn rewards_per_validator(
         .filter(|(amount, eras_back)| !amount.is_zero() || *eras_back == 0)
     {
         println!("reward amount: {:?}", reward_amount);
-        let total_reward = Ratio::from(reward_amount) * Ratio::new(U512::from(98), U512::from(100));
+        let factor = { Ratio::new(U512::from(100), U512::from(100)) - rewards_ratio };
+        let total_reward = Ratio::from(reward_amount) * factor;
         println!("total reward: {:?}", total_reward);
         let rewarded_era = era_id
             .checked_sub(eras_back)

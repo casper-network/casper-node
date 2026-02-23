@@ -192,6 +192,7 @@ async fn handle_request<REv>(
     config: &Config,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
+    chainspec: Arc<Chainspec>,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -227,7 +228,15 @@ where
             try_speculative_execution(effect_builder, transaction).await
         }
         Command::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
+            handle_get_request(
+                get_req,
+                effect_builder,
+                config,
+                metrics,
+                protocol_version,
+                chainspec,
+            )
+            .await
         }
     }
 }
@@ -238,6 +247,7 @@ async fn handle_get_request<REv>(
     config: &Config,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
+    chainspec: Arc<Chainspec>,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -306,7 +316,9 @@ where
                 return BinaryResponse::new_error(ErrorCode::UnsupportedRequest);
             };
             match InformationRequest::try_from((tag, &key[..])) {
-                Ok(req) => handle_info_request(req, effect_builder, protocol_version).await,
+                Ok(req) => {
+                    handle_info_request(req, effect_builder, protocol_version, chainspec).await
+                }
                 Err(error) => {
                     debug!(?tag, %error, "failed to parse an information request");
                     BinaryResponse::new_error(ErrorCode::MalformedInformationRequest)
@@ -1010,6 +1022,7 @@ async fn handle_info_request<REv>(
     req: InformationRequest,
     effect_builder: EffectBuilder<REv>,
     protocol_version: ProtocolVersion,
+    chainspec: Arc<Chainspec>,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -1232,12 +1245,14 @@ where
             let seigniorage_recipient =
                 snapshot.get_seignorage_recipient(&header.era_id(), &validator);
 
+            let rewards_handling = chainspec.core_config.rewards_handling.clone();
             let reward = auction::detail::reward(
                 &validator,
                 delegator.as_deref(),
                 header.era_id(),
                 validator_rewards,
                 &snapshot,
+                rewards_handling,
             );
             match (reward, seigniorage_recipient) {
                 (Ok(Some(reward)), Some(seigniorage_recipient)) => {
@@ -1846,6 +1861,7 @@ where
                     let config = Arc::clone(&self.config);
                     let metrics = Arc::clone(&self.metrics);
                     let protocol_version = self.chainspec.protocol_version();
+                    let chainspec = Arc::clone(&self.chainspec);
                     async move {
                         let response = handle_request(
                             request,
@@ -1853,6 +1869,7 @@ where
                             &config,
                             &metrics,
                             protocol_version,
+                            chainspec,
                         )
                         .await;
                         responder.respond(response).await;

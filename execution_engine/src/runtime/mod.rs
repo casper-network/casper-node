@@ -1254,8 +1254,11 @@ where
             // ExecError>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
+                let rewards_handling = self.context().engine_config().rewards_handling();
                 let rewards = Self::get_named_argument(runtime_args, auction::ARG_REWARDS_MAP)?;
-                runtime.distribute(rewards).map_err(Self::reverter)?;
+                runtime
+                    .distribute(rewards, rewards_handling)
+                    .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

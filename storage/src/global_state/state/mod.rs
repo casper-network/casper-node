@@ -439,7 +439,9 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        if let Err(auction_error) = runtime.distribute(rewards.clone()) {
+        let rewards_handling = request.config().rewards_handling();
+        println!("In gs, rewards handling:{:?}", rewards_handling);
+        if let Err(auction_error) = runtime.distribute(rewards.clone(), rewards_handling) {
             error!(
                 "distribute block rewards failed due to auction error {:?}",
                 auction_error

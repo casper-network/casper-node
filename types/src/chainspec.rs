@@ -62,6 +62,7 @@ pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
+pub use rewards_handling::RewardsHandling;
 pub use transaction_config::{
     DeployConfig, TransactionConfig, TransactionLaneDefinition, TransactionV1Config,
 };

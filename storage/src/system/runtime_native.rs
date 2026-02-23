@@ -5,8 +5,8 @@ use crate::{
 };
 use casper_types::{
     account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, EntityAddr,
-    FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling, RuntimeFootprint,
-    StoredValue, TransactionHash, Transfer, URef, U512,
+    FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling, RewardsHandling,
+    RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use num_rational::Ratio;
 use parking_lot::RwLock;
@@ -31,6 +31,7 @@ pub struct Config {
     credit_cap: Ratio<U512>,
     enable_addressable_entity: bool,
     native_transfer_cost: u32,
+    rewards_handling: RewardsHandling,
 }
 
 impl Config {
@@ -52,6 +53,7 @@ impl Config {
         credit_cap: Ratio<U512>,
         enable_addressable_entity: bool,
         native_transfer_cost: u32,
+        rewards_handling: RewardsHandling,
     ) -> Self {
         Config {
             transfer_config,
@@ -69,6 +71,7 @@ impl Config {
             credit_cap,
             enable_addressable_entity,
             native_transfer_cost,
+            rewards_handling,
         }
     }
 
@@ -92,6 +95,7 @@ impl Config {
         );
         let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
         let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
+        let rewards_handling = chainspec.core_config.rewards_handling.clone();
         Config::new(
             transfer_config,
             fee_handling,
@@ -108,6 +112,7 @@ impl Config {
             credit_cap,
             enable_addressable_entity,
             native_transfer_cost,
+            rewards_handling,
         )
     }
 
@@ -181,6 +186,11 @@ impl Config {
         self.enable_addressable_entity
     }
 
+    /// Rewards handling for the runtime native config.
+    pub fn rewards_handling(&self) -> RewardsHandling {
+        self.rewards_handling.clone()
+    }
+
     /// Changes the transfer config.
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
         Config {
@@ -199,6 +209,7 @@ impl Config {
             credit_cap: self.credit_cap,
             enable_addressable_entity: self.enable_addressable_entity,
             native_transfer_cost: self.native_transfer_cost,
+            rewards_handling: self.rewards_handling,
         }
     }
 }

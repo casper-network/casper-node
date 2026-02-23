@@ -14,7 +14,7 @@ use casper_engine_test_support::{
     LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_storage::data_access_layer::AuctionMethod;
+use casper_storage::data_access_layer::{AuctionMethod, BlockRewardsRequest};
 use casper_types::{
     self,
     account::AccountHash,
@@ -25,8 +25,8 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EntityAddr, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp,
-    DEFAULT_MINIMUM_BID_AMOUNT, U512,
+    AccessRights, EntityAddr, EraId, ProtocolVersion, PublicKey, RewardsHandling, SecretKey,
+    Timestamp, URef, DEFAULT_MINIMUM_BID_AMOUNT, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -1779,8 +1779,9 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let expected_total_reward =
-        Ratio::from(expected_total_reward) * Ratio::new(U512::from(98), U512::from(100));
+    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(2));
+
+    let expected_total_reward = expected_total_reward * sustain_ratio_as_u512;
     println!("foo {:?}", expected_total_reward);
 
     for request in post_genesis_requests {
@@ -1804,18 +1805,55 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     let mut rewards = BTreeMap::new();
     rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
+    let block_rewards = {
+        let mut ret = BTreeMap::new();
+        ret.insert(VALIDATOR_1.clone(), vec![total_payout]);
+        ret
+    };
+    let sustain_purse = URef::new([6u8; 32], AccessRights::READ_ADD_WRITE);
+    let block_rewards_request = builder.distribute_with_rewards_handling(
+        None,
+        ProtocolVersion::V2_0_0,
+        block_rewards.clone(),
+        0,
+        RewardsHandling::Sustain {
+            ratio: Ratio::new(1, 2),
+            purse_address: sustain_purse.to_formatted_string(),
         },
-    )
-    .build();
+    );
 
-    builder.exec(distribute_request).commit().expect_success();
+    // let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+    //     *SYSTEM_ADDR,
+    //     builder.get_auction_contract_hash(),
+    //     METHOD_DISTRIBUTE,
+    //     runtime_args! {
+    //         ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+    //         ARG_REWARDS_MAP => rewards
+    //     },
+    // )
+    // .build();
+    //
+    // builder.exec(distribute_request).commit().expect_success();
+    println!("{:?}", block_rewards_request);
+
+    let sustain_purse_expected_balance = {
+        let total = {
+            let mut ret = U512::zero();
+            for rewards_vec in block_rewards.values() {
+                for reward in rewards_vec {
+                    ret += *reward
+                }
+            }
+
+            ret
+        };
+
+        Ratio::new(total, U512::one()) * sustain_ratio_as_u512
+    }
+    .to_integer();
+
+    let actual_sustain_balance = builder.get_purse_balance(sustain_purse);
+    assert_eq!(actual_sustain_balance, sustain_purse_expected_balance);
 
     let delegators_share = {
         let commission_rate = Ratio::new(

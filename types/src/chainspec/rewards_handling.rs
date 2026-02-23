@@ -1,13 +1,12 @@
 /// Configuration options of refund handling that are executed as part of handle payment
 /// finalization.
 use num_rational::Ratio;
-use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     uref::FromStrError,
-    RefundHandling, URef,
+    URef,
 };
 
 const REWARDS_HANDLING_STANDARD_TAG: u8 = 0;

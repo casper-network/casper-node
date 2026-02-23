@@ -23,7 +23,7 @@ use casper_types::{
         UnbondEra, UnbondKind, ValidatorBid, ValidatorCredit, ValidatorWeights,
         DELEGATION_RATE_DENOMINATOR,
     },
-    AccessRights, ApiError, EraId, Key, PublicKey, URef, U512,
+    AccessRights, ApiError, EraId, Key, PublicKey, RewardsHandling, URef, U512,
 };
 
 /// Bonding auction contract interface
@@ -633,7 +633,11 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Vec<U512>>) -> Result<(), Error> {
+    fn distribute(
+        &mut self,
+        rewards: BTreeMap<PublicKey, Vec<U512>>,
+        rewards_handling: RewardsHandling,
+    ) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
@@ -650,9 +654,25 @@ pub trait Auction:
             ret
         };
         let total = Ratio::new(total, U512::one());
-        let skim = Ratio::new(U512::from(50), U512::one());
+        let skim = match rewards_handling {
+            RewardsHandling::Standard => Ratio::new(U512::zero(), U512::one()),
+            RewardsHandling::Sustain { ratio, .. } => {
+                let numerator = U512::from(*ratio.numer());
+                let denom = U512::from(*ratio.denom());
 
-        let _share = (skim * total).to_integer();
+                Ratio::new(numerator, denom)
+            }
+        };
+
+        let share = (skim * total).to_integer();
+
+        println!("{:?}", rewards_handling);
+        if let RewardsHandling::Sustain { purse_address, .. } = rewards_handling {
+            let purse_uref =
+                URef::from_formatted_str(&purse_address).map_err(|_| Error::Serialization)?;
+            println!("transferring {:?} to purse {:?}", share, purse_uref);
+            self.mint_into_existing_purse(share, purse_uref)?;
+        }
 
         debug!("reading seigniorage recipients snapshot");
         let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
@@ -671,6 +691,7 @@ pub trait Auction:
                     current_era_id,
                     &amounts,
                     &SeigniorageRecipientsSnapshot::V2(seigniorage_recipients_snapshot.clone()),
+                    skim,
                 )
                 .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
             })
