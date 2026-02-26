@@ -27,7 +27,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_binary_port::{LastProgress, NetworkName, Uptime};
 use casper_types::{
-    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    bytesrepr, Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
     FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
 };
 
@@ -1089,6 +1089,15 @@ impl reactor::Reactor for MainReactor {
 
         let protocol_version = chainspec.protocol_config.version;
         let prevent_validator_shutdown = config.value().node.prevent_validator_shutdown;
+
+        if !chainspec
+            .core_config
+            .rewards_handling
+            .is_valid_configuration()
+        {
+            error!("invalid rewards configuration");
+            return Err(Error::BytesRepr(bytesrepr::Error::Formatting));
+        }
 
         let trusted_hash = config.value().node.trusted_hash;
         let (root_dir, config) = config.into_parts();

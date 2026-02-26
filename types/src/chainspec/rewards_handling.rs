@@ -39,6 +39,26 @@ impl RewardsHandling {
             Self::Sustain { ratio, .. } => Some(*ratio),
         }
     }
+
+    pub fn is_valid_configuration(&self) -> bool {
+        match self {
+            Self::Standard => true,
+            Self::Sustain {
+                ratio,
+                purse_address,
+            } => {
+                if *ratio.numer() > *ratio.denom() {
+                    return false;
+                }
+
+                if URef::from_formatted_str(purse_address).is_err() {
+                    return false;
+                }
+
+                true
+            }
+        }
+    }
 }
 
 impl ToBytes for RewardsHandling {

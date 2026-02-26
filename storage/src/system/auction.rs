@@ -654,7 +654,7 @@ pub trait Auction:
             ret
         };
         let total = Ratio::new(total, U512::one());
-        let skim = match rewards_handling {
+        let sustain_ratio = match rewards_handling {
             RewardsHandling::Standard => Ratio::new(U512::zero(), U512::one()),
             RewardsHandling::Sustain { ratio, .. } => {
                 let numerator = U512::from(*ratio.numer());
@@ -664,7 +664,7 @@ pub trait Auction:
             }
         };
 
-        let share = (skim * total).to_integer();
+        let share = (sustain_ratio * total).to_integer();
 
         if let RewardsHandling::Sustain { purse_address, .. } = rewards_handling {
             let purse_uref =
@@ -689,7 +689,7 @@ pub trait Auction:
                     current_era_id,
                     &amounts,
                     &SeigniorageRecipientsSnapshot::V2(seigniorage_recipients_snapshot.clone()),
-                    skim,
+                    sustain_ratio,
                 )
                 .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
             })
