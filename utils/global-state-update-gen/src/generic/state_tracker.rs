@@ -356,7 +356,6 @@ impl<T: StateReader> StateTracker<T> {
                     .expect("should have bonding purse")
                     != bonding_purse
                 {
-                    println!("foo");
                     self.set_purse_balance(existing_bid.bonding_purse().unwrap(), U512::zero());
                     self.set_purse_balance(bonding_purse, previously_bonded);
                     // the old bonding purse gets zeroed - the unbonds will get invalid, anyway

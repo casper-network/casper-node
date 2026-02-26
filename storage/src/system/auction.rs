@@ -666,11 +666,9 @@ pub trait Auction:
 
         let share = (skim * total).to_integer();
 
-        println!("{:?}", rewards_handling);
         if let RewardsHandling::Sustain { purse_address, .. } = rewards_handling {
             let purse_uref =
                 URef::from_formatted_str(&purse_address).map_err(|_| Error::Serialization)?;
-            println!("transferring {:?} to purse {:?}", share, purse_uref);
             self.mint_into_existing_purse(share, purse_uref)?;
         }
 

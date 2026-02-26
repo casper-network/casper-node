@@ -14,7 +14,7 @@ use casper_engine_test_support::{
     LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_storage::data_access_layer::{AuctionMethod, BlockRewardsRequest};
+use casper_storage::data_access_layer::AuctionMethod;
 use casper_types::{
     self,
     account::AccountHash,
@@ -1782,7 +1782,6 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(2));
 
     let expected_total_reward = expected_total_reward * sustain_ratio_as_u512;
-    println!("foo {:?}", expected_total_reward);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1819,7 +1818,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
         .into_iter(),
     );
 
-    let block_rewards_request = builder.distribute_with_rewards_handling(
+    let block_rewards_result = builder.distribute_with_rewards_handling(
         None,
         ProtocolVersion::V2_0_0,
         block_rewards.clone(),
@@ -1829,20 +1828,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
             purse_address: sustain_purse.to_formatted_string(),
         },
     );
-
-    // let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-    //     *SYSTEM_ADDR,
-    //     builder.get_auction_contract_hash(),
-    //     METHOD_DISTRIBUTE,
-    //     runtime_args! {
-    //         ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-    //         ARG_REWARDS_MAP => rewards
-    //     },
-    // )
-    // .build();
-    //
-    // builder.exec(distribute_request).commit().expect_success();
-    println!("{:?}", block_rewards_request);
+    assert!(block_rewards_result.is_success());
 
     let sustain_purse_expected_balance = {
         let total = {
@@ -1879,8 +1865,6 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
         delegator_reward.checked_sub(&commission).unwrap()
     };
 
-    println!("share {:?}", delegators_share);
-
     let delegator_1_expected_payout = {
         let reward_multiplier = Ratio::new(
             U512::from(DELEGATOR_1_STAKE),
@@ -1905,9 +1889,6 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
 
     let validator_1_expected_payout = {
         let total_delegator_payout = delegator_1_expected_payout + delegator_2_expected_payout;
-        println!(
-            "total delegator payout {delegator_1_expected_payout} {delegator_2_expected_payout}"
-        );
 
         let validators_part = expected_total_reward - total_delegator_payout;
         validators_part.to_integer()
@@ -2824,6 +2805,11 @@ fn should_distribute_with_multiple_validators_and_shared_delegator_with_sustain_
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
+    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(2));
+
+    let expected_total_reward = expected_total_reward * sustain_ratio_as_u512;
+    let expected_total_reward_integer = expected_total_reward.to_integer();
+
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
@@ -2846,18 +2832,26 @@ fn should_distribute_with_multiple_validators_and_shared_delegator_with_sustain_
     rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
     rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
-        },
-    )
-    .build();
+    let sustain_purse = URef::new([6u8; 32], AccessRights::READ_ADD_WRITE);
+    builder.write_data_and_commit(
+        vec![(
+            Key::Balance([6u8; 32]),
+            StoredValue::CLValue(CLValue::from_t(U512::from(0)).unwrap()),
+        )]
+        .into_iter(),
+    );
 
-    builder.exec(distribute_request).commit().expect_success();
+    let block_rewards_result = builder.distribute_with_rewards_handling(
+        None,
+        ProtocolVersion::V2_0_0,
+        rewards.clone(),
+        0,
+        RewardsHandling::Sustain {
+            ratio: Ratio::new(1, 2),
+            purse_address: sustain_purse.to_formatted_string(),
+        },
+    );
+    assert!(block_rewards_result.is_success());
 
     let validator_1_delegator_1_share = {
         let total_reward = &Ratio::from(expected_total_reward_integer);

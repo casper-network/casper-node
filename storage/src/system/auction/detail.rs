@@ -1638,10 +1638,8 @@ pub(crate) fn rewards_per_validator(
         // record zero allocations for the current validators in EraInfo)
         .filter(|(amount, eras_back)| !amount.is_zero() || *eras_back == 0)
     {
-        println!("reward amount: {:?}", reward_amount);
         let factor = { Ratio::new(U512::from(100), U512::from(100)) - rewards_ratio };
         let total_reward = Ratio::from(reward_amount) * factor;
-        println!("total reward: {:?}", total_reward);
         let rewarded_era = era_id
             .checked_sub(eras_back)
             .ok_or(Error::MissingSeigniorageRecipients)?;
@@ -1728,10 +1726,6 @@ pub(crate) fn rewards_per_validator(
             delegator_rewards.iter().map(|(_, &amount)| amount).sum();
 
         let validator_reward = { total_reward - Ratio::from(total_delegator_payout) }.to_integer();
-        println!(
-            "new rewards: {:?}, {total_delegator_payout}",
-            validator_reward
-        );
 
         results.push(RewardsPerValidator {
             validator_reward,
