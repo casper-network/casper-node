@@ -1678,7 +1678,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     const VALIDATOR_1_STAKE: u64 = 200_000_000_000;
     const DELEGATOR_1_STAKE: u64 = 600_000_000_000;
-    const DELEGATOR_2_STAKE: u64 = 800_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 10_000_000_000_000;
     const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
     const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE;
 
@@ -1779,7 +1779,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(2));
+    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(4));
 
     let expected_total_reward =
         expected_total_reward * { Ratio::new(U512::one(), U512::one()) - sustain_ratio_as_u512 };
@@ -1825,7 +1825,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
         block_rewards.clone(),
         0,
         RewardsHandling::Sustain {
-            ratio: Ratio::new(1, 2),
+            ratio: Ratio::new(1, 4),
             purse_address: sustain_purse.to_formatted_string(),
         },
     );
@@ -2452,7 +2452,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator_with_sustain_
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(2));
+    let sustain_ratio_as_u512 = Ratio::new(U512::from(1), U512::from(4));
 
     let expected_total_reward =
         expected_total_reward * { Ratio::new(U512::one(), U512::one()) - sustain_ratio_as_u512 };
@@ -2495,7 +2495,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator_with_sustain_
         rewards.clone(),
         0,
         RewardsHandling::Sustain {
-            ratio: Ratio::new(1, 2),
+            ratio: Ratio::new(1, 4),
             purse_address: sustain_purse.to_formatted_string(),
         },
     );
