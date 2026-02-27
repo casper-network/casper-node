@@ -1584,7 +1584,7 @@ pub fn reward(
     rewards_handling: RewardsHandling,
 ) -> Result<Option<U512>, Error> {
     let rewards_ratio = match rewards_handling {
-        RewardsHandling::Standard => Ratio::new(U512::zero(), U512::zero()),
+        RewardsHandling::Standard => Ratio::new(U512::zero(), U512::one()),
         RewardsHandling::Sustain { ratio, .. } => {
             Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
         }
