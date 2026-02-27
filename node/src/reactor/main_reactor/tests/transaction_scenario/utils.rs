@@ -375,6 +375,7 @@ pub(crate) struct TestScenarioBuilder {
     enable_vm2: bool,
     addressable_entity: bool,
     maybe_transaction_v1_config: Option<TransactionV1Config>,
+    minimum_delegation_rate: u8,
 }
 
 impl TestScenarioBuilder {
@@ -394,6 +395,7 @@ impl TestScenarioBuilder {
             enable_vm2,
             maybe_transaction_v1_config,
             addressable_entity,
+            minimum_delegation_rate,
         } = self;
         let (secret_keys, stakes) = maybe_stakes_setup.unwrap_or({
             /* Node 0 is effectively guaranteed to be the proposer. */
@@ -449,6 +451,7 @@ impl TestScenarioBuilder {
             config
         };
         let config = config.with_addressable_entity_enabled(addressable_entity);
+        let config = config.with_minimum_delegation_rate(minimum_delegation_rate);
         let child_rng = rng.create_child();
         let fixture =
             TestFixture::new_with_keys(child_rng, secret_keys, stakes, Some(config)).await;
@@ -507,6 +510,11 @@ impl TestScenarioBuilder {
         transaction_v1_config: TransactionV1Config,
     ) -> Self {
         self.maybe_transaction_v1_config = Some(transaction_v1_config);
+        self
+    }
+
+    pub(crate) fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.minimum_delegation_rate = minimum_delegation_rate;
         self
     }
 }

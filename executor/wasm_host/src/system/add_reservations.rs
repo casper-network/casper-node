@@ -34,12 +34,13 @@ pub fn add_reservations<R: GlobalStateReader>(
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: AddReservationsArgs,
 ) -> Result<(), DispatchError> {
+    let minimum_delegation_rate = super::minimum_delegation_rate(tracking_copy)?;
     let result = match super::dispatch_system_contract(
         tracking_copy,
         runtime_native_config,
         id,
         address_generator,
-        |mut runtime| runtime.add_reservations(args.reservations.clone()),
+        |mut runtime| runtime.add_reservations(args.reservations.clone(), minimum_delegation_rate),
     ) {
         Ok(result) => result,
         Err(error) => {

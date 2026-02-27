@@ -194,6 +194,7 @@ impl Chainspec {
         let maximum_delegation_amount = self.core_config.maximum_delegation_amount;
         let minimum_delegation_amount = self.core_config.minimum_delegation_amount;
         let addressable_entity_enabled = self.core_config.addressable_entity_enabled;
+        let minimum_delegation_rate = Some(self.core_config.minimum_delegation_rate);
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -214,6 +215,7 @@ impl Chainspec {
             maximum_delegation_amount,
             minimum_delegation_amount,
             addressable_entity_enabled,
+            minimum_delegation_rate,
         ))
     }
 

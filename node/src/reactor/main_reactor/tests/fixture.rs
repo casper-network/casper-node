@@ -177,6 +177,7 @@ impl TestFixture {
             vm_casper_v2,
             node_config_override,
             addressable_entity_enabled,
+            minimum_delegation_rate,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -192,6 +193,7 @@ impl TestFixture {
         chainspec.core_config.finality_signature_proportion = finality_signature_proportion;
         chainspec.core_config.minimum_block_time = minimum_block_time;
         chainspec.core_config.minimum_era_height = minimum_era_height;
+        chainspec.core_config.minimum_delegation_rate = minimum_delegation_rate;
         chainspec.vacancy_config.min_gas_price = min_gas_price;
         chainspec.vacancy_config.max_gas_price = max_gas_price;
         chainspec.vacancy_config.upper_threshold = upper_threshold;

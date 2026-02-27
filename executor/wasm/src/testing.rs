@@ -296,6 +296,7 @@ pub fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         0,
         false,
         StorageCosts::default(),
+        None,
     );
     let genesis_request: GenesisRequest = GenesisRequest::new(
         Digest::hash("foo"),

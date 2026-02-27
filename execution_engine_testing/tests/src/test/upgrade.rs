@@ -13,7 +13,9 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
     contracts::ContractPackageHash,
-    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, HoldBalanceHandling, Key,
+    runtime_args,
+    system::auction::MINIMUM_DELEGATION_RATE_KEY,
+    AddressableEntityHash, CLValue, EntityAddr, EntityVersion, EraId, HoldBalanceHandling, Key,
     PackageAddr, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp, ENTITY_INITIAL_VERSION,
 };
 
@@ -1217,6 +1219,67 @@ fn should_correctly_retain_disabled_contract_version() {
     .build();
 
     builder.exec(exec_request).expect_failure();
+}
+
+#[ignore]
+#[test]
+fn should_correctly_attach_minimum_delegation_rate_on_upgrade() {
+    const DISABLED_VERSIONS_FIX: &str = "disabled_versions";
+
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(DISABLED_VERSIONS_FIX);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version =
+        ProtocolVersion::from_parts(previous_protocol_version.value().major + 1, 0, 0);
+
+    let activation_point = EraId::new(0u64);
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(previous_protocol_version)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(activation_point)
+        .with_new_minimum_delegation_rate(30)
+        .build();
+
+    builder
+        .with_block_time(Timestamp::now().into())
+        .upgrade_using_scratch(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let exec_request = {
+        let contract_name = format!("{}.wasm", "do_nothing_stored_upgrader");
+        ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            &contract_name,
+            RuntimeArgs::default(),
+        )
+        .build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let auction_contract_hash = builder.get_auction_contract_hash();
+    let auction_named_keys =
+        builder.get_named_keys(EntityAddr::System(auction_contract_hash.value()));
+    let minimum_delegation_rate_key = *auction_named_keys
+        .get(MINIMUM_DELEGATION_RATE_KEY)
+        .expect("minimum delegation rate key should exist at genesis");
+
+    let minimum_delegation_rate: u8 = builder
+        .query(None, minimum_delegation_rate_key, &[])
+        .expect("should have minimum delegation rate")
+        .as_cl_value()
+        .expect("minimum delegation rate should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("minimum delegation rate should be u8");
+
+    assert_eq!(
+        minimum_delegation_rate, 30,
+        "this upgrade should have set minimum delegation rate to 30!"
+    );
 }
 
 fn setup_state_for_version_tests(

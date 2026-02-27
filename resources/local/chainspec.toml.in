@@ -79,6 +79,8 @@ simultaneous_peer_requests = 5
 consensus_protocol = 'Zug'
 # The maximum amount of delegators per validator.
 max_delegators_per_validator = 1200
+# Minimum delegation rate validators can specify (0-100).
+minimum_delegation_rate = 0
 # The split in finality signature rewards between block producer and participating signers.
 finders_fee = [1, 5]
 # The proportion of baseline rewards going to reward finality signatures specifically.

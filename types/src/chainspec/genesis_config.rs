@@ -12,8 +12,8 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AdministratorAccount, Chainspec, GenesisAccount, GenesisValidator, HoldBalanceHandling, Motes,
-    PublicKey, SystemConfig, WasmConfig,
+    system::auction::DelegationRate, AdministratorAccount, Chainspec, GenesisAccount,
+    GenesisValidator, HoldBalanceHandling, Motes, PublicKey, SystemConfig, WasmConfig,
 };
 
 use super::StorageCosts;
@@ -34,6 +34,7 @@ pub struct GenesisConfig {
     gas_hold_interval_millis: u64,
     addressable_entity_enabled: bool,
     storage_costs: StorageCosts,
+    minimum_delegation_rate: Option<DelegationRate>,
 }
 
 impl GenesisConfig {
@@ -53,6 +54,7 @@ impl GenesisConfig {
         gas_hold_interval_millis: u64,
         addressable_entity_enabled: bool,
         storage_costs: StorageCosts,
+        minimum_delegation_rate: Option<DelegationRate>,
     ) -> GenesisConfig {
         GenesisConfig {
             accounts,
@@ -68,6 +70,7 @@ impl GenesisConfig {
             gas_hold_interval_millis,
             addressable_entity_enabled,
             storage_costs,
+            minimum_delegation_rate,
         }
     }
 
@@ -182,6 +185,10 @@ impl GenesisConfig {
             genesis_account.try_set_validator(genesis_validator);
         }
     }
+
+    pub fn minimum_delegation_rate(&self) -> Option<DelegationRate> {
+        self.minimum_delegation_rate
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -212,7 +219,7 @@ impl Distribution<GenesisConfig> for Standard {
         let gas_hold_balance_handling = rng.gen();
         let gas_hold_interval_millis = rng.gen();
         let storage_costs = rng.gen();
-
+        let minimum_delegation_rate = rng.gen();
         GenesisConfig {
             accounts,
             wasm_config,
@@ -227,6 +234,7 @@ impl Distribution<GenesisConfig> for Standard {
             gas_hold_interval_millis,
             addressable_entity_enabled: false,
             storage_costs,
+            minimum_delegation_rate,
         }
     }
 }
@@ -255,6 +263,7 @@ impl From<&Chainspec> for GenesisConfig {
             gas_hold_interval_millis,
             addressable_entity_enabled: chainspec.core_config.addressable_entity_enabled,
             storage_costs,
+            minimum_delegation_rate: Some(chainspec.core_config.minimum_delegation_rate),
         }
     }
 }

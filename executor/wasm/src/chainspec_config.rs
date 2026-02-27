@@ -14,10 +14,10 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ChainspecRegistry, CoreConfig, Digest,
-    FeeHandling, GenesisAccount, GenesisConfig, HoldBalanceHandling, MintCosts, Motes,
-    PricingHandling, ProtocolConfig, ProtocolVersion, PublicKey, RefundHandling, SecretKey,
-    StorageCosts, SystemConfig, TimeDiff, WasmConfig,
+    system::auction::{DelegationRate, VESTING_SCHEDULE_LENGTH_MILLIS},
+    ChainspecRegistry, CoreConfig, Digest, FeeHandling, GenesisAccount, GenesisConfig,
+    HoldBalanceHandling, MintCosts, Motes, PricingHandling, ProtocolConfig, ProtocolVersion,
+    PublicKey, RefundHandling, SecretKey, StorageCosts, SystemConfig, TimeDiff, WasmConfig,
 };
 
 /// Default number of validator slots.
@@ -125,6 +125,7 @@ pub struct GenesisConfigBuilder {
     gas_hold_interval_millis: Option<u64>,
     addressable_entity_enabled: Option<bool>,
     storage_costs: Option<StorageCosts>,
+    minimum_delegation_rate: Option<DelegationRate>,
 }
 
 impl GenesisConfigBuilder {
@@ -199,6 +200,12 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the minimum delegation rate config option.
+    pub fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: DelegationRate) -> Self {
+        self.minimum_delegation_rate = Some(minimum_delegation_rate);
+        self
+    }
+
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig::new(
@@ -221,6 +228,7 @@ impl GenesisConfigBuilder {
             self.addressable_entity_enabled
                 .unwrap_or(DEFAULT_ENABLE_ENTITY),
             self.storage_costs.unwrap_or_default(),
+            self.minimum_delegation_rate,
         )
     }
 }
@@ -511,6 +519,7 @@ impl TryFrom<ChainspecConfig> for GenesisConfig {
             .with_addressable_entity_enabled(
                 chainspec_config.core_config.addressable_entity_enabled,
             )
+            .with_minimum_delegation_rate(chainspec_config.core_config.minimum_delegation_rate)
             .build())
     }
 }

@@ -132,6 +132,7 @@ impl ChainspecConfig {
             unbonding_delay,
             round_seigniorage_rate,
             addressable_entity_enabled,
+            minimum_delegation_rate,
             ..
         } = core_config;
 
@@ -147,6 +148,7 @@ impl ChainspecConfig {
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_addressable_entity_enabled(*addressable_entity_enabled)
             .with_storage_costs(*storage_costs)
+            .with_minimum_delegation_rate(*minimum_delegation_rate)
             .build();
 
         Ok(GenesisRequest::new(
@@ -190,6 +192,12 @@ impl ChainspecConfig {
     /// Sets the minimum delegation amount config option.
     pub fn with_minimum_delegation_amount(mut self, minimum_delegation_amount: u64) -> Self {
         self.core_config.minimum_delegation_amount = minimum_delegation_amount;
+        self
+    }
+
+    /// Sets the minimum delegation rate config option.
+    pub fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.core_config.minimum_delegation_rate = minimum_delegation_rate;
         self
     }
 

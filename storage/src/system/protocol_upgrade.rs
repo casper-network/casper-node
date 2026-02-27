@@ -26,8 +26,8 @@ use casper_types::{
             SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
             SeigniorageRecipientsV2, Unbond, ValidatorBid, AUCTION_DELAY_KEY,
             DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            MINIMUM_DELEGATION_RATE_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
         mint::{
@@ -224,6 +224,7 @@ where
         )?;
         self.handle_era_info_migration()?;
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
+        self.handle_minimum_delegation_rate(system_entity_addresses.auction())?;
 
         Ok(self.tracking_copy)
     }
@@ -1431,6 +1432,26 @@ where
             };
         }
 
+        Ok(())
+    }
+
+    /// Handle setting up minimum_delegation_rate
+    pub fn handle_minimum_delegation_rate(
+        &mut self,
+        auction: HashAddr,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let minimum_delegation_rate = self.config.minimum_delegation_rate().unwrap_or(0);
+        let named_keys = self.get_named_keys(auction)?;
+        let cl_value = CLValue::from_t(minimum_delegation_rate)
+            .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
+        let stored_value = StoredValue::CLValue(cl_value);
+        let auction_addr = EntityAddr::System(auction);
+        self.system_uref(
+            auction_addr,
+            MINIMUM_DELEGATION_RATE_KEY,
+            &named_keys,
+            stored_value,
+        )?;
         Ok(())
     }
 

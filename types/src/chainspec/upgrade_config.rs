@@ -3,8 +3,8 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
-    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
-    StoredValue,
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, FeeHandling,
+    HoldBalanceHandling, Key, ProtocolVersion, StoredValue,
 };
 
 /// Represents the configuration of a protocol upgrade.
@@ -28,6 +28,7 @@ pub struct ProtocolUpgradeConfig {
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
     addressable_entity_enabled: bool,
+    minimum_delegation_rate: Option<DelegationRate>,
 }
 
 impl ProtocolUpgradeConfig {
@@ -52,6 +53,7 @@ impl ProtocolUpgradeConfig {
         maximum_delegation_amount: u64,
         minimum_delegation_amount: u64,
         addressable_entity_enabled: bool,
+        minimum_delegation_rate: Option<DelegationRate>,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -72,6 +74,7 @@ impl ProtocolUpgradeConfig {
             maximum_delegation_amount,
             minimum_delegation_amount,
             addressable_entity_enabled,
+            minimum_delegation_rate,
         }
     }
 
@@ -169,5 +172,10 @@ impl ProtocolUpgradeConfig {
     /// (off).
     pub fn addressable_entity_enabled(&self) -> bool {
         self.addressable_entity_enabled
+    }
+
+    /// Returns new map of emergency global state updates.
+    pub fn minimum_delegation_rate(&self) -> Option<DelegationRate> {
+        self.minimum_delegation_rate
     }
 }

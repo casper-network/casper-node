@@ -78,6 +78,7 @@ pub fn add_bid<R: GlobalStateReader>(
     let vesting = args.runtime_native_config.vesting_schedule_period_millis();
     let max_delegators_per_validator = args.runtime_native_config.max_delegators_per_validator();
     let min_bid_amount = args.runtime_native_config.minimum_bid_amount();
+    let minimum_delegation_rate = super::minimum_delegation_rate(tracking_copy)?;
     let result = match super::dispatch_userland_to_system_contract(
         tracking_copy,
         runtime_footprint,
@@ -98,6 +99,7 @@ pub fn add_bid<R: GlobalStateReader>(
                 min_bid_amount,
                 max_delegators_per_validator,
                 args.reserved_slots,
+                minimum_delegation_rate,
             )
         },
     ) {

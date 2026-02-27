@@ -906,8 +906,11 @@ where
 /// If specified validator exists, and if validator is not yet at max reservations count, processes
 /// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
-#[allow(clippy::too_many_arguments)]
-pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), Error>
+pub fn handle_add_reservation<P>(
+    provider: &mut P,
+    reservation: Reservation,
+    minimum_delegation_rate: u8,
+) -> Result<(), Error>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
@@ -940,8 +943,14 @@ where
         }
     };
 
+    let delegation_rate = *reservation.delegation_rate();
+
+    if delegation_rate < minimum_delegation_rate {
+        return Err(Error::DelegationRateTooSmall);
+    }
+
     // validate specified delegation rate
-    if reservation.delegation_rate() > &DELEGATION_RATE_DENOMINATOR {
+    if delegation_rate > DELEGATION_RATE_DENOMINATOR {
         return Err(Error::DelegationRateTooLarge);
     }
 

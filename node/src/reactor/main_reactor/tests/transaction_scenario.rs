@@ -8,6 +8,7 @@ use asertions::{
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     execution::{RetValue, TransformKindV2},
+    system::auction::{DelegatorKind, Reservation},
     testing::TestRng,
     EntityAddr, ExecutionInfo, FeeHandling, Gas, Key, PricingHandling, PricingMode, PublicKey,
     RefundHandling, StoredValue, TimeDiff, Transaction, TransactionEntryPoint,
@@ -1126,6 +1127,110 @@ async fn vm2_contract_calling_by_hash_with_addressable_entity_after_upgrade() {
         .assert(TransactionFailure::expected_error_message(
             hash,
             "no active contract",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn native_add_bid_should_fail_when_minimum_delegation_rate_not_met() {
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_minimum_delegation_rate(20)
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_add_bid(
+            ALICE_PUBLIC_KEY.clone(),
+            19,
+            100_000_000_000_u64,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "ApiError::AuctionError(DelegationRateTooSmall) [64576]",
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn native_add_bid_should_fail_when_minimum_delegation_rate_not_met_in_reservation() {
+    let mut rng = TestRng::new();
+    let mut test_scenario = TestScenarioBuilder::new()
+        .with_minimum_delegation_rate(20)
+        .build(&mut rng)
+        .await;
+    let chain_name = test_scenario.chain_name();
+    test_scenario.setup().await.unwrap();
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_add_bid(
+            ALICE_PUBLIC_KEY.clone(),
+            20,
+            100_000_000_000_u64,
+            None,
+            None,
+            Some(1),
+        )
+        .unwrap()
+        .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000_u64,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario.assert(TransactionSuccessful::new(hash)).await;
+
+    // Try reserve a slot with to little delegation rate
+    let reservations = vec![Reservation::new(
+        ALICE_PUBLIC_KEY.clone(),
+        DelegatorKind::PublicKey(BOB_PUBLIC_KEY.clone()),
+        19,
+    )];
+    let mut txn: Transaction = Transaction::from(
+        TransactionV1Builder::new_reserve_slot(reservations)
+            .unwrap()
+            .with_initiator_addr(PublicKey::from(ALICE_SECRET_KEY.as_ref()))
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: 100_000_000_000_u64,
+                gas_price_tolerance: 1,
+                standard_payment: true,
+            })
+            .with_chain_name(chain_name.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+    let hash = txn.hash();
+    test_scenario.run(vec![txn]).await.unwrap();
+    test_scenario
+        .assert(TransactionFailure::expected_error_message(
+            hash,
+            "Auction error: Delegation rate too small",
         ))
         .await;
 }

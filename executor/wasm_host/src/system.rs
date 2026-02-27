@@ -42,7 +42,7 @@ use casper_types::bytesrepr::ToBytes;
 use crate::system;
 use casper_types::system::auction::{
     DelegatorKind, Reservation, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-    ERA_ID_KEY,
+    ERA_ID_KEY, MINIMUM_DELEGATION_RATE_KEY,
 };
 
 pub use activate_bid::{activate_bid, ActivateBidArgs};
@@ -82,6 +82,32 @@ pub enum DispatchError {
     Call(CallError),
     #[error("Api error: {0}")]
     Api(ApiError),
+}
+
+fn minimum_delegation_rate<R: GlobalStateReader>(
+    tracking_copy: &mut TrackingCopy<R>,
+) -> Result<u8, DispatchError> {
+    let minimum_delegation_rate_key = tracking_copy
+        .system_contract_named_key(AUCTION, MINIMUM_DELEGATION_RATE_KEY)
+        .map_err(DispatchError::Storage)?
+        .ok_or_else(|| {
+            DispatchError::Storage(TrackingCopyError::NamedKeyNotFound(
+                MINIMUM_DELEGATION_RATE_KEY.to_string(),
+            ))
+        })?;
+
+    let cl_value = tracking_copy
+        .read(&minimum_delegation_rate_key)
+        .map_err(DispatchError::Storage)?
+        .ok_or_else(|| {
+            DispatchError::Storage(TrackingCopyError::ValueNotFound(
+                MINIMUM_DELEGATION_RATE_KEY.to_string(),
+            ))
+        })?
+        .into_cl_value()
+        .ok_or_else(|| DispatchError::Storage(TrackingCopyError::UnexpectedStoredValueVariant))?;
+
+    cl_value.into_t().map_err(DispatchError::CLValue)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -872,6 +898,7 @@ mod tests {
             0,
             false,
             StorageCosts::default(),
+            None,
         );
 
         let genesis_request: GenesisRequest = GenesisRequest::new(

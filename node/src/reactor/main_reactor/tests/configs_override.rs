@@ -39,6 +39,7 @@ pub(crate) struct ConfigsOverride {
     pub vm_casper_v2: bool,
     pub node_config_override: NodeConfigOverride,
     pub addressable_entity_enabled: bool,
+    pub minimum_delegation_rate: u8,
 }
 
 impl ConfigsOverride {
@@ -150,6 +151,11 @@ impl ConfigsOverride {
         self.addressable_entity_enabled = addressable_entity_enabled;
         self
     }
+
+    pub(crate) fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.minimum_delegation_rate = minimum_delegation_rate;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -183,6 +189,7 @@ impl Default for ConfigsOverride {
             vm_casper_v2: false,
             node_config_override: NodeConfigOverride::default(),
             addressable_entity_enabled: false,
+            minimum_delegation_rate: 0,
         }
     }
 }
