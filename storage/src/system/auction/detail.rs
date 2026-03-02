@@ -14,7 +14,7 @@ use casper_types::{
         AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    AccessRights, ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, RewardsHandling, URef, U512,
+    AccessRights, ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
@@ -1581,20 +1581,18 @@ pub fn reward(
     era_id: EraId,
     rewards: &[U512],
     seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
-    rewards_handling: RewardsHandling,
+    rewards_ratio: Ratio<u64>,
 ) -> Result<Option<U512>, Error> {
-    let rewards_ratio = match rewards_handling {
-        RewardsHandling::Standard => Ratio::new(U512::zero(), U512::one()),
-        RewardsHandling::Sustain { ratio, .. } => {
-            Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
-        }
-    };
+    let rewards_ratio_as_u512 = Ratio::new(
+        U512::from(*rewards_ratio.numer()),
+        U512::from(*rewards_ratio.denom()),
+    );
     let validator_rewards = match rewards_per_validator(
         validator,
         era_id,
         rewards,
         seigniorage_recipients_snapshot,
-        rewards_ratio,
+        rewards_ratio_as_u512,
     ) {
         Ok(rewards) => rewards,
         Err(Error::ValidatorNotFound) => return Ok(None),

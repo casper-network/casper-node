@@ -38,7 +38,7 @@ use casper_types::{
     },
     Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, EntityEntryPoint,
     EntryPointAddr, EntryPointValue, HoldsEpoch, Key, KeyTag, Phase, PublicKey, RuntimeArgs,
-    StoredValue, SystemHashRegistry, U512,
+    StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 #[cfg(test)]
@@ -1051,6 +1051,7 @@ pub trait StateProvider: Send + Sync + Sized {
             SeigniorageRecipientsResult::AuctionNotFound => EraValidatorsResult::AuctionNotFound,
             SeigniorageRecipientsResult::Success {
                 seigniorage_recipients,
+                ..
             } => {
                 let era_validators = match seigniorage_recipients {
                     SeigniorageRecipientsSnapshot::V1(snapshot) => {
@@ -2546,8 +2547,39 @@ fn get_snapshot_data<T: StateProvider>(
         Err(value) => return value,
     };
 
+    let query_request = QueryRequest::new(state_hash, Key::RewardsHandling, vec![]);
+    let rewards_ratio = match state_provider.query(query_request) {
+        QueryResult::RootNotFound => return SeigniorageRecipientsResult::RootNotFound,
+        QueryResult::ValueNotFound(_) => Ratio::new(0, 1),
+        QueryResult::Success { value, .. } => {
+            if let StoredValue::CLValue(cl_value) = *value {
+                match cl_value.to_t::<BTreeMap<u8, Vec<u8>>>() {
+                    Ok(rewards_handling) => {
+                        match rewards_handling.get(&REWARDS_HANDLING_RATIO_TAG) {
+                            Some(bytes) => {
+                                let ratio =
+                                    match casper_types::bytesrepr::FromBytes::from_bytes(bytes) {
+                                        Ok((ratio, _)) => ratio,
+                                        Err(_) => Ratio::new(0, 1),
+                                    };
+
+                                ratio
+                            }
+                            None => Ratio::new(0, 1),
+                        }
+                    }
+                    Err(_) => Ratio::new(0, 1),
+                }
+            } else {
+                Ratio::new(0, 1)
+            }
+        }
+        QueryResult::Failure(tce) => return SeigniorageRecipientsResult::Failure(tce),
+    };
+
     SeigniorageRecipientsResult::Success {
         seigniorage_recipients: snapshot,
+        rewards_ratio,
     }
 }
 

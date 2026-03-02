@@ -1,5 +1,4 @@
-/// Configuration options of refund handling that are executed as part of handle payment
-/// finalization.
+/// Configuration options of reward handling that are executed as part of rewards distribution.
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +7,8 @@ use crate::{
     uref::FromStrError,
     URef,
 };
+
+pub const REWARDS_HANDLING_RATIO_TAG: u8 = 0;
 
 const REWARDS_HANDLING_STANDARD_TAG: u8 = 0;
 

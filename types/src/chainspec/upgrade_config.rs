@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
-    StoredValue,
+    RewardsHandling, StoredValue,
 };
 
 /// Represents the configuration of a protocol upgrade.
@@ -28,6 +28,7 @@ pub struct ProtocolUpgradeConfig {
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
+    rewards_handling: RewardsHandling,
 }
 
 impl ProtocolUpgradeConfig {
@@ -52,6 +53,7 @@ impl ProtocolUpgradeConfig {
         maximum_delegation_amount: u64,
         minimum_delegation_amount: u64,
         enable_addressable_entity: bool,
+        rewards_handling: RewardsHandling,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -72,6 +74,7 @@ impl ProtocolUpgradeConfig {
             maximum_delegation_amount,
             minimum_delegation_amount,
             enable_addressable_entity,
+            rewards_handling,
         }
     }
 
@@ -167,5 +170,9 @@ impl ProtocolUpgradeConfig {
 
     pub fn enable_addressable_entity(&self) -> bool {
         self.enable_addressable_entity
+    }
+
+    pub fn rewards_handling(&self) -> RewardsHandling {
+        self.rewards_handling.clone()
     }
 }

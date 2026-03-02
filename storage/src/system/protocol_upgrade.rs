@@ -36,7 +36,8 @@ use casper_types::{
     ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersionKey,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling, Groups,
     HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, StoredValue,
+    SystemHashRegistry, URef, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 use crate::{
@@ -217,6 +218,7 @@ where
         )?;
         self.handle_era_info_migration()?;
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
+        self.handle_rewards_handling()?;
 
         Ok(self.tracking_copy)
     }
@@ -1563,6 +1565,40 @@ where
                     StoredValue::CLValue(CLValue::from_t(new_snapshot)?),
                 );
             };
+        }
+
+        Ok(())
+    }
+
+    /// Write or prune away the rewards handling entry in GS.
+    pub fn handle_rewards_handling(&mut self) -> Result<(), ProtocolUpgradeError> {
+        let rewards_handling = self.config.rewards_handling();
+        let rewards_handling_key = self
+            .tracking_copy
+            .read(&Key::RewardsHandling)
+            .map_err(ProtocolUpgradeError::TrackingCopy)?;
+
+        match rewards_handling {
+            RewardsHandling::Standard => {
+                if let Some(StoredValue::CLValue(_)) = rewards_handling_key {
+                    self.tracking_copy.prune(Key::RewardsHandling);
+                }
+            }
+            RewardsHandling::Sustain { ratio, .. } => {
+                let rewards_ratio = ratio
+                    .to_bytes()
+                    .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
+                let rewards_handling_map = {
+                    let mut ret = BTreeMap::new();
+                    ret.insert(REWARDS_HANDLING_RATIO_TAG, rewards_ratio);
+                    CLValue::from_t(ret)
+                        .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?
+                };
+                self.tracking_copy.write(
+                    Key::RewardsHandling,
+                    StoredValue::CLValue(rewards_handling_map),
+                );
+            }
         }
 
         Ok(())
