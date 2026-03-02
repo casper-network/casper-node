@@ -636,6 +636,7 @@ pub trait Auction:
     fn distribute(
         &mut self,
         rewards: BTreeMap<PublicKey, Vec<U512>>,
+        sustain_purse: Option<URef>,
         rewards_handling: RewardsHandling,
     ) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
@@ -666,10 +667,12 @@ pub trait Auction:
 
         let share = (sustain_ratio * total).to_integer();
 
-        if let RewardsHandling::Sustain { purse_address, .. } = rewards_handling {
-            let purse_uref =
-                URef::from_formatted_str(&purse_address).map_err(|_| Error::Serialization)?;
-            self.mint_into_existing_purse(share, purse_uref)?;
+        match (rewards_handling, sustain_purse) {
+            (RewardsHandling::Sustain { .. }, Some(sustain_purse)) => {
+                self.mint_into_existing_purse(share, sustain_purse)?;
+            }
+            (RewardsHandling::Sustain { .. }, None) => return Err(Error::MintReward),
+            (RewardsHandling::Standard, _) => {}
         }
 
         debug!("reading seigniorage recipients snapshot");

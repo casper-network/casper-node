@@ -11,8 +11,8 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_SUSTAIN_PUBLIC_KEY, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_ROUND_SEIGNIORAGE_RATE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_storage::data_access_layer::AuctionMethod;
 use casper_types::{
@@ -25,8 +25,8 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    AccessRights, CLValue, EntityAddr, EraId, Key, ProtocolVersion, PublicKey, RewardsHandling,
-    SecretKey, StoredValue, Timestamp, URef, DEFAULT_MINIMUM_BID_AMOUNT, U512,
+    AccessRights, CLValue, EntityAddr, EraId, GenesisAccount, Key, ProtocolVersion, PublicKey,
+    RewardsHandling, SecretKey, StoredValue, Timestamp, URef, DEFAULT_MINIMUM_BID_AMOUNT, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -1769,7 +1769,12 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    let mut default_request = LOCAL_GENESIS_REQUEST.clone();
+    default_request.push_genesis_account(GenesisAccount::SustainAccount {
+        public_key: DEFAULT_SUSTAIN_PUBLIC_KEY.clone(),
+    });
+    default_request.push_rewards_ratio(Ratio::new(1, 4));
+    builder.run_genesis(default_request);
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
@@ -1810,14 +1815,11 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
         ret.insert(VALIDATOR_1.clone(), vec![total_payout]);
         ret
     };
-    let sustain_purse = URef::new([6u8; 32], AccessRights::READ_ADD_WRITE);
-    builder.write_data_and_commit(
-        vec![(
-            Key::Balance([6u8; 32]),
-            StoredValue::CLValue(CLValue::from_t(U512::from(0)).unwrap()),
-        )]
-        .into_iter(),
-    );
+
+    let sustain_purse = builder
+        .get_account(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
+        .expect("must have sustain account as part of genesis setup")
+        .main_purse();
 
     let block_rewards_result = builder.distribute_with_rewards_handling(
         None,

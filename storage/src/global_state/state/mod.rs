@@ -31,8 +31,8 @@ use casper_types::{
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
         },
         mint::{
-            BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
-            TOTAL_SUPPLY_KEY,
+            BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, MINT_SUSTAIN_PURSE_KEY,
+            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         AUCTION, HANDLE_PAYMENT, MINT,
     },
@@ -440,7 +440,18 @@ pub trait CommitProvider: StateProvider {
         };
 
         let rewards_handling = request.config().rewards_handling();
-        if let Err(auction_error) = runtime.distribute(rewards.clone(), rewards_handling) {
+        let sustain_purse = match runtime
+            .runtime_footprint()
+            .named_keys()
+            .get(MINT_SUSTAIN_PURSE_KEY)
+        {
+            Some(Key::URef(uref)) => Some(*uref),
+            Some(_) | None => None,
+        };
+
+        if let Err(auction_error) =
+            runtime.distribute(rewards.clone(), sustain_purse, rewards_handling)
+        {
             error!(
                 "distribute block rewards failed due to auction error {:?}",
                 auction_error

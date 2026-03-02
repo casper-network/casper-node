@@ -116,6 +116,13 @@ pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
 /// Default proposer address.
 pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
+
+/// Default public key to associate with the sustain purse.
+pub static DEFAULT_SUSTAIN_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([207; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+
 /// Default accounts.
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();

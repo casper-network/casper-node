@@ -29,6 +29,7 @@ pub struct GenesisConfigBuilder {
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
     gas_hold_interval_millis: Option<u64>,
     enable_addressable_entity: Option<bool>,
+    rewards_ratio: Option<Ratio<u64>>,
     storage_costs: Option<StorageCosts>,
 }
 
@@ -98,6 +99,12 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the rewards ratio.
+    pub fn with_rewards_ratio(mut self, rewards_ratio: Ratio<u64>) -> Self {
+        self.rewards_ratio = Some(rewards_ratio);
+        self
+    }
+
     /// Sets the storage_costs handling.
     pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
         self.storage_costs = Some(storage_costs);
@@ -125,6 +132,7 @@ impl GenesisConfigBuilder {
                 .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
             self.enable_addressable_entity
                 .unwrap_or(DEFAULT_ENABLE_ENTITY),
+            self.rewards_ratio,
             self.storage_costs.unwrap_or_default(),
         )
     }
