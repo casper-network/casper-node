@@ -25,6 +25,7 @@ enum GenesisAccountTag {
     Account = 1,
     Delegator = 2,
     Administrator = 3,
+    SustainAccount = 4,
 }
 
 /// Represents details about genesis account's validator status.
@@ -182,6 +183,8 @@ pub enum GenesisAccount {
     ///
     /// This variant makes sense for some private chains.
     Administrator(AdministratorAccount),
+    /// An account to associate for the sustain purse
+    SustainAccount { public_key: PublicKey },
 }
 
 impl From<AdministratorAccount> for GenesisAccount {
@@ -224,6 +227,11 @@ impl GenesisAccount {
         }
     }
 
+    /// Create a new sustain account.
+    pub fn sustain(public_key: PublicKey) -> Self {
+        Self::SustainAccount { public_key }
+    }
+
     /// The public key (if any) associated with the account.
     pub fn public_key(&self) -> PublicKey {
         match self {
@@ -236,6 +244,7 @@ impl GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
                 public_key.clone()
             }
+            GenesisAccount::SustainAccount { public_key } => public_key.clone(),
         }
     }
 
@@ -251,6 +260,7 @@ impl GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
                 public_key.to_account_hash()
             }
+            GenesisAccount::SustainAccount { public_key } => public_key.to_account_hash(),
         }
     }
 
@@ -261,6 +271,7 @@ impl GenesisAccount {
             GenesisAccount::Account { balance, .. } => *balance,
             GenesisAccount::Delegator { balance, .. } => *balance,
             GenesisAccount::Administrator(AdministratorAccount { balance, .. }) => *balance,
+            GenesisAccount::SustainAccount { .. } => Motes::zero(),
         }
     }
 
@@ -289,6 +300,7 @@ impl GenesisAccount {
                 // validator set is created at the genesis.
                 Motes::zero()
             }
+            GenesisAccount::SustainAccount { .. } => Motes::zero(),
         }
     }
 
@@ -309,6 +321,7 @@ impl GenesisAccount {
                 DelegationRate::MAX
             }
             GenesisAccount::Administrator(AdministratorAccount { .. }) => DelegationRate::MAX,
+            GenesisAccount::SustainAccount { .. } => DelegationRate::MAX,
         }
     }
 
@@ -328,7 +341,8 @@ impl GenesisAccount {
                 validator: None, ..
             }
             | GenesisAccount::Delegator { .. }
-            | GenesisAccount::Administrator(AdministratorAccount { .. }) => false,
+            | GenesisAccount::Administrator(AdministratorAccount { .. })
+            | GenesisAccount::SustainAccount { .. } => false,
         }
     }
 
@@ -384,8 +398,13 @@ impl GenesisAccount {
             }
             GenesisAccount::System
             | GenesisAccount::Delegator { .. }
-            | GenesisAccount::Administrator(_) => false,
+            | GenesisAccount::Administrator(_)
+            | GenesisAccount::SustainAccount { .. } => false,
         }
+    }
+
+    pub fn is_sustain_account(&self) -> bool {
+        matches!(self, Self::SustainAccount { .. })
     }
 }
 
@@ -436,6 +455,10 @@ impl ToBytes for GenesisAccount {
                 buffer.push(GenesisAccountTag::Administrator as u8);
                 buffer.extend(administrator_account.to_bytes()?);
             }
+            GenesisAccount::SustainAccount { public_key } => {
+                buffer.push(GenesisAccountTag::SustainAccount as u8);
+                buffer.extend(public_key.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -467,6 +490,9 @@ impl ToBytes for GenesisAccount {
             }
             GenesisAccount::Administrator(administrator_account) => {
                 administrator_account.serialized_length() + TAG_LENGTH
+            }
+            GenesisAccount::SustainAccount { public_key } => {
+                public_key.serialized_length() + TAG_LENGTH
             }
         }
     }
@@ -505,6 +531,10 @@ impl FromBytes for GenesisAccount {
                     AdministratorAccount::from_bytes(remainder)?;
                 let genesis_account = GenesisAccount::Administrator(administrator_account);
                 Ok((genesis_account, remainder))
+            }
+            tag if tag == GenesisAccountTag::SustainAccount as u8 => {
+                let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((GenesisAccount::SustainAccount { public_key }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

@@ -134,7 +134,7 @@ pub use chainspec::{
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionLaneDefinition,
     TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig, WasmV1Config, WasmV2Config,
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING,
+    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING, REWARDS_HANDLING_RATIO_TAG,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

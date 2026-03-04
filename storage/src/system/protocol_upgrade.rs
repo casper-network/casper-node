@@ -27,8 +27,8 @@ use casper_types::{
         },
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
         mint::{
-            MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY,
-            TOTAL_SUPPLY_KEY,
+            MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY, MINT_SUSTAIN_PURSE_KEY,
+            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
@@ -36,12 +36,13 @@ use casper_types::{
     ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersionKey,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling, Groups,
     HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, StoredValue,
+    SystemHashRegistry, URef, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 use crate::{
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -218,6 +219,7 @@ where
         self.handle_era_info_migration()?;
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
         self.handle_total_supply_calc(system_entity_addresses.mint())?;
+        self.handle_rewards_handling(system_entity_addresses.mint())?;
 
         Ok(self.tracking_copy)
     }
@@ -1650,6 +1652,70 @@ where
                 .write(*total_supply_key, StoredValue::CLValue(cl_value));
         } else {
             debug!("total supply match");
+        }
+
+        Ok(())
+    }
+  
+    /// Write or prune away the rewards handling entry in GS.
+    pub fn handle_rewards_handling(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
+        let rewards_handling = self.config.rewards_handling();
+        let rewards_handling_key = self
+            .tracking_copy
+            .read(&Key::RewardsHandling)
+            .map_err(ProtocolUpgradeError::TrackingCopy)?;
+
+        match rewards_handling {
+            RewardsHandling::Standard => {
+                if let Some(StoredValue::CLValue(_)) = rewards_handling_key {
+                    self.tracking_copy.prune(Key::RewardsHandling);
+                }
+            }
+            RewardsHandling::Sustain {
+                ratio,
+                purse_address,
+            } => {
+                let sustain_purse = URef::from_formatted_str(&purse_address).map_err(|_| {
+                    ProtocolUpgradeError::CLValue("unable to create sustain purse".to_string())
+                })?;
+
+                let value = StoredValue::CLValue(
+                    CLValue::from_t((MINT_SUSTAIN_PURSE_KEY.to_string(), Key::URef(sustain_purse)))
+                        .map_err(|_| {
+                            ProtocolUpgradeError::Bytesrepr("new_auction_delay".to_string())
+                        })?,
+                );
+
+                let mint_key = if self.config.enable_addressable_entity() {
+                    Key::AddressableEntity(EntityAddr::System(mint))
+                } else {
+                    Key::Hash(mint)
+                };
+                match self.tracking_copy.add(mint_key, value) {
+                    Ok(AddResult::Success) => {
+                        info!("Successfully added sustain purse to mint named keys")
+                    }
+                    Ok(_) | Err(_) => {
+                        return Err(ProtocolUpgradeError::CLValue(
+                            "Unable to add sustain purse".to_string(),
+                        ))
+                    }
+                };
+
+                let rewards_ratio = ratio
+                    .to_bytes()
+                    .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
+                let rewards_handling_map = {
+                    let mut ret = BTreeMap::new();
+                    ret.insert(REWARDS_HANDLING_RATIO_TAG, rewards_ratio);
+                    CLValue::from_t(ret)
+                        .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?
+                };
+                self.tracking_copy.write(
+                    Key::RewardsHandling,
+                    StoredValue::CLValue(rewards_handling_map),
+                );
+            }
         }
 
         Ok(())

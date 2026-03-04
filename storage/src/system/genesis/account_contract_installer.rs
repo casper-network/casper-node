@@ -14,6 +14,7 @@ use crate::{
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::ProtocolUpgradeError,
     },
+    tracking_copy::AddResult,
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
@@ -43,7 +44,7 @@ use casper_types::{
         mint,
         mint::{
             ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY,
-            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+            MINT_SUSTAIN_PURSE_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
@@ -52,7 +53,7 @@ use casper_types::{
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
     GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
+    ProtocolVersion, PublicKey, RewardsHandling, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 pub struct AccountContractInstaller<S>
@@ -95,7 +96,7 @@ where
         self.tracking_copy.borrow().effects()
     }
 
-    fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
+    fn create_mint(&mut self) -> Result<(Key, Key), Box<GenesisError>> {
         let round_seigniorage_rate_uref =
             {
                 let round_seigniorage_rate_uref = self
@@ -210,7 +211,7 @@ where
                 .write(Key::SystemEntityRegistry, StoredValue::CLValue(cl_registry));
         }
 
-        Ok(total_supply_uref.into())
+        Ok((total_supply_uref.into(), Key::Hash(mint_hash.value())))
     }
 
     fn create_handle_payment(
@@ -538,7 +539,7 @@ where
         &self,
         total_supply_key: Key,
         payment_purse_uref: URef,
-    ) -> Result<(), Box<GenesisError>> {
+    ) -> Result<Option<URef>, Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.config.accounts_iter().cloned().collect();
             let system_account = GenesisAccount::system();
@@ -560,6 +561,7 @@ where
         }
 
         let mut total_supply = U512::zero();
+        let mut sustain_purse = None;
 
         for account in accounts {
             let account_hash = account.account_hash();
@@ -571,6 +573,10 @@ where
                 }
                 _ => self.create_purse(account.balance().value())?,
             };
+
+            if self.config.rewards_ratio().is_some() && account.is_sustain_account() {
+                sustain_purse = Some(main_purse)
+            }
 
             let key = Key::Account(account_hash);
             let stored_value = StoredValue::Account(Account::create(
@@ -592,7 +598,7 @@ where
             ),
         );
 
-        Ok(())
+        Ok(sustain_purse)
     }
 
     fn initial_seigniorage_recipients(
@@ -750,6 +756,37 @@ where
         Ok(())
     }
 
+    pub(crate) fn handle_sustain_purse(
+        &mut self,
+        sustain_purse: Option<URef>,
+        mint_key: Key,
+    ) -> Result<(), Box<GenesisError>> {
+        if sustain_purse.is_none() {
+            return Ok(());
+        }
+
+        // This is safe because we early exit on the none case
+        let sustain_purse = sustain_purse.unwrap();
+        let named_key_value = StoredValue::CLValue(
+            CLValue::from_t((MINT_SUSTAIN_PURSE_KEY.to_string(), Key::URef(sustain_purse)))
+                .map_err(|cl_error| Box::new(GenesisError::CLValue(cl_error.to_string())))?,
+        );
+
+        match self
+            .tracking_copy
+            .borrow_mut()
+            .add(mint_key, named_key_value)
+        {
+            Err(storage_error) => Err(Box::new(GenesisError::TrackingCopy(storage_error))),
+            Ok(AddResult::Success) => Ok(()),
+            Ok(AddResult::KeyNotFound(_)) => Err(Box::new(GenesisError::InvalidMintKey)),
+            Ok(AddResult::TypeMismatch(_)) | Ok(AddResult::Transform(_)) => Err(Box::new(
+                GenesisError::CLValue("Unable to add sustain purse".to_string()),
+            )),
+            Ok(AddResult::Serialization(error)) => Err(Box::new(GenesisError::Bytesrepr(error))),
+        }
+    }
+
     /// Performs a complete system installation.
     pub(crate) fn install(
         &mut self,
@@ -757,12 +794,14 @@ where
     ) -> Result<(), Box<GenesisError>> {
         // self.setup_system_account()?;
         // Create mint
-        let total_supply_key = self.create_mint()?;
+        let (total_supply_key, mint_key) = self.create_mint()?;
 
         let payment_purse_uref = self.create_purse(U512::zero())?;
 
         // Create all genesis accounts
-        self.create_accounts(total_supply_key, payment_purse_uref)?;
+        let sustain_purse = self.create_accounts(total_supply_key, payment_purse_uref)?;
+
+        self.handle_sustain_purse(sustain_purse, mint_key)?;
 
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
