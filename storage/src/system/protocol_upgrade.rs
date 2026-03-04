@@ -218,6 +218,7 @@ where
         )?;
         self.handle_era_info_migration()?;
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
+        self.handle_total_supply_calc(system_entity_addresses.mint())?;
         self.handle_rewards_handling(system_entity_addresses.mint())?;
 
         Ok(self.tracking_copy)
@@ -1570,6 +1571,92 @@ where
         Ok(())
     }
 
+    /// Handle total supply calculation.
+    pub fn handle_total_supply_calc(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
+        debug!("handle total supply calculation");
+        let mint_named_keys = self.get_named_keys(mint)?;
+        let tc = &mut self.tracking_copy;
+        let total_supply_key = mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("total supply key must exist in mint contract's named keys");
+
+        let total_supply = match tc.read(total_supply_key) {
+            Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
+                Ok(total_supply) => total_supply,
+                Err(cve) => {
+                    warn!("total_supply {} not a U512; {}", total_supply_key, cve);
+                    return Err(ProtocolUpgradeError::CLValue(
+                        "total supply is not U512".to_string(),
+                    ));
+                }
+            },
+            Ok(Some(_)) => {
+                error!("total supply is unexpected stored value type");
+                return Err(ProtocolUpgradeError::CLValue(
+                    "total supply is unexpected stored value type".to_string(),
+                ));
+            }
+            Ok(None) => {
+                error!("total supply missing");
+                return Err(ProtocolUpgradeError::CLValue(
+                    "total supply missing".to_string(),
+                ));
+            }
+            Err(err) => {
+                error!("failure to retrieve total supply: {}", err);
+                return Err(ProtocolUpgradeError::CLValue(
+                    "failure to retrieve total supply".to_string(),
+                ));
+            }
+        };
+
+        let balance_keys = match tc.get_keys(&KeyTag::Balance) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+
+        let mut running_balance = U512::zero();
+        for balance_key in balance_keys {
+            if let Some(StoredValue::CLValue(cl_value)) = tc
+                .get(&balance_key)
+                .map_err(Into::<ProtocolUpgradeError>::into)?
+            {
+                // need to shuck CLValue wrapper and get at interior value.
+                match cl_value.into_t::<U512>() {
+                    Ok(balance) => {
+                        running_balance += balance;
+                    }
+                    Err(cve) => {
+                        warn!("balance of {} not a U512; {}", balance_key, cve);
+                    }
+                }
+            } else {
+                // this should be unreachable. if it is reached the options are halt & catch fire,
+                // or log and keep going. currently opting to log and keep going.
+                error!("failed to find balance value for {}", balance_key);
+            }
+        }
+
+        // compare stored total supply with calculated total
+        // if same, no op
+        if total_supply != running_balance {
+            warn!(
+                "adjusting total supply from {} to {}",
+                total_supply, running_balance
+            );
+
+            let cl_value = CLValue::from_t(running_balance)
+                .expect("new total supply must convert to CLValue.");
+
+            self.tracking_copy
+                .write(*total_supply_key, StoredValue::CLValue(cl_value));
+        } else {
+            debug!("total supply match");
+        }
+
+        Ok(())
+    }
+  
     /// Write or prune away the rewards handling entry in GS.
     pub fn handle_rewards_handling(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
         let rewards_handling = self.config.rewards_handling();
