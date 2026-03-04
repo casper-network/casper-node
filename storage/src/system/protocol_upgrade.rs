@@ -1736,13 +1736,7 @@ where
         &mut self,
         auction: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
-        let minimum_delegation_rate = self.config.new_minimum_delegation_rate();
-        let minimum_delegation_rate = if let Some(minimum_delegation_rate) = minimum_delegation_rate
-        {
-            minimum_delegation_rate
-        } else {
-            return Ok(());
-        };
+        let minimum_delegation_rate = self.config.new_minimum_delegation_rate().unwrap_or(0);
         let named_keys = self.get_named_keys(auction)?;
         let cl_value = CLValue::from_t(minimum_delegation_rate)
             .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
