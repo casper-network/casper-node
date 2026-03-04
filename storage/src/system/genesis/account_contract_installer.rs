@@ -22,6 +22,7 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
     },
+    bytesrepr::{Bytes, ToBytes},
     contracts::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions, NamedKeys,
@@ -53,7 +54,8 @@ use casper_types::{
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
     GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolVersion, PublicKey, RewardsHandling, StoredValue, SystemHashRegistry, URef, U512,
+    ProtocolVersion, PublicKey, RewardsHandling, StoredValue, SystemHashRegistry, URef,
+    REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 pub struct AccountContractInstaller<S>
@@ -575,6 +577,26 @@ where
             };
 
             if self.config.rewards_ratio().is_some() && account.is_sustain_account() {
+                let cl_value = {
+                    let mut ret: BTreeMap<u8, Bytes> = BTreeMap::new();
+                    let ratio_as_bytes = self
+                        .config
+                        .rewards_ratio()
+                        .ok_or(Box::new(GenesisError::CLValue(
+                            "could not serialize rewards ratio".to_string(),
+                        )))?
+                        .to_bytes()
+                        .map_err(|err| Box::new(GenesisError::Bytesrepr(err)))?;
+
+                    ret.insert(REWARDS_HANDLING_RATIO_TAG, ratio_as_bytes.into());
+                    CLValue::from_t(ret)
+                }
+                .map_err(|cl_err| Box::new(GenesisError::CLValue(cl_err.to_string())))?;
+
+                self.tracking_copy
+                    .borrow_mut()
+                    .write(Key::RewardsHandling, StoredValue::CLValue(cl_value));
+
                 sustain_purse = Some(main_purse)
             }
 

@@ -13,7 +13,7 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, Weight,
     },
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, Bytes, ToBytes},
     contracts::{ContractHash, ContractPackageStatus, NamedKeys},
     system::{
         auction::{
@@ -1656,7 +1656,7 @@ where
 
         Ok(())
     }
-  
+
     /// Write or prune away the rewards handling entry in GS.
     pub fn handle_rewards_handling(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
         let rewards_handling = self.config.rewards_handling();
@@ -1682,7 +1682,7 @@ where
                 let value = StoredValue::CLValue(
                     CLValue::from_t((MINT_SUSTAIN_PURSE_KEY.to_string(), Key::URef(sustain_purse)))
                         .map_err(|_| {
-                            ProtocolUpgradeError::Bytesrepr("new_auction_delay".to_string())
+                            ProtocolUpgradeError::Bytesrepr("sustain purse".to_string())
                         })?,
                 );
 
@@ -1702,9 +1702,10 @@ where
                     }
                 };
 
-                let rewards_ratio = ratio
+                let rewards_ratio: Bytes = ratio
                     .to_bytes()
-                    .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
+                    .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?
+                    .into();
                 let rewards_handling_map = {
                     let mut ret = BTreeMap::new();
                     ret.insert(REWARDS_HANDLING_RATIO_TAG, rewards_ratio);

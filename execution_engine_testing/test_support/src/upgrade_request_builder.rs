@@ -150,6 +150,12 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the rewards handling
+    pub fn with_rewards_handling(mut self, rewards_handling: RewardsHandling) -> Self {
+        self.rewards_handling = rewards_handling;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
