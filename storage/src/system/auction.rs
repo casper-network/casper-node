@@ -80,6 +80,7 @@ pub trait Auction:
         reserved_slots: u32,
         global_minimum_delegation_amount: u64,
         global_maximum_delegation_amount: u64,
+        minimum_delegation_rate: u8,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -89,6 +90,10 @@ pub trait Auction:
 
         if amount == U512::zero() {
             return Err(Error::BondTooSmall.into());
+        }
+
+        if delegation_rate < minimum_delegation_rate {
+            return Err(Error::DelegationRateTooSmall.into());
         }
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
@@ -392,12 +397,15 @@ pub trait Auction:
     /// delegator slots is exceeded it returns an error.
     ///
     /// If given reservation exists already and the delegation rate was changed it's updated.
-    fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), Error> {
+    fn add_reservations(
+        &mut self,
+        reservations: Vec<Reservation>,
+        minimum_delegation_rate: u8,
+    ) -> Result<(), Error> {
         if !self.allow_auction_bids() {
             // The auction process can be disabled on a given network.
             return Err(Error::AuctionBidsDisabled);
         }
-
         for reservation in reservations {
             if !self
                 .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
@@ -405,7 +413,7 @@ pub trait Auction:
                 return Err(Error::InvalidContext);
             }
 
-            detail::handle_add_reservation(self, reservation)?;
+            detail::handle_add_reservation(self, reservation, minimum_delegation_rate)?;
         }
         Ok(())
     }

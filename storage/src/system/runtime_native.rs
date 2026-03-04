@@ -4,9 +4,12 @@ use crate::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, contracts::NamedKeys, Chainspec, ContextAccessRights, EntityAddr,
-    FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling, RewardsHandling,
-    RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
+    account::AccountHash,
+    contracts::NamedKeys,
+    system::{auction::MINIMUM_DELEGATION_RATE_KEY, AUCTION},
+    Chainspec, ContextAccessRights, EntityAddr, FeeHandling, Key, Phase, ProtocolVersion,
+    PublicKey, RefundHandling, RewardsHandling, RuntimeFootprint, StoredValue, TransactionHash,
+    Transfer, URef, U512,
 };
 use num_rational::Ratio;
 use parking_lot::RwLock;
@@ -599,5 +602,26 @@ where
 
     pub(crate) fn native_transfer_cost(&self) -> u32 {
         self.config.native_transfer_cost
+    }
+
+    pub(crate) fn get_minimum_delegation_rate(&self) -> Result<u8, TrackingCopyError> {
+        let mut borrow_mut = self.tracking_copy.borrow_mut();
+        let key = borrow_mut
+            .system_contract_named_key(AUCTION, MINIMUM_DELEGATION_RATE_KEY)?
+            .ok_or(TrackingCopyError::NamedKeyNotFound(
+                MINIMUM_DELEGATION_RATE_KEY.to_string(),
+            ))?;
+        let stored_value = borrow_mut
+            .read(&key)?
+            .ok_or(TrackingCopyError::ValueNotFound(
+                MINIMUM_DELEGATION_RATE_KEY.to_string(),
+            ))?;
+        if let StoredValue::CLValue(cl_value) = stored_value {
+            let minimum_delegation_rate: u8 =
+                cl_value.into_t().map_err(TrackingCopyError::CLValue)?;
+            Ok(minimum_delegation_rate)
+        } else {
+            Err(TrackingCopyError::UnexpectedStoredValueVariant)
+        }
     }
 }

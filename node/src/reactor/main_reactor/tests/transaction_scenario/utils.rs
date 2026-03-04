@@ -368,6 +368,7 @@ pub(crate) struct TestScenarioBuilder {
     maybe_fee_handling: Option<FeeHandling>,
     maybe_balance_hold_interval_override: Option<TimeDiff>,
     maybe_minimum_era_height: Option<u64>,
+    minimum_delegation_rate: u8,
 }
 
 impl TestScenarioBuilder {
@@ -384,6 +385,7 @@ impl TestScenarioBuilder {
             maybe_fee_handling,
             maybe_balance_hold_interval_override,
             maybe_minimum_era_height,
+            minimum_delegation_rate,
         } = self;
         let (secret_keys, stakes) = maybe_stakes_setup.unwrap_or({
             /* Node 0 is effectively guaranteed to be the proposer. */
@@ -431,6 +433,7 @@ impl TestScenarioBuilder {
         } else {
             config
         };
+        let config = config.with_minimum_delegation_rate(minimum_delegation_rate);
         let child_rng = rng.create_child();
         let fixture =
             TestFixture::new_with_keys(child_rng, secret_keys, stakes, Some(config)).await;
@@ -466,6 +469,11 @@ impl TestScenarioBuilder {
 
     pub(crate) fn with_minimum_era_height(mut self, minimum_era_height: u64) -> Self {
         self.maybe_minimum_era_height = Some(minimum_era_height);
+        self
+    }
+
+    pub(crate) fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.minimum_delegation_rate = minimum_delegation_rate;
         self
     }
 }

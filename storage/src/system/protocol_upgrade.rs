@@ -22,8 +22,8 @@ use casper_types::{
             SeigniorageRecipientsV2, Unbond, UnbondEra, UnbondKind, ValidatorBid,
             AUCTION_DELAY_KEY, DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
             ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            MINIMUM_DELEGATION_RATE_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
         mint::{
@@ -220,6 +220,7 @@ where
         self.handle_seignorage_snapshot_migration(system_entity_addresses.auction())?;
         self.handle_total_supply_calc(system_entity_addresses.mint())?;
         self.handle_rewards_handling(system_entity_addresses.mint())?;
+        self.handle_minimum_delegation_rate(system_entity_addresses.auction())?;
 
         Ok(self.tracking_copy)
     }
@@ -1728,5 +1729,31 @@ where
         for (key, value) in self.config.global_state_update() {
             self.tracking_copy.write(*key, value.clone());
         }
+    }
+
+    /// Handle setting up minimum_delegation_rate
+    pub fn handle_minimum_delegation_rate(
+        &mut self,
+        auction: HashAddr,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let minimum_delegation_rate = self.config.new_minimum_delegation_rate();
+        let minimum_delegation_rate = if let Some(minimum_delegation_rate) = minimum_delegation_rate
+        {
+            minimum_delegation_rate
+        } else {
+            return Ok(());
+        };
+        let named_keys = self.get_named_keys(auction)?;
+        let cl_value = CLValue::from_t(minimum_delegation_rate)
+            .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
+        let stored_value = StoredValue::CLValue(cl_value);
+        let auction_addr = EntityAddr::System(auction);
+        self.system_uref(
+            auction_addr,
+            MINIMUM_DELEGATION_RATE_KEY,
+            &named_keys,
+            stored_value,
+        )?;
+        Ok(())
     }
 }

@@ -916,10 +916,25 @@ where
 /// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
 #[allow(clippy::too_many_arguments)]
-pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), Error>
+pub fn handle_add_reservation<P>(
+    provider: &mut P,
+    reservation: Reservation,
+    minimum_delegation_rate: u8,
+) -> Result<(), Error>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
+    let delegation_rate = *reservation.delegation_rate();
+
+    // validate specified delegation rate
+    if reservation.delegation_rate() > &DELEGATION_RATE_DENOMINATOR {
+        return Err(Error::DelegationRateTooLarge);
+    }
+
+    if delegation_rate < minimum_delegation_rate {
+        return Err(Error::DelegationRateTooSmall);
+    }
+
     // is there such a validator?
     let validator_bid_addr = BidAddr::from(reservation.validator_public_key().clone());
     let bid = read_validator_bid(provider, &validator_bid_addr.into())?;
@@ -948,11 +963,6 @@ where
             return Err(Error::ExceededReservationsLimit);
         }
     };
-
-    // validate specified delegation rate
-    if reservation.delegation_rate() > &DELEGATION_RATE_DENOMINATOR {
-        return Err(Error::DelegationRateTooLarge);
-    }
 
     provider.write_bid(
         reservation_bid_key,
