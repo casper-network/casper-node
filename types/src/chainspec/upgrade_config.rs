@@ -3,8 +3,8 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
-    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
-    RewardsHandling, StoredValue,
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, FeeHandling,
+    HoldBalanceHandling, Key, ProtocolVersion, RewardsHandling, StoredValue,
 };
 
 /// Represents the configuration of a protocol upgrade.
@@ -29,6 +29,7 @@ pub struct ProtocolUpgradeConfig {
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
     rewards_handling: RewardsHandling,
+    minimum_delegation_rate: Option<DelegationRate>,
 }
 
 impl ProtocolUpgradeConfig {
@@ -54,6 +55,7 @@ impl ProtocolUpgradeConfig {
         minimum_delegation_amount: u64,
         enable_addressable_entity: bool,
         rewards_handling: RewardsHandling,
+        minimum_delegation_rate: Option<DelegationRate>,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -75,6 +77,7 @@ impl ProtocolUpgradeConfig {
             minimum_delegation_amount,
             enable_addressable_entity,
             rewards_handling,
+            minimum_delegation_rate,
         }
     }
 
@@ -174,5 +177,10 @@ impl ProtocolUpgradeConfig {
 
     pub fn rewards_handling(&self) -> RewardsHandling {
         self.rewards_handling.clone()
+    }
+
+    /// Returns minimum_delegation_rate.
+    pub fn new_minimum_delegation_rate(&self) -> Option<DelegationRate> {
+        self.minimum_delegation_rate
     }
 }

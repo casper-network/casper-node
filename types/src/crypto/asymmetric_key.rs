@@ -253,6 +253,7 @@ impl SecretKey {
 
     /// DER encodes a key.
     #[cfg(any(feature = "std", test))]
+    #[allow(deprecated)]
     pub fn to_der(&self) -> Result<Vec<u8>, ErrorExt> {
         match self {
             SecretKey::System => Err(Error::System(String::from("to_der")).into()),

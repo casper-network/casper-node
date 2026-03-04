@@ -1271,20 +1271,25 @@ pub trait StateProvider: Send + Sync + Sized {
                 minimum_bid_amount,
                 reserved_slots,
             } => runtime
-                .add_bid(
-                    public_key,
-                    delegation_rate,
-                    amount,
-                    minimum_delegation_amount,
-                    maximum_delegation_amount,
-                    minimum_bid_amount,
-                    max_delegators_per_validator,
-                    reserved_slots,
-                    global_minimum_delegation_limit,
-                    global_maximum_delegation_limit,
-                )
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Api),
+                .get_minimum_delegation_rate()
+                .and_then(|minimum_delegation_rate| {
+                    runtime
+                        .add_bid(
+                            public_key,
+                            delegation_rate,
+                            amount,
+                            minimum_delegation_amount,
+                            maximum_delegation_amount,
+                            minimum_bid_amount,
+                            max_delegators_per_validator,
+                            reserved_slots,
+                            global_minimum_delegation_limit,
+                            global_maximum_delegation_limit,
+                            minimum_delegation_rate,
+                        )
+                        .map(AuctionMethodRet::UpdatedAmount)
+                        .map_err(TrackingCopyError::Api)
+                }),
             AuctionMethod::WithdrawBid {
                 public_key,
                 amount,
@@ -1335,10 +1340,14 @@ pub trait StateProvider: Send + Sync + Sized {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
             AuctionMethod::AddReservations { reservations } => runtime
-                .add_reservations(reservations)
-                .map(|_| AuctionMethodRet::Unit)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                .get_minimum_delegation_rate()
+                .and_then(|minimum_delegation_rate| {
+                    runtime
+                        .add_reservations(reservations, minimum_delegation_rate)
+                        .map(|_| AuctionMethodRet::Unit)
+                        .map_err(|auc_err| {
+                            TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                        })
                 }),
             AuctionMethod::CancelReservations {
                 validator,

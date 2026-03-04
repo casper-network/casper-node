@@ -193,6 +193,9 @@ pub struct CoreConfig {
     pub trap_on_ambiguous_entity_version: bool,
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub rewards_handling: RewardsHandling,
+    /// Minimum delegation rate a validator can specify.
+    /// Also applies to delegation reservations.
+    pub minimum_delegation_rate: u8,
 }
 
 impl CoreConfig {
@@ -339,6 +342,7 @@ impl CoreConfig {
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
+            minimum_delegation_rate: 0,
         }
     }
 }
@@ -387,6 +391,7 @@ impl Default for CoreConfig {
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
+            minimum_delegation_rate: 0,
         }
     }
 }
@@ -437,6 +442,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.baseline_motes_amount.to_bytes()?);
         buffer.extend(self.trap_on_ambiguous_entity_version.to_bytes()?);
         buffer.extend(self.rewards_handling.to_bytes()?);
+        buffer.extend(self.minimum_delegation_rate.to_bytes()?);
         Ok(buffer)
     }
 
@@ -483,6 +489,7 @@ impl ToBytes for CoreConfig {
             + self.baseline_motes_amount.serialized_length()
             + self.trap_on_ambiguous_entity_version.serialized_length()
             + self.rewards_handling.serialized_length()
+            + self.minimum_delegation_rate.serialized_length()
     }
 }
 
@@ -529,6 +536,7 @@ impl FromBytes for CoreConfig {
         let (baseline_motes_amount, remainder) = u64::from_bytes(remainder)?;
         let (trap_on_ambiguous_entity_version, remainder) = bool::from_bytes(remainder)?;
         let (rewards_handling, remainder) = RewardsHandling::from_bytes(remainder)?;
+        let (minimum_delegation_rate, remainder) = u8::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -570,6 +578,7 @@ impl FromBytes for CoreConfig {
             baseline_motes_amount,
             trap_on_ambiguous_entity_version,
             rewards_handling,
+            minimum_delegation_rate,
         };
         Ok((config, remainder))
     }

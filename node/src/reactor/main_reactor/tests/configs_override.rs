@@ -37,6 +37,7 @@ pub(crate) struct ConfigsOverride {
     pub gas_hold_balance_handling: Option<HoldBalanceHandling>,
     pub transaction_v1_override: Option<TransactionV1Config>,
     pub node_config_override: NodeConfigOverride,
+    pub minimum_delegation_rate: u8,
 }
 
 impl ConfigsOverride {
@@ -126,6 +127,11 @@ impl ConfigsOverride {
         self.transaction_v1_override = Some(transaction_v1config);
         self
     }
+
+    pub(crate) fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.minimum_delegation_rate = minimum_delegation_rate;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -157,6 +163,7 @@ impl Default for ConfigsOverride {
             gas_hold_balance_handling: None,
             transaction_v1_override: None,
             node_config_override: NodeConfigOverride::default(),
+            minimum_delegation_rate: 0,
         }
     }
 }

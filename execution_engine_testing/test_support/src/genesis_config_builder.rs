@@ -1,7 +1,8 @@
 //! A builder for an [`GenesisConfig`].
 use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use casper_types::{
-    GenesisAccount, GenesisConfig, HoldBalanceHandling, StorageCosts, SystemConfig, WasmConfig,
+    system::auction::DelegationRate, GenesisAccount, GenesisConfig, HoldBalanceHandling,
+    StorageCosts, SystemConfig, WasmConfig,
 };
 use num_rational::Ratio;
 
@@ -31,6 +32,7 @@ pub struct GenesisConfigBuilder {
     enable_addressable_entity: Option<bool>,
     rewards_ratio: Option<Ratio<u64>>,
     storage_costs: Option<StorageCosts>,
+    minimum_delegation_rate: DelegationRate,
 }
 
 impl GenesisConfigBuilder {
@@ -111,6 +113,12 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the minimum delegation rate config option.
+    pub fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: DelegationRate) -> Self {
+        self.minimum_delegation_rate = minimum_delegation_rate;
+        self
+    }
+
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig::new(
@@ -134,6 +142,7 @@ impl GenesisConfigBuilder {
                 .unwrap_or(DEFAULT_ENABLE_ENTITY),
             self.rewards_ratio,
             self.storage_costs.unwrap_or_default(),
+            self.minimum_delegation_rate,
         )
     }
 }

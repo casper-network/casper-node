@@ -21,7 +21,7 @@ backtrace = "0.3.50"
 base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
-bytes = "1.0.1"
+bytes = "1.11.0"
 casper-binary-port = { version = "1.1.1", path = "../binary_port" }
 casper-storage = { version = "4.0.1", path = "../storage" }
 casper-types = { version = "6.1.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
@@ -59,6 +59,7 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
+rmp = "=0.8.14"
 schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"

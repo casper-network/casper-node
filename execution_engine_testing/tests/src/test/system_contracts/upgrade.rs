@@ -18,8 +18,9 @@ use casper_types::{
         auction::{
             DelegatorKind, SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
             AUCTION_DELAY_KEY, DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
-            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, MINIMUM_DELEGATION_RATE_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
@@ -888,4 +889,68 @@ fn should_migrate_seigniorage_snapshot_to_new_version() {
             }
         }
     }
+}
+
+#[test]
+fn should_store_and_upgrade_minimum_delegation_rate_named_key() {
+    const UPGRADED_MINIMUM_DELEGATION_RATE: u8 = 20;
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let auction_contract_hash = builder.get_auction_contract_hash();
+    let auction_named_keys =
+        builder.get_named_keys(EntityAddr::System(auction_contract_hash.value()));
+    let minimum_delegation_rate_key = *auction_named_keys
+        .get(MINIMUM_DELEGATION_RATE_KEY)
+        .expect("minimum delegation rate key should exist at genesis");
+
+    let minimum_delegation_rate: u8 = builder
+        .query(None, minimum_delegation_rate_key, &[])
+        .expect("should have minimum delegation rate")
+        .as_cl_value()
+        .expect("minimum delegation rate should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("minimum delegation rate should be u8");
+
+    assert_eq!(
+        minimum_delegation_rate, 0,
+        "genesis should have set minimum delegation rate to 0!"
+    );
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(PROTOCOL_VERSION)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(DEFAULT_ACTIVATION_POINT)
+        .with_new_minimum_delegation_rate(UPGRADED_MINIMUM_DELEGATION_RATE)
+        .build();
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let upgraded_auction_contract_hash = builder.get_auction_contract_hash();
+    let upgraded_named_keys =
+        builder.get_named_keys(EntityAddr::System(upgraded_auction_contract_hash.value()));
+    let upgraded_minimum_delegation_rate_key = *upgraded_named_keys
+        .get(MINIMUM_DELEGATION_RATE_KEY)
+        .expect("minimum delegation rate key should exist after upgrade");
+    let upgraded_minimum_delegation_rate: u8 = builder
+        .query(None, upgraded_minimum_delegation_rate_key, &[])
+        .expect("should have upgraded minimum delegation rate")
+        .as_cl_value()
+        .expect("minimum delegation rate should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("minimum delegation rate should be u8");
+
+    assert_eq!(
+        upgraded_minimum_delegation_rate,
+        UPGRADED_MINIMUM_DELEGATION_RATE
+    );
 }

@@ -1,5 +1,6 @@
 mod account;
 mod add_contract_version;
+mod auction;
 mod create_purse;
 mod dictionary;
 mod generic_hash;

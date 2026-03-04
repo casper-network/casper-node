@@ -10,8 +10,9 @@ use casper_contract::contract_api::{runtime, system};
 use casper_types::{
     runtime_args,
     system::auction::{
-        ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_VALIDATOR, METHOD_DELEGATE,
-        METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
+        ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY,
+        ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_RUN_AUCTION,
+        METHOD_UNDELEGATE,
     },
     ApiError, PublicKey, U512,
 };
@@ -21,6 +22,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
+const ARG_ADD_BID: &str = "add_bid";
 
 #[repr(u16)]
 enum Error {
@@ -40,6 +42,9 @@ pub extern "C" fn call() {
         }
         ARG_RUN_AUCTION => run_auction(),
         METHOD_DISTRIBUTE => distribute(),
+        ARG_ADD_BID => {
+            add_bid();
+        }
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
     };
 }
@@ -71,6 +76,21 @@ fn undelegate() -> U512 {
     };
 
     runtime::call_contract(auction, METHOD_UNDELEGATE, args)
+}
+
+fn add_bid() -> U512 {
+    let auction = system::get_auction();
+    let validator: PublicKey = runtime::get_named_arg(ARG_PUBLIC_KEY);
+    let delegation_rate: u8 = runtime::get_named_arg(ARG_DELEGATION_RATE);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+
+    let args = runtime_args! {
+        ARG_AMOUNT => amount,
+        ARG_PUBLIC_KEY => validator,
+        ARG_DELEGATION_RATE => delegation_rate,
+    };
+
+    runtime::call_contract(auction, METHOD_ADD_BID, args)
 }
 
 fn run_auction() {

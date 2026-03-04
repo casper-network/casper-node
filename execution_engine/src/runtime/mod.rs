@@ -52,9 +52,9 @@ use casper_types::{
     },
     system::{
         self,
-        auction::{self, DelegatorKind, EraInfo},
-        handle_payment, mint,
-        mint::MINT_SUSTAIN_PURSE_KEY,
+        auction::{self, DelegatorKind, EraInfo, MINIMUM_DELEGATION_RATE_KEY},
+        handle_payment,
+        mint::{self, MINT_SUSTAIN_PURSE_KEY},
         CallStackElement, Caller, CallerInfo, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
@@ -1084,7 +1084,7 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-
+                let minimum_delegation_rate = self.get_minimum_delegation_rate()?;
                 let minimum_bid_amount = self.context().engine_config().minimum_bid_amount();
 
                 let result = runtime
@@ -1099,6 +1099,7 @@ where
                         reserved_slots,
                         global_minimum_delegation_amount,
                         global_maximum_delegation_amount,
+                        minimum_delegation_rate,
                     )
                     .map_err(Self::reverter)?;
 
@@ -1325,8 +1326,9 @@ where
                 let reservations =
                     Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
 
+                let minimum_delegation_rate = self.get_minimum_delegation_rate()?;
                 runtime
-                    .add_reservations(reservations)
+                    .add_reservations(reservations, minimum_delegation_rate)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -4664,6 +4666,31 @@ where
             ),
         )?;
         Ok(Ok(()))
+    }
+
+    fn get_minimum_delegation_rate(&self) -> Result<u8, ExecError> {
+        let auction_contract_hash = self.context.get_system_contract(AUCTION)?;
+        let auction_named_keys = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_named_keys(EntityAddr::System(auction_contract_hash.value()))?;
+        let minimum_delegation_rate_key =
+            auction_named_keys.get(MINIMUM_DELEGATION_RATE_KEY).ok_or(
+                ExecError::NamedKeyNotFound(MINIMUM_DELEGATION_RATE_KEY.to_string()),
+            )?;
+        let stored_value = self
+            .context
+            .state()
+            .borrow_mut()
+            .read(minimum_delegation_rate_key)?
+            .ok_or(ExecError::KeyNotFound(*minimum_delegation_rate_key))?;
+        if let StoredValue::CLValue(cl_value) = stored_value {
+            let minimum_delegation_rate: u8 = cl_value.into_t().map_err(ExecError::CLValue)?;
+            Ok(minimum_delegation_rate)
+        } else {
+            Err(ExecError::UnexpectedStoredValueVariant)
+        }
     }
 }
 

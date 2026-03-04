@@ -120,3 +120,5 @@ pub const AUCTION_DELAY_KEY: &str = "auction_delay";
 pub const LOCKED_FUNDS_PERIOD_KEY: &str = "locked_funds_period";
 /// Unbonding delay expressed in eras.
 pub const UNBONDING_DELAY_KEY: &str = "unbonding_delay";
+/// Key under which minimum delegation rate is stored in the auction contracts named keys
+pub const MINIMUM_DELEGATION_RATE_KEY: &str = "minimum_delegation_rate";

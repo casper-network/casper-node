@@ -28,8 +28,8 @@ use casper_types::{
             AUCTION_DELAY_KEY, DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
             DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
             INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            MINIMUM_DELEGATION_RATE_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         handle_payment::ACCUMULATION_PURSE_KEY,
@@ -252,8 +252,24 @@ where
         let locked_funds_period_millis = self.config.locked_funds_period_millis();
         let auction_delay: u64 = self.config.auction_delay();
         let genesis_timestamp_millis: u64 = self.config.genesis_timestamp_millis();
+        let minimum_delegation_rate = self.config.minimum_delegation_rate();
 
         let mut named_keys = NamedKeys::new();
+
+        let minimum_delegation_rate_uref = self
+            .address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        let cl_value = CLValue::from_t(minimum_delegation_rate)
+            .map_err(|cl_error| GenesisError::CLValue(cl_error.to_string()))?;
+        self.tracking_copy.borrow_mut().write(
+            minimum_delegation_rate_uref.into(),
+            StoredValue::CLValue(cl_value),
+        );
+        named_keys.insert(
+            MINIMUM_DELEGATION_RATE_KEY.into(),
+            minimum_delegation_rate_uref.into(),
+        );
 
         let genesis_validators: Vec<_> = self.config.get_bonded_validators().collect();
         if (self.config.validator_slots() as usize) < genesis_validators.len() {
