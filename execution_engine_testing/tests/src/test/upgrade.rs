@@ -14,7 +14,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    bytesrepr::FromBytes,
+    bytesrepr::{Bytes, FromBytes},
     contracts::ContractPackageHash,
     runtime_args,
     system::mint::MINT_SUSTAIN_PURSE_KEY,
@@ -1613,7 +1613,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .expect("must have stored value as part of the upgrade")
         .as_cl_value()
         .expect("must get cl value")
-        .to_t::<BTreeMap<u8, Vec<u8>>>()
+        .to_t::<BTreeMap<u8, Bytes>>()
         .expect("must get btree map")
         .get(&REWARDS_HANDLING_RATIO_TAG)
         .map(|bytes| Ratio::<u64>::from_bytes(bytes).expect("failed to deserialize rewards ratio"))
