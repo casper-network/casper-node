@@ -4,7 +4,7 @@ use num_rational::Ratio;
 
 use casper_types::{
     ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolUpgradeConfig,
-    ProtocolVersion, StoredValue,
+    ProtocolVersion, RewardsHandling, StoredValue,
 };
 
 /// Builds an `UpgradeConfig`.
@@ -27,6 +27,7 @@ pub struct UpgradeRequestBuilder {
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
+    rewards_handling: RewardsHandling,
 }
 
 impl UpgradeRequestBuilder {
@@ -149,6 +150,12 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the rewards handling
+    pub fn with_rewards_handling(mut self, rewards_handling: RewardsHandling) -> Self {
+        self.rewards_handling = rewards_handling;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
@@ -170,6 +177,7 @@ impl UpgradeRequestBuilder {
             self.maximum_delegation_amount,
             self.minimum_delegation_amount,
             self.enable_addressable_entity,
+            self.rewards_handling,
         )
     }
 }
@@ -195,6 +203,7 @@ impl Default for UpgradeRequestBuilder {
             maximum_delegation_amount: u64::MAX,
             minimum_delegation_amount: 0,
             enable_addressable_entity: false,
+            rewards_handling: RewardsHandling::Standard,
         }
     }
 }

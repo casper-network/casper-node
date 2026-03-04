@@ -2,6 +2,8 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
+use num_rational::Ratio;
+use std::collections::BTreeMap;
 
 use crate::lmdb_fixture;
 use casper_execution_engine::{
@@ -12,9 +14,13 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
+    bytesrepr::{Bytes, FromBytes},
     contracts::ContractPackageHash,
-    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, HoldBalanceHandling, Key,
-    PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp, ENTITY_INITIAL_VERSION,
+    runtime_args,
+    system::mint::MINT_SUSTAIN_PURSE_KEY,
+    AccessRights, AddressableEntityHash, CLValue, EntityVersion, EraId, HoldBalanceHandling, Key,
+    PackageHash, ProtocolVersion, RewardsHandling, RuntimeArgs, StoredValue, Timestamp, URef,
+    ENTITY_INITIAL_VERSION, REWARDS_HANDLING_RATIO_TAG,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -1579,6 +1585,14 @@ fn should_not_require_subsequent_cases(trap: bool) {
 
     let activation_point = EraId::new(0u64);
 
+    let sustain_uref = URef::new([6u8; 32], AccessRights::all());
+
+    let sustain_ratio = Ratio::new(2, 8);
+    let rewards_handling = RewardsHandling::Sustain {
+        ratio: sustain_ratio,
+        purse_address: sustain_uref.to_formatted_string(),
+    };
+
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(previous_protocol_version)
         .with_new_protocol_version(new_protocol_version)
@@ -1586,12 +1600,38 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
         .with_enable_addressable_entity(false)
+        .with_rewards_handling(rewards_handling)
         .build();
 
     builder
         .with_block_time(Timestamp::now().into())
         .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
+
+    let actual_ratio = builder
+        .query(None, Key::RewardsHandling, &[])
+        .expect("must have stored value as part of the upgrade")
+        .as_cl_value()
+        .expect("must get cl value")
+        .to_t::<BTreeMap<u8, Bytes>>()
+        .expect("must get btree map")
+        .get(&REWARDS_HANDLING_RATIO_TAG)
+        .map(|bytes| Ratio::<u64>::from_bytes(bytes).expect("failed to deserialize rewards ratio"))
+        .map(|(ratio, _)| ratio)
+        .expect("must get ratio");
+
+    assert_eq!(sustain_ratio, actual_ratio);
+
+    let actual_sustain_purse = *builder
+        .get_entity_with_named_keys_by_entity_hash(builder.get_mint_contract_hash())
+        .expect("must get mint entity")
+        .named_keys()
+        .get(MINT_SUSTAIN_PURSE_KEY)
+        .expect("must have key entry")
+        .as_uref()
+        .expect("must be able to convert to uref");
+
+    assert_eq!(actual_sustain_purse, sustain_uref);
 
     let config = EngineConfigBuilder::new()
         .with_protocol_version(new_protocol_version)

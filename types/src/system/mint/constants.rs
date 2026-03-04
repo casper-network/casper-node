@@ -44,3 +44,5 @@ pub const ROUND_SEIGNIORAGE_RATE_KEY: &str = "round_seigniorage_rate";
 pub const MINT_GAS_HOLD_HANDLING_KEY: &str = "gas_hold_handling";
 /// Storage for gas hold interval.
 pub const MINT_GAS_HOLD_INTERVAL_KEY: &str = "gas_hold_interval";
+/// Named key for sustain purse
+pub const MINT_SUSTAIN_PURSE_KEY: &str = "sustain_purse";

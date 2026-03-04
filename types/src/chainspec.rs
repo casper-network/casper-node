@@ -15,6 +15,7 @@ mod next_upgrade;
 mod pricing_handling;
 mod protocol_config;
 mod refund_handling;
+mod rewards_handling;
 mod transaction_config;
 mod upgrade_config;
 mod vacancy_config;
@@ -61,6 +62,7 @@ pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
+pub use rewards_handling::{RewardsHandling, REWARDS_HANDLING_RATIO_TAG};
 pub use transaction_config::{
     DeployConfig, TransactionConfig, TransactionLaneDefinition, TransactionV1Config,
 };
@@ -194,6 +196,7 @@ impl Chainspec {
         let maximum_delegation_amount = self.core_config.maximum_delegation_amount;
         let minimum_delegation_amount = self.core_config.minimum_delegation_amount;
         let enable_addressable_entity = self.core_config.enable_addressable_entity;
+        let rewards_handling = self.core_config.rewards_handling.clone();
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -214,6 +217,7 @@ impl Chainspec {
             maximum_delegation_amount,
             minimum_delegation_amount,
             enable_addressable_entity,
+            rewards_handling,
         ))
     }
 

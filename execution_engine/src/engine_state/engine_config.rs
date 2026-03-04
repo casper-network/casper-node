@@ -7,9 +7,9 @@ use num_rational::Ratio;
 use num_traits::One;
 
 use casper_types::{
-    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, StorageCosts,
-    SystemConfig, TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_MINIMUM_BID_AMOUNT,
-    DEFAULT_REFUND_HANDLING,
+    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, RewardsHandling,
+    StorageCosts, SystemConfig, TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING,
+    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -93,6 +93,7 @@ pub struct EngineConfig {
     pub(crate) compute_rewards: bool,
     pub(crate) enable_entity: bool,
     pub(crate) trap_on_ambiguous_entity_version: bool,
+    pub(crate) rewards_handling: RewardsHandling,
     storage_costs: StorageCosts,
 }
 
@@ -118,6 +119,7 @@ impl Default for EngineConfig {
             protocol_version: DEFAULT_PROTOCOL_VERSION,
             enable_entity: DEFAULT_ENABLE_ENTITY,
             trap_on_ambiguous_entity_version: DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION,
+            rewards_handling: RewardsHandling::Standard,
             storage_costs: Default::default(),
         }
     }
@@ -224,6 +226,11 @@ impl EngineConfig {
         self.trap_on_ambiguous_entity_version
     }
 
+    /// Returns the current configuration for rewards handling.
+    pub fn rewards_handling(&self) -> RewardsHandling {
+        self.rewards_handling.clone()
+    }
+
     /// Sets the protocol version of the config.
     ///
     /// NOTE: This is only useful to the WasmTestBuilder for emulating a network upgrade, and hence
@@ -267,6 +274,7 @@ pub struct EngineConfigBuilder {
     balance_hold_interval: Option<TimeDiff>,
     enable_entity: Option<bool>,
     trap_on_ambiguous_entity_version: Option<bool>,
+    rewards_handling: Option<RewardsHandling>,
     storage_costs: Option<StorageCosts>,
 }
 
@@ -487,6 +495,7 @@ impl EngineConfigBuilder {
             .trap_on_ambiguous_entity_version
             .unwrap_or(DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION);
         let storage_costs = self.storage_costs.unwrap_or_default();
+        let rewards_handling = self.rewards_handling.unwrap_or(RewardsHandling::Standard);
 
         EngineConfig {
             max_associated_keys,
@@ -508,6 +517,7 @@ impl EngineConfigBuilder {
             compute_rewards,
             enable_entity,
             trap_on_ambiguous_entity_version,
+            rewards_handling,
             storage_costs,
         }
     }

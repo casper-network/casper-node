@@ -53,15 +53,18 @@ use casper_types::{
     system::{
         self,
         auction::{self, DelegatorKind, EraInfo},
-        handle_payment, mint, CallStackElement, Caller, CallerInfo, SystemEntityType, AUCTION,
-        HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        handle_payment, mint,
+        mint::MINT_SUSTAIN_PURSE_KEY,
+        CallStackElement, Caller, CallerInfo, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
     HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
-    PackageStatus, Phase, PublicKey, RuntimeArgs, RuntimeFootprint, StoredValue, Transfer,
-    TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    PackageStatus, Phase, PublicKey, RewardsHandling, RuntimeArgs, RuntimeFootprint, StoredValue,
+    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    U512,
 };
 
 use crate::{
@@ -1254,8 +1257,33 @@ where
             // ExecError>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
+                let rewards_handling = self.context().engine_config().rewards_handling();
                 let rewards = Self::get_named_argument(runtime_args, auction::ARG_REWARDS_MAP)?;
-                runtime.distribute(rewards).map_err(Self::reverter)?;
+
+                let sustain_purse = match rewards_handling {
+                    RewardsHandling::Standard => None,
+                    RewardsHandling::Sustain { .. } => {
+                        let sustain_purse = {
+                            let mint_hash = self.context.get_system_contract(AUCTION)?;
+                            match self
+                                .context
+                                .state()
+                                .borrow_mut()
+                                .get_named_keys(EntityAddr::System(mint_hash.value()))?
+                                .get(MINT_SUSTAIN_PURSE_KEY)
+                            {
+                                Some(Key::URef(uref)) => Some(*uref),
+                                Some(_) | None => None,
+                            }
+                        };
+
+                        sustain_purse
+                    }
+                };
+
+                runtime
+                    .distribute(rewards, sustain_purse, rewards_handling)
+                    .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

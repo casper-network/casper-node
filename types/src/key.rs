@@ -79,6 +79,7 @@ const BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 const BLOCK_GLOBAL_PROTOCOL_VERSION_PREFIX: &str = "block-protocol-version-";
 const BLOCK_GLOBAL_ADDRESSABLE_ENTITY_PREFIX: &str = "block-addressable-entity-";
 const STATE_PREFIX: &str = "state-";
+const REWARDS_HANDLING_PREFIX: &str = "rewards-handling-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -114,6 +115,8 @@ const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADD
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_REWARDS_HANDLING_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
@@ -163,6 +166,7 @@ pub enum KeyTag {
     BalanceHold = 22,
     EntryPoint = 23,
     State = 24,
+    RewardsHandling = 25,
 }
 
 impl KeyTag {
@@ -228,6 +232,7 @@ impl Display for KeyTag {
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
             KeyTag::State => write!(f, "State"),
             KeyTag::EntryPoint => write!(f, "EntryPoint"),
+            KeyTag::RewardsHandling => write!(f, "RewardsHandling"),
         }
     }
 }
@@ -278,6 +283,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
             tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             tag if tag == KeyTag::State as u8 => KeyTag::State,
+            tag if tag == KeyTag::RewardsHandling as u8 => KeyTag::RewardsHandling,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -342,6 +348,8 @@ pub enum Key {
     EntryPoint(EntryPointAddr),
     /// A `Key` under which a contract's state lives.
     State(EntityAddr),
+    /// A `Key` under which we store rewards handling information
+    RewardsHandling,
 }
 
 #[cfg(feature = "json-schema")]
@@ -416,6 +424,7 @@ pub enum FromStrError {
     EntryPoint(String),
     /// State key parse error.
     State(String),
+    RewardsHandling(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -501,6 +510,10 @@ impl Display for FromStrError {
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
             FromStrError::State(error) => write!(f, "state-key from string error: {}", error),
+
+            FromStrError::RewardsHandling(error) => {
+                write!(f, "rewards-handling-key from string error: {}", error)
+            }
         }
     }
 }
@@ -535,6 +548,7 @@ impl Key {
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
             Key::EntryPoint(_) => String::from("Key::EntryPoint"),
             Key::State(_) => String::from("Key::State"),
+            Key::RewardsHandling => String::from("Key::RewardsHandling"),
         }
     }
 
@@ -662,6 +676,13 @@ impl Key {
             }
             Key::EntryPoint(entry_point_addr) => {
                 format!("{}", entry_point_addr)
+            }
+            Key::RewardsHandling => {
+                format!(
+                    "{}{}",
+                    REWARDS_HANDLING_PREFIX,
+                    base16::encode_lower(&PADDING_BYTES)
+                )
             }
         }
     }
@@ -979,6 +1000,15 @@ impl Key {
                     return Err(FromStrError::State(error.to_string()));
                 }
             }
+        }
+
+        if let Some(rewards_handling_padding) = input.strip_prefix(REWARDS_HANDLING_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(rewards_handling_padding)
+                .map_err(|error| FromStrError::RewardsHandling(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::RewardsHandling("Failed to deserialize era summary key".to_string())
+            })?;
+            return Ok(Key::RewardsHandling);
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1452,6 +1482,11 @@ impl Display for Key {
             Key::State(entity_addr) => {
                 write!(f, "Key::State({})", entity_addr)
             }
+            Key::RewardsHandling => write!(
+                f,
+                "Key::RewardsHandling({})",
+                base16::encode_lower(&PADDING_BYTES),
+            ),
         }
     }
 }
@@ -1490,6 +1525,7 @@ impl Tagged<KeyTag> for Key {
             Key::BalanceHold(_) => KeyTag::BalanceHold,
             Key::EntryPoint(_) => KeyTag::EntryPoint,
             Key::State(_) => KeyTag::State,
+            Key::RewardsHandling => KeyTag::RewardsHandling,
         }
     }
 }
@@ -1607,6 +1643,7 @@ impl ToBytes for Key {
                 U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
             Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
+            Key::RewardsHandling => KEY_REWARDS_HANDLING_SERIALIZED_LENGTH,
         }
     }
 
@@ -1627,7 +1664,8 @@ impl ToBytes for Key {
             Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
-            | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            | Key::ChecksumRegistry
+            | Key::RewardsHandling => PADDING_BYTES.write_bytes(writer),
             Key::BlockGlobal(addr) => {
                 addr.write_bytes(writer)?;
                 BLOCK_GLOBAL_PADDING_BYTES.write_bytes(writer)
@@ -1759,6 +1797,10 @@ impl FromBytes for Key {
                 let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
                 Ok((Key::State(entity_addr), rem))
             }
+            KeyTag::RewardsHandling => {
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
+                Ok((Key::RewardsHandling, rem))
+            }
         }
     }
 }
@@ -1793,6 +1835,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::BalanceHold(_) => unimplemented!(),
         Key::EntryPoint(_) => unimplemented!(),
         Key::State(_) => unimplemented!(),
+        Key::RewardsHandling => unimplemented!(),
     }
 }
 
@@ -1861,6 +1904,7 @@ mod serde_helpers {
         BalanceHold(&'a BalanceHoldAddr),
         EntryPoint(&'a EntryPointAddr),
         State(&'a EntityAddr),
+        RewardsHandling,
     }
 
     #[derive(Deserialize)]
@@ -1891,6 +1935,7 @@ mod serde_helpers {
         BalanceHold(BalanceHoldAddr),
         EntryPoint(EntryPointAddr),
         State(EntityAddr),
+        RewardsHandling,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1925,6 +1970,7 @@ mod serde_helpers {
                 }
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
                 Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
+                Key::RewardsHandling => BinarySerHelper::RewardsHandling,
             }
         }
     }
@@ -1963,6 +2009,7 @@ mod serde_helpers {
                     Key::EntryPoint(entry_point_addr)
                 }
                 BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
+                BinaryDeserHelper::RewardsHandling => Key::RewardsHandling,
             }
         }
     }

@@ -67,8 +67,8 @@ use casper_types::{
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
     EntityAddr, EntryPoints, EraId, FeeHandling, Gas, HandlePaymentCosts, HoldBalanceHandling,
     InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemHashRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, RewardsHandling,
+    StoredValue, SystemHashRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -848,6 +848,7 @@ where
             credit_cap,
             enable_addressable_entity,
             config.system_costs_config.mint_costs().transfer,
+            config.core_config.rewards_handling.clone(),
         );
 
         let bidding_req = BiddingRequest::new(
@@ -1018,6 +1019,7 @@ where
             credit_cap,
             self.chainspec.core_config.enable_addressable_entity,
             self.chainspec.system_costs_config.mint_costs().transfer,
+            self.chainspec.core_config.rewards_handling.clone(),
         )
     }
 
@@ -1059,6 +1061,71 @@ where
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let native_runtime_config = self.native_runtime_config();
+        let distribute_req = BlockRewardsRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            BlockTime::new(block_time),
+            rewards,
+        );
+        let distribute_block_rewards_result = self
+            .data_access_layer
+            .distribute_block_rewards(distribute_req);
+
+        if let BlockRewardsResult::Success {
+            post_state_hash, ..
+        } = distribute_block_rewards_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        distribute_block_rewards_result
+    }
+
+    /// Distributes the rewards.
+    pub fn distribute_with_rewards_handling(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        rewards: BTreeMap<PublicKey, Vec<U512>>,
+        block_time: u64,
+        rewards_handling: RewardsHandling,
+    ) -> BlockRewardsResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let administrators: BTreeSet<AccountHash> = self
+            .chainspec
+            .core_config
+            .administrators
+            .iter()
+            .map(|x| x.to_account_hash())
+            .collect();
+        let allow_unrestricted = self.chainspec.core_config.allow_unrestricted_transfers;
+        let transfer_config = TransferConfig::new(administrators, allow_unrestricted);
+        let include_credits = self.chainspec.core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*self.chainspec.core_config.validator_credit_cap.numer()),
+            U512::from(*self.chainspec.core_config.validator_credit_cap.denom()),
+        );
+
+        let native_runtime_config = NativeRuntimeConfig::new(
+            transfer_config,
+            self.chainspec.core_config.fee_handling,
+            self.chainspec.core_config.refund_handling,
+            self.chainspec.core_config.vesting_schedule_period.millis(),
+            self.chainspec.core_config.allow_auction_bids,
+            self.chainspec.core_config.compute_rewards,
+            self.chainspec.core_config.max_delegators_per_validator,
+            self.chainspec.core_config.minimum_bid_amount,
+            self.chainspec.core_config.minimum_delegation_amount,
+            self.chainspec.core_config.maximum_delegation_amount,
+            self.chainspec.core_config.gas_hold_interval.millis(),
+            include_credits,
+            credit_cap,
+            self.chainspec.core_config.enable_addressable_entity,
+            self.chainspec.system_costs_config.mint_costs().transfer,
+            rewards_handling,
+        );
+
         let distribute_req = BlockRewardsRequest::new(
             native_runtime_config,
             pre_state_hash,
