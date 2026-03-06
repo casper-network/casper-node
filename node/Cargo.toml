@@ -22,7 +22,7 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.11.0"
-casper-binary-port = { version = "1.1.1 ", path = "../binary_port" }
+casper-binary-port = { version = "1.1.1", path = "../binary_port" }
 casper-storage = { version = "5.0.0", path = "../storage" }
 casper-types = { version = "7.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 casper-execution-engine = { version = "9.0.0", path = "../execution_engine" }
