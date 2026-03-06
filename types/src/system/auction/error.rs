@@ -413,6 +413,12 @@ pub enum Error {
     /// assert_eq!(63, Error::VestingLockout as u8);
     /// ```
     VestingLockout = 63,
+    /// The minimum delegation rate is not met.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(64, Error::DelegationRateTooSmall as u8);
+    /// ```
+    DelegationRateTooSmall = 64,
 }
 
 impl Display for Error {
@@ -482,6 +488,7 @@ impl Display for Error {
             Error::UnexpectedStoredValueVariant => formatter.write_str("Unexpected stored value variant"),
             Error::RedelegationValidatorNotFound => formatter.write_str("Redelegation validator not found"),
             Error::VestingLockout => formatter.write_str("Cannot perform attempted action during vesting periods"),
+            Error::DelegationRateTooSmall => formatter.write_str("Delegation rate too small"),
         }
     }
 }
@@ -589,6 +596,7 @@ impl TryFrom<u8> for Error {
                 Ok(Error::RedelegationValidatorNotFound)
             }
             d if d == Error::VestingLockout as u8 => Ok(Error::VestingLockout),
+            d if d == Error::DelegationRateTooSmall as u8 => Ok(Error::DelegationRateTooSmall),
             _ => Err(TryFromU8ForError(())),
         }
     }

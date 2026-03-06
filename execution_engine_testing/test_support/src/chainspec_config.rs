@@ -131,6 +131,7 @@ impl ChainspecConfig {
             locked_funds_period,
             unbonding_delay,
             round_seigniorage_rate,
+            minimum_delegation_rate,
             ..
         } = core_config;
 
@@ -145,6 +146,7 @@ impl ChainspecConfig {
             .with_unbonding_delay(*unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_storage_costs(*storage_costs)
+            .with_minimum_delegation_rate(*minimum_delegation_rate)
             .build();
 
         Ok(GenesisRequest::new(
@@ -165,6 +167,12 @@ impl ChainspecConfig {
             genesis_accounts,
             protocol_version,
         )
+    }
+
+    /// Sets the minimum delegation rate config option.
+    pub fn with_minimum_delegation_rate(mut self, minimum_delegation_rate: u8) -> Self {
+        self.core_config.minimum_delegation_rate = minimum_delegation_rate;
+        self
     }
 
     /// Sets the vesting schedule period millis config option.
@@ -311,6 +319,7 @@ impl TryFrom<ChainspecConfig> for GenesisConfig {
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_storage_costs(chainspec_config.storage_costs)
             .with_enable_addressable_entity(chainspec_config.core_config.enable_addressable_entity)
+            .with_minimum_delegation_rate(chainspec_config.core_config.minimum_delegation_rate)
             .build())
     }
 }

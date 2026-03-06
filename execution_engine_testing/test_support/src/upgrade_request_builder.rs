@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_types::{
-    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolUpgradeConfig,
-    ProtocolVersion, RewardsHandling, StoredValue,
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, FeeHandling,
+    HoldBalanceHandling, Key, ProtocolUpgradeConfig, ProtocolVersion, RewardsHandling, StoredValue,
 };
 
 /// Builds an `UpgradeConfig`.
@@ -28,6 +28,7 @@ pub struct UpgradeRequestBuilder {
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
     rewards_handling: RewardsHandling,
+    new_minimum_delegation_rate: Option<DelegationRate>,
 }
 
 impl UpgradeRequestBuilder {
@@ -156,6 +157,15 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the minimum delegation rate for validator bids and reservations.
+    pub fn with_new_minimum_delegation_rate(
+        mut self,
+        new_minimum_delegation_rate: DelegationRate,
+    ) -> Self {
+        self.new_minimum_delegation_rate = Some(new_minimum_delegation_rate);
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
@@ -178,6 +188,7 @@ impl UpgradeRequestBuilder {
             self.minimum_delegation_amount,
             self.enable_addressable_entity,
             self.rewards_handling,
+            self.new_minimum_delegation_rate,
         )
     }
 }
@@ -204,6 +215,7 @@ impl Default for UpgradeRequestBuilder {
             minimum_delegation_amount: 0,
             enable_addressable_entity: false,
             rewards_handling: RewardsHandling::Standard,
+            new_minimum_delegation_rate: None,
         }
     }
 }

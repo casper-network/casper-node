@@ -10,9 +10,9 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{
-    contracts::ProtocolVersionMajor, testing::TestRng, AddressableEntityHash, Approval,
-    CLValueError, EntityVersion, PackageHash, PublicKey, TransactionConfig,
-    TransactionInvocationTarget, TransferTarget, URef, U512,
+    contracts::ProtocolVersionMajor, system::auction::Reservation, testing::TestRng,
+    AddressableEntityHash, Approval, CLValueError, EntityVersion, PackageHash, PublicKey,
+    TransactionConfig, TransactionInvocationTarget, TransferTarget, URef, U512,
 };
 use core::marker::PhantomData;
 #[cfg(test)]
@@ -204,7 +204,21 @@ impl<'a> TransactionV1Builder<'a> {
         Ok(builder)
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a native add_bid transaction.
+    /// Returns a new `TransactionV1Builder` suitable for building a native reserve slot
+    /// transaction.
+    #[cfg(test)]
+    pub(crate) fn new_reserve_slot(reservations: Vec<Reservation>) -> Result<Self, CLValueError> {
+        let args = arg_handling::new_add_reservations_args(reservations)?;
+        let mut builder = TransactionV1Builder::new();
+        builder.args = TransactionArgs::Named(args);
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::AddReservations;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a native add_bid
+    /// transaction.
     #[cfg(test)]
     pub(crate) fn new_add_bid<A: Into<U512>>(
         public_key: PublicKey,

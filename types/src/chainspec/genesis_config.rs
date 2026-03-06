@@ -12,8 +12,9 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AdministratorAccount, Chainspec, GenesisAccount, GenesisValidator, HoldBalanceHandling, Motes,
-    PublicKey, RewardsHandling, SystemConfig, WasmConfig,
+    system::auction::DelegationRate, AdministratorAccount, Chainspec, GenesisAccount,
+    GenesisValidator, HoldBalanceHandling, Motes, PublicKey, RewardsHandling, SystemConfig,
+    WasmConfig,
 };
 
 use super::StorageCosts;
@@ -35,6 +36,7 @@ pub struct GenesisConfig {
     enable_addressable_entity: bool,
     rewards_ratio: Option<Ratio<u64>>,
     storage_costs: StorageCosts,
+    minimum_delegation_rate: DelegationRate,
 }
 
 impl GenesisConfig {
@@ -55,6 +57,7 @@ impl GenesisConfig {
         enable_addressable_entity: bool,
         rewards_handling: Option<Ratio<u64>>,
         storage_costs: StorageCosts,
+        minimum_delegation_rate: DelegationRate,
     ) -> GenesisConfig {
         GenesisConfig {
             accounts,
@@ -71,6 +74,7 @@ impl GenesisConfig {
             enable_addressable_entity,
             rewards_ratio: rewards_handling,
             storage_costs,
+            minimum_delegation_rate,
         }
     }
 
@@ -192,6 +196,10 @@ impl GenesisConfig {
     pub fn push_rewards_ratio(&mut self, rewards_ratio: Ratio<u64>) {
         self.rewards_ratio = Some(rewards_ratio);
     }
+
+    pub fn minimum_delegation_rate(&self) -> DelegationRate {
+        self.minimum_delegation_rate
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -222,6 +230,7 @@ impl Distribution<GenesisConfig> for Standard {
         let gas_hold_balance_handling = rng.gen();
         let gas_hold_interval_millis = rng.gen();
         let storage_costs = rng.gen();
+        let minimum_delegation_rate = rng.gen();
 
         GenesisConfig {
             accounts,
@@ -238,6 +247,7 @@ impl Distribution<GenesisConfig> for Standard {
             enable_addressable_entity: false,
             rewards_ratio: None,
             storage_costs,
+            minimum_delegation_rate,
         }
     }
 }
@@ -271,6 +281,7 @@ impl From<&Chainspec> for GenesisConfig {
             enable_addressable_entity: chainspec.core_config.enable_addressable_entity,
             rewards_ratio,
             storage_costs,
+            minimum_delegation_rate: chainspec.core_config.minimum_delegation_rate,
         }
     }
 }
