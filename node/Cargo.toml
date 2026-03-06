@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "2.1.2" # when updating, also update 'html_root_url' in lib.rs
+version = "2.2.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Ed Hastings <ed@casper.network>", "Karan Dhareshwar <karan@casper.network>"]
 edition = "2021"
 description = "The Casper blockchain node"
@@ -23,9 +23,9 @@ base64 = "0.13.0"
 bincode = "1"
 bytes = "1.11.0"
 casper-binary-port = { version = "1.1.1", path = "../binary_port" }
-casper-storage = { version = "4.0.1", path = "../storage" }
-casper-types = { version = "6.1.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
-casper-execution-engine = { version = "8.1.1", path = "../execution_engine" }
+casper-storage = { version = "5.0.0", path = "../storage" }
+casper-types = { version = "7.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
+casper-execution-engine = { version = "9.0.0", path = "../execution_engine" }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
