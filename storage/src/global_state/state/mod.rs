@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     account::AccountHash,
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, Bytes, ToBytes},
     contracts::NamedKeys,
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
@@ -2564,7 +2564,7 @@ fn get_snapshot_data<T: StateProvider>(
         QueryResult::ValueNotFound(_) => Ratio::new(0, 1),
         QueryResult::Success { value, .. } => {
             if let StoredValue::CLValue(cl_value) = *value {
-                match cl_value.to_t::<BTreeMap<u8, Vec<u8>>>() {
+                match cl_value.to_t::<BTreeMap<u8, Bytes>>() {
                     Ok(rewards_handling) => {
                         match rewards_handling.get(&REWARDS_HANDLING_RATIO_TAG) {
                             Some(bytes) => {
