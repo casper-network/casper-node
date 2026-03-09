@@ -1012,59 +1012,68 @@ pub fn execute_finalized_block(
     // but it ended up settling on per era. the behavior is driven by Some / None
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
-    if let Some(rewards) = &executable_block.rewards {
-        let block_rewards_payout_start = Instant::now();
-        // Pay out block fees, if relevant. This auto-commits
-        {
-            let fee_req = FeeRequest::new(
+    let maybe_reward_effects = {
+        if let Some(rewards) = &executable_block.rewards {
+            let block_rewards_payout_start = Instant::now();
+            // Pay out block fees, if relevant. This auto-commits
+            {
+                let fee_req = FeeRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    block_time,
+                );
+                debug!(?fee_req, "distributing fees");
+                match scratch_state.distribute_fees(fee_req) {
+                    FeeResult::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                    }
+                    FeeResult::Failure(fer) => {
+                        return Err(BlockExecutionError::DistributeFees(fer))
+                    }
+                    FeeResult::Success {
+                        post_state_hash, ..
+                    } => {
+                        debug!("fee distribution success");
+                        state_root_hash = post_state_hash;
+                    }
+                }
+            }
+
+            let rewards_req = BlockRewardsRequest::new(
                 native_runtime_config.clone(),
                 state_root_hash,
                 protocol_version,
                 block_time,
+                rewards.clone(),
             );
-            debug!(?fee_req, "distributing fees");
-            match scratch_state.distribute_fees(fee_req) {
-                FeeResult::RootNotFound => {
+            debug!(?rewards_req, "distributing rewards");
+            let ret = match scratch_state.distribute_block_rewards(rewards_req) {
+                BlockRewardsResult::RootNotFound => {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 }
-                FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
-                FeeResult::Success {
-                    post_state_hash, ..
-                } => {
-                    debug!("fee distribution success");
-                    state_root_hash = post_state_hash;
+                BlockRewardsResult::Failure(bre) => {
+                    return Err(BlockExecutionError::DistributeBlockRewards(bre));
                 }
+                BlockRewardsResult::Success {
+                    post_state_hash,
+                    effects,
+                } => {
+                    debug!("rewards distribution success");
+                    state_root_hash = post_state_hash;
+                    effects
+                }
+            };
+            if let Some(metrics) = metrics.as_ref() {
+                metrics
+                    .block_rewards_payout
+                    .observe(block_rewards_payout_start.elapsed().as_secs_f64());
             }
+            Some(ret)
+        } else {
+            None
         }
-
-        let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            rewards.clone(),
-        );
-        debug!(?rewards_req, "distributing rewards");
-        match scratch_state.distribute_block_rewards(rewards_req) {
-            BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-            }
-            BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre));
-            }
-            BlockRewardsResult::Success {
-                post_state_hash, ..
-            } => {
-                debug!("rewards distribution success");
-                state_root_hash = post_state_hash;
-            }
-        }
-        if let Some(metrics) = metrics.as_ref() {
-            metrics
-                .block_rewards_payout
-                .observe(block_rewards_payout_start.elapsed().as_secs_f64());
-        }
-    }
+    };
 
     // if era report is some, this is a switch block. a series of end-of-era extra processing must
     // transpire before this block is entirely finished.
@@ -1098,6 +1107,15 @@ pub fn execute_finalized_block(
         };
         debug!("step committed");
 
+        let ret = {
+            if let Some(mut rewards_effects) = maybe_reward_effects {
+                rewards_effects.append(step_effects);
+                rewards_effects
+            } else {
+                step_effects
+            }
+        };
+
         let era_validators_req = EraValidatorsRequest::new(state_root_hash);
         let era_validators_result = data_access_layer.era_validators(era_validators_req);
 
@@ -1124,7 +1142,7 @@ pub fn execute_finalized_block(
                 .observe(step_processing_start.elapsed().as_secs_f64());
         }
         Some(StepOutcome {
-            step_effects,
+            step_effects: ret,
             upcoming_era_validators,
         })
     } else {
