@@ -39,7 +39,6 @@ static ACCOUNT_3_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([45; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
-static ACCOUNT_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_3_PUBLIC_KEY));
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
@@ -139,6 +138,16 @@ fn should_run_genesis() {
 #[ignore]
 #[test]
 fn should_track_total_token_supply_in_mint() {
+    should_track_total_token(false)
+}
+
+#[ignore]
+#[test]
+fn should_track_total_token_supply_in_mint_with_enable_addressable_entity() {
+    should_track_total_token(true)
+}
+
+fn should_track_total_token(enable_ae: bool) {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
@@ -160,6 +169,7 @@ fn should_track_total_token_supply_in_mint() {
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp)
         .with_storage_costs(*DEFAULT_STORAGE_COSTS)
+        .with_enable_addressable_entity(enable_ae)
         .build();
 
     let genesis_request = GenesisRequest::new(
@@ -169,7 +179,9 @@ fn should_track_total_token_supply_in_mint() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let mut builder = LmdbWasmTestBuilder::default();
+    let chainspec_config = ChainspecConfig::default().with_enable_addressable_entity(enable_ae);
+
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
 
     builder.run_genesis(genesis_request);
 
