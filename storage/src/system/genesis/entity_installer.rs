@@ -356,6 +356,7 @@ where
                     ) in genesis_delegators.iter()
                     {
                         if (*validator_public_key).clone() == public_key.clone() {
+                            total_staked_amount += delegator_delegated_amount.value();
                             let purse_uref =
                                 self.create_purse(delegator_delegated_amount.value())?;
 
