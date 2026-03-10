@@ -20,6 +20,10 @@ const ACCOUNT_2_BONDED_AMOUNT: u64 = 2_000_000;
 const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
 const ACCOUNT_2_BALANCE: u64 = 2_000_000_000;
 
+const ACCOUNT_3_BONDED_AMOUNT: u64 = 3_000_000;
+
+const ACCOUNT_3_BALANCE: u64 = 3_000_000_000;
+
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
@@ -30,6 +34,12 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     PublicKey::from(&secret_key)
 });
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
+
+static ACCOUNT_3_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([45; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static ACCOUNT_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_3_PUBLIC_KEY));
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
@@ -56,7 +66,18 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             )),
         )
     };
-    vec![account_1, account_2]
+    let account_3 = {
+        let account_3_balance = Motes::new(ACCOUNT_3_BALANCE);
+        let account_3_bonded_amount = Motes::new(ACCOUNT_3_BONDED_AMOUNT);
+        GenesisAccount::Delegator {
+            validator_public_key: ACCOUNT_1_PUBLIC_KEY.clone(),
+            delegator_public_key: ACCOUNT_3_PUBLIC_KEY.clone(),
+            balance: account_3_balance,
+            delegated_amount: account_3_bonded_amount,
+        }
+    };
+
+    vec![account_1, account_2, account_3]
 });
 
 #[ignore]
