@@ -900,7 +900,7 @@ where
         )
         .map_err(|_| Error::TransferToDelegatorPurse)?
         .map_err(|mint_error| {
-            // Propagate mint contract's error that occured during execution of transfer
+            // Propagate mint contract's error that occurred during execution of transfer
             // entrypoint. This will improve UX in case of (for example)
             // unapproved spending limit error.
             ApiError::from(mint_error)

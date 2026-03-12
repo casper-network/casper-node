@@ -20,7 +20,7 @@ pub enum QueueKind {
     Control,
     /// Network events that were initiated outside of this node.
     ///
-    /// Their load may vary and grouping them together in one queue aides DoS protection.
+    /// Their load may vary and grouping them together in one queue aids DoS protection.
     NetworkIncoming,
     /// Network events that are low priority.
     NetworkLowPriority,

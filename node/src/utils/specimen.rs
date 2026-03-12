@@ -1086,7 +1086,7 @@ impl LargestSpecimen for ExecutableDeployItem {
         //
         // However, this does not hold true for all encoding schemes: An inefficient encoding can
         // easily, via `RuntimeArgs`, result in a much larger encoded size, e.g. when encoding an
-        // array of 1-byte elements in a format that uses string quoting and a delimiter to seperate
+        // array of 1-byte elements in a format that uses string quoting and a delimiter to separate
         // elements.
         //
         // We compromise by not supporting encodings this inefficient and add 10 * a 32-bit integer
