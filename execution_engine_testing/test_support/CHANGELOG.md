@@ -1,135 +1,139 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.  The format is based on [Keep a Changelog].
+All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog].
 
 [comment]: <> (Added:      new features)
+
 [comment]: <> (Changed:    changes in existing functionality)
+
 [comment]: <> (Deprecated: soon-to-be removed features)
+
 [comment]: <> (Removed:    now removed features)
+
 [comment]: <> (Fixed:      any bug fixes)
+
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 9.0.0
 
+### Added
+
+* Added support for `RewardsHandling` to the execution engine testing crate
+* Added support for `minimum_delegation_rate` to the execution engine testing crate
 
 ## 7.0.1
 
 ### Added
+
 * Provide `from_chainspec_path` and `max_associated_keys` helper methods on `ChainspecConfig`.
 * Provide functions for converting from `ChainspecConfig` to `EngineConfig`.
 * Provide `try_exec` method on `WasmTestBuilder` for fallible contract execution.
 * Provide `PRODUCTION_CHAINSPEC_PATH`: a lazy static defining the path to the production chainspec.toml file.
 
-
-
 ## 7.0.0
 
 ### Added
+
 * Provide `calculate_refund_amount` on `WasmTestBuilder`.
 * Provide `upgrade_with_upgrade_request_and_config` on `WasmTestBuilder`.
-
-
 
 ## 6.0.0
 
 ### Changed
+
 * Update `casper-execution-engine` dependency.
 * Handle evict items in the `WasmTestBuilder` when advancing eras or calling `step`.
-
-
 
 ## 5.0.0
 
 ### Added
+
 * Add `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
 * Add support to load values from a given Chainspec.
-* Add static and constants that represent Casper-mainnet chainspec values. These values will change as new ProtocolVersions are added. The current values reflect ones used in the 1.5.0 ProtocolVersion.
-* Add `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_eras_by_default_auction_delay` to advance chain and run auction contract in test environment.
+* Add static and constants that represent Casper-mainnet chainspec values. These values will change as new
+  ProtocolVersions are added. The current values reflect ones used in the 1.5.0 ProtocolVersion.
+* Add `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`,
+  and `WasmTestBuilder::advance_eras_by_default_auction_delay` to advance chain and run auction contract in test
+  environment.
 
 ### Changed
+
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
-
-
 
 ## 4.0.0
 
 ### Changed
-* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
 
-
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version
+  bump here).
 
 ## 3.1.1
 
 ### Changed
+
 * Update chainspec values used in `PRODUCTION_RUN_GENESIS_REQUEST` to match those of Mainnet protocol version 1.4.15.
-
-
 
 ## 3.1.0
 
 ### Added
+
 * Add support for `commit_prune` of `casper-execution-engine`.
-
-
 
 ## 3.0.0
 
 ### Changed
+
 * Version bump only to match major version bump of `casper-execution-engine` dependency.
-
-
 
 ## 2.3.0 [YANKED]
 
 ### Added
+
 * Add `ChainspecConfig` to support parsing a chainspec.
-
-
 
 ## 2.2.0
 
 ### Added
+
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
 ### Deprecated
+
 * Deprecated the `DEFAULT_RUN_GENESIS_REQUEST` in favor of `PRODUCTION_RUN_GENESIS_REQUEST`.
-
-
 
 ## 2.1.0
 
 ### Added
+
 * Add further helper methods to `WasmTestBuilder`.
-
-
 
 ## 2.0.3 - 2021-12-06
 
 ### Added
+
 * Added `WasmTestBuilder::get_balance_keys` function.
-
-
 
 ## 2.0.2 - 2021-11-24
 
 ### Changed
+
 * Revert the change to the path detection logic applied in v2.0.1.
-
-
 
 ## [2.0.1] - 2021-11-4
 
 ### Changed
+
 * Change the path detection logic for compiled Wasm as used by the casper-node monorepo.
 
 ### Deprecated
-* Deprecate the `test-support` feature.  It had and continues to have no effect when enabled.
 
-
+* Deprecate the `test-support` feature. It had and continues to have no effect when enabled.
 
 ## [2.0.0] - 2021-11-01
 
 ### Added
+
 * Provide fine-grained support for testing all aspects of smart contract execution, including:
     * `WasmTestBuilder` for building and running a test to exercise a smart contract
     * `DeployItemBuilder` for building a `DeployItem` from a smart contract
@@ -142,6 +146,7 @@ All notable changes to this project will be documented in this file.  The format
 * Provide several default consts and statics useful across many test scenarios
 
 ### Removed
+
 * Remove coarse-grained support and newtypes for testing smart contracts, including removal of:
     * `Account`
     * `AccountHash`
@@ -154,62 +159,60 @@ All notable changes to this project will be documented in this file.  The format
     * `Value`
 * Remove `InMemoryWasmTestBuilder`.
 
-
-
 ## [1.4.0] - 2021-10-04
 
 ### Changed
+
 * Support building and testing using stable Rust.
-
-
 
 ## [1.3.0] - 2021-07-19
 
 ### Changed
+
 * Update pinned version of Rust to `nightly-2021-06-17`.
-
-
 
 ## [1.2.0] - 2021-05-28
 
 ### Changed
+
 * Change to Apache 2.0 license.
-
-
 
 ## [1.1.1] - 2021-04-19
 
 No changes.
 
-
-
 ## [1.1.0] - 2021-04-13 [YANKED]
 
 No changes.
-
-
 
 ## [1.0.1] - 2021-04-08
 
 No changes.
 
-
-
 ## [1.0.0] - 2021-03-30
 
 ### Added
+
 * Initial release of execution-engine test support framework compatible with Casper mainnet.
 
-
-
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
+
 [unreleased]: https://github.com/casper-network/casper-node/compare/04f48a467...dev
+
 [2.0.1]: https://github.com/casper-network/casper-node/compare/13585abcf...04f48a467
+
 [2.0.0]: https://github.com/casper-network/casper-node/compare/v1.4.0...13585abcf
+
 [1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
+
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
+
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
+
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
+
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
+
 [1.0.1]: https://github.com/casper-network/casper-node/compare/v1.0.0...v1.0.1
+
 [1.0.0]: https://github.com/casper-network/casper-node/releases/tag/v1.0.0
