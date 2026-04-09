@@ -1,0 +1,11 @@
+# The below entry will write the value into an account purse balance.
+#
+# Key f574ebcb676fb9fdee9f24b1d18a298616b08e64705aac773c7f8bf3bd213eb0 is the main purse
+# for account 016f1236ff250d958b7f7ded4a942bd79e201120949b283f7019da970299a34dce
+#
+# Value AAkAAAAIAJIsyddVti4I is base64 encoding of 3332312435249620480 motes in U512 data type.
+# This represents 33% of the total_supply at block 7163088 (10097916461362486077)
+# plus 3 CSPR (3000000000 motes) balance of this account at upgrade.
+[[entries]]
+key = "balance-f574ebcb676fb9fdee9f24b1d18a298616b08e64705aac773c7f8bf3bd213eb0"
+value = "AAkAAAAIAKarJ4HAPi4I"
