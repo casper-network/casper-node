@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file. The format 
 
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 9.0.0
+
 ### Added
 
 * Added `RewardsHandling` support to the execution engine

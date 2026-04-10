@@ -279,6 +279,7 @@ All notable changes to this project will be documented in this file. The format 
 - type EntryPointsMap
 - type NamedKeys
 -
+
 methods `groups_mut`, `add_group`, `lookup_contract_hash`, `is_version_enabled`, `is_contract_enabled`, `insert_contract_version`, `disable_contract_version`, `enable_contract_version`, `enabled_versions`, `remove_group`, `next_contract_version_for`, `current_contract_version`, `current_contract_hash`
 in struct ContractPackage
 
