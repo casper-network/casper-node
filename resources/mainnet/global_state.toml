@@ -1,0 +1,11 @@
+# The below entry will write the value into an account purse balance.
+#
+# Key fd37afc9c5c70f04300e55977a07db92eada2f0b3538840752afb8cade90ed3b is the main purse
+# for CA Treasury 1 account 02033c97db0328743d0a3b7654751efab570caa6e6c011869f34e65560dc011a348c
+#
+# Value AAkAAAAIutchOy3mGUII is base64 encoding of 4763091162861000634 motes in U512 data type.
+# This represents 33% of the supply at block 6972606 (14433609569450460644)
+# plus 4942348218 motes - the current balance of this account.
+[[entries]]
+key = "balance-fd37afc9c5c70f04300e55977a07db92eada2f0b3538840752afb8cade90ed3b"
+value = "AAkAAAAIutchOy3mGUII"

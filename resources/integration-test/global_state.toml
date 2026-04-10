@@ -1,0 +1,9 @@
+# Key c0c0e911bab21aff5a7e5aa8da03bac7875dd94a155a87c1b21a99944ac00cc8 is the main purse
+# of the account 01b9857739f3ea626d1768911657933809690c09f24bb9e7ce00ad2302646d4ec9
+#
+# Value AAkAAAAIAArz/CpsEC0I is base64 encoding of 3247214263222340096, representing a 
+# U512 type in the system
+
+[[entries]]
+key = "balance-c0c0e911bab21aff5a7e5aa8da03bac7875dd94a155a87c1b21a99944ac00cc8"
+value = "AAkAAAAIAArz/CpsEC0I"

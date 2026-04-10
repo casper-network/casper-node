@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '2.1.2'
+version = '2.2.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 19665
+activation_point = 21742
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -179,7 +179,9 @@ enable_addressable_entity = false
 baseline_motes_amount = 2_500_000_000
 # Flag on whether ambiguous entity versions returns an execution error.
 trap_on_ambiguous_entity_version = false
-rewards_handling = { type = 'standard' }
+# purse uref-5bd5c35f2897844b307b9efbb2d7f01f4d51a2ecea8d8b88abd4e3c3a4594693-007 belongs to
+# CA Ecosystem Sustainability account 020245b32289d807f3fcd5f9dbec94ff51ee57857f4b39a3b9d6fb99305317d18a32
+rewards_handling =  { type = 'sustain', ratio = [2,8], purse_address = "uref-5bd5c35f2897844b307b9efbb2d7f01f4d51a2ecea8d8b88abd4e3c3a4594693-007" }
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
