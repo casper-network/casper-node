@@ -3,35 +3,15 @@
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog].
 
 [comment]: <> (Added: new features)
-
 [comment]: <> (Changed: changes in existing functionality)
-
 [comment]: <> (Deprecated: soon-to-be removed features)
-
 [comment]: <> (Removed: now removed features)
-
 [comment]: <> (Fixed: any bug fixes)
-
 [comment]: <> (Security: in case of vulnerabilities)
 
-## casper-types 7.0.0
+## [UNRELEASED] casper-types 6.0.0
 
-### Added
-
-- Added new enum `RewardsHandling` with two variants `Standard` and `Sustain`
-- Added `RewardsHandling` to the `CoreConfig` as the field `rewards_handling`
-- Added `RewardsHandling` to the `ProtocolUpgradeConfig` as the field `rewards_handling`
-- Added new field `minimum_delegation_rate` to the `CoreConfig` struct
-- Added new variant `Key::RewardsHandling` to the `Key` enum
-- Added new variant `GenesisAccount::Sustain` to the `GenesisAccount` enum
-- Added new constant `MINT_SUSTAIN_PURSE_KEY`
-
-## casper-types 6.1.0
-
-## casper-types 6.0.0
-
-### Added
-
+### Added 
 - TransactionInvocationTarget::ByPackageHash::protocol_version_major field
 - TransactionInvocationTarget::ByPackageName::protocol_version_major field
 - New variant PackageIdentifier::HashWithVersion
@@ -220,8 +200,7 @@ All notable changes to this project will be documented in this file. The format 
 - enum system::auction::ValidatorCredits
 - enum system::auction::Staking
 - trait system::auction::BidsExt
-- enum system::auction::Error has new variants: ForgedReference, MissingPurse,
-  ValidatorBidExistsAlready,BridgeRecordChainTooLong,UnexpectedBidVariant, DelegationAmountTooLarge
+- enum system::auction::Error has new variants: ForgedReference, MissingPurse, ValidatorBidExistsAlready,BridgeRecordChainTooLong,UnexpectedBidVariant, DelegationAmountTooLarge
 - enum system::CallerTag
 - enum system::Caller
 - enum system::handle_payment::Error
@@ -238,34 +217,26 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
-- pub enum ApiError has new variants: MessageTopicAlreadyRegistered, MaxTopicsNumberExceeded, MaxTopicNameSizeExceeded,
-  MessageTopicNotRegistered, MessageTopicFull, MessageTooLarge,
-  MaxMessagesPerBlockExceeded,NotAllowedToAddContractVersion,InvalidDelegationAmountLimits,InvalidCallerInfoRequest
-- struct AuctionState#bids is now a BTreeMap<PublicKey, Bid> instead of Vec<JsonBids>. This field is still serialized as
-  an array. Due to this change the elements of the array will have more fields than before (
-  added `validator_public_key`, `vesting_schedule`).
+- pub enum ApiError has new variants: MessageTopicAlreadyRegistered, MaxTopicsNumberExceeded, MaxTopicNameSizeExceeded, MessageTopicNotRegistered, MessageTopicFull, MessageTooLarge, MaxMessagesPerBlockExceeded,NotAllowedToAddContractVersion,InvalidDelegationAmountLimits,InvalidCallerInfoRequest
+- struct AuctionState#bids is now a BTreeMap<PublicKey, Bid> instead of Vec<JsonBids>. This field is still serialized as an array. Due to this change the elements of the array will have more fields than before (added `validator_public_key`, `vesting_schedule`).
 - Variants of enum EntryPointType changed
 - Struct Parameter moved from contracts to addressable_entity::entry_points
 - struct EraId has new methods `iter_range_inclusive`, `increment`
 - struct ExecutionEffect moved to module execution::execution_result_v1
 - enum OpKind moved to module execution::execution_result_v1
 - struct Operation moved to module execution::execution_result_v1
-- enum Transform changed name to TransformKindV1, moved to module execution::execution_result_v1 and has new variants (
-  WriteAddressableEntity, Prune, WriteBidKind)
+- enum Transform changed name to TransformKindV1, moved to module execution::execution_result_v1 and has new variants (WriteAddressableEntity, Prune, WriteBidKind)
 - enum ExecutionResult changed name to ExecutionResultV1, moved to module execution::execution_result_v1
 - struct TransformEntry changed name to TransformV1 and moved to module execution::execution_result_v1
 - moved NamedKey to module execution::execution_result_v1
 - KeyTag::SystemContractRegistry variant changed name to KeyTag::SystemEntityRegistry
-- variants for KeyTag enum: BidAddr = 15, Package = 16, AddressableEntity = 17, ByteCode = 18, Message = 19, NamedKey =
-  20, BlockGlobal = 21, BalanceHold = 22, EntryPoint = 23,
+- variants for KeyTag enum: BidAddr = 15, Package = 16, AddressableEntity = 17, ByteCode = 18, Message = 19, NamedKey = 20, BlockGlobal = 21, BalanceHold = 22, EntryPoint = 23,
 - enum Key::SystemContractRegistry changed name to Key::SystemEntityRegistry
-- variants for enum Key: BidAddr, Package, AddressableEntity, ByteCode, Message, NamedKey, BlockGlobal, BalanceHold,
-  EntryPoint,
+- variants for enum Key: BidAddr, Package, AddressableEntity, ByteCode, Message, NamedKey, BlockGlobal, BalanceHold, EntryPoint,
 - struct ExcessiveSizeError changed name to DeployExcessiveSizeError
 - struct Transfer changed name to TransferV1
 - enum GlobalStateIdentifier
-- enum StoredValue has new variants: Transfer, AddressableEntity, BidKind, Package, ByteCode, MessageTopic, Message,
-  NamedKey,Reservation,EntryPoint,
+- enum StoredValue has new variants: Transfer, AddressableEntity, BidKind, Package, ByteCode, MessageTopic, Message, NamedKey,Reservation,EntryPoint,
 - enum system::SystemContractType changed name to system::SystemEntityType
 - enum system::handle_payment::Error variant SystemFunctionCalledByUserAccount changed to InvalidCaller
 - struct EntryPoint has a new field `entry_point_payment`
@@ -278,17 +249,13 @@ All notable changes to this project will be documented in this file. The format 
 - type Groups (there is now a struct with that name)
 - type EntryPointsMap
 - type NamedKeys
--
-
-methods `groups_mut`, `add_group`, `lookup_contract_hash`, `is_version_enabled`, `is_contract_enabled`, `insert_contract_version`, `disable_contract_version`, `enable_contract_version`, `enabled_versions`, `remove_group`, `next_contract_version_for`, `current_contract_version`, `current_contract_hash`
-in struct ContractPackage
+- methods `groups_mut`, `add_group`, `lookup_contract_hash`, `is_version_enabled`, `is_contract_enabled`, `insert_contract_version`, `disable_contract_version`, `enable_contract_version`, `enabled_versions`, `remove_group`, `next_contract_version_for`, `current_contract_version`, `current_contract_hash` in struct ContractPackage
 
 ## [Unreleased] (node 1.5.4)
 
 ### Changed
 
-- Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which
-  depends upon `std`.
+- Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which depends upon `std`.
 
 ## 4.0.1
 
@@ -306,30 +273,24 @@ in struct ContractPackage
 
 ### Security
 
-- Update `ed25519-dalek` to version 2.0.0 as mitigation
-  for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)
+- Update `ed25519-dalek` to version 2.0.0 as mitigation for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)
 
 ## 3.0.0
 
 ### Added
 
-- Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the
-  serialization format.
+- Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
 - Add new `Key::Unbond` key variant under which the new unbonding information (to support redelegation) is written.
 - Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
-- Add new `Key::ChecksumRegistry` key variant under which a registry of checksums for a given block is written. There
-  are two checksums in the registry, one for the execution results and the other for the approvals of all deploys in the
-  block.
+- Add new `Key::ChecksumRegistry` key variant under which a registry of checksums for a given block is written. There are two checksums in the registry, one for the execution results and the other for the approvals of all deploys in the block.
 - Add new `StoredValue::Unbonding` variant to support redelegating.
 - Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
 
 ### Changed
 
-- Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be
-  re-delegated.
+- Extend `UnbondingPurse` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 - Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
-- Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "
-  contract-package-". Parsing from the old format is still supported.
+- Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
 - Apply `#[non_exhaustive]` to error enums.
 - Change Debug output of `DeployHash` to hex-encoded string rather than a list of integers.
 
@@ -348,10 +309,8 @@ in struct ContractPackage
 ### Added
 
 - Extend asymmetric key functionality, available via feature `std` (moved from `casper-nodes` crate).
-- Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via
-  feature `std` (moved from `casper-nodes` crate).
-- Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure.
-  Available via a new feature `testing`.
+- Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature `std` (moved from `casper-nodes` crate).
+- Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature `testing`.
 - Add new `Key::EraSummary` key variant under which the era summary info is written on each switch block execution.
 
 ### Deprecated
@@ -463,25 +422,14 @@ No changes.
 - Initial release of types for use by software compatible with Casper mainnet.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-
 [unreleased]: https://github.com/casper-network/casper-node/compare/24fc4027a...dev
-
 [1.4.3]: https://github.com/casper-network/casper-node/compare/2be27b3f5...24fc4027a
-
 [1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.1...2be27b3f5
-
 [1.4.1]: https://github.com/casper-network/casper-node/compare/v1.4.0...v1.4.1
-
 [1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
-
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
-
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
-
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
-
 [1.1.0]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1
-
 [1.0.1]: https://github.com/casper-network/casper-node/compare/v1.0.0...v1.0.1
-
 [1.0.0]: https://github.com/casper-network/casper-node/releases/tag/v1.0.0
