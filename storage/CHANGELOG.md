@@ -9,7 +9,24 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 5.0.0
 
+### Added
+
+* Added a field `rewards` handling to Config in the `runtime_native` module_
+
+### Changed
+
+* Modified the behavior of the protocol upgrade logic to add a sustain purse to the mints named keys if the rewards
+  handling to sustain
+* Modified the behavior of the protocol upgrade logic to recalculate the total supply at the point of protocol upgrade
+* Modified the Genesis flow to support the rewards handling mode sustain in the Account/Contract model
+* Modified the auction logic to keep track of a minimum delegation rate for validators
+
+### Fixed
+
+* Fixed a bug introduced during protocol version 2.0 in the genesis logic that did not include delegator stakes towards
+  the total supply
 
 ## 4.0.1
 
