@@ -37,15 +37,15 @@ const TRANSACTION_COUNT_INDEX: usize = 4;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct TransactionLaneDefinition {
     /// The lane identifier
-    pub id: u8,
+    id: u8,
     /// The maximum length of a transaction in bytes
-    pub max_transaction_length: u64,
+    max_transaction_length: u64,
     /// The max args length size in bytes
-    pub max_transaction_args_length: u64,
+    max_transaction_args_length: u64,
     /// The maximum gas limit
-    pub max_transaction_gas_limit: u64,
+    max_transaction_gas_limit: u64,
     /// The maximum number of transactions
-    pub max_transaction_count: u64,
+    max_transaction_count: u64,
 }
 
 impl TryFrom<Vec<u64>> for TransactionLaneDefinition {
@@ -116,6 +116,21 @@ impl TransactionLaneDefinition {
     /// Returns id
     pub fn id(&self) -> u8 {
         self.id
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_count(&mut self, max_transaction_count: u64) {
+        self.max_transaction_count = max_transaction_count;
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_gas_limit(&mut self, max_transaction_gas_limit: u64) {
+        self.max_transaction_gas_limit = max_transaction_gas_limit;
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_max_transaction_length(&mut self, max_transaction_length: u64) {
+        self.max_transaction_length = max_transaction_length;
     }
 }
 
@@ -793,27 +808,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 5,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 5, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 1, 0);
@@ -829,27 +826,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 1, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 12, 0);
@@ -863,27 +842,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 5,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 5, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 120, 0);
