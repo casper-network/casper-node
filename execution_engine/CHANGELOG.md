@@ -9,11 +9,14 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 9.0.0
 
+### Added
 
-## [Unreleased] (node 2.0)
+* Added `RewardsHandling` support to the execution engine
+* Added `RewardsHandling` field to the struct `EngineConfig`
 
-## [Unreleased] (node 2.0)
+## 8.0.0
 
 ### Added
 

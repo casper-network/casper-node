@@ -9,9 +9,22 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
-## [UNRELEASED] casper-types 6.0.0
+## casper-types 7.0.0
 
-### Added 
+### Added
+
+- Added new enum `RewardsHandling` with two variants `Standard` and `Sustain`
+- Added `RewardsHandling` to the `CoreConfig` as the field `rewards_handling`
+- Added `RewardsHandling` to the `ProtocolUpgradeConfig` as the field `rewards_handling`
+- Added new field `minimum_delegation_rate` to the `CoreConfig` struct
+- Added new variant `Key::RewardsHandling` to the `Key` enum
+- Added new variant `GenesisAccount::Sustain` to the `GenesisAccount` enum
+- Added new constant `MINT_SUSTAIN_PURSE_KEY`
+
+## casper-types 6.0.0
+
+### Added
+
 - TransactionInvocationTarget::ByPackageHash::protocol_version_major field
 - TransactionInvocationTarget::ByPackageName::protocol_version_major field
 - New variant PackageIdentifier::HashWithVersion

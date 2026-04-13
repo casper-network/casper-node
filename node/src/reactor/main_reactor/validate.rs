@@ -148,6 +148,24 @@ impl MainReactor {
             return Ok(None);
         }
 
+        // If the node was validating in the previous era there is a possibility that it didn't get
+        // a chance to apply it's finality signature to the last (or some of the last)
+        // blocks of that era. If that's true - it it might try to do that and for that it
+        // needs to have the validator matrix updated with appropriate era data.
+        // We stop saturating the validator matrix before we get to latest era, because there might
+        // have been a chainspec override of the validators during activation.
+        let number_of_switch_blocks = recent_switch_block_headers.len();
+        for i in 0..(number_of_switch_blocks - 1) {
+            if let Some(block) = recent_switch_block_headers.get(i) {
+                if let Some(validator_weights) = block.next_era_validator_weights() {
+                    self.validator_matrix.register_validator_weights(
+                        block.era_id().successor(),
+                        validator_weights.clone(),
+                    );
+                }
+            }
+        }
+
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
             self.storage.get_highest_orphaned_block_header()
         {
