@@ -131,6 +131,7 @@ impl ChainspecConfig {
             locked_funds_period,
             unbonding_delay,
             round_seigniorage_rate,
+            enable_addressable_entity,
             minimum_delegation_rate,
             ..
         } = core_config;
@@ -146,6 +147,7 @@ impl ChainspecConfig {
             .with_unbonding_delay(*unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_storage_costs(*storage_costs)
+            .with_enable_addressable_entity(*enable_addressable_entity)
             .with_minimum_delegation_rate(*minimum_delegation_rate)
             .build();
 
