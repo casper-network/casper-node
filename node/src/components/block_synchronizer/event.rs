@@ -56,7 +56,7 @@ pub(crate) enum Event {
         #[serde(skip_serializing)]
         result: ExecutionResultsChecksumResult,
     },
-    DeployFetched {
+    TransactionFetched {
         block_hash: BlockHash,
         result: Either<FetchResult<LegacyDeploy>, FetchResult<Transaction>>,
     },
@@ -142,7 +142,7 @@ impl Display for Event {
                 Ok(None) => write!(f, "got no exec results checksum"),
                 Err(error) => write!(f, "failed to get exec results checksum: {}", error),
             },
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: _,
                 result,
             } => match result {

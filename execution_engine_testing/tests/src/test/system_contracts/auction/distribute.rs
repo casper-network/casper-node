@@ -3784,9 +3784,7 @@ fn should_not_restake_after_full_unbond() {
 
     let withdraws = builder.get_unbonds();
     let unbond_kind = UnbondKind::DelegatedPublicKey(DELEGATOR_1.clone());
-    let unbond = withdraws
-        .get(&unbond_kind)
-        .expect("should have validator entry");
+    let unbond = withdraws.get(&unbond_kind).expect("should have entry");
     let delegator_unbond_amount = unbond[0].eras().first().expect("should be era").amount();
 
     assert_eq!(
