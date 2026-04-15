@@ -269,7 +269,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
-            | BlockAcquisitionState::HaveAllDeploys(_, _)
+            | BlockAcquisitionState::HaveAllTransactions(_, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
             | BlockAcquisitionState::HaveExecutableBlock(_, _, _)
             | BlockAcquisitionState::Failed(_, _) => false,
@@ -463,7 +463,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -498,7 +498,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -533,7 +533,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
@@ -631,7 +631,7 @@ impl BlockBuilder {
     pub(super) fn waiting_for_execution_results(&self) -> bool {
         match &self.acquisition_state {
             BlockAcquisitionState::HaveGlobalState(..) if self.should_fetch_execution_state => true,
-            BlockAcquisitionState::HaveAllDeploys(..)
+            BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::Initialized(..)
@@ -719,8 +719,8 @@ impl BlockBuilder {
                     execution_results_acquisition::Error::InvalidChunkCount { .. }
                     | execution_results_acquisition::Error::ChecksumMismatch { .. }
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
-                    | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
-                        debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
+                    | execution_results_acquisition::Error::ExecutionResultToTransactionHashLengthDiscrepancy { .. } => {
+                        debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToTransactionHashLengthDiscrepancy");
                         if let Some(peer) = maybe_peer {
                             self.disqualify_peer(peer);
                         }
@@ -761,7 +761,7 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub(super) fn waiting_for_deploys(&self) -> bool {
+    pub(super) fn waiting_for_transactions(&self) -> bool {
         match &self.acquisition_state {
             BlockAcquisitionState::HaveApprovalsHashes(_, _, transactions) => {
                 transactions.needs_transaction()
@@ -781,7 +781,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveBlock(..)
             | BlockAcquisitionState::HaveGlobalState(..)
             | BlockAcquisitionState::HaveAllExecutionResults(..)
-            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveAllTransactions(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
@@ -789,16 +789,16 @@ impl BlockBuilder {
         }
     }
 
-    pub(super) fn register_deploy(
+    pub(super) fn register_transaction(
         &mut self,
         txn_id: TransactionId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
-        let was_waiting_for_deploys = self.waiting_for_deploys();
+        let was_waiting_for_transactions = self.waiting_for_transactions();
         let acceptance = self
             .acquisition_state
-            .register_deploy(txn_id, self.should_fetch_execution_state);
-        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_deploys)
+            .register_transaction(txn_id, self.should_fetch_execution_state);
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_transactions)
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {

@@ -2361,7 +2361,7 @@ fn historical_state(block_synchronizer: &BlockSynchronizer) -> &BlockAcquisition
 }
 
 /// When there is no deploy, the state goes from `HaveGlobalState` to `HaveStrictFinalitySignature`
-/// directly, skipping `HaveAllExecutionResults`, `HaveApprovalsHashes` and `HaveAllDeploys`.
+/// directly, skipping `HaveAllExecutionResults`, `HaveApprovalsHashes` and `HaveAllTransactions`.
 #[tokio::test]
 async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
     let rng = &mut TestRng::new();
@@ -2672,15 +2672,15 @@ async fn historical_sync_no_legacy_block() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn)))),
         },
     );
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
@@ -2874,15 +2874,15 @@ async fn historical_sync_legacy_block_strict_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
     );
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
@@ -3076,7 +3076,7 @@ async fn historical_sync_legacy_block_weak_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
@@ -3289,7 +3289,7 @@ async fn historical_sync_legacy_block_any_finality() {
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Left(Ok(FetchedData::from_storage(Box::new(deploy.into())))),
         },
@@ -3688,13 +3688,13 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive a deploy. This would make the synchronizer switch to HaveAllDeploys and continue
+    // Receive a deploy. This would make the synchronizer switch to HaveAllTransactions and continue
     // asking for more finality signatures in order to reach strict finality.
     {
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
@@ -3731,7 +3731,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
@@ -3958,7 +3958,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
         },
@@ -3986,7 +3986,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
         },
@@ -4028,7 +4028,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
             },
@@ -4048,7 +4048,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             rng,
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
             },
@@ -4066,16 +4066,16 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
-        Event::DeployFetched {
+        Event::TransactionFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(third_txn.clone())))),
         },
     );
 
-    // ----- HaveAllDeploys -----
+    // ----- HaveAllTransactions -----
     assert_matches!(
         historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveAllDeploys(_, _)
+        BlockAcquisitionState::HaveAllTransactions(_, _)
     );
 
     let events = mock_reactor.process_effects(effects).await;
