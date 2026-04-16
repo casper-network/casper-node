@@ -9,7 +9,12 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 9.0.0
 
+### Added
+
+* Added support for `RewardsHandling` to the execution engine testing crate
+* Added support for `minimum_delegation_rate` to the execution engine testing crate
 
 ## 7.0.1
 

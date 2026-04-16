@@ -343,7 +343,7 @@ fn acquisition_pending_state_has_correct_transitions() {
         acquisition
             .clone()
             .apply_block_execution_results_or_chunk(exec_result.clone(), vec![]),
-        Err(Error::ExecutionResultToDeployHashLengthDiscrepancy { .. })
+        Err(Error::ExecutionResultToTransactionHashLengthDiscrepancy { .. })
     );
     assert_matches!(
         acquisition.clone().apply_block_execution_results_or_chunk(
@@ -472,7 +472,7 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
         acquisition
             .clone()
             .apply_block_execution_results_or_chunk(exec_result.clone(), vec![]),
-        Err(Error::ExecutionResultToDeployHashLengthDiscrepancy { .. })
+        Err(Error::ExecutionResultToTransactionHashLengthDiscrepancy { .. })
     );
 
     assert_matches!(

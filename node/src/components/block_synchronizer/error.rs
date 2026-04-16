@@ -5,7 +5,7 @@ use derive_more::From;
 
 use casper_types::{Digest, TransactionHash, TransactionId};
 
-use super::deploy_acquisition;
+use super::transaction_acquisition;
 
 use casper_types::BlockHash;
 
@@ -22,7 +22,7 @@ pub(crate) enum BlockAcquisitionError {
     },
     InvalidAttemptToAcquireExecutionResults,
     #[from]
-    InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
+    InvalidAttemptToApplyApprovalsHashes(transaction_acquisition::Error),
     InvalidAttemptToApplyTransaction {
         txn_id: TransactionId,
     },
