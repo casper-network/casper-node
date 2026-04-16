@@ -720,6 +720,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets up to `count` fully-connected network validators in random order.
+    pub async fn get_fully_connected_validators(self, count: usize, era_id: EraId) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::FullyConnectedValidators {
+                count,
+                era_id,
+                responder,
+            },
+            QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
     /// Announces which transactions have expired.
     pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where

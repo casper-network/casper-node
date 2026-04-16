@@ -1039,11 +1039,13 @@ impl EraSupervisor {
                 }
                 .ignore()
             }
-            ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
+            ProtocolOutcome::CreatedRequestToRandomValidator(payload) => {
                 let message = ConsensusRequestMessage { era_id, payload };
 
                 async move {
-                    let peers = effect_builder.get_fully_connected_peers(1).await;
+                    let peers = effect_builder
+                        .get_fully_connected_validators(1, era_id)
+                        .await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.enqueue_message(to, message.into()).await;
                     }

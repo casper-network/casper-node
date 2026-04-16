@@ -1015,6 +1015,22 @@ where
             .choose_multiple(rng, count)
     }
 
+    pub(crate) fn fully_connected_validators_random(
+        &self,
+        rng: &mut NodeRng,
+        count: usize,
+        era_id: EraId,
+    ) -> Vec<NodeId> {
+        let is_validator_in_era =
+            |era: EraId, peer_id: &NodeId| self.outgoing_limiter.is_validator_in_era(era, peer_id);
+        self.connection_symmetries
+            .iter()
+            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .map(|(node_id, _)| *node_id)
+            .filter(|node_id| is_validator_in_era(era_id, node_id))
+            .choose_multiple(rng, count)
+    }
+
     pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
         self.connection_symmetries
             .iter()
@@ -1221,6 +1237,13 @@ where
                     }
                     NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
                         .respond(self.fully_connected_peers_random(rng, count))
+                        .ignore(),
+                    NetworkInfoRequest::FullyConnectedValidators {
+                        count,
+                        era_id,
+                        responder,
+                    } => responder
+                        .respond(self.fully_connected_validators_random(rng, count, era_id))
                         .ignore(),
                     NetworkInfoRequest::Insight { responder } => responder
                         .respond(NetworkInsights::collect_from_component(self))

@@ -349,7 +349,7 @@ impl TestScenario {
             .transaction_config
             .transaction_v1_config
             .get_lane_by_id(lane_id)
-            .map(|el| el.max_transaction_gas_limit)
+            .map(|el| el.max_transaction_gas_limit())
     }
 
     pub(crate) fn get_block_height(&self) -> u64 {

@@ -454,7 +454,7 @@ impl<C: Context + 'static> Zug<C> {
             .choose(rng)
             .unwrap_or(self.current_round);
         let payload = self.create_sync_request(rng, first_validator_idx, round_id);
-        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
+        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomValidator(
             SerializedMessage::from_message(&payload),
         )];
         // Periodically sync the state with a random peer.
@@ -1515,7 +1515,7 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::CreatedGossipMessage(_)
                             | ProtocolOutcome::CreatedTargetedMessage(_, _)
                             | ProtocolOutcome::CreatedMessageToRandomPeer(_)
-                            | ProtocolOutcome::CreatedRequestToRandomPeer(_)
+                            | ProtocolOutcome::CreatedRequestToRandomValidator(_)
                             | ProtocolOutcome::ScheduleTimer(_, _)
                             | ProtocolOutcome::QueueAction(_)
                             | ProtocolOutcome::CreateNewBlock(_, _)

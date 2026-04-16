@@ -37,17 +37,33 @@ const TRANSACTION_COUNT_INDEX: usize = 4;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct TransactionLaneDefinition {
     /// The lane identifier
+    #[deprecated(
+        note = "Use TransactionLaneDefinition::id() or TransactionLaneDefinition::set_id() instead."
+    )]
     pub id: u8,
     /// The maximum length of a transaction in bytes
+    #[deprecated(
+        note = "Use TransactionLaneDefinition::max_transaction_length() or TransactionLaneDefinition::set_max_transaction_length() instead."
+    )]
     pub max_transaction_length: u64,
     /// The max args length size in bytes
+    #[deprecated(
+        note = "Use TransactionLaneDefinition::max_transaction_args_length() or TransactionLaneDefinition::set_max_transaction_args_length() instead."
+    )]
     pub max_transaction_args_length: u64,
     /// The maximum gas limit
+    #[deprecated(
+        note = "Use TransactionLaneDefinition::max_transaction_gas_limit() or TransactionLaneDefinition::set_max_transaction_gas_limit() instead."
+    )]
     pub max_transaction_gas_limit: u64,
     /// The maximum number of transactions
+    #[deprecated(
+        note = "Use TransactionLaneDefinition::max_transaction_count() or TransactionLaneDefinition::set_max_transaction_count() instead."
+    )]
     pub max_transaction_count: u64,
 }
 
+#[allow(deprecated)]
 impl TryFrom<Vec<u64>> for TransactionLaneDefinition {
     type Error = TransactionConfigError;
 
@@ -65,6 +81,7 @@ impl TryFrom<Vec<u64>> for TransactionLaneDefinition {
     }
 }
 
+#[allow(deprecated)]
 impl TransactionLaneDefinition {
     /// Creates a new instance of TransactionLimitsDefinition
     pub fn new(
@@ -116,6 +133,26 @@ impl TransactionLaneDefinition {
     /// Returns id
     pub fn id(&self) -> u8 {
         self.id
+    }
+
+    pub fn set_id(&mut self, id: u8) {
+        self.id = id;
+    }
+
+    pub fn set_max_transaction_count(&mut self, max_transaction_count: u64) {
+        self.max_transaction_count = max_transaction_count;
+    }
+
+    pub fn set_max_transaction_gas_limit(&mut self, max_transaction_gas_limit: u64) {
+        self.max_transaction_gas_limit = max_transaction_gas_limit;
+    }
+
+    pub fn set_max_transaction_args_length(&mut self, max_transaction_args_length: u64) {
+        self.max_transaction_args_length = max_transaction_args_length;
+    }
+
+    pub fn set_max_transaction_length(&mut self, max_transaction_length: u64) {
+        self.max_transaction_length = max_transaction_length;
     }
 }
 
@@ -248,11 +285,11 @@ impl TransactionV1Config {
     /// Returns the max serialized length of a transaction for the given lane.
     pub fn get_max_serialized_length(&self, lane_id: u8) -> u64 {
         match lane_id {
-            MINT_LANE_ID => self.native_mint_lane.max_transaction_length,
-            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_length,
-            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_length,
-            _ => match self.wasm_lanes.iter().find(|lane| lane.id == lane_id) {
-                Some(wasm_lane) => wasm_lane.max_transaction_length,
+            MINT_LANE_ID => self.native_mint_lane.max_transaction_length(),
+            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_length(),
+            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_length(),
+            _ => match self.wasm_lanes.iter().find(|lane| lane.id() == lane_id) {
+                Some(wasm_lane) => wasm_lane.max_transaction_length(),
                 None => 0,
             },
         }
@@ -261,11 +298,11 @@ impl TransactionV1Config {
     /// Returns the max number of runtime args
     pub fn get_max_args_length(&self, lane_id: u8) -> u64 {
         match lane_id {
-            MINT_LANE_ID => self.native_mint_lane.max_transaction_args_length,
-            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_args_length,
-            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_args_length,
-            _ => match self.wasm_lanes.iter().find(|lane| lane.id == lane_id) {
-                Some(wasm_lane) => wasm_lane.max_transaction_args_length,
+            MINT_LANE_ID => self.native_mint_lane.max_transaction_args_length(),
+            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_args_length(),
+            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_args_length(),
+            _ => match self.wasm_lanes.iter().find(|lane| lane.id() == lane_id) {
+                Some(wasm_lane) => wasm_lane.max_transaction_args_length(),
                 None => 0,
             },
         }
@@ -274,11 +311,11 @@ impl TransactionV1Config {
     /// Returns the max gas limit of a transaction for the given lane.
     pub fn get_max_transaction_gas_limit(&self, lane_id: u8) -> u64 {
         match lane_id {
-            MINT_LANE_ID => self.native_mint_lane.max_transaction_gas_limit,
-            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_gas_limit,
-            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_gas_limit,
-            _ => match self.wasm_lanes.iter().find(|lane| lane.id == lane_id) {
-                Some(wasm_lane) => wasm_lane.max_transaction_gas_limit,
+            MINT_LANE_ID => self.native_mint_lane.max_transaction_gas_limit(),
+            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_gas_limit(),
+            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_gas_limit(),
+            _ => match self.wasm_lanes.iter().find(|lane| lane.id() == lane_id) {
+                Some(wasm_lane) => wasm_lane.max_transaction_gas_limit(),
                 None => 0,
             },
         }
@@ -287,11 +324,11 @@ impl TransactionV1Config {
     /// Returns the max transactions count for the given lane.
     pub fn get_max_transaction_count(&self, lane_id: u8) -> u64 {
         match lane_id {
-            MINT_LANE_ID => self.native_mint_lane.max_transaction_count,
-            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_count,
-            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_count,
-            _ => match self.wasm_lanes.iter().find(|lane| lane.id == lane_id) {
-                Some(wasm_lane) => wasm_lane.max_transaction_count,
+            MINT_LANE_ID => self.native_mint_lane.max_transaction_count(),
+            AUCTION_LANE_ID => self.native_auction_lane.max_transaction_count(),
+            INSTALL_UPGRADE_LANE_ID => self.install_upgrade_lane.max_transaction_count(),
+            _ => match self.wasm_lanes.iter().find(|lane| lane.id() == lane_id) {
+                Some(wasm_lane) => wasm_lane.max_transaction_count(),
                 None => 0,
             },
         }
@@ -301,7 +338,7 @@ impl TransactionV1Config {
     pub fn get_max_wasm_transaction_count(&self) -> u64 {
         let mut ret = 0;
         for lane in self.wasm_lanes.iter() {
-            ret += lane.max_transaction_count;
+            ret += lane.max_transaction_count();
         }
         ret
     }
@@ -309,7 +346,7 @@ impl TransactionV1Config {
     /// Are the given transaction parameters supported.
     pub fn is_supported(&self, lane_id: u8) -> bool {
         if !self.is_predefined_lane(lane_id) {
-            return self.wasm_lanes.iter().any(|lane| lane.id == lane_id);
+            return self.wasm_lanes.iter().any(|lane| lane.id() == lane_id);
         }
         true
     }
@@ -318,7 +355,7 @@ impl TransactionV1Config {
     pub fn get_supported_lanes(&self) -> Vec<u8> {
         let mut ret = vec![0, 1, 2];
         for lane in self.wasm_lanes.iter() {
-            ret.push(lane.id);
+            ret.push(lane.id());
         }
         ret
     }
@@ -333,33 +370,37 @@ impl TransactionV1Config {
         large: Option<u64>,
     ) -> Self {
         if let Some(mint_count) = mint {
-            self.native_mint_lane.max_transaction_count = mint_count;
+            self.native_mint_lane.set_max_transaction_count(mint_count);
         }
         if let Some(auction_count) = auction {
-            self.native_auction_lane.max_transaction_count = auction_count;
+            self.native_auction_lane
+                .set_max_transaction_count(auction_count);
         }
         if let Some(install_upgrade) = install {
-            self.install_upgrade_lane.max_transaction_count = install_upgrade;
+            self.install_upgrade_lane
+                .set_max_transaction_count(install_upgrade);
         }
         if let Some(large_limit) = large {
-            for lane in self.wasm_lanes.iter_mut() {
-                if lane.id == 3 {
-                    lane.max_transaction_count = large_limit;
+            let mut wasm_lanes = self.wasm_lanes.clone();
+            for lane in wasm_lanes.iter_mut() {
+                if lane.id() == 3 {
+                    lane.set_max_transaction_count(large_limit);
                 }
             }
+            self.set_wasm_lanes(wasm_lanes);
         }
         self
     }
 
     /// Returns the max total count for all transactions across all lanes allowed in a block.
     pub fn get_max_block_count(&self) -> u64 {
-        self.native_mint_lane.max_transaction_count
-            + self.native_auction_lane.max_transaction_count
-            + self.install_upgrade_lane.max_transaction_count
+        self.native_mint_lane.max_transaction_count()
+            + self.native_auction_lane.max_transaction_count()
+            + self.install_upgrade_lane.max_transaction_count()
             + self
                 .wasm_lanes
                 .iter()
-                .map(|lane| lane.max_transaction_count)
+                .map(TransactionLaneDefinition::max_transaction_count)
                 .sum::<u64>()
     }
 
@@ -380,8 +421,8 @@ impl TransactionV1Config {
         let buckets = self.get_wasm_lanes_ordered_by_transaction_size();
         let number_of_lanes = buckets.len();
         for (i, lane) in buckets.iter().enumerate() {
-            let max_transaction_size = lane.max_transaction_length;
-            let max_runtime_args_size = lane.max_transaction_args_length;
+            let max_transaction_size = lane.max_transaction_length();
+            let max_runtime_args_size = lane.max_transaction_args_length();
             if max_transaction_size >= transaction_size
                 && max_runtime_args_size >= runtime_args_size
             {
@@ -395,7 +436,7 @@ impl TransactionV1Config {
                 number_of_lanes - 1,
             ));
         }
-        maybe_adequate_lane_index.map(|index| buckets[index].id)
+        maybe_adequate_lane_index.map(|index| buckets[index].id())
     }
 
     pub fn get_lane_by_id(&self, lane_id: u8) -> Option<&TransactionLaneDefinition> {
@@ -408,7 +449,7 @@ impl TransactionV1Config {
         if lane_id == INSTALL_UPGRADE_LANE_ID {
             return Some(&self.install_upgrade_lane);
         }
-        self.wasm_lanes.iter().find(|el| el.id == lane_id)
+        self.wasm_lanes.iter().find(|el| el.id() == lane_id)
     }
 
     pub fn get_wasm_lane_id_by_payment_limited(
@@ -420,9 +461,9 @@ impl TransactionV1Config {
         let mut maybe_adequate_lane_index = None;
         let lanes = self.get_wasm_lanes_ordered();
         for (i, lane) in lanes.iter().enumerate() {
-            let max_transaction_gas = lane.max_transaction_gas_limit;
-            let max_transaction_size = lane.max_transaction_length;
-            let max_runtime_args_size = lane.max_transaction_args_length;
+            let max_transaction_gas = lane.max_transaction_gas_limit();
+            let max_transaction_size = lane.max_transaction_length();
+            let max_runtime_args_size = lane.max_transaction_args_length();
             if gas_limit <= max_transaction_gas
                 && transaction_size <= max_transaction_size
                 && runtime_args_size <= max_runtime_args_size
@@ -431,7 +472,7 @@ impl TransactionV1Config {
                 break;
             }
         }
-        maybe_adequate_lane_index.map(|index| lanes[index].id)
+        maybe_adequate_lane_index.map(|index| lanes[index].id())
     }
 
     #[allow(unreachable_code)]
@@ -468,10 +509,10 @@ impl TransactionV1Config {
         let mut ordered = wasm_lanes;
         ordered.sort_by_key(|item| {
             (
-                item.max_transaction_gas_limit,
-                item.max_transaction_length,
-                item.max_transaction_args_length,
-                item.id,
+                item.max_transaction_gas_limit(),
+                item.max_transaction_length(),
+                item.max_transaction_args_length(),
+                item.id(),
             )
         });
         ordered
@@ -481,7 +522,7 @@ impl TransactionV1Config {
         wasm_lanes: Vec<TransactionLaneDefinition>,
     ) -> Vec<TransactionLaneDefinition> {
         let mut ordered = wasm_lanes;
-        ordered.sort_by(|a, b| a.max_transaction_length.cmp(&b.max_transaction_length));
+        ordered.sort_by_key(TransactionLaneDefinition::max_transaction_length);
         ordered
     }
 
@@ -509,10 +550,7 @@ impl TransactionV1Config {
     pub fn get_max_wasm_lane_by_gas_limit(&self) -> Option<TransactionLaneDefinition> {
         self.wasm_lanes
             .iter()
-            .max_by(|a, b| {
-                a.max_transaction_gas_limit
-                    .cmp(&b.max_transaction_gas_limit)
-            })
+            .max_by_key(|lane| lane.max_transaction_gas_limit())
             .cloned()
     }
 }
@@ -793,27 +831,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 5,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 5, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 1, 0);
@@ -829,27 +849,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 1, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 12, 0);
@@ -863,27 +865,9 @@ mod tests {
             example_auction(),
             example_install_upgrade(),
             vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: 10,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 5,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: 11,
-                    max_transaction_args_length: 1,
-                    max_transaction_gas_limit: 55,
-                    max_transaction_count: 1,
-                },
-                TransactionLaneDefinition {
-                    id: 5,
-                    max_transaction_length: 12,
-                    max_transaction_args_length: 5,
-                    max_transaction_gas_limit: 155,
-                    max_transaction_count: 1,
-                },
+                TransactionLaneDefinition::new(3, 10, 1, 5, 1),
+                TransactionLaneDefinition::new(4, 11, 1, 55, 1),
+                TransactionLaneDefinition::new(5, 12, 5, 155, 1),
             ],
         );
         let got = config.get_wasm_lane_id_by_payment_limited(54, 120, 0);
