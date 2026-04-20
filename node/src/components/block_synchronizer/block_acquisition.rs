@@ -383,7 +383,9 @@ impl BlockAcquisitionState {
             ) => {
                 if false == is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
-                } else if transaction_state.needs_transaction() {
+                } else if block.transaction_count() == 0 || transaction_state.needs_transaction() {
+                    // There is an execution result checksum and there is a derived utilization
+                    // score that is meaningfull even when there are no transactions.
                     BlockAcquisitionAction::maybe_execution_results(
                         block,
                         peer_list,
@@ -506,7 +508,8 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, ..) => {
                 if is_historical {
-                    // we have enough signatures; need to make sure we've stored the necessary bits
+                    // we have enough signatures; need to make sure we've
+                    // stored the necessary bits
                     Ok(BlockAcquisitionAction::block_marked_complete(
                         *block.hash(),
                         block.height(),
@@ -1199,7 +1202,7 @@ impl BlockAcquisitionState {
         Ok(())
     }
 
-    /// Register a transactions for this block.
+    /// Register a transaction for this block.
     pub(super) fn register_transaction(
         &mut self,
         txn_id: TransactionId,

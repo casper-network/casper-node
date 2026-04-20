@@ -23,9 +23,9 @@ use casper_types::{
     system::auction::{DelegationRate, DelegatorKind},
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockBody,
-    BlockHash, BlockV2, CLValue, Chainspec, ChainspecRawBytes, EraId, Key, Motes, NextUpgrade,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemHashRegistry, TimeDiff, Timestamp,
-    Transaction, TransactionHash, ValidatorConfig, U512,
+    BlockHash, BlockV2, CLValue, Chainspec, ChainspecRawBytes, EraEnd, EraId, Key, Motes,
+    NextUpgrade, ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemHashRegistry, TimeDiff,
+    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -404,9 +404,13 @@ impl TestFixture {
         };
         let NodeConfigOverride {
             sync_handling_override,
+            idle_tolerance,
         } = node_config_override;
         if let Some(sync_handling) = sync_handling_override {
             cfg.node.sync_handling = sync_handling;
+        }
+        if let Some(idle) = idle_tolerance {
+            cfg.node.idle_tolerance = idle
         }
 
         // Additionally set up storage in a temporary directory.
@@ -899,6 +903,60 @@ impl TestFixture {
                 }
             }
         }
+    }
+
+    pub(crate) fn delete_block_utilization_score_by_block_hash_in_node(
+        &mut self,
+        node_public_key: &PublicKey,
+        block_hash: BlockHash,
+    ) {
+        let (_, runner) = self
+            .network
+            .nodes_mut()
+            .iter_mut()
+            .find(|(_, runner)| runner.main_reactor().consensus.public_key() == node_public_key)
+            .expect("should have runner");
+
+        runner
+            .main_reactor_as_mut()
+            .storage
+            .delete_block_utilization_score_by_block_hash(block_hash)
+    }
+
+    pub(crate) async fn check_gas_price_for_nodes(
+        &mut self,
+        expected_gas_price: u8,
+        within: Duration,
+    ) {
+        self.try_run_until(
+            move |nodes| {
+                nodes.values().all(|runner| {
+                    let era_end = runner
+                        .main_reactor()
+                        .storage()
+                        .read_highest_switch_block_headers(1)
+                        .unwrap()
+                        .last()
+                        .expect("must have block header")
+                        .clone_era_end()
+                        .expect("must have era end for switch block");
+
+                    if let EraEnd::V2(era_end) = era_end {
+                        era_end.next_era_gas_price() == expected_gas_price
+                    } else {
+                        false
+                    }
+                })
+            },
+            within,
+        )
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should have same gas price across all nodes within {} seconds",
+                within.as_secs_f64(),
+            )
+        })
     }
 
     /// Returns the execution results from storage.

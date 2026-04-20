@@ -54,7 +54,7 @@ use crate::{
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
-            UnexecutedBlockAnnouncement,
+            NonExecutableBlockAnnouncement, UnexecutedBlockAnnouncement,
         },
         incoming::{TrieDemand, TrieRequest as TrieRequestMessage, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
@@ -81,7 +81,7 @@ pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
-use utils::{exec_or_requeue, run_intensive_task};
+use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
 
@@ -196,7 +196,7 @@ impl ContractRuntime {
         })
     }
 
-    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+    pub(crate) fn set_execution_pre_state(&mut self, sequential_block_state: ExecutionPreState) {
         let next_block_height = sequential_block_state.next_block_height();
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
@@ -206,6 +206,12 @@ impl ContractRuntime {
             .remove_older_then(execution_pre_state.next_block_height());
         self.metrics.exec_queue_size.set(new_len);
         debug!(next_block_height, "ContractRuntime: set initial state");
+    }
+
+    /// Returns the current execution prestate.
+    pub(crate) fn execution_pre_state(&self) -> ExecutionPreState {
+        let execution_pre_state = self.execution_pre_state.lock().unwrap();
+        execution_pre_state.clone()
     }
 
     fn new_data_access_layer(
@@ -314,6 +320,7 @@ impl ContractRuntime {
             + From<MetaBlockAnnouncement>
             + From<UnexecutedBlockAnnouncement>
             + From<FatalAnnouncement>
+            + From<NonExecutableBlockAnnouncement>
             + Send,
     {
         match request {
@@ -540,7 +547,7 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 let next_block_height = new_pre_state.next_block_height();
-                self.set_initial_state(new_pre_state);
+                self.set_execution_pre_state(new_pre_state);
                 let current_price = self.current_gas_price.gas_price();
                 async move {
                     let block_header = match effect_builder
@@ -635,7 +642,7 @@ impl ContractRuntime {
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height();
                 match finalized_block_height.cmp(&next_block_height) {
-                    // An old block: it won't be executed:
+                    // An old block: it won't be enqueued:
                     Ordering::Less => {
                         debug!(
                             %era_id,
@@ -645,7 +652,7 @@ impl ContractRuntime {
                         );
                         effects.extend(
                             effect_builder
-                                .announce_unexecuted_block(finalized_block_height)
+                                .announce_not_enqueuing_old_executable_block(finalized_block_height)
                                 .ignore(),
                         );
                     }
@@ -683,8 +690,13 @@ impl ContractRuntime {
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        // the way this works is inobvious. if the current executable block
+                        // executes and its child is enqueued the underlying logic will
+                        // update the pre-state to refer to the child, pop the child from the queue,
+                        // and send a new event of this kind with the child. it will then get into
+                        // this match arm and get executed without being re-enqueued.
                         effects.extend(
-                            exec_or_requeue(
+                            exec_and_check_next(
                                 data_access_layer,
                                 execution_engine_v1,
                                 execution_engine_v2,
@@ -843,6 +855,7 @@ where
         + From<MetaBlockAnnouncement>
         + From<UnexecutedBlockAnnouncement>
         + From<FatalAnnouncement>
+        + From<NonExecutableBlockAnnouncement>
         + Send,
 {
     type Event = Event;
