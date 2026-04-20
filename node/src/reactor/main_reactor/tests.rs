@@ -6,6 +6,7 @@ mod fixture;
 mod gas_price;
 mod initial_stakes;
 mod network_general;
+mod rejoining_node;
 mod rewards;
 mod switch_blocks;
 mod transaction_scenario;
