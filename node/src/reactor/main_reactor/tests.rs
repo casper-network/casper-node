@@ -57,6 +57,10 @@ impl Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
     fn main_reactor(&self) -> &MainReactor {
         self.reactor().inner().inner()
     }
+
+    fn main_reactor_as_mut(&mut self) -> &mut MainReactor {
+        self.reactor.inner_mut().inner_mut()
+    }
 }
 
 /// Given a block height and a node id, returns a predicate to check if the lowest available block

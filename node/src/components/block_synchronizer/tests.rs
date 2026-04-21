@@ -2360,13 +2360,15 @@ fn historical_state(block_synchronizer: &BlockSynchronizer) -> &BlockAcquisition
         .block_acquisition_state()
 }
 
-/// When there is no deploy, the state goes from `HaveGlobalState` to `HaveStrictFinalitySignature`
-/// directly, skipping `HaveAllExecutionResults`, `HaveApprovalsHashes` and `HaveAllTransactions`.
+/// Even if a block has no transaction it needs to go through "the regular" states becasue in those
+/// states we calculate utilization tracking for the block (even if it's empty we still need to
+/// calculate it's utilization).
 #[tokio::test]
-async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
+async fn historical_sync_does_not_skip_exec_results_if_block_empty() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let test_env = TestEnv::random(rng);
+    let test_env =
+        TestEnv::random(rng).with_block(TestBlockBuilder::new().era(1).build(rng).into());
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -2380,8 +2382,6 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
     assert!(block_synchronizer.forward.is_none());
     block_synchronizer.register_peers(*block.hash(), peers.clone());
-
-    // Skip steps HaveBlockHeader, HaveWeakFinalitySignature, HaveBlock
 
     let historical_builder = block_synchronizer
         .historical
@@ -2422,23 +2422,23 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         Event::GlobalStateSynchronizer(global_state_synchronizer::Event::Request(request)),
     );
 
-    // ----- HaveBlock -----
-    assert_matches!(
-        historical_state(&block_synchronizer),
-        BlockAcquisitionState::HaveBlock { .. }
-    );
-
     // Those effects are handled directly and not through the reactor:
-    let events = effects
-        .try_one()
-        .expect("there should be only one effect")
-        .await;
+    let events = effects.one().await;
     assert_matches!(
         events.try_one(),
         Some(Event::GlobalStateSynchronizer(
             GlobalStateSynchronizerEvent::GetPeers(_)
         ))
     );
+
+    // ----- HaveBlock -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveBlock { .. }
+    );
+
+    // Let's not test the detail of the global synchronization event,
+    // since it is already tested in its unit tests.
 
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
@@ -2457,11 +2457,115 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         historical_state(&block_synchronizer),
         BlockAcquisitionState::HaveGlobalState { .. }
     );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    match events.try_one() {
+        Some(MockReactorEvent::ContractRuntimeRequest(
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
+        other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: ExecutionResultsChecksumResult::Success {
+                checksum: Digest::SENTINEL_NONE,
+            },
+        },
+    );
     let events = mock_reactor.process_effects(effects).await;
 
     for event in events {
-        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(..));
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
     }
+
+    let execution_results = BlockExecutionResultsOrChunk::new_empty_value(*block.hash());
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
+        },
+    );
+
+    let mut events = mock_reactor.process_effects(effects).await;
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    assert_matches!(
+        events.remove(0),
+        MockReactorEvent::StorageRequest(StorageRequest::PutExecutionResults { .. })
+    );
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+    // ----- HaveAllExecutionResults -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum) if checksum.is_checkable()
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
+            ApprovalsHashes::new(*block.hash(), vec![], dummy_merkle_proof()),
+        )))),
+    );
+    // ----- HaveApprovalsHashes -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+    assert!(!events.is_empty());
+    // Since the block doesn't have any transactions,
+    // the next step should be to fetch the finality signatures for strict finality.
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                id,
+                peer,
+                ..
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
+        );
+    }
+
+    // The rest would be fetching finality signatures which is covered by other tests
 }
 
 #[tokio::test]

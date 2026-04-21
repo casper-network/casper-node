@@ -89,6 +89,8 @@ impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
 
+impl Unhandled for NonExecutableBlockAnnouncement {}
+
 struct TestConfig {
     config: Config,
     fixture_name: Option<String>,
@@ -261,7 +263,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(initial_pre_state);
+        .set_execution_pre_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
     let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
@@ -398,7 +400,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(ExecutionPreState::new(
+        .set_execution_pre_state(ExecutionPreState::new(
             next_block_height,
             Digest::hash(rng.next_u64().to_le_bytes()),
             BlockHash::random(rng),
@@ -535,7 +537,7 @@ async fn should_correctly_manage_entity_version_calls() {
         .reactor_mut()
         .inner_mut()
         .contract_runtime
-        .set_initial_state(initial_pre_state);
+        .set_execution_pre_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
     let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
