@@ -1,16 +1,11 @@
-#[cfg(test)]
 use super::arg_handling;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    TransactionArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget,
+    testing::TestRng,
+    PublicKey, RuntimeArgs, TransactionArgs, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransferTarget,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
-#[cfg(test)]
-use casper_types::{
-    testing::TestRng, PublicKey, RuntimeArgs, TransactionInvocationTarget,
-    TransactionRuntimeParams, TransferTarget, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
-    MINT_LANE_ID,
-};
-#[cfg(test)]
 use rand::{Rng, RngCore};
 use std::collections::BTreeMap;
 
@@ -84,7 +79,6 @@ impl FieldsContainer {
     }
 
     /// Returns a random `FieldsContainer`.
-    #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         use casper_types::URef;
 
@@ -264,7 +258,6 @@ impl FieldsContainer {
     }
 
     /// Returns a random `FieldsContainer`.
-    #[cfg(test)]
     pub fn random_of_lane(rng: &mut TestRng, lane_id: u8) -> Self {
         match lane_id {
             MINT_LANE_ID => Self::random_transfer(rng),
@@ -274,7 +267,6 @@ impl FieldsContainer {
         }
     }
 
-    #[cfg(test)]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Session {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
@@ -289,7 +281,6 @@ impl FieldsContainer {
         )
     }
 
-    #[cfg(test)]
     fn random_staking(rng: &mut TestRng) -> Self {
         let public_key = PublicKey::random(rng);
         let delegation_rate = rng.gen();
@@ -315,7 +306,6 @@ impl FieldsContainer {
         )
     }
 
-    #[cfg(test)]
     fn random_transfer(rng: &mut TestRng) -> Self {
         let amount = rng.gen_range(2_500_000_000..=u64::MAX);
         let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
@@ -330,7 +320,6 @@ impl FieldsContainer {
         )
     }
 
-    #[cfg(test)]
     fn random_standard(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),

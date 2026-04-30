@@ -1,24 +1,28 @@
-#[cfg(test)]
-use super::arg_handling;
-use super::fields_container::{FieldsContainer, FieldsContainerError};
+use super::{
+    arg_handling,
+    fields_container::{FieldsContainer, FieldsContainerError},
+};
 use crate::types::transaction::initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    Digest, InitiatorAddr, PricingMode, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
-    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling,
-    TransactionTarget, TransactionV1, TransactionV1Payload,
+    contracts::ProtocolVersionMajor,
+    system::auction::Reservation,
+    testing::TestRng,
+    AddressableEntityHash, Approval, CLValueError, Digest, EntityVersion, InitiatorAddr,
+    PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
+    TransactionV1Payload, TransferTarget, URef, U512,
 };
-#[cfg(test)]
-use casper_types::{
-    contracts::ProtocolVersionMajor, system::auction::Reservation, testing::TestRng,
-    AddressableEntityHash, Approval, CLValueError, EntityVersion, PackageHash, PublicKey,
-    TransactionConfig, TransactionInvocationTarget, TransferTarget, URef, U512,
-};
-use core::marker::PhantomData;
-#[cfg(test)]
 use rand::Rng;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// ***PLEASE NOTE!!!***
+/// This builder is here only for purposes of running internal tests of the node. If you
+/// need this functionality for building Transactions you most likely should import
+/// TransactionV1Builder in casper-client-rs project.
+///
+///
 /// A builder for constructing `TransactionV1` instances with various configuration options.
 ///
 /// The `TransactionV1Builder` provides a flexible API for specifying different transaction
@@ -62,12 +66,8 @@ use std::collections::{BTreeMap, BTreeSet};
 /// ## Invalid Approvals
 /// - `invalid_approvals`: A collection of invalid approvals used for testing purposes. This field
 ///   is available only when the `std` or `testing` features are enabled, or in a test environment.
-///
-/// ## Phantom Data
-/// - `_phantom_data`: Ensures the correct lifetime `'a` is respected for the builder, helping with
-///   proper borrowing and memory safety.
 #[derive(Debug)]
-pub(crate) struct TransactionV1Builder<'a> {
+pub(crate) struct TransactionV1Builder {
     /// Arguments passed to the transaction's runtime.
     args: TransactionArgs,
     /// The target of the transaction (e.g., native).
@@ -86,23 +86,15 @@ pub(crate) struct TransactionV1Builder<'a> {
     pricing_mode: PricingMode,
     /// The address of the transaction initiator.
     initiator_addr: Option<InitiatorAddr>,
-    /// The secret key used for signing the transaction (in normal mode).
-    #[cfg(not(test))]
-    secret_key: Option<&'a SecretKey>,
     /// The secret key used for signing the transaction (in testing or with `std` feature).
-    #[cfg(test)]
     secret_key: Option<SecretKey>,
     /// A list of invalid approvals for testing purposes.
-    #[cfg(test)]
     invalid_approvals: Vec<Approval>,
     /// Additional fields
-    #[cfg(test)]
     additional_fields: BTreeMap<u16, Bytes>,
-    /// Phantom data to ensure the correct lifetime for references.
-    _phantom_data: PhantomData<&'a ()>,
 }
 
-impl<'a> TransactionV1Builder<'a> {
+impl TransactionV1Builder {
     /// The default time-to-live for transactions, i.e. 30 minutes.
     pub const DEFAULT_TTL: TimeDiff = TimeDiff::from_millis(30 * 60 * 1_000);
     /// The default pricing mode for v1 transactions, ie FIXED cost.
@@ -165,16 +157,12 @@ impl<'a> TransactionV1Builder<'a> {
             pricing_mode: Self::DEFAULT_PRICING_MODE,
             initiator_addr: None,
             secret_key: None,
-            _phantom_data: PhantomData,
-            #[cfg(test)]
             invalid_approvals: vec![],
-            #[cfg(test)]
             additional_fields: BTreeMap::new(),
         }
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native transfer transaction.
-    #[cfg(test)]
     pub(crate) fn new_transfer<A: Into<U512>, T: Into<TransferTarget>>(
         amount: A,
         maybe_source: Option<URef>,
@@ -191,7 +179,6 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native burn transaction.
-    #[cfg(test)]
     pub(crate) fn new_burn<A: Into<U512>>(
         amount: A,
         maybe_source: Option<URef>,
@@ -206,7 +193,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a native reserve slot
     /// transaction.
-    #[cfg(test)]
     pub(crate) fn new_reserve_slot(reservations: Vec<Reservation>) -> Result<Self, CLValueError> {
         let args = arg_handling::new_add_reservations_args(reservations)?;
         let mut builder = TransactionV1Builder::new();
@@ -219,7 +205,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a native add_bid
     /// transaction.
-    #[cfg(test)]
     pub(crate) fn new_add_bid<A: Into<U512>>(
         public_key: PublicKey,
         delegation_rate: u8,
@@ -246,7 +231,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a native withdraw_bid
     /// transaction.
-    #[cfg(test)]
     pub(crate) fn new_withdraw_bid<A: Into<U512>>(
         public_key: PublicKey,
         amount: A,
@@ -261,7 +245,6 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native delegate transaction.
-    #[cfg(test)]
     pub(crate) fn new_delegate<A: Into<U512>>(
         delegator: PublicKey,
         validator: PublicKey,
@@ -277,7 +260,6 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native undelegate transaction.
-    #[cfg(test)]
     pub(crate) fn new_undelegate<A: Into<U512>>(
         delegator: PublicKey,
         validator: PublicKey,
@@ -293,7 +275,6 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native redelegate transaction.
-    #[cfg(test)]
     pub(crate) fn new_redelegate<A: Into<U512>>(
         delegator: PublicKey,
         validator: PublicKey,
@@ -309,7 +290,6 @@ impl<'a> TransactionV1Builder<'a> {
         Ok(builder)
     }
 
-    #[cfg(test)]
     pub(crate) fn new_targeting_stored<E: Into<String>>(
         id: TransactionInvocationTarget,
         entry_point: E,
@@ -324,7 +304,6 @@ impl<'a> TransactionV1Builder<'a> {
         builder
     }
 
-    #[cfg(test)]
     pub(crate) fn new_targeting_stored_with_runtime_args<E: Into<String>>(
         id: TransactionInvocationTarget,
         entry_point: E,
@@ -342,7 +321,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
     /// entity.
-    #[cfg(test)]
     pub(crate) fn new_targeting_invocable_entity<E: Into<String>>(
         hash: AddressableEntityHash,
         entry_point: E,
@@ -354,7 +332,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
     /// entity via its alias.
-    #[cfg(test)]
     pub(crate) fn new_targeting_invocable_entity_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
         entry_point: E,
@@ -366,7 +343,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
     /// package.
-    #[cfg(test)]
     pub(crate) fn new_targeting_package<E: Into<String>>(
         hash: PackageHash,
         version: Option<EntityVersion>,
@@ -384,7 +360,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
     /// package.
-    #[cfg(test)]
     pub(crate) fn new_targeting_package_with_runtime_args<E: Into<String>>(
         hash: PackageHash,
         version: Option<EntityVersion>,
@@ -403,7 +378,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
     /// package via its alias.
-    #[cfg(test)]
     pub(crate) fn new_targeting_package_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
         version: Option<EntityVersion>,
@@ -441,7 +415,6 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    #[cfg(test)]
     pub(crate) fn new_session_with_runtime_args(
         is_install_upgrade: bool,
         module_bytes: Bytes,
@@ -467,7 +440,6 @@ impl<'a> TransactionV1Builder<'a> {
     /// The transaction can be made invalid in the following ways:
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
-    #[cfg(test)]
     pub(crate) fn new_random(rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
         let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
@@ -487,14 +459,11 @@ impl<'a> TransactionV1Builder<'a> {
             },
             initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
             secret_key: Some(secret_key),
-            _phantom_data: PhantomData,
             invalid_approvals: vec![],
-            #[cfg(test)]
             additional_fields: BTreeMap::new(),
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
         lane: u8,
@@ -527,9 +496,7 @@ impl<'a> TransactionV1Builder<'a> {
             },
             initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
             secret_key: Some(secret_key),
-            _phantom_data: PhantomData,
             invalid_approvals: vec![],
-            #[cfg(test)]
             additional_fields: BTreeMap::new(),
         }
     }
@@ -561,7 +528,6 @@ impl<'a> TransactionV1Builder<'a> {
     /// Sets the `pricing_mode` in the transaction.
     ///
     /// If not provided, the pricing mode will be set to [`Self::DEFAULT_PRICING_MODE`].
-    #[cfg(test)]
     pub(crate) fn with_pricing_mode(mut self, pricing_mode: PricingMode) -> Self {
         self.pricing_mode = pricing_mode;
         self
@@ -571,7 +537,6 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// If not provided, the public key derived from the secret key used in the builder will be
     /// used as the `InitiatorAddr::PublicKey` in the transaction.
-    #[cfg(test)]
     pub(crate) fn with_initiator_addr<I: Into<InitiatorAddr>>(mut self, initiator_addr: I) -> Self {
         self.initiator_addr = Some(initiator_addr.into());
         self
@@ -581,12 +546,7 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// If not provided, the transaction can still be built, but will be unsigned and will be
     /// invalid until subsequently signed.
-    pub(crate) fn with_secret_key(mut self, secret_key: &'a SecretKey) -> Self {
-        #[cfg(not(test))]
-        {
-            self.secret_key = Some(secret_key);
-        }
-        #[cfg(test)]
+    pub(crate) fn with_secret_key(mut self, secret_key: &SecretKey) -> Self {
         {
             self.secret_key = Some(
                 SecretKey::from_der(secret_key.to_der().expect("should der-encode"))
@@ -597,7 +557,6 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Manually sets additional fields
-    #[cfg(test)]
     pub(crate) fn with_additional_fields(
         mut self,
         additional_fields: BTreeMap<u16, Bytes>,
@@ -610,7 +569,6 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// NOTE: this overwrites any existing runtime args.  To append to existing args, use
     /// [`TransactionV1Builder::with_runtime_arg`].
-    #[cfg(test)]
     pub(crate) fn with_runtime_args(mut self, args: RuntimeArgs) -> Self {
         self.args = TransactionArgs::Named(args);
         self
@@ -619,7 +577,6 @@ impl<'a> TransactionV1Builder<'a> {
     /// Sets the transaction args in the transaction.
     ///
     /// NOTE: this overwrites any existing transaction_args args.
-    #[cfg(test)]
     pub fn with_transaction_args(mut self, args: TransactionArgs) -> Self {
         self.args = args;
         self
@@ -632,46 +589,6 @@ impl<'a> TransactionV1Builder<'a> {
         self.do_build()
     }
 
-    #[cfg(not(test))]
-    fn do_build(self) -> Result<TransactionV1, TransactionV1BuilderError> {
-        let initiator_addr_and_secret_key = match (self.initiator_addr, self.secret_key) {
-            (Some(initiator_addr), Some(secret_key)) => InitiatorAddrAndSecretKey::Both {
-                initiator_addr,
-                secret_key,
-            },
-            (Some(initiator_addr), None) => {
-                InitiatorAddrAndSecretKey::InitiatorAddr(initiator_addr)
-            }
-            (None, Some(secret_key)) => InitiatorAddrAndSecretKey::SecretKey(secret_key),
-            (None, None) => return Err(TransactionV1BuilderError::MissingInitiatorAddr),
-        };
-
-        let chain_name = self
-            .chain_name
-            .ok_or(TransactionV1BuilderError::MissingChainName)?;
-
-        let container =
-            FieldsContainer::new(self.args, self.target, self.entry_point, self.scheduling)
-                .to_map()
-                .map_err(|err| match err {
-                    FieldsContainerError::CouldNotSerializeField { field_index } => {
-                        TransactionV1BuilderError::CouldNotSerializeField { field_index }
-                    }
-                })?;
-
-        let transaction = build_transaction(
-            chain_name,
-            self.timestamp,
-            self.ttl,
-            self.pricing_mode,
-            container,
-            initiator_addr_and_secret_key,
-        );
-
-        Ok(transaction)
-    }
-
-    #[cfg(test)]
     fn do_build(self) -> Result<TransactionV1, TransactionV1BuilderError> {
         let initiator_addr_and_secret_key = match (self.initiator_addr, &self.secret_key) {
             (Some(initiator_addr), Some(secret_key)) => InitiatorAddrAndSecretKey::Both {
