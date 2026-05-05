@@ -347,6 +347,7 @@ where
         }
         KeyPrefix::EntryPointsV1ByEntity(addr) => StorageKeyPrefix::EntryPointsV1ByEntity(addr),
         KeyPrefix::EntryPointsV2ByEntity(addr) => StorageKeyPrefix::EntryPointsV2ByEntity(addr),
+        KeyPrefix::EvmStorageByAddress(addr) => StorageKeyPrefix::EvmStorageByAddress(addr),
     };
     let request = PrefixedValuesRequest::new(state_root_hash, storage_key_prefix);
     match effect_builder.get_prefixed_values(request).await {

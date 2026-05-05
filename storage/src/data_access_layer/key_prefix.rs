@@ -2,6 +2,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
+    evm::Address as EvmAddress,
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
@@ -25,6 +26,8 @@ pub enum KeyPrefix {
     EntryPointsV1ByEntity(EntityAddr),
     /// Retrieves all V2 entry points for a given entity.
     EntryPointsV2ByEntity(EntityAddr),
+    /// Retrieves all EVM storage slots for a given EVM address.
+    EvmStorageByAddress(EvmAddress),
 }
 
 impl ToBytes for KeyPrefix {
@@ -57,6 +60,7 @@ impl ToBytes for KeyPrefix {
                 KeyPrefix::EntryPointsV2ByEntity(entity) => {
                     U8_SERIALIZED_LENGTH + entity.serialized_length()
                 }
+                KeyPrefix::EvmStorageByAddress(address) => address.serialized_length(),
             }
     }
 
@@ -99,6 +103,10 @@ impl ToBytes for KeyPrefix {
                 writer.push(KeyTag::EntryPoint as u8);
                 writer.push(1);
                 entity.write_bytes(writer)?;
+            }
+            KeyPrefix::EvmStorageByAddress(address) => {
+                writer.push(KeyTag::EvmStorage as u8);
+                address.write_bytes(writer)?;
             }
         }
         Ok(())
@@ -160,6 +168,10 @@ impl FromBytes for KeyPrefix {
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }
+            tag if tag == KeyTag::EvmStorage as u8 => {
+                let (address, remainder) = EvmAddress::from_bytes(remainder)?;
+                (KeyPrefix::EvmStorageByAddress(address), remainder)
+            }
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok(result)
@@ -194,6 +206,8 @@ mod tests {
             u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
             entity_addr_arb().prop_map(KeyPrefix::EntryPointsV1ByEntity),
             entity_addr_arb().prop_map(KeyPrefix::EntryPointsV2ByEntity),
+            prop::array::uniform20(any::<u8>())
+                .prop_map(|bytes| { KeyPrefix::EvmStorageByAddress(EvmAddress::new(bytes)) }),
         ]
     }
 

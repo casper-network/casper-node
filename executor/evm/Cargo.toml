@@ -1,0 +1,15 @@
+[package]
+name = "casper-executor-evm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michał Papierski <michal@casper.network>"]
+description = "Casper EVM executor package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/evm"
+license = "Apache-2.0"
+
+[dependencies]
+casper-storage = { version = "5.0.0", path = "../../storage" }
+casper-types = { version = "7.0.0", path = "../../types", features = ["std"] }
+revm = { version = "27", features = ["dev"] }
+thiserror = "2"

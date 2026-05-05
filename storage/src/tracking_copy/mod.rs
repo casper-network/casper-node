@@ -891,6 +891,15 @@ where
                 StoredValue::RawBytes(_) => {
                     return Ok(query.into_not_found_result("RawBytes value found."));
                 }
+                StoredValue::EvmAccount(_) => {
+                    return Ok(query.into_not_found_result("EvmAccount value found."));
+                }
+                StoredValue::EvmByteCode(_) => {
+                    return Ok(query.into_not_found_result("EvmByteCode value found."));
+                }
+                StoredValue::EvmStorage(_) => {
+                    return Ok(query.into_not_found_result("EvmStorage value found."));
+                }
             }
         }
     }

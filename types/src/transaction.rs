@@ -23,6 +23,7 @@ mod transfer_target;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use alloc::{
+    boxed::Box,
     collections::BTreeSet,
     string::{String, ToString},
     vec::Vec,
@@ -57,7 +58,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, Phase, SecretKey, TimeDiff, Timestamp,
+    evm, Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Chainspec, Gas, Motes, TransactionV1Config};
@@ -96,6 +97,7 @@ pub use transfer_target::TransferTarget;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
+const EVM_TAG: u8 = 2;
 
 #[cfg(feature = "json-schema")]
 pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
@@ -147,6 +149,8 @@ pub enum Transaction {
         schemars(with = "TransactionV1Json")
     )]
     V1(TransactionV1),
+    /// An EVM signed RLP transaction.
+    Evm(Box<evm::Transaction>),
 }
 
 impl Transaction {
@@ -160,11 +164,17 @@ impl Transaction {
         Transaction::V1(v1)
     }
 
+    /// EVM variant ctor.
+    pub fn from_evm(evm: evm::Transaction) -> Self {
+        Transaction::Evm(Box::new(evm))
+    }
+
     /// Returns the `TransactionHash` identifying this transaction.
     pub fn hash(&self) -> TransactionHash {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+            Transaction::Evm(txn) => TransactionHash::from(txn.as_ref().hash()),
         }
     }
 
@@ -173,6 +183,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.serialized_length(),
             Transaction::V1(v1) => v1.serialized_length(),
+            Transaction::Evm(txn) => txn.serialized_length(),
         }
     }
 
@@ -181,6 +192,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.header().timestamp(),
             Transaction::V1(v1) => v1.payload().timestamp(),
+            Transaction::Evm(txn) => txn.timestamp(),
         }
     }
 
@@ -189,6 +201,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.header().ttl(),
             Transaction::V1(v1) => v1.payload().ttl(),
+            Transaction::Evm(txn) => txn.ttl(),
         }
     }
 
@@ -198,6 +211,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
             Transaction::V1(v1) => v1.verify().map_err(Into::into),
+            Transaction::Evm(txn) => txn.verify().map_err(Into::into),
         }
     }
 
@@ -206,6 +220,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.sign(secret_key),
             Transaction::V1(v1) => v1.sign(secret_key),
+            Transaction::Evm(_) => {}
         }
     }
 
@@ -214,6 +229,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().clone(),
             Transaction::V1(v1) => v1.approvals().clone(),
+            Transaction::Evm(_) => BTreeSet::new(),
         }
     }
 
@@ -222,6 +238,7 @@ impl Transaction {
         let approvals_hash = match self {
             Transaction::Deploy(deploy) => deploy.compute_approvals_hash()?,
             Transaction::V1(txn) => txn.compute_approvals_hash()?,
+            Transaction::Evm(_) => ApprovalsHash::compute(&BTreeSet::new())?,
         };
         Ok(approvals_hash)
     }
@@ -231,6 +248,10 @@ impl Transaction {
         match self {
             Transaction::Deploy(txn) => txn.chain_name().to_string(),
             Transaction::V1(txn) => txn.chain_name().to_string(),
+            Transaction::Evm(txn) => txn
+                .chain_id()
+                .map(|chain_id| format!("evm-chain-{chain_id}"))
+                .unwrap_or_else(|| "evm-chain".to_string()),
         }
     }
 
@@ -248,6 +269,7 @@ impl Transaction {
                 } => *standard_payment,
                 _ => true,
             },
+            Transaction::Evm(_) => true,
         }
     }
 
@@ -271,6 +293,14 @@ impl Transaction {
                 });
                 TransactionId::new(TransactionHash::V1(txn_hash), approvals_hash)
             }
+            Transaction::Evm(txn) => {
+                let approvals_hash =
+                    ApprovalsHash::compute(&BTreeSet::new()).unwrap_or_else(|error| {
+                        error!(%error, "failed to serialize empty EVM approvals");
+                        ApprovalsHash::from(Digest::default())
+                    });
+                TransactionId::new(TransactionHash::Evm(txn.as_ref().hash()), approvals_hash)
+            }
         }
     }
 
@@ -279,6 +309,23 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => InitiatorAddr::PublicKey(deploy.account().clone()),
             Transaction::V1(txn) => txn.initiator_addr().clone(),
+            Transaction::Evm(txn) => InitiatorAddr::EvmAddress(txn.from()),
+        }
+    }
+
+    /// Returns the native EVM initiator address for an EVM transaction.
+    pub fn evm_initiator_addr(&self) -> Option<evm::Address> {
+        match self {
+            Transaction::Evm(txn) => Some(txn.from()),
+            _ => None,
+        }
+    }
+
+    /// Returns the native EVM transaction hash for an EVM transaction.
+    pub fn evm_hash(&self) -> Option<evm::TransactionHash> {
+        match self {
+            Transaction::Evm(txn) => Some(txn.as_ref().hash()),
+            _ => None,
         }
     }
 
@@ -287,6 +334,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.expired(current_instant),
             Transaction::V1(txn) => txn.expired(current_instant),
+            Transaction::Evm(txn) => txn.expired(current_instant),
         }
     }
 
@@ -295,6 +343,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.header().expires(),
             Transaction::V1(txn) => txn.payload().expires(),
+            Transaction::Evm(txn) => txn.expires(),
         }
     }
 
@@ -311,6 +360,7 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+            Transaction::Evm(_) => BTreeSet::new(),
         }
     }
 
@@ -325,6 +375,7 @@ impl Transaction {
             Transaction::V1(transaction_v1) => {
                 Transaction::V1(transaction_v1.with_approvals(approvals))
             }
+            Transaction::Evm(txn) => Transaction::Evm(txn),
         }
     }
 
@@ -333,6 +384,15 @@ impl Transaction {
         match self {
             Transaction::Deploy(_) => None,
             Transaction::V1(v1) => Some(v1),
+            Transaction::Evm(_) => None,
+        }
+    }
+
+    /// Get the wrapped EVM transaction.
+    pub fn as_evm(&self) -> Option<&evm::Transaction> {
+        match self {
+            Transaction::Evm(evm) => Some(evm),
+            _ => None,
         }
     }
 
@@ -349,6 +409,7 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+            Transaction::Evm(_) => BTreeSet::new(),
         }
     }
 
@@ -357,6 +418,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(_) => true,
             Transaction::V1(_) => false,
+            Transaction::Evm(_) => false,
         }
     }
 
@@ -412,6 +474,7 @@ impl Transaction {
                     Err(err) => Err(err),
                 }
             }
+            Transaction::Evm(txn) => Ok(Gas::new(txn.gas_limit())),
         }
     }
 
@@ -442,6 +505,10 @@ impl Transaction {
                     .gas_cost(chainspec, lane_id, gas_price)
                     .map_err(InvalidTransaction::from)
             }
+            Transaction::Evm(txn) => Ok(Motes::new(
+                txn.gas_limit()
+                    .saturating_mul(txn.max_fee_per_gas().min(u64::MAX as u128) as u64),
+            )),
         }
     }
 
@@ -505,6 +572,8 @@ enum TransactionJson {
     /// A version 1 transaction.
     #[serde(rename = "Version1")]
     V1(TransactionV1Json),
+    /// An EVM signed RLP transaction.
+    Evm(Box<evm::Transaction>),
 }
 
 #[cfg(any(feature = "std", test))]
@@ -530,6 +599,7 @@ impl TryFrom<TransactionJson> for Transaction {
                         ))
                     })
             }
+            TransactionJson::Evm(evm) => Ok(Transaction::Evm(evm)),
         }
     }
 }
@@ -548,6 +618,7 @@ impl TryFrom<Transaction> for TransactionJson {
                         error
                     ))
                 }),
+            Transaction::Evm(evm) => Ok(TransactionJson::Evm(evm)),
         }
     }
 }
@@ -583,6 +654,12 @@ impl From<TransactionV1> for Transaction {
     }
 }
 
+impl From<evm::Transaction> for Transaction {
+    fn from(txn: evm::Transaction) -> Self {
+        Self::Evm(Box::new(txn))
+    }
+}
+
 impl ToBytes for Transaction {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -595,6 +672,7 @@ impl ToBytes for Transaction {
             + match self {
                 Transaction::Deploy(deploy) => deploy.serialized_length(),
                 Transaction::V1(txn) => txn.serialized_length(),
+                Transaction::Evm(txn) => txn.serialized_length(),
             }
     }
 
@@ -606,6 +684,10 @@ impl ToBytes for Transaction {
             }
             Transaction::V1(txn) => {
                 V1_TAG.write_bytes(writer)?;
+                txn.write_bytes(writer)
+            }
+            Transaction::Evm(txn) => {
+                EVM_TAG.write_bytes(writer)?;
                 txn.write_bytes(writer)
             }
         }
@@ -624,6 +706,10 @@ impl FromBytes for Transaction {
                 let (txn, remainder) = TransactionV1::from_bytes(remainder)?;
                 Ok((Transaction::V1(txn), remainder))
             }
+            EVM_TAG => {
+                let (txn, remainder) = evm::Transaction::from_bytes(remainder)?;
+                Ok((Transaction::Evm(Box::new(txn)), remainder))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -634,6 +720,7 @@ impl Display for Transaction {
         match self {
             Transaction::Deploy(deploy) => Display::fmt(deploy, formatter),
             Transaction::V1(txn) => Display::fmt(txn, formatter),
+            Transaction::Evm(txn) => Display::fmt(txn, formatter),
         }
     }
 }

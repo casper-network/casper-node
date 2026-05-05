@@ -189,6 +189,7 @@ fn to_v1_session_input_data<'a>(
     };
     match txn {
         Transaction::Deploy(_) => panic!("unexpected deploy transaction"),
+        Transaction::Evm(_) => panic!("unexpected EVM transaction"),
         Transaction::V1(transaction_v1) => {
             let data = SessionDataV1::new(
                 args,

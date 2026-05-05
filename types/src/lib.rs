@@ -44,6 +44,7 @@ mod deploy_info;
 mod digest;
 mod display_iter;
 mod era_id;
+pub mod evm;
 pub mod execution;
 #[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;

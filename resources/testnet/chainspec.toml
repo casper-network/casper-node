@@ -510,3 +510,13 @@ upper_threshold = 90
 lower_threshold = 50
 max_gas_price = 1
 min_gas_price = 1
+
+[evm]
+enabled = false
+# EVM chain IDs use 0x435350NN ("CSP" + network namespace) as EIP-155 replay domains.
+# Namespaces: mainnet=0x01, testnet=0x02, integration=0x04, devnet=0x05, local=0xFF.
+# This chainspec uses namespace 0x02 (testnet); decimal 1129533442.
+chain_id = 1_129_533_442
+spec = 'prague'
+block_gas_limit = 30_000_000
+base_fee = 0

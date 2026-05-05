@@ -370,9 +370,10 @@ pub fn execute_finalized_block(
                             artifact_builder
                                 .with_state_result_error(err)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                            BalanceIdentifier::PenalizedAccount(
-                                initiator_addr.clone().account_hash(),
-                            )
+                            let account_hash = initiator_addr
+                                .account_hash()
+                                .expect("contract runtime initiator must be a Casper account");
+                            BalanceIdentifier::PenalizedAccount(account_hash)
                         }
                     }
                 } else {
@@ -473,7 +474,10 @@ pub fn execute_finalized_block(
                     BalanceIdentifier::Payment
                 }
             } else {
-                BalanceIdentifier::PenalizedAccount(initiator_addr.clone().account_hash())
+                let account_hash = initiator_addr
+                    .account_hash()
+                    .expect("contract runtime initiator must be a Casper account");
+                BalanceIdentifier::PenalizedAccount(account_hash)
             }
         };
 

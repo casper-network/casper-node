@@ -18,9 +18,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, Package, PackageAddr, PackageHash, PackageIdentifier,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
+    DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -212,9 +212,18 @@ impl TransactionAcceptor {
         };
 
         if event_metadata.source.is_client() {
-            let account_hash = match event_metadata.transaction.initiator_addr() {
-                InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
-                InitiatorAddr::AccountHash(account_hash) => account_hash,
+            let initiator_addr = event_metadata.transaction.initiator_addr();
+            let Some(account_hash) = initiator_addr.account_hash() else {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::Evm(
+                        casper_types::evm::TransactionError::Decode(
+                            "EVM transactions are not routed through transaction acceptor"
+                                .to_string(),
+                        ),
+                    )),
+                );
             };
             let entity_addr = EntityAddr::Account(account_hash.value());
             effect_builder

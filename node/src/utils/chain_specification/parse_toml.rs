@@ -32,10 +32,10 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
-    CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig,
-    ProtocolConfig, ProtocolVersion, StorageCosts, SystemConfig, TransactionConfig, VacancyConfig,
-    WasmConfig,
+    bytesrepr::Bytes, evm::EvmConfig, file_utils, AccountsConfig, ActivationPoint, Chainspec,
+    ChainspecRawBytes, CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
+    NetworkConfig, ProtocolConfig, ProtocolVersion, StorageCosts, SystemConfig, TransactionConfig,
+    VacancyConfig, WasmConfig,
 };
 
 use crate::utils::{
@@ -77,6 +77,8 @@ pub(super) struct TomlChainspec {
     network: TomlNetwork,
     core: CoreConfig,
     transactions: TransactionConfig,
+    #[serde(default)]
+    evm: EvmConfig,
     highway: HighwayConfig,
     wasm: WasmConfig,
     system_costs: SystemConfig,
@@ -97,6 +99,7 @@ impl From<&Chainspec> for TomlChainspec {
         };
         let core = chainspec.core_config.clone();
         let transactions = chainspec.transaction_config.clone();
+        let evm = chainspec.evm_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;
@@ -108,6 +111,7 @@ impl From<&Chainspec> for TomlChainspec {
             network,
             core,
             transactions,
+            evm,
             highway,
             wasm,
             system_costs,
@@ -163,6 +167,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         network_config,
         core_config: toml_chainspec.core,
         transaction_config: toml_chainspec.transactions,
+        evm_config: toml_chainspec.evm,
         highway_config: toml_chainspec.highway,
         wasm_config: toml_chainspec.wasm,
         system_costs_config: toml_chainspec.system_costs,

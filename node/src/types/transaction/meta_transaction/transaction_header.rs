@@ -63,6 +63,9 @@ impl From<&Transaction> for TransactionHeader {
         match transaction {
             Transaction::Deploy(deploy) => deploy.header().clone().into(),
             Transaction::V1(v1) => v1.into(),
+            Transaction::Evm(_) => {
+                panic!("EVM transactions are not routed through node transaction metadata")
+            }
         }
     }
 }

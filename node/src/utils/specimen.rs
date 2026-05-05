@@ -842,6 +842,7 @@ impl LargestSpecimen for BlockPayload {
                     cache,
                 )))
             }
+            Transaction::Evm(transaction) => Transaction::Evm(transaction),
         };
 
         let large_txn_hash_with_approvals = (large_txn.hash(), large_txn.approvals());

@@ -256,6 +256,11 @@ impl MetaTransaction {
                 &transaction_config.transaction_v1_config,
             )
             .map(MetaTransaction::V1),
+            Transaction::Evm(_) => Err(InvalidTransaction::Evm(
+                casper_types::evm::TransactionError::Decode(
+                    "EVM transactions are not routed through node transaction metadata".to_string(),
+                ),
+            )),
         }
     }
 
@@ -468,6 +473,11 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
             )
             .map_err(InvalidTransaction::V1)
         }
+        Transaction::Evm(_) => Err(InvalidTransaction::Evm(
+            casper_types::evm::TransactionError::Decode(
+                "EVM transactions do not use Casper transaction lanes".to_string(),
+            ),
+        )),
     }
 }
 

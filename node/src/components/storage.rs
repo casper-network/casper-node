@@ -1614,7 +1614,7 @@ impl Storage {
                 .all_transactions()
                 .filter_map(|transaction_hash| match transaction_hash {
                     TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
-                    TransactionHash::V1(_) => None,
+                    TransactionHash::V1(_) | TransactionHash::Evm(_) => None,
                 })
                 .collect(),
         };
@@ -1660,7 +1660,7 @@ impl Storage {
 
         match transaction {
             Transaction::Deploy(deploy) => Ok(Some(LegacyDeploy::from(deploy))),
-            transaction @ Transaction::V1(_) => {
+            transaction @ (Transaction::V1(_) | Transaction::Evm(_)) => {
                 let mismatch = VariantMismatch(Box::new((transaction_hash, transaction)));
                 error!(%mismatch, "failed getting legacy deploy");
                 Err(FatalStorageError::from(mismatch))
@@ -1717,6 +1717,18 @@ impl Storage {
                     Ok(_computed_approvals_hash) => Ok(None),
                     Err(error) => {
                         error!(%error, "failed to calculate finalized transaction approvals hash");
+                        Err(FatalStorageError::UnexpectedSerializationFailure(error))
+                    }
+                }
+            }
+            (approvals_hash, finalized_approvals, transaction @ Transaction::Evm(_)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                        Ok(Some(transaction))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized EVM transaction approvals hash");
                         Err(FatalStorageError::UnexpectedSerializationFailure(error))
                     }
                 }
@@ -2034,6 +2046,11 @@ impl Storage {
                 )),
                 Some(Transaction::V1(transaction_v1)) => {
                     ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
+                }
+                Some(transaction @ Transaction::Evm(_)) => {
+                    let mismatch = VariantMismatch(Box::new((transaction_hash, transaction)));
+                    error!(%mismatch, "failed getting transaction header");
+                    return Err(FatalStorageError::from(mismatch));
                 }
             };
         }

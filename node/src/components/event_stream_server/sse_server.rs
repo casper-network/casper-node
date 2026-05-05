@@ -124,6 +124,7 @@ impl SseData {
         let (timestamp, ttl) = match &txn {
             Transaction::Deploy(deploy) => (deploy.timestamp(), deploy.ttl()),
             Transaction::V1(txn) => (txn.timestamp(), txn.ttl()),
+            Transaction::Evm(txn) => (txn.timestamp(), txn.ttl()),
         };
         let message_count = rng.gen_range(0..6);
         let messages = std::iter::repeat_with(|| rng.gen())

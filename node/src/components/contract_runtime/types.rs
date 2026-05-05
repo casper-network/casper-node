@@ -577,6 +577,11 @@ impl SpeculativeExecutionResult {
             Transaction::V1(_) => SpeculativeExecutionResult::InvalidTransaction(
                 InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
             ),
+            Transaction::Evm(_) => SpeculativeExecutionResult::InvalidTransaction(
+                InvalidTransaction::Evm(casper_types::evm::TransactionError::Decode(
+                    "EVM transactions are not routed through contract runtime".to_string(),
+                )),
+            ),
         }
     }
 

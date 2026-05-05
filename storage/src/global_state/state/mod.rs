@@ -1170,7 +1170,9 @@ pub trait StateProvider: Send + Sync + Sized {
             Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        let source_account_hash = initiator.account_hash();
+        let source_account_hash = initiator
+            .account_hash()
+            .expect("bidding initiator must be a Casper account");
         let (entity_addr, mut footprint, mut entity_access_rights) = match tc
             .borrow_mut()
             .authorized_runtime_footprint_with_access_rights(
@@ -1489,7 +1491,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 // pay amount from source to target
                 match runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        initiator_addr.account_hash(),
                         source_purse,
                         target_purse,
                         refund_amount,
@@ -1559,7 +1561,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 };
                 match runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        initiator_addr.account_hash(),
                         source_purse,
                         target_purse,
                         refund_amount,
@@ -1701,7 +1703,7 @@ pub trait StateProvider: Send + Sync + Sized {
                 };
                 runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        initiator_addr.account_hash(),
                         source_purse,
                         target_purse,
                         amount,
@@ -2078,7 +2080,10 @@ pub trait StateProvider: Send + Sync + Sized {
             }
         };
 
-        let source_account_hash = request.initiator().account_hash();
+        let source_account_hash = request
+            .initiator()
+            .account_hash()
+            .expect("transfer initiator must be a Casper account");
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
@@ -2277,7 +2282,10 @@ pub trait StateProvider: Send + Sync + Sized {
             }
         };
 
-        let source_account_hash = request.initiator().account_hash();
+        let source_account_hash = request
+            .initiator()
+            .account_hash()
+            .expect("burn initiator must be a Casper account");
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()

@@ -16,10 +16,12 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 VM2_CONTRACTS    = $(shell find ./smart_contracts/contracts/vm2 -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]* -mindepth 1 -maxdepth 1 -not -path "./smart_contracts/contracts/vm2*" -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EVM_CONTRACTS    = $(shell find ./smart_contracts/evm_contracts -mindepth 1 -maxdepth 1 -name '*.sol' -exec basename {} .sol \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
+EVM_CONTRACT_TARGET_DIR   = target/evm-contracts
 
 build-contract-rs/%:
 	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
@@ -54,6 +56,21 @@ build-client-contracts: build-client-contracts-rs strip-client-contracts
 
 .PHONY: build-contracts
 build-contracts: build-contracts-rs
+
+.PHONY: setup-evm
+setup-evm:
+	@command -v solc >/dev/null || (echo "solc is required to build EVM contract fixtures" && exit 1)
+
+build-contract-evm/%: setup-evm
+	mkdir -p $(EVM_CONTRACT_TARGET_DIR)
+	solc --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
+
+.PHONY: build-contracts-evm
+build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))
+
+.PHONY: test-contracts-evm
+test-contracts-evm: build-contracts-evm
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-executor-evm
 
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<

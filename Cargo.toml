@@ -28,6 +28,7 @@ members = [
     "executor/wasm_host",
     "executor/wasmer_backend",
     "executor/wasm",
+    "executor/evm",
 ]
 
 default-members = [

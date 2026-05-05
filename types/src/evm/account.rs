@@ -1,0 +1,262 @@
+use alloc::vec::Vec;
+
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use super::{Address, Hash, ADDRESS_LENGTH};
+use crate::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    Digest, URef,
+};
+
+/// EVM account metadata stored in global state.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Account {
+    nonce: u64,
+    code_hash: Hash,
+    main_purse: URef,
+}
+
+impl Account {
+    /// Creates EVM account metadata.
+    pub const fn new(nonce: u64, code_hash: Hash, main_purse: URef) -> Self {
+        Account {
+            nonce,
+            code_hash,
+            main_purse,
+        }
+    }
+
+    /// Returns the EVM account nonce.
+    pub const fn nonce(self) -> u64 {
+        self.nonce
+    }
+
+    /// Returns the hash of the bytecode associated with this account.
+    pub const fn code_hash(self) -> Hash {
+        self.code_hash
+    }
+
+    /// Returns the Casper main purse backing this EVM account balance.
+    pub const fn main_purse(self) -> URef {
+        self.main_purse
+    }
+}
+
+impl ToBytes for Account {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut bytes = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.nonce.serialized_length()
+            + self.code_hash.serialized_length()
+            + self.main_purse.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.nonce.write_bytes(writer)?;
+        self.code_hash.write_bytes(writer)?;
+        self.main_purse.write_bytes(writer)
+    }
+}
+
+impl FromBytes for Account {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (nonce, remainder) = u64::from_bytes(bytes)?;
+        let (code_hash, remainder) = Hash::from_bytes(remainder)?;
+        let (main_purse, remainder) = URef::from_bytes(remainder)?;
+        Ok((Account::new(nonce, code_hash, main_purse), remainder))
+    }
+}
+
+/// EVM contract bytecode stored in global state.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct ByteCode(Vec<u8>);
+
+impl ByteCode {
+    /// Creates EVM bytecode from raw bytes.
+    pub fn new(bytes: Vec<u8>) -> Self {
+        ByteCode(bytes)
+    }
+
+    /// Returns the bytecode bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Consumes the wrapper and returns the bytecode bytes.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl AsRef<[u8]> for ByteCode {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl From<Vec<u8>> for ByteCode {
+    fn from(bytes: Vec<u8>) -> Self {
+        ByteCode::new(bytes)
+    }
+}
+
+impl From<Bytes> for ByteCode {
+    fn from(bytes: Bytes) -> Self {
+        ByteCode::new(bytes.into())
+    }
+}
+
+impl ToBytes for ByteCode {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for ByteCode {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        Bytes::from_bytes(bytes).map(|(bytes, remainder)| (ByteCode::from(bytes), remainder))
+    }
+}
+
+/// EVM storage value stored in global state.
+#[derive(
+    Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct StorageValue(Hash);
+
+impl StorageValue {
+    /// Creates an EVM storage value from a 32-byte word.
+    pub const fn new(value: Hash) -> Self {
+        StorageValue(value)
+    }
+
+    /// Returns the 32-byte word stored in this slot.
+    pub const fn value(self) -> Hash {
+        self.0
+    }
+
+    /// Returns `true` when all bytes are zero.
+    pub fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+}
+
+impl From<Hash> for StorageValue {
+    fn from(value: Hash) -> Self {
+        StorageValue::new(value)
+    }
+}
+
+impl From<StorageValue> for Hash {
+    fn from(value: StorageValue) -> Self {
+        value.value()
+    }
+}
+
+impl ToBytes for StorageValue {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for StorageValue {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        Hash::from_bytes(bytes).map(|(hash, remainder)| (StorageValue::new(hash), remainder))
+    }
+}
+
+/// Global-state address for one EVM account storage slot.
+#[derive(
+    Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct StorageAddr {
+    address: Address,
+    slot: Hash,
+}
+
+impl StorageAddr {
+    /// Creates an EVM storage address from a contract address and storage slot.
+    pub const fn new(address: Address, slot: Hash) -> Self {
+        StorageAddr { address, slot }
+    }
+
+    /// Returns the EVM account or contract address owning the storage slot.
+    pub const fn address(self) -> Address {
+        self.address
+    }
+
+    /// Returns the EVM storage slot key.
+    pub const fn slot(self) -> Hash {
+        self.slot
+    }
+}
+
+impl ToBytes for StorageAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut bytes = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.address.serialized_length() + self.slot.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.address.write_bytes(writer)?;
+        self.slot.write_bytes(writer)
+    }
+}
+
+impl FromBytes for StorageAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (address, remainder) = Address::from_bytes(bytes)?;
+        let (slot, remainder) = Hash::from_bytes(remainder)?;
+        Ok((StorageAddr::new(address, slot), remainder))
+    }
+}
+
+/// Returns the deterministic main purse backing an EVM address.
+pub fn deterministic_purse(address: Address) -> URef {
+    let mut preimage = Vec::with_capacity(b"evm-purse-v1".len() + ADDRESS_LENGTH);
+    preimage.extend_from_slice(b"evm-purse-v1");
+    preimage.extend_from_slice(address.as_ref());
+    URef::new(
+        Digest::hash(preimage).value(),
+        crate::AccessRights::READ_ADD_WRITE,
+    )
+}

@@ -1125,6 +1125,7 @@ impl reactor::Reactor for Reactor {
                         | BalanceIdentifier::PenalizedAccount(account_hash) => {
                             Key::Account(*account_hash)
                         }
+                        BalanceIdentifier::Evm(address) => Key::EvmAccount(*address),
                         BalanceIdentifier::Entity(entity_addr) => {
                             Key::AddressableEntity(*entity_addr)
                         }

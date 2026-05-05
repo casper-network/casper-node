@@ -31,6 +31,7 @@ use crate::{
         gens::{public_key_arb_no_system, secret_key_arb_no_system},
     },
     deploy_info::gens::deploy_info_arb,
+    evm,
     global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::{
@@ -985,6 +986,18 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
         collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
+        (any::<u64>(), u8_slice_32(), uref_arb()).prop_map(|(nonce, code_hash, main_purse)| {
+            StoredValue::EvmAccount(crate::evm::Account::new(
+                nonce,
+                crate::evm::Hash::new(code_hash),
+                main_purse,
+            ))
+        }),
+        collection::vec(any::<u8>(), 0..1000)
+            .prop_map(|bytes| StoredValue::EvmByteCode(crate::evm::ByteCode::new(bytes))),
+        u8_slice_32().prop_map(|value| {
+            StoredValue::EvmStorage(crate::evm::StorageValue::new(crate::evm::Hash::new(value)))
+        }),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -1011,6 +1024,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
                 StoredValue::RawBytes(_) => stored_value,
+                StoredValue::EvmAccount(_) => stored_value,
+                StoredValue::EvmByteCode(_) => stored_value,
+                StoredValue::EvmStorage(_) => stored_value,
         })
 }
 
@@ -1303,6 +1319,8 @@ pub fn initiator_addr_arb() -> impl Strategy<Value = InitiatorAddr> {
     prop_oneof![
         public_key_arb_no_system().prop_map(InitiatorAddr::PublicKey),
         u2_slice_32().prop_map(|hash| InitiatorAddr::AccountHash(AccountHash::new(hash))),
+        array::uniform20(any::<u8>())
+            .prop_map(|address| InitiatorAddr::EvmAddress(evm::Address::new(address))),
     ]
 }
 

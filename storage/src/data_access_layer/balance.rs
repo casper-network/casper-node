@@ -1,6 +1,7 @@
 //! Types for balance queries.
 use casper_types::{
     account::AccountHash,
+    evm,
     global_state::TrieMerkleProof,
     system::{
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
@@ -8,7 +9,8 @@ use casper_types::{
         HANDLE_PAYMENT,
     },
     AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, InitiatorAddr, Key,
-    ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
+    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, TimeDiff, URef, URefAddr,
+    U512,
 };
 use itertools::Itertools;
 use num_rational::Ratio;
@@ -60,6 +62,8 @@ pub enum BalanceIdentifier {
     Public(PublicKey),
     /// Use main purse of entity from account hash.
     Account(AccountHash),
+    /// Use main purse backing an EVM account.
+    Evm(evm::Address),
     /// Use main purse of entity.
     Entity(EntityAddr),
     /// Use purse at Key::Purse(URefAddr).
@@ -78,6 +82,7 @@ impl BalanceIdentifier {
             BalanceIdentifier::Purse(uref) => Some(uref.addr()),
             BalanceIdentifier::Public(_)
             | BalanceIdentifier::Account(_)
+            | BalanceIdentifier::Evm(_)
             | BalanceIdentifier::PenalizedAccount(_)
             | BalanceIdentifier::PenalizedPayment
             | BalanceIdentifier::Entity(_)
@@ -115,6 +120,21 @@ impl BalanceIdentifier {
                         .main_purse()
                         .ok_or(TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
+                }
+            }
+            BalanceIdentifier::Evm(address) => {
+                let key = Key::EvmAccount(*address);
+                match tc.read(&key)? {
+                    Some(StoredValue::EvmAccount(account)) => account.main_purse(),
+                    Some(stored_value) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "StoredValue::EvmAccount".to_string(),
+                                stored_value.type_name(),
+                            ),
+                        ));
+                    }
+                    None => return Err(TrackingCopyError::KeyNotFound(key)),
                 }
             }
             BalanceIdentifier::Entity(entity_addr) => {
@@ -192,6 +212,7 @@ impl From<InitiatorAddr> for BalanceIdentifier {
         match value {
             InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
             InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
+            InitiatorAddr::EvmAddress(address) => BalanceIdentifier::Evm(address),
         }
     }
 }

@@ -42,6 +42,7 @@ impl VersionedKey for TransactionHash {
         match self {
             TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
             TransactionHash::V1(_) => None,
+            TransactionHash::Evm(_) => None,
         }
     }
 }
@@ -566,6 +567,7 @@ mod tests {
                     let _ = visited.insert(*deploy.hash(), deploy);
                 }
                 Transaction::V1(_) => unreachable!(),
+                Transaction::Evm(_) => unreachable!(),
             }
             Ok(())
         };
