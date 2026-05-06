@@ -61,7 +61,7 @@ impl EraEnd {
     }
 
     /// Returns the rewards.
-    pub fn rewards(&self) -> Rewards {
+    pub fn rewards(&self) -> Rewards<'_> {
         match self {
             EraEnd::V1(v1) => Rewards::V1(v1.rewards()),
             EraEnd::V2(v2) => Rewards::V2(v2.rewards()),

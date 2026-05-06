@@ -460,7 +460,7 @@ fn should_traverse_all_paths() {
     }
 
     let expected_contract = unpack(
-        tc.query(account_key, &[contract_alias.clone()]),
+        tc.query(account_key, std::slice::from_ref(&contract_alias)),
         "contract should exist".to_string(),
     );
     assert_eq!(
@@ -482,7 +482,7 @@ fn should_traverse_all_paths() {
     );
 
     let expected_account = unpack(
-        tc.query(contract_key, &[account_alias.clone()]),
+        tc.query(contract_key, std::slice::from_ref(&account_alias)),
         "account should exist".to_string(),
     );
     assert_eq!(expected_account, stored_account, "unexpected stored value");
@@ -507,7 +507,7 @@ fn should_traverse_all_paths() {
     assert_eq!(expected_value, misc_stored_value, "unexpected stored value");
 
     let expected_account_misc = unpack(
-        tc.query(account_key, &[misc_alias.clone()]),
+        tc.query(account_key, std::slice::from_ref(&misc_alias)),
         "misc value should exist via account".to_string(),
     );
     assert_eq!(

@@ -181,6 +181,7 @@ impl Distribution<KeyFingerprint> for Standard {
 
 /// Cryptographic signature.
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[allow(dead_code)]
 struct Signature(Vec<u8>);
 
 impl Debug for Signature {
@@ -295,6 +296,7 @@ pub(crate) fn load_secret_key<P: AsRef<Path>>(src: P) -> Result<PKey<Private>, L
 /// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
 /// serializing the value to bytes and signing the result.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[allow(dead_code)]
 pub struct Signed<V> {
     data: Vec<u8>,
     signature: Signature,

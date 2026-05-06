@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
+#[allow(dead_code)]
 pub enum DeployCategory {
     /// Standard transaction (the default).
     #[default]

@@ -99,6 +99,7 @@ pub(crate) use relaxed::{ConsensusMessage, ConsensusMessageDiscriminants};
 
 /// A request to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]
+#[allow(dead_code)]
 pub(crate) enum EraRequest<C>
 where
     C: Context,

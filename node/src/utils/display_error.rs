@@ -31,7 +31,7 @@ where
     T: error::Error,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut opt_source: Option<&(dyn error::Error)> = Some(self.0);
+        let mut opt_source: Option<&dyn error::Error> = Some(self.0);
 
         while let Some(source) = opt_source {
             write!(f, "{}", source)?;

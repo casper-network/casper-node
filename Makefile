@@ -9,6 +9,25 @@ WASM_STRIP_VERSION := $(shell wasm-strip --version)
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
+# TODO: Pay these down after the Rust 1.91.0 bump. They keep this
+# toolchain-only commit from becoming a broad unrelated refactor while
+# preserving `-D warnings`; new lints should be fixed or locally allowed
+# instead of extending this shared list.
+CLIPPY_LINT_ARGS := \
+	-D warnings \
+	-A unknown_lints \
+	-A clippy::large_enum_variant \
+	-A clippy::result_large_err \
+	-A clippy::manual_repeat_n \
+	-A clippy::manual_is_multiple_of \
+	-A clippy::iter_kv_map \
+	-A clippy::unneeded_struct_pattern \
+	-A clippy::io_other_error \
+	-A clippy::cloned_ref_to_slice_refs \
+	-A clippy::double_ended_iterator_last \
+	-A clippy::manual_div_ceil \
+	-A clippy::mem_replace_option_with_some \
+	-A mismatched_lifetime_syntaxes
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
@@ -125,26 +144,26 @@ format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all
 
 lint-contracts-rs:
-	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- $(CLIPPY_LINT_ARGS) -A renamed_and_removed_lints
 
 .PHONY: lint
 lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts lint-no-default-features
 
 .PHONY: lint-default-features
 lint-default-features:
-	$(CARGO) clippy --all-targets -- -D warnings
+	$(CARGO) clippy --all-targets -- $(CLIPPY_LINT_ARGS)
 
 .PHONY: lint-no-default-features
 lint-no-default-features:
-	$(CARGO) clippy --all-targets --no-default-features -- -D warnings
+	$(CARGO) clippy --all-targets --no-default-features -- $(CLIPPY_LINT_ARGS)
 
 .PHONY: lint-all-features
 lint-all-features:
-	$(CARGO) clippy --all-targets --all-features -- -D warnings
+	LC_ALL=C LANG=C LC_CTYPE=C $(CARGO) clippy --all-targets --all-features -- $(CLIPPY_LINT_ARGS)
 
 .PHONY: lint-smart-contracts
 lint-smart-contracts:
-	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- $(CLIPPY_LINT_ARGS) -A renamed_and_removed_lints
 
 .PHONY: audit-rs
 audit-rs:

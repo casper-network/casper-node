@@ -504,8 +504,10 @@ impl BidsExt for Vec<BidKind> {
             if let BidKind::Unified(unified) = bid_kind {
                 let delegators = unified
                     .delegators()
-                    .iter()
-                    .map(|(_, y)| DelegatorKind::PublicKey(y.delegator_public_key().clone()))
+                    .values()
+                    .map(|delegator| {
+                        DelegatorKind::PublicKey(delegator.delegator_public_key().clone())
+                    })
                     .collect();
                 ret.insert(unified.validator_public_key().clone(), delegators);
             }

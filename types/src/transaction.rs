@@ -68,8 +68,9 @@ pub use approvals_hash::ApprovalsHash;
 #[cfg(any(feature = "std", test))]
 pub use deploy::calculate_lane_id_for_deploy;
 pub use deploy::{
-    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InvalidDeploy,
+    Deploy, DeployCategory, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    InvalidDeploy,
 };
 pub use error::InvalidTransaction;
 pub use execution_info::ExecutionInfo;
@@ -568,10 +569,10 @@ impl<'de> Deserialize<'de> for Transaction {
 #[serde(deny_unknown_fields)]
 enum TransactionJson {
     /// A deploy.
-    Deploy(Deploy),
+    Deploy(Box<Deploy>),
     /// A version 1 transaction.
     #[serde(rename = "Version1")]
-    V1(TransactionV1Json),
+    V1(Box<TransactionV1Json>),
     /// An EVM signed RLP transaction.
     Evm(Box<evm::Transaction>),
 }
@@ -588,9 +589,9 @@ impl TryFrom<TransactionJson> for Transaction {
     type Error = TransactionJsonError;
     fn try_from(transaction: TransactionJson) -> Result<Self, Self::Error> {
         match transaction {
-            TransactionJson::Deploy(deploy) => Ok(Transaction::Deploy(deploy)),
+            TransactionJson::Deploy(deploy) => Ok(Transaction::Deploy(*deploy)),
             TransactionJson::V1(v1) => {
-                TransactionV1::try_from(v1)
+                TransactionV1::try_from(*v1)
                     .map(Transaction::V1)
                     .map_err(|error| {
                         TransactionJsonError::FailedToMap(format!(
@@ -609,8 +610,9 @@ impl TryFrom<Transaction> for TransactionJson {
     type Error = TransactionJsonError;
     fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
         match transaction {
-            Transaction::Deploy(deploy) => Ok(TransactionJson::Deploy(deploy)),
+            Transaction::Deploy(deploy) => Ok(TransactionJson::Deploy(Box::new(deploy))),
             Transaction::V1(v1) => TransactionV1Json::try_from(v1)
+                .map(Box::new)
                 .map(TransactionJson::V1)
                 .map_err(|error| {
                     TransactionJsonError::FailedToMap(format!(

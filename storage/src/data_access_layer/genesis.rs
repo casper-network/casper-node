@@ -101,6 +101,7 @@ impl Distribution<GenesisRequest> for Standard {
 
 /// Represents a result of a `genesis` request.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum GenesisResult {
     /// Genesis fatal.
     Fatal(String),

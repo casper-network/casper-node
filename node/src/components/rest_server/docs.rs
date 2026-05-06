@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use casper_types::{ProtocolVersion, PublicKey, SecretKey, Timestamp};
 use once_cell::sync::Lazy;
 

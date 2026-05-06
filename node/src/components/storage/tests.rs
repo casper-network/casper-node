@@ -1541,6 +1541,7 @@ fn should_provide_transfers_after_emptied() {
 
 /// Example state used in storage.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[allow(dead_code)]
 struct StateData {
     a: Vec<u32>,
     b: i32,

@@ -74,6 +74,7 @@ impl<'de> Deserialize<'de> for NodeId {
     }
 }
 
+#[allow(dead_code)]
 static NODE_ID: Lazy<NodeId> =
     Lazy::new(|| NodeId(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
 

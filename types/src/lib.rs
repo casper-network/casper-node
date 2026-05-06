@@ -195,9 +195,9 @@ pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(feature = "std", test))]
 pub use transaction::{calculate_lane_id_for_deploy, calculate_transaction_lane, GasLimited};
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployCategory,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
+    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
     PricingMode, PricingModeError, RuntimeArgs, Transaction, TransactionArgs,
     TransactionEntryPoint, TransactionHash, TransactionId, TransactionInvocationTarget,

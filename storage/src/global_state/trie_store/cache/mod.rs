@@ -151,7 +151,7 @@ where
                         }
                     } else {
                         let leaf = TrieCacheNode::Leaf { key, value };
-                        let _ = std::mem::replace(pointer, Some(CachePointer::InMem(leaf)));
+                        let _ = pointer.replace(CachePointer::InMem(leaf));
                         return Ok(());
                     }
                 }
