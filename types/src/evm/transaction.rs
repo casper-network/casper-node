@@ -174,6 +174,8 @@ pub enum TransactionError {
     Decode(String),
     /// The transaction envelope type is not supported by this first-pass executor.
     UnsupportedTransactionType(u8),
+    /// The transaction contains an access list, which this first-pass executor does not model.
+    UnsupportedAccessList,
     /// The sender address could not be recovered from the signature.
     SenderRecovery(String),
     /// Re-decoding the raw RLP produced metadata different from this transaction.
@@ -188,6 +190,9 @@ impl Display for TransactionError {
             }
             TransactionError::UnsupportedTransactionType(kind) => {
                 write!(formatter, "unsupported EVM transaction type: {kind}")
+            }
+            TransactionError::UnsupportedAccessList => {
+                formatter.write_str("unsupported EVM transaction access list")
             }
             TransactionError::SenderRecovery(error) => {
                 write!(formatter, "EVM transaction sender recovery error: {error}")
@@ -303,6 +308,12 @@ impl Transaction {
             return Err(TransactionError::Decode(
                 "trailing bytes after transaction envelope".to_string(),
             ));
+        }
+        if envelope
+            .access_list()
+            .is_some_and(|access_list| !access_list.is_empty())
+        {
+            return Err(TransactionError::UnsupportedAccessList);
         }
         let from = envelope
             .recover_signer()

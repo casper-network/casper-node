@@ -34,7 +34,9 @@ where
     let account_key = Key::EvmAccount(address);
 
     if account.is_selfdestructed() {
-        prune_account(tracking_copy, address, account_key)?;
+        let main_purse = existing_main_purse(tracking_copy, &account_key)?
+            .unwrap_or_else(|| evm::deterministic_purse(address));
+        prune_account(tracking_copy, address, account_key, main_purse)?;
         return Ok(());
     }
 
@@ -79,6 +81,7 @@ fn prune_account<R>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
     account_key: Key,
+    main_purse: casper_types::URef,
 ) -> Result<(), Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -89,6 +92,7 @@ where
     for key in storage_keys {
         tracking_copy.prune(key);
     }
+    tracking_copy.prune(Key::Balance(main_purse.addr()));
     tracking_copy.prune(account_key);
     Ok(())
 }

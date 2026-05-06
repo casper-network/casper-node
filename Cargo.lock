@@ -1446,6 +1446,9 @@ dependencies = [
 name = "casper-executor-evm"
 version = "0.1.0"
 dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
  "casper-storage",
  "casper-types",
  "revm",

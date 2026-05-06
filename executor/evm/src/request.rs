@@ -24,9 +24,9 @@ pub enum ExecuteKind {
 
 /// Unsigned EVM call request.
 ///
-/// Calls are useful for views and simulations. They still write effects into
-/// the supplied tracking copy, so callers should pass a fork when they want to
-/// discard the result.
+/// Calls are useful for views, simulations, tests, and controlled system
+/// execution. They still write effects into the supplied tracking copy, so
+/// callers should pass a fork when they want to discard the result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CallRequest {
     /// EVM address used as `msg.sender`.
@@ -41,8 +41,25 @@ pub struct CallRequest {
     pub gas_limit: u64,
     /// Gas price used by gas-price-sensitive contracts.
     pub gas_price: u128,
-    /// Nonce presented to revm when nonce checks are enabled by future callers.
+    /// Nonce presented to revm when nonce checks are enabled.
     pub nonce: u64,
+    /// Validation mode used for this unsigned call.
+    pub validation: CallValidation,
+}
+
+/// Validation mode for unsigned EVM calls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CallValidation {
+    /// Enforce EVM balance, nonce, chain-id, base-fee, and block-gas-limit checks.
+    Checked,
+    /// Disable EVM transaction validation checks for local simulations or controlled tests.
+    UncheckedSimulation,
+}
+
+impl CallValidation {
+    pub(crate) fn is_unchecked_simulation(self) -> bool {
+        matches!(self, CallValidation::UncheckedSimulation)
+    }
 }
 
 /// Per-execution block context.

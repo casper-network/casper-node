@@ -1,3 +1,9 @@
+use alloy_consensus::{SignableTransaction, TxEip2930, TxEnvelope};
+use alloy_eips::{
+    eip2718::Encodable2718,
+    eip2930::{AccessList, AccessListItem},
+};
+use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_types::{
     evm::{
         Address, Hash, Transaction, TransactionError, TransactionKind, EIP4844_TRANSACTION_TYPE_ID,
@@ -97,6 +103,17 @@ fn unsupported_typed_transactions_are_clear_errors() {
     );
 }
 
+#[test]
+fn non_empty_access_lists_are_rejected() {
+    let timestamp = Timestamp::zero();
+    let ttl = TimeDiff::from_seconds(60);
+
+    assert_eq!(
+        Transaction::from_signed_rlp(signed_eip2930_with_access_list(), timestamp, ttl),
+        Err(TransactionError::UnsupportedAccessList)
+    );
+}
+
 fn decode<const N: usize>(bytes: [u8; N]) -> Transaction {
     Transaction::from_signed_rlp(
         bytes.to_vec(),
@@ -110,4 +127,23 @@ fn word(value: u64) -> Hash {
     let mut bytes = [0u8; 32];
     bytes[24..].copy_from_slice(&value.to_be_bytes());
     Hash::new(bytes)
+}
+
+fn signed_eip2930_with_access_list() -> Vec<u8> {
+    let tx = TxEip2930 {
+        chain_id: 7,
+        nonce: 0,
+        gas_price: 1_000_000_000,
+        gas_limit: 50_000,
+        to: TxKind::Call(AlloyAddress::from([2u8; 20])),
+        value: U256::from(456u64),
+        input: vec![0x12, 0x34].into(),
+        access_list: AccessList(vec![AccessListItem {
+            address: AlloyAddress::from([8u8; 20]),
+            storage_keys: vec![B256::from([9u8; 32])],
+        }]),
+    };
+    let tx = tx.into_signed(Signature::test_signature());
+    let envelope: TxEnvelope = tx.into();
+    envelope.encoded_2718()
 }

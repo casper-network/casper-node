@@ -11,21 +11,27 @@ use revm::{
     state::{AccountInfo, Bytecode},
 };
 
-use crate::{tx, DbError};
+use crate::{tx, BlockHashProvider, DbError};
 
-pub(crate) struct CasperDb<'a, R>
+pub(crate) struct CasperDb<'a, R, B>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    B: BlockHashProvider + ?Sized,
 {
     tracking_copy: &'a mut TrackingCopy<R>,
+    block_hash_provider: &'a B,
 }
 
-impl<'a, R> CasperDb<'a, R>
+impl<'a, R, B> CasperDb<'a, R, B>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    B: BlockHashProvider + ?Sized,
 {
-    pub(crate) fn new(tracking_copy: &'a mut TrackingCopy<R>) -> Self {
-        Self { tracking_copy }
+    pub(crate) fn new(tracking_copy: &'a mut TrackingCopy<R>, block_hash_provider: &'a B) -> Self {
+        Self {
+            tracking_copy,
+            block_hash_provider,
+        }
     }
 
     fn balance(&mut self, main_purse: casper_types::URef) -> Result<U256, DbError> {
@@ -42,9 +48,10 @@ where
     }
 }
 
-impl<R> Database for CasperDb<'_, R>
+impl<R, B> Database for CasperDb<'_, R, B>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    B: BlockHashProvider + ?Sized,
 {
     type Error = DbError;
 
@@ -105,8 +112,15 @@ where
         }
     }
 
-    fn block_hash(&mut self, _number: u64) -> Result<B256, Self::Error> {
-        Ok(B256::ZERO)
+    fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
+        let maybe_block_hash = self
+            .block_hash_provider
+            .block_hash(number)
+            .map_err(|error| DbError::BlockHash {
+                height: number,
+                error,
+            })?;
+        Ok(maybe_block_hash.map(tx::to_revm_hash).unwrap_or(B256::ZERO))
     }
 }
 

@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
+use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
+use alloy_eips::eip2718::Encodable2718;
+use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
 use casper_executor_evm::{
-    BlockContext, CallRequest, EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus,
-    EMPTY_CODE_HASH,
+    BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
+    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -18,6 +21,7 @@ use casper_types::{
     Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
     Timestamp, WasmConfig, U512,
 };
+use revm::bytecode::opcode;
 
 fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
     let accounts = (1u8..=3)
@@ -91,6 +95,65 @@ fn block() -> BlockContext {
     }
 }
 
+#[derive(Clone, Copy)]
+struct HeightBlockHashProvider;
+
+impl BlockHashProvider for HeightBlockHashProvider {
+    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<evm::Hash>> {
+        Ok(Some(block_hash_for_height(block_height)))
+    }
+}
+
+fn block_hash_for_height(block_height: u64) -> evm::Hash {
+    let mut bytes = [0u8; evm::HASH_LENGTH];
+    bytes[24..].copy_from_slice(&block_height.to_be_bytes());
+    evm::Hash::new(bytes)
+}
+
+fn init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
+    let runtime_len = u8::try_from(runtime.len()).expect("runtime should fit in PUSH1");
+    let runtime_offset = 12u8;
+    let mut init_code = vec![
+        // memory[0..runtime_len] = code[runtime_offset..runtime_offset + runtime_len]
+        opcode::PUSH1,
+        runtime_len,
+        opcode::PUSH1,
+        runtime_offset,
+        opcode::PUSH1,
+        0,
+        opcode::CODECOPY,
+        // return memory[0..runtime_len]
+        opcode::PUSH1,
+        runtime_len,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    assert_eq!(init_code.len(), usize::from(runtime_offset));
+    init_code.extend(runtime);
+    init_code
+}
+
+fn blockhash_contract_init_code() -> Vec<u8> {
+    let runtime = vec![
+        // bytes32 hash = blockhash(1);
+        opcode::PUSH1,
+        1,
+        opcode::BLOCKHASH,
+        // mstore(0, hash);
+        opcode::PUSH1,
+        0,
+        opcode::MSTORE,
+        // return abi.encode(hash);
+        opcode::PUSH1,
+        32,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code_returning(runtime)
+}
+
 fn call_request(
     from: evm::Address,
     to: Option<evm::Address>,
@@ -107,6 +170,28 @@ fn call_request(
             gas_limit: 5_000_000,
             gas_price: 0,
             nonce: 0,
+            validation: CallValidation::UncheckedSimulation,
+        }),
+    }
+}
+
+fn checked_call_request(
+    from: evm::Address,
+    to: Option<evm::Address>,
+    input: Vec<u8>,
+    value: evm::Hash,
+) -> ExecuteRequest {
+    ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Call(CallRequest {
+            from,
+            to,
+            value,
+            input,
+            gas_limit: 5_000_000,
+            gas_price: 0,
+            nonce: 0,
+            validation: CallValidation::Checked,
         }),
     }
 }
@@ -198,6 +283,30 @@ fn decode_hex(hex: &str) -> Vec<u8> {
         .collect()
 }
 
+fn legacy_transaction(chain_id: Option<u64>) -> evm::Transaction {
+    let tx = TxLegacy {
+        chain_id,
+        nonce: 0,
+        gas_price: 1,
+        gas_limit: 21_000,
+        to: TxKind::Call(AlloyAddress::from([1u8; 20])),
+        value: U256::ZERO,
+        input: Default::default(),
+    };
+    let tx = tx.into_signed(Signature::test_signature().with_parity(true));
+    let envelope: TxEnvelope = tx.into();
+    evm::Transaction::from_signed_rlp(
+        envelope.encoded_2718(),
+        Timestamp::zero(),
+        casper_types::TimeDiff::from_seconds(60),
+    )
+    .expect("transaction should decode")
+}
+
+fn legacy_transaction_without_chain_id() -> evm::Transaction {
+    legacy_transaction(None)
+}
+
 fn read_storage<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
@@ -248,6 +357,57 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy.write(
         Key::Balance(main_purse.addr()),
         StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
+    );
+}
+
+#[test]
+fn blockhash_uses_supplied_provider() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let from = evm::Address::new([1; 20]);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let contract = execute_call(
+        &executor,
+        &mut tracking_copy,
+        from,
+        None,
+        blockhash_contract_init_code(),
+    )
+    .created_contract_address
+    .expect("deploy should return a contract address");
+    let block_hash_provider = HeightBlockHashProvider;
+
+    let outcome = executor
+        .execute_with_block_hash_provider(
+            &mut tracking_copy,
+            call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO),
+            &block_hash_provider,
+        )
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
+
+    let mut too_old_request = call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO);
+    too_old_request.block.number = 258;
+    let outcome = executor
+        .execute_with_block_hash_provider(&mut tracking_copy, too_old_request, &block_hash_provider)
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
+
+    let mut historical_request = call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO);
+    historical_request.block.number = 2;
+    let outcome = executor
+        .execute_with_block_hash_provider(
+            &mut tracking_copy,
+            historical_request,
+            &block_hash_provider,
+        )
+        .expect("EVM execution should succeed");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        outcome.output.as_slice(),
+        block_hash_for_height(1).as_bytes()
     );
 }
 
@@ -501,6 +661,14 @@ fn selfdestruct_cleanup_follows_selected_fork() {
         None
     );
     assert_eq!(
+        shanghai_tracking_copy
+            .read(&Key::Balance(
+                evm::deterministic_purse(shanghai_contract).addr()
+            ))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
         read_storage(
             &mut shanghai_tracking_copy,
             shanghai_contract,
@@ -528,4 +696,53 @@ fn selfdestruct_cleanup_follows_selected_fork() {
         .read(&Key::EvmAccount(prague_contract))
         .unwrap()
         .is_some());
+}
+
+#[test]
+fn signed_transactions_require_configured_chain_id() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let missing_chain_id = legacy_transaction_without_chain_id();
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Transaction(missing_chain_id),
+    };
+    assert!(matches!(
+        executor.execute(&mut tracking_copy, request),
+        Err(Error::MissingChainId)
+    ));
+
+    let wrong_chain_executor = EvmExecutor::new(evm::EvmConfig {
+        enabled: true,
+        chain_id: 8,
+        spec: evm::EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 0,
+    });
+    let transaction = legacy_transaction(Some(7));
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Transaction(transaction),
+    };
+    assert!(matches!(
+        wrong_chain_executor.execute(&mut tracking_copy, request),
+        Err(Error::ChainIdMismatch {
+            expected: 8,
+            actual: 7
+        })
+    ));
+}
+
+#[test]
+fn checked_calls_enforce_transaction_validation() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let from = evm::Address::new([1; 20]);
+    let recipient = evm::Address::new([2; 20]);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    let request = checked_call_request(from, Some(recipient), Vec::new(), word(1));
+    assert!(matches!(
+        executor.execute(&mut tracking_copy, request),
+        Err(Error::Revm(_))
+    ));
 }

@@ -3,6 +3,7 @@
 //! This crate provides a small execution API over `TrackingCopy` and keeps
 //! `revm` details behind internal adapter modules.
 
+mod block_hash;
 mod db;
 mod error;
 mod executor;
@@ -11,10 +12,14 @@ mod request;
 mod state;
 mod tx;
 
+pub use block_hash::{
+    BlockHashProvider, BlockHashProviderError, BlockHashProviderResult,
+    IndexedLmdbBlockHashProvider, NoBlockHashProvider,
+};
 pub use error::{DbError, Error, Result};
 pub use executor::EvmExecutor;
 pub use outcome::{ExecutionOutcome, ExecutionStatus, Log};
-pub use request::{BlockContext, CallRequest, ExecuteKind, ExecuteRequest};
+pub use request::{BlockContext, CallRequest, CallValidation, ExecuteKind, ExecuteRequest};
 
 use casper_types::evm;
 

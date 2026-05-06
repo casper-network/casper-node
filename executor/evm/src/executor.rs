@@ -11,7 +11,8 @@ use revm::{
 };
 
 use crate::{
-    db::CasperDb, state, tx, DbError, Error, ExecuteKind, ExecuteRequest, ExecutionOutcome, Result,
+    db::CasperDb, state, tx, BlockHashProvider, DbError, Error, ExecuteKind, ExecuteRequest,
+    ExecutionOutcome, NoBlockHashProvider, Result,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -44,39 +45,62 @@ impl EvmExecutor {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
+        let block_hash_provider = NoBlockHashProvider;
+        self.execute_with_block_hash_provider(tracking_copy, request, &block_hash_provider)
+    }
+
+    /// Executes with a provider for historical block hashes.
+    ///
+    /// The provider is used by the EVM `BLOCKHASH` opcode. Current/future
+    /// blocks and block numbers older than the EVM 256-block lookup window
+    /// return the zero hash before the provider is consulted.
+    pub fn execute_with_block_hash_provider<R, B>(
+        &self,
+        tracking_copy: &mut TrackingCopy<R>,
+        request: ExecuteRequest,
+        block_hash_provider: &B,
+    ) -> Result<ExecutionOutcome>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+        B: BlockHashProvider + ?Sized,
+    {
         if !self.config.enabled {
             return Err(Error::Disabled);
         }
 
         if let ExecuteKind::Transaction(transaction) = &request.kind {
-            if let Some(actual) = transaction.chain_id() {
-                if actual != self.config.chain_id {
-                    return Err(Error::ChainIdMismatch {
-                        expected: self.config.chain_id,
-                        actual,
-                    });
-                }
+            let Some(actual) = transaction.chain_id() else {
+                return Err(Error::MissingChainId);
+            };
+            if actual != self.config.chain_id {
+                return Err(Error::ChainIdMismatch {
+                    expected: self.config.chain_id,
+                    actual,
+                });
             }
         }
 
         let spec = spec_id(self.config.spec);
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
         let block = request.block.to_revm_block(&self.config);
-        let is_call = matches!(request.kind, ExecuteKind::Call(_));
+        let skip_validation = match &request.kind {
+            ExecuteKind::Transaction(_) => false,
+            ExecuteKind::Call(call) => call.validation.is_unchecked_simulation(),
+        };
 
         let result_and_state = {
-            let db = CasperDb::new(tracking_copy);
+            let db = CasperDb::new(tracking_copy, block_hash_provider);
             let mut evm = Context::mainnet()
                 .with_db(db)
                 .with_block(block)
                 .modify_cfg_chained(|cfg| {
                     cfg.spec = spec;
                     cfg.chain_id = self.config.chain_id;
-                    cfg.tx_chain_id_check = !is_call;
+                    cfg.tx_chain_id_check = !skip_validation;
                     cfg.disable_block_gas_limit = false;
-                    cfg.disable_base_fee = is_call;
-                    cfg.disable_balance_check = is_call;
-                    cfg.disable_nonce_check = is_call;
+                    cfg.disable_base_fee = skip_validation;
+                    cfg.disable_balance_check = skip_validation;
+                    cfg.disable_nonce_check = skip_validation;
                 })
                 .build_mainnet();
 

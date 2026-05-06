@@ -3,6 +3,8 @@
 use casper_storage::tracking_copy::TrackingCopyError;
 use casper_types::Key;
 
+use crate::BlockHashProviderError;
+
 /// Result type returned by the EVM executor.
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -12,6 +14,9 @@ pub enum Error {
     /// EVM execution is disabled in the chainspec configuration.
     #[error("EVM execution is disabled")]
     Disabled,
+    /// Signed EVM transaction does not include an EIP-155 replay-protection chain id.
+    #[error("EVM transaction is missing replay-protection chain id")]
+    MissingChainId,
     /// Transaction chain id does not match the executor configuration.
     #[error("EVM transaction chain id {actual} does not match configured chain id {expected}")]
     ChainIdMismatch {
@@ -63,6 +68,14 @@ pub enum DbError {
         key: Box<Key>,
         /// Decode error text.
         error: String,
+    },
+    /// Failed to resolve a historical block hash for the EVM `BLOCKHASH` opcode.
+    #[error("failed to resolve EVM block hash at height {height}: {error}")]
+    BlockHash {
+        /// Block height requested by the EVM.
+        height: u64,
+        /// Provider error.
+        error: BlockHashProviderError,
     },
 }
 
