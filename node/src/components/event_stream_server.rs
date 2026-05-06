@@ -305,7 +305,7 @@ where
                             deploy_header.timestamp(),
                             deploy_header.ttl(),
                         ),
-                        TransactionHeader::V1(metadata) => (
+                        TransactionHeader::V1(metadata) | TransactionHeader::Evm(metadata) => (
                             metadata.initiator_addr().clone(),
                             metadata.timestamp(),
                             metadata.ttl(),

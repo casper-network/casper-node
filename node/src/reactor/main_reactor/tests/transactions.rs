@@ -759,6 +759,7 @@ pub(crate) fn assert_exec_result_cost(
 pub fn exec_result_is_success(exec_result: &ExecutionResult) -> bool {
     match exec_result {
         ExecutionResult::V2(execution_result_v2) => execution_result_v2.error_message.is_none(),
+        ExecutionResult::Evm(execution_result) => execution_result.receipt.status.is_success(),
         ExecutionResult::V1(ExecutionResultV1::Success { .. }) => true,
         ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => false,
     }

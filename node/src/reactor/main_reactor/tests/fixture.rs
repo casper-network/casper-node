@@ -902,6 +902,17 @@ impl TestFixture {
                     );
                 }
             }
+            ExecutionResult::Evm(execution_result) => {
+                if execution_result.receipt.status.is_success() {
+                    execution_result.effects.transforms().to_vec()
+                } else {
+                    panic!(
+                        "EVM transaction execution failed: {:?} gas: {}",
+                        execution_result.receipt.status.message(),
+                        execution_result.receipt.gas_used
+                    );
+                }
+            }
         }
     }
 

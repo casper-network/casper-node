@@ -18,10 +18,12 @@ pub use block_hash::{
 };
 pub use error::{DbError, Error, Result};
 pub use executor::EvmExecutor;
-pub use outcome::{ExecutionOutcome, ExecutionStatus, Log};
+pub use outcome::{ExecutionOutcome, ExecutionStatus};
 pub use request::{BlockContext, CallRequest, CallValidation, ExecuteKind, ExecuteRequest};
 
 use casper_types::evm;
+
+pub use casper_types::evm::Log;
 
 /// Keccak-256 hash of empty EVM bytecode.
 pub const EMPTY_CODE_HASH: evm::Hash = evm::Hash::new([

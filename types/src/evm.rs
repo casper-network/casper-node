@@ -9,12 +9,14 @@ mod account;
 mod address;
 mod config;
 mod hash;
+mod receipt;
 mod transaction;
 
 pub use account::{deterministic_purse, Account, ByteCode, StorageAddr, StorageValue};
 pub use address::{Address, ADDRESS_LENGTH};
 pub use config::{EvmConfig, EvmSpec};
 pub use hash::{Hash, HASH_LENGTH};
+pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};
 pub use transaction::{
     Transaction, TransactionError, TransactionHash, TransactionKind, EIP4844_TRANSACTION_TYPE_ID,
     EIP7702_TRANSACTION_TYPE_ID,

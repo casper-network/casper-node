@@ -2047,11 +2047,11 @@ impl Storage {
                 Some(Transaction::V1(transaction_v1)) => {
                     ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
                 }
-                Some(transaction @ Transaction::Evm(_)) => {
-                    let mismatch = VariantMismatch(Box::new((transaction_hash, transaction)));
-                    error!(%mismatch, "failed getting transaction header");
-                    return Err(FatalStorageError::from(mismatch));
-                }
+                Some(Transaction::Evm(transaction)) => ret.push((
+                    transaction_hash,
+                    transaction.as_ref().into(),
+                    execution_result,
+                )),
             };
         }
         Ok(Some(ret))
@@ -2141,6 +2141,7 @@ impl Storage {
                             ExecutionResultV1::Success { cost, .. } => *cost,
                         },
                         ExecutionResult::V2(v2_result) => v2_result.limit.value(),
+                        ExecutionResult::Evm(evm_result) => evm_result.limit.value(),
                     })
                     .sum();
 
@@ -2156,6 +2157,8 @@ impl Storage {
                     .values()
                     .map(|results| {
                         if let ExecutionResult::V2(result) = results {
+                            result.size_estimate
+                        } else if let ExecutionResult::Evm(result) = results {
                             result.size_estimate
                         } else {
                             0u64
@@ -2320,6 +2323,9 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
                 }
             }
             // else no-op: we only record transfers from successful executions.
+        }
+        ExecutionResult::Evm(_) => {
+            // No-op: EVM receipt logs are not Casper transfers.
         }
         ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
