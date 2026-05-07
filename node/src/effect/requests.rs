@@ -16,7 +16,8 @@ use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, EvmCallRequest, EvmCallResult, LastProgress,
+    NetworkName, RecordId, Uptime,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -883,6 +884,17 @@ pub(crate) enum ContractRuntimeRequest {
         /// Results
         responder: Responder<SpeculativeExecutionResult>,
     },
+    /// Execute a read-only EVM call without committing effects.
+    EvmCall {
+        /// Pre-state.
+        block_header: Box<BlockHeader>,
+        /// Recent block hashes available to the EVM `BLOCKHASH` opcode.
+        block_hashes: BTreeMap<u64, BlockHash>,
+        /// EVM call request.
+        request: Box<EvmCallRequest>,
+        /// Result.
+        responder: Responder<Result<EvmCallResult, String>>,
+    },
     UpdateRuntimePrice(EraId, u8),
     GetEraGasPrice {
         era_id: EraId,
@@ -972,6 +984,17 @@ impl Display for ContractRuntimeRequest {
                     block_header.state_root_hash()
                 )
             }
+            ContractRuntimeRequest::EvmCall {
+                request,
+                block_header,
+                ..
+            } => write!(
+                formatter,
+                "Execute EVM call from {} to {:?} on {}",
+                request.from(),
+                request.to(),
+                block_header.state_root_hash()
+            ),
             ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
                 write!(formatter, "updating price to {}", era_gas_price)
             }

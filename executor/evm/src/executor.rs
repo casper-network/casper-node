@@ -6,13 +6,14 @@ use casper_storage::{
 };
 use casper_types::{evm, Key, StoredValue};
 use revm::{
-    context_interface::result::EVMError, primitives::hardfork::SpecId, Context, ExecuteEvm,
-    MainBuilder, MainContext,
+    context_interface::result::{EVMError, ExecutionResult as RevmExecutionResult, ResultGas},
+    primitives::{hardfork::SpecId, U256},
+    Context, ExecuteEvm, MainBuilder, MainContext,
 };
 
 use crate::{
     db::CasperDb, state, tx, BlockHashProvider, DbError, Error, ExecuteKind, ExecuteRequest,
-    ExecutionOutcome, NoBlockHashProvider, Result,
+    ExecutionOutcome, FeeCharge, NoBlockHashProvider, Result,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -87,6 +88,8 @@ impl EvmExecutor {
             ExecuteKind::Transaction(_) => false,
             ExecuteKind::Call(call) => call.validation.is_unchecked_simulation(),
         };
+        let fee_charge_disabled =
+            matches!(request.fee_charge, FeeCharge::External) || skip_validation;
 
         let result_and_state = {
             let db = CasperDb::new(tracking_copy, block_hash_provider);
@@ -101,6 +104,7 @@ impl EvmExecutor {
                     cfg.disable_base_fee = skip_validation;
                     cfg.disable_balance_check = skip_validation;
                     cfg.disable_nonce_check = skip_validation;
+                    cfg.disable_fee_charge = fee_charge_disabled;
                 })
                 .build_mainnet();
 
@@ -108,8 +112,68 @@ impl EvmExecutor {
         };
 
         let outcome = ExecutionOutcome::from_revm_result(&result_and_state.result);
-        state::apply(tracking_copy, result_and_state.state)?;
+        let mut state = result_and_state.state;
+        if fee_charge_disabled {
+            // revm skips the upfront fee debit but still applies the
+            // post-execution gas reimbursement and beneficiary reward.
+            let disabled_fee_transfers =
+                disabled_fee_transfers(&self.config, spec, &request, &result_and_state.result);
+            state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
+        }
+        state::apply(tracking_copy, state)?;
         Ok(outcome)
+    }
+}
+
+fn disabled_fee_transfers(
+    config: &evm::EvmConfig,
+    spec: SpecId,
+    request: &ExecuteRequest,
+    result: &RevmExecutionResult,
+) -> state::DisabledFeeTransfers {
+    let gas = result_gas(result);
+    let base_fee = u128::from(request.block.base_fee.unwrap_or(config.base_fee));
+    let (caller, gas_limit, effective_gas_price) = match &request.kind {
+        ExecuteKind::Transaction(transaction) => (
+            tx::to_revm_address(transaction.from()),
+            transaction.gas_limit(),
+            transaction.effective_gas_price(base_fee as u64),
+        ),
+        ExecuteKind::Call(call) => (
+            tx::to_revm_address(call.from),
+            call.gas_limit,
+            call.gas_price,
+        ),
+    };
+
+    let reimbursed_gas = gas_limit
+        .saturating_sub(gas.total_gas_spent())
+        .saturating_add(gas.inner_refunded());
+    let caller_reimbursement = U256::from(effective_gas_price) * U256::from(reimbursed_gas);
+    // Revm still computes Ethereum fee transfers internally before we remove
+    // them for Casper-owned fee accounting. For node-accepted EIP-1559
+    // transactions the priority fee is zero by policy, but this stays generic
+    // for executor callers and pre-London specs.
+    let coinbase_gas_price = if spec.is_enabled_in(SpecId::LONDON) {
+        effective_gas_price.saturating_sub(base_fee)
+    } else {
+        effective_gas_price
+    };
+    let beneficiary_reward = U256::from(coinbase_gas_price) * U256::from(gas.tx_gas_used());
+
+    state::DisabledFeeTransfers {
+        caller,
+        caller_reimbursement,
+        beneficiary: tx::to_revm_address(request.block.beneficiary),
+        beneficiary_reward,
+    }
+}
+
+fn result_gas(result: &RevmExecutionResult) -> &ResultGas {
+    match result {
+        RevmExecutionResult::Success { gas, .. }
+        | RevmExecutionResult::Revert { gas, .. }
+        | RevmExecutionResult::Halt { gas, .. } => gas,
     }
 }
 

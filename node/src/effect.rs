@@ -2322,6 +2322,28 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Requests a read-only EVM call, without committing its effects.
+    pub(crate) async fn evm_call(
+        self,
+        block_header: Box<BlockHeader>,
+        block_hashes: BTreeMap<u64, BlockHash>,
+        request: Box<casper_binary_port::EvmCallRequest>,
+    ) -> Result<casper_binary_port::EvmCallResult, String>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::EvmCall {
+                block_header,
+                block_hashes,
+                request,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     /// Reads block execution results (or chunk) from Storage component.
     pub(crate) async fn get_block_execution_results_or_chunk_from_storage(
         self,

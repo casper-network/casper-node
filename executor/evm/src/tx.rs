@@ -1,6 +1,6 @@
 //! Translation from Casper-owned EVM requests into revm transaction environments.
 
-use casper_types::evm;
+use casper_types::{evm, BlockHash, U256 as CasperU256};
 use revm::{
     context::TxEnv,
     primitives::{Address, Bytes, TxKind, B256, U256},
@@ -25,9 +25,17 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                         .gas_price()
                         .unwrap_or_else(|| transaction.max_fee_per_gas()),
                 ),
-                evm::TransactionKind::Eip1559 => builder
-                    .max_fee_per_gas(transaction.max_fee_per_gas())
-                    .gas_priority_fee(transaction.max_priority_fee_per_gas()),
+                evm::TransactionKind::Eip1559 => {
+                    // Preserve the EIP-1559 fields when translating into
+                    // revm. Node config compliance currently only admits
+                    // zero-priority-fee EIP-1559 transactions because Casper
+                    // does not prioritize transactions based on transaction
+                    // gas parameters, but the executor remains a faithful
+                    // typed-transaction adapter.
+                    builder
+                        .max_fee_per_gas(transaction.max_fee_per_gas())
+                        .gas_priority_fee(transaction.max_priority_fee_per_gas())
+                }
             };
 
             builder = match transaction.to() {
@@ -47,7 +55,7 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                 Some(address) => TxKind::Call(to_revm_address(address)),
                 None => TxKind::Create,
             })
-            .value(to_revm_u256(call.value))
+            .value(to_revm_hash_word(call.value))
             .data(Bytes::from(call.input.clone()))
             .nonce(call.nonce)
             .chain_id(Some(config.chain_id))
@@ -73,7 +81,19 @@ pub(crate) fn from_revm_hash(hash: B256) -> evm::Hash {
     evm::Hash::new(hash.0)
 }
 
-pub(crate) fn to_revm_u256(value: evm::Hash) -> U256 {
+pub(crate) fn to_revm_block_hash(block_hash: BlockHash) -> B256 {
+    let mut bytes = [0u8; evm::HASH_LENGTH];
+    bytes.copy_from_slice(block_hash.as_ref());
+    B256::from(bytes)
+}
+
+pub(crate) fn to_revm_u256(value: CasperU256) -> U256 {
+    let mut bytes = [0u8; 32];
+    value.to_big_endian(&mut bytes);
+    U256::from_be_slice(&bytes)
+}
+
+pub(crate) fn to_revm_hash_word(value: evm::Hash) -> U256 {
     U256::from_be_slice(value.as_bytes())
 }
 

@@ -6,8 +6,15 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
 use wasm_v2_request::{WasmV2Request, WasmV2Result};
 
+use casper_binary_port::{EvmCallRequest, EvmCallResult};
 use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
+};
+use casper_executor_evm::{
+    BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
+    BlockHashProviderResult as EvmBlockHashProviderResult, EvmExecutor,
+    ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
+    ExecutionStatus as EvmExecutionStatus, FeeCharge as EvmFeeCharge,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -31,6 +38,10 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    evm::{
+        Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
+        ReceiptStatus as EvmReceiptStatus,
+    },
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
@@ -51,6 +62,27 @@ use crate::{
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 
+#[derive(Default)]
+struct StaticEvmBlockHashProvider {
+    block_hashes: BTreeMap<u64, BlockHash>,
+}
+
+impl EvmBlockHashProvider for StaticEvmBlockHashProvider {
+    fn block_hash(&self, block_height: u64) -> EvmBlockHashProviderResult<Option<BlockHash>> {
+        Ok(self.block_hashes.get(&block_height).copied())
+    }
+}
+
+fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
+    EvmReceipt {
+        status: EvmReceiptStatus::Halt(EvmHaltReason::Unknown),
+        gas_used: 0,
+        effective_gas_price,
+        contract_address: None,
+        logs: Vec::new(),
+    }
+}
+
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
@@ -60,6 +92,7 @@ pub fn execute_finalized_block(
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
+    evm_block_hash_provider: &dyn EvmBlockHashProvider,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
@@ -209,6 +242,8 @@ pub fn execute_finalized_block(
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
+        let evm_transaction = stored_transaction.as_evm();
+        let is_evm = evm_transaction.is_some();
         let transaction = MetaTransaction::from_transaction(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
@@ -216,11 +251,9 @@ pub fn execute_finalized_block(
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
-        let initiator_addr = transaction.initiator_addr();
-        let transaction_hash = transaction.hash();
-        let transaction_args = transaction.session_args().clone();
-        let entry_point = transaction.entry_point();
-        let authorization_keys = transaction.signers();
+        let initiator_addr = stored_transaction.initiator_addr();
+        let transaction_hash = stored_transaction.hash();
+        let authorization_keys = stored_transaction.authorization_keys();
 
         /*
         we solve for halting state using a `gas limit` which is the maximum amount of
@@ -244,42 +277,59 @@ pub fn execute_finalized_block(
         we check these top level concerns early so that we can skip if there is an error
         */
 
+        let lane_id = transaction.transaction_lane();
+
         let mut artifact_builder = {
             // NOTE: this is the allowed computation limit (gas limit)
-            let gas_limit = match transaction.gas_limit(chainspec) {
-                Ok(gas) => gas,
-                Err(ite) => {
-                    debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
-                    artifacts.push(
-                        ExecutionArtifactBuilder::pre_condition_failure(
-                            &stored_transaction,
-                            current_gas_price,
-                            ite,
-                        )
-                        .build(),
-                    );
-                    continue;
+            let gas_limit = if let Some(evm_transaction) = evm_transaction {
+                Gas::new(evm_transaction.gas_limit())
+            } else {
+                match transaction.gas_limit(chainspec) {
+                    Ok(gas) => gas,
+                    Err(ite) => {
+                        debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
+                        artifacts.push(
+                            ExecutionArtifactBuilder::pre_condition_failure(
+                                &stored_transaction,
+                                current_gas_price,
+                                ite,
+                            )
+                            .build(),
+                        );
+                        continue;
+                    }
                 }
             };
 
-            // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-            let cost = match stored_transaction.gas_cost(
-                chainspec,
-                transaction.transaction_lane(),
-                current_gas_price,
-            ) {
-                Ok(motes) => motes.value(),
-                Err(ite) => {
-                    debug!(%transaction_hash, "invalid transaction (motes conversion)");
-                    artifacts.push(
-                        ExecutionArtifactBuilder::pre_condition_failure(
-                            &stored_transaction,
-                            current_gas_price,
-                            ite,
+            // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price).
+            // For accepted EIP-1559 transactions, config compliance has already required
+            // `max_priority_fee_per_gas == 0`, so the effective EVM gas price is the
+            // configured base fee capped by `max_fee_per_gas`; Casper does not charge an
+            // Ethereum-style priority premium while transaction priority is not based on
+            // gas parameters.
+            let cost = if let Some(evm_transaction) = evm_transaction {
+                evm_transaction
+                    .max_fee_amount(&chainspec.evm_config)
+                    .ok_or_else(|| {
+                        BlockExecutionError::PaymentError(
+                            "EVM fee amount overflowed U512".to_string(),
                         )
-                        .build(),
-                    );
-                    continue;
+                    })?
+            } else {
+                match stored_transaction.gas_cost(chainspec, lane_id, current_gas_price) {
+                    Ok(motes) => motes.value(),
+                    Err(ite) => {
+                        debug!(%transaction_hash, "invalid transaction (motes conversion)");
+                        artifacts.push(
+                            ExecutionArtifactBuilder::pre_condition_failure(
+                                &stored_transaction,
+                                current_gas_price,
+                                ite,
+                            )
+                            .build(),
+                        );
+                        continue;
+                    }
                 }
             };
 
@@ -345,6 +395,15 @@ pub fn execute_finalized_block(
                 }
                 trace!(%transaction_hash, "insufficient initial balance");
                 debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
+                if let Some(evm_transaction) = evm_transaction {
+                    artifact_builder.with_zero_cost().with_evm_receipt(
+                        evm_precondition_receipt(
+                            evm_transaction.effective_gas_price(chainspec.evm_config.base_fee),
+                        ),
+                        U512::zero(),
+                        Effects::new(),
+                    );
+                }
                 artifacts.push(artifact_builder.build());
                 // only reads have happened so far, and we can't charge due
                 // to insufficient balance, so move on with no effects committed
@@ -353,7 +412,16 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            if is_standard_payment {
+            if let Some(evm_transaction) = evm_transaction {
+                // EVM transactions intentionally do not participate in Casper custom payment
+                // or refund-purse setup. Ethereum payloads carry a gas limit and gas price fields,
+                // but this chain still owns the fee/refund policy through the same chainspec
+                // settings used by Deploy and V1/V2 transactions. The EVM sender's main purse is
+                // therefore the payer for the processing hold, refund calculation, and final fee
+                // handling, while revm runs with gas fee charging disabled and only mutates EVM
+                // nonce, code, storage, logs, creates, and value transfers.
+                BalanceIdentifier::Evm(evm_transaction.from())
+            } else if is_standard_payment {
                 let contract_might_pay =
                     addressable_entity_enabled && transaction.is_contract_by_hash_invocation();
 
@@ -490,8 +558,6 @@ pub fn execute_finalized_block(
         ));
 
         artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
-        let lane_id = transaction.transaction_lane();
-
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             // in the case of custom payment, we do all payment processing up front after checking
@@ -500,8 +566,19 @@ pub fn execute_finalized_block(
             // the sad path is handled by is_penalty and the balance in the payment purse is
             // the penalty payment or the full amount but is 'sufficient' either way
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
+            let required_balance = if let Some(evm_transaction) = evm_transaction {
+                evm_transaction
+                    .required_balance(actual_cost)
+                    .ok_or_else(|| {
+                        BlockExecutionError::PaymentError(
+                            "EVM value plus fee amount overflowed U512".to_string(),
+                        )
+                    })?
+            } else {
+                actual_cost
+            };
             let is_sufficient_balance =
-                is_custom_payment || post_payment_balance_result.is_sufficient(actual_cost);
+                is_custom_payment || post_payment_balance_result.is_sufficient(required_balance);
             let is_allowed_by_chainspec = chainspec.is_supported(lane_id);
             let allow = is_not_penalized && is_sufficient_balance && is_allowed_by_chainspec;
             if !allow {
@@ -548,6 +625,7 @@ pub fn execute_finalized_block(
             trace!(%transaction_hash, ?lane_id, "eligible for execution");
             match lane_id {
                 lane_id if lane_id == MINT_LANE_ID => {
+                    let transaction_args = transaction.session_args();
                     let runtime_args = transaction_args
                         .as_named()
                         .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
@@ -593,9 +671,11 @@ pub fn execute_finalized_block(
                     }
                 }
                 lane_id if lane_id == AUCTION_LANE_ID => {
+                    let transaction_args = transaction.session_args();
                     let runtime_args = transaction_args
                         .as_named()
                         .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
+                    let entry_point = transaction.entry_point();
                     match AuctionMethod::from_parts(entry_point, runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
@@ -625,6 +705,55 @@ pub fn execute_finalized_block(
                             artifact_builder.with_auction_method_error(&ame);
                         }
                     };
+                }
+                _ if is_evm => {
+                    let evm_transaction = evm_transaction.expect("EVM transaction should exist");
+                    let block_context = EvmBlockContext {
+                        number: block_height,
+                        timestamp: block_time.value() / 1000,
+                        beneficiary: EvmAddress::from_public_key(&proposer)
+                            .unwrap_or(EvmAddress::ZERO),
+                        gas_limit: Some(chainspec.evm_config.block_gas_limit),
+                        base_fee: Some(chainspec.evm_config.base_fee),
+                    };
+                    let request = EvmExecuteRequest {
+                        block: block_context,
+                        kind: EvmExecuteKind::Transaction(evm_transaction.clone()),
+                        fee_charge: EvmFeeCharge::External,
+                    };
+                    let mut tracking_copy = scratch_state
+                        .tracking_copy(state_root_hash)?
+                        .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+                    let outcome = EvmExecutor::new(chainspec.evm_config)
+                        .execute_with_block_hash_provider(
+                            &mut tracking_copy,
+                            request,
+                            evm_block_hash_provider,
+                        )
+                        .map_err(|error| {
+                            BlockExecutionError::TransactionConversion(error.to_string())
+                        })?;
+                    let execution_effects = tracking_copy.effects();
+                    state_root_hash =
+                        scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
+                    let effective_gas_price =
+                        evm_transaction.effective_gas_price(chainspec.evm_config.base_fee);
+                    let consumed = if matches!(outcome.status, EvmExecutionStatus::Success) {
+                        evm_transaction
+                            .fee_amount(outcome.gas_used, &chainspec.evm_config)
+                            .ok_or_else(|| {
+                                BlockExecutionError::PaymentError(
+                                    "EVM fee amount overflowed U512".to_string(),
+                                )
+                            })?
+                    } else {
+                        artifact_builder.cost_to_use()
+                    };
+                    artifact_builder.with_evm_receipt(
+                        outcome.to_receipt(effective_gas_price),
+                        consumed,
+                        execution_effects,
+                    );
                 }
                 _ if is_v1_wasm => {
                     let wasm_v1_start = Instant::now();
@@ -719,6 +848,19 @@ pub fn execute_finalized_block(
             }
         }
 
+        if is_evm && !allow_execution {
+            let effective_gas_price = evm_transaction
+                .expect("EVM transaction should exist")
+                .effective_gas_price(chainspec.evm_config.base_fee);
+            artifact_builder.with_zero_cost().with_evm_receipt(
+                evm_precondition_receipt(effective_gas_price),
+                U512::zero(),
+                Effects::new(),
+            );
+            artifacts.push(artifact_builder.build());
+            continue;
+        }
+
         // clear all holds on the balance_identifier purse before payment processing
         {
             let hold_request = BalanceHoldRequest::new_clear(
@@ -764,15 +906,22 @@ pub fn execute_finalized_block(
                         None
                     }
                 }
-                RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
-                    limit: artifact_builder.limit(),
-                    gas_price: current_gas_price,
-                    cost: artifact_builder.cost_to_use(),
-                    consumed,
-                    source: Box::new(balance_identifier.clone()),
-                    ratio: refund_ratio,
-                    available,
-                }),
+                RefundHandling::Burn { refund_ratio } => {
+                    let (limit, gas_price) = if is_evm {
+                        (artifact_builder.cost_to_use(), 1)
+                    } else {
+                        (artifact_builder.limit(), current_gas_price)
+                    };
+                    Some(HandleRefundMode::Burn {
+                        limit,
+                        gas_price,
+                        cost: artifact_builder.cost_to_use(),
+                        consumed,
+                        source: Box::new(balance_identifier.clone()),
+                        ratio: refund_ratio,
+                        available,
+                    })
+                }
                 RefundHandling::Refund { refund_ratio } => {
                     let source = Box::new(balance_identifier.clone());
                     if is_custom_payment {
@@ -809,9 +958,14 @@ pub fn execute_finalized_block(
                         // the churn of taking the token up front via transfer (which writes
                         // multiple permanent records) and then transfer some of it back (which
                         // writes more permanent records).
+                        let (limit, gas_price) = if is_evm {
+                            (artifact_builder.cost_to_use(), 1)
+                        } else {
+                            (artifact_builder.limit(), current_gas_price)
+                        };
                         Some(HandleRefundMode::CalculateAmount {
-                            limit: artifact_builder.limit(),
-                            gas_price: current_gas_price,
+                            limit,
+                            gas_price,
                             consumed,
                             cost: artifact_builder.cost_to_use(),
                             ratio: refund_ratio,
@@ -1455,6 +1609,63 @@ where
             InvalidTransactionV1::CannotCalculateFieldsHash,
         ))
     }
+}
+
+/// Executes a read-only EVM call against a checked-out block state.
+pub(super) fn evm_call<S>(
+    state_provider: &S,
+    chainspec: &Chainspec,
+    block_header: BlockHeader,
+    block_hashes: BTreeMap<u64, BlockHash>,
+    request: EvmCallRequest,
+) -> Result<EvmCallResult, String>
+where
+    S: StateProvider,
+{
+    if !chainspec.evm_config.enabled {
+        return Err("EVM execution is disabled".to_string());
+    }
+
+    let state_root_hash = block_header.state_root_hash();
+    let mut tracking_copy = state_provider
+        .tracking_copy(*state_root_hash)
+        .map_err(|error| format!("failed to check out EVM call state: {error}"))?
+        .ok_or_else(|| format!("state root {state_root_hash} not found"))?;
+    let block_time = block_header
+        .timestamp()
+        .saturating_add(chainspec.core_config.minimum_block_time);
+    let block_context = EvmBlockContext {
+        number: block_header.height(),
+        timestamp: block_time.millis() / 1000,
+        beneficiary: EvmAddress::ZERO,
+        gas_limit: Some(chainspec.evm_config.block_gas_limit),
+        base_fee: Some(chainspec.evm_config.base_fee),
+    };
+    let call = casper_executor_evm::CallRequest {
+        from: request.from(),
+        to: request.to(),
+        value: request.value(),
+        input: request.input().to_vec(),
+        gas_limit: request.gas_limit(),
+        gas_price: u128::from(chainspec.evm_config.base_fee),
+        nonce: 0,
+        validation: casper_executor_evm::CallValidation::UncheckedSimulation,
+    };
+    let execute_request = EvmExecuteRequest {
+        block: block_context,
+        kind: EvmExecuteKind::Call(call),
+        fee_charge: EvmFeeCharge::External,
+    };
+    let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
+    let outcome = EvmExecutor::new(chainspec.evm_config)
+        .execute_with_block_hash_provider(&mut tracking_copy, execute_request, &block_hash_provider)
+        .map_err(|error| error.to_string())?;
+    let receipt = outcome.to_receipt(0);
+    Ok(EvmCallResult::new(
+        receipt.status,
+        outcome.output.into(),
+        outcome.gas_used,
+    ))
 }
 
 fn invoked_contract_will_pay(

@@ -22,6 +22,38 @@ where
     Ok(())
 }
 
+pub(crate) struct DisabledFeeTransfers {
+    pub caller: Address,
+    pub caller_reimbursement: U256,
+    pub beneficiary: Address,
+    pub beneficiary_reward: U256,
+}
+
+pub(crate) fn remove_disabled_fee_transfers(
+    state: &mut EvmState,
+    transfers: DisabledFeeTransfers,
+) -> Result<(), Error> {
+    subtract_balance(state, transfers.caller, transfers.caller_reimbursement)?;
+    subtract_balance(state, transfers.beneficiary, transfers.beneficiary_reward)
+}
+
+fn subtract_balance(state: &mut EvmState, address: Address, amount: U256) -> Result<(), Error> {
+    if amount.is_zero() {
+        return Ok(());
+    }
+    let account = state.get_mut(&address).ok_or_else(|| {
+        Error::State(format!(
+            "missing EVM account {address:?} while removing disabled fee transfer"
+        ))
+    })?;
+    account.info.balance = account.info.balance.checked_sub(amount).ok_or_else(|| {
+        Error::State(format!(
+            "EVM account {address:?} balance underflow while removing disabled fee transfer"
+        ))
+    })?;
+    Ok(())
+}
+
 fn apply_account<R>(
     tracking_copy: &mut TrackingCopy<R>,
     address: Address,
@@ -30,6 +62,7 @@ fn apply_account<R>(
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
+    // Check how to deal with Key::Balance after selfdestruct
     let address = tx::from_revm_address(address);
     let account_key = Key::EvmAccount(address);
 

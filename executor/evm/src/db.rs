@@ -65,6 +65,7 @@ where
                     balance,
                     nonce: account.nonce(),
                     code_hash: tx::to_revm_hash(account.code_hash()),
+                    account_id: None,
                     code: None,
                 }))
             }
@@ -102,7 +103,7 @@ where
         let slot = tx::from_revm_u256(index);
         let key = Key::EvmStorage(evm::StorageAddr::new(address, slot));
         match self.tracking_copy.read(&key)? {
-            Some(StoredValue::EvmStorage(value)) => Ok(tx::to_revm_u256(value.value())),
+            Some(StoredValue::EvmStorage(value)) => Ok(tx::to_revm_hash_word(value.value())),
             Some(stored_value) => Err(DbError::TypeMismatch {
                 key: Box::new(key),
                 expected: "StoredValue::EvmStorage",
@@ -120,7 +121,9 @@ where
                 height: number,
                 error,
             })?;
-        Ok(maybe_block_hash.map(tx::to_revm_hash).unwrap_or(B256::ZERO))
+        Ok(maybe_block_hash
+            .map(tx::to_revm_block_hash)
+            .unwrap_or(B256::ZERO))
     }
 }
 

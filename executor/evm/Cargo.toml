@@ -11,10 +11,10 @@ license = "Apache-2.0"
 [dependencies]
 casper-storage = { version = "5.0.0", path = "../../storage" }
 casper-types = { version = "7.0.0", path = "../../types", features = ["std"] }
-revm = { version = "27", features = ["dev"] }
+revm = { version = "38", features = ["dev", "optional_fee_charge"] }
 thiserror = "2"
 
 [dev-dependencies]
-alloy-consensus = { version = "=1.0.22", default-features = false, features = ["k256"] }
-alloy-eips = { version = "=1.0.22", default-features = false, features = ["k256"] }
-alloy-primitives = { version = "=1.2.0", default-features = false, features = ["rlp", "sha3-keccak"] }
+alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
+alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
+alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak"] }

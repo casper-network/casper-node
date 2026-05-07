@@ -45,7 +45,7 @@ impl TransactionHash {
         match self {
             TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
             TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
-            TransactionHash::Evm(transaction_hash) => Digest::from_raw(transaction_hash.value()),
+            TransactionHash::Evm(transaction_hash) => *transaction_hash.inner(),
         }
     }
 

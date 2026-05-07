@@ -23,7 +23,6 @@ mod transfer_target;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use alloc::{
-    boxed::Box,
     collections::BTreeSet,
     string::{String, ToString},
     vec::Vec,
@@ -150,8 +149,8 @@ pub enum Transaction {
         schemars(with = "TransactionV1Json")
     )]
     V1(TransactionV1),
-    /// An EVM signed RLP transaction.
-    Evm(Box<evm::Transaction>),
+    /// An EVM transaction.
+    Evm(evm::Transaction),
 }
 
 impl Transaction {
@@ -167,7 +166,7 @@ impl Transaction {
 
     /// EVM variant ctor.
     pub fn from_evm(evm: evm::Transaction) -> Self {
-        Transaction::Evm(Box::new(evm))
+        Transaction::Evm(evm)
     }
 
     /// Returns the `TransactionHash` identifying this transaction.
@@ -175,7 +174,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
-            Transaction::Evm(txn) => TransactionHash::from(txn.as_ref().hash()),
+            Transaction::Evm(txn) => TransactionHash::from(txn.hash()),
         }
     }
 
@@ -221,7 +220,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.sign(secret_key),
             Transaction::V1(v1) => v1.sign(secret_key),
-            Transaction::Evm(_) => {}
+            Transaction::Evm(txn) => txn.sign(secret_key),
         }
     }
 
@@ -230,7 +229,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().clone(),
             Transaction::V1(v1) => v1.approvals().clone(),
-            Transaction::Evm(_) => BTreeSet::new(),
+            Transaction::Evm(txn) => txn.approvals().clone(),
         }
     }
 
@@ -239,7 +238,7 @@ impl Transaction {
         let approvals_hash = match self {
             Transaction::Deploy(deploy) => deploy.compute_approvals_hash()?,
             Transaction::V1(txn) => txn.compute_approvals_hash()?,
-            Transaction::Evm(_) => ApprovalsHash::compute(&BTreeSet::new())?,
+            Transaction::Evm(txn) => ApprovalsHash::compute(txn.approvals())?,
         };
         Ok(approvals_hash)
     }
@@ -296,11 +295,11 @@ impl Transaction {
             }
             Transaction::Evm(txn) => {
                 let approvals_hash =
-                    ApprovalsHash::compute(&BTreeSet::new()).unwrap_or_else(|error| {
-                        error!(%error, "failed to serialize empty EVM approvals");
+                    ApprovalsHash::compute(txn.approvals()).unwrap_or_else(|error| {
+                        error!(%error, "failed to serialize EVM approvals");
                         ApprovalsHash::from(Digest::default())
                     });
-                TransactionId::new(TransactionHash::Evm(txn.as_ref().hash()), approvals_hash)
+                TransactionId::new(TransactionHash::Evm(txn.hash()), approvals_hash)
             }
         }
     }
@@ -325,7 +324,7 @@ impl Transaction {
     /// Returns the native EVM transaction hash for an EVM transaction.
     pub fn evm_hash(&self) -> Option<evm::TransactionHash> {
         match self {
-            Transaction::Evm(txn) => Some(txn.as_ref().hash()),
+            Transaction::Evm(txn) => Some(txn.hash()),
             _ => None,
         }
     }
@@ -361,7 +360,11 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
-            Transaction::Evm(_) => BTreeSet::new(),
+            Transaction::Evm(txn) => txn
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
         }
     }
 
@@ -410,7 +413,11 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
-            Transaction::Evm(_) => BTreeSet::new(),
+            Transaction::Evm(txn) => txn
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
         }
     }
 
@@ -506,10 +513,15 @@ impl Transaction {
                     .gas_cost(chainspec, lane_id, gas_price)
                     .map_err(InvalidTransaction::from)
             }
-            Transaction::Evm(txn) => Ok(Motes::new(
-                txn.gas_limit()
-                    .saturating_mul(txn.max_fee_per_gas().min(u64::MAX as u128) as u64),
-            )),
+            Transaction::Evm(txn) => {
+                // Use the EIP-1559 max-fee cap for generic upper-bound balance
+                // checks. Node config compliance separately rejects non-zero
+                // priority fees, so accepted type-2 transactions do not imply
+                // transaction priority based on gas parameters.
+                Ok(Motes::new(txn.gas_limit().saturating_mul(
+                    txn.max_fee_per_gas().min(u64::MAX as u128) as u64,
+                )))
+            }
         }
     }
 
@@ -573,8 +585,8 @@ enum TransactionJson {
     /// A version 1 transaction.
     #[serde(rename = "Version1")]
     V1(Box<TransactionV1Json>),
-    /// An EVM signed RLP transaction.
-    Evm(Box<evm::Transaction>),
+    /// An EVM transaction.
+    Evm(evm::Transaction),
 }
 
 #[cfg(any(feature = "std", test))]
@@ -658,7 +670,7 @@ impl From<TransactionV1> for Transaction {
 
 impl From<evm::Transaction> for Transaction {
     fn from(txn: evm::Transaction) -> Self {
-        Self::Evm(Box::new(txn))
+        Self::Evm(txn)
     }
 }
 
@@ -710,7 +722,7 @@ impl FromBytes for Transaction {
             }
             EVM_TAG => {
                 let (txn, remainder) = evm::Transaction::from_bytes(remainder)?;
-                Ok((Transaction::Evm(Box::new(txn)), remainder))
+                Ok((Transaction::Evm(txn), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

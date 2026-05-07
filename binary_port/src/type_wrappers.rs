@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::ContractHash,
+    evm,
     global_state::TrieMerkleProof,
     system::auction::DelegationRate,
     Account, AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
@@ -39,6 +40,174 @@ macro_rules! impl_bytesrepr_for_type_wrapper {
             }
         }
     };
+}
+
+/// Request for a read-only EVM call against the latest complete block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EvmCallRequest {
+    from: evm::Address,
+    to: Option<evm::Address>,
+    value: evm::Hash,
+    input: Bytes,
+    gas_limit: u64,
+}
+
+impl EvmCallRequest {
+    /// Constructs a new EVM call request.
+    pub fn new(
+        from: evm::Address,
+        to: Option<evm::Address>,
+        value: evm::Hash,
+        input: Bytes,
+        gas_limit: u64,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            value,
+            input,
+            gas_limit,
+        }
+    }
+
+    /// Returns the caller address.
+    pub fn from(&self) -> evm::Address {
+        self.from
+    }
+
+    /// Returns the optional target address.
+    pub fn to(&self) -> Option<evm::Address> {
+        self.to
+    }
+
+    /// Returns the call value.
+    pub fn value(&self) -> evm::Hash {
+        self.value
+    }
+
+    /// Returns the call input bytes.
+    pub fn input(&self) -> &[u8] {
+        self.input.as_ref()
+    }
+
+    /// Returns the gas limit.
+    pub fn gas_limit(&self) -> u64 {
+        self.gas_limit
+    }
+}
+
+impl ToBytes for EvmCallRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.from.serialized_length()
+            + self.to.serialized_length()
+            + self.value.serialized_length()
+            + self.input.serialized_length()
+            + self.gas_limit.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.from.write_bytes(writer)?;
+        self.to.write_bytes(writer)?;
+        self.value.write_bytes(writer)?;
+        self.input.write_bytes(writer)?;
+        self.gas_limit.write_bytes(writer)
+    }
+}
+
+impl FromBytes for EvmCallRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (from, remainder) = evm::Address::from_bytes(bytes)?;
+        let (to, remainder) = Option::<evm::Address>::from_bytes(remainder)?;
+        let (value, remainder) = evm::Hash::from_bytes(remainder)?;
+        let (input, remainder) = Bytes::from_bytes(remainder)?;
+        let (gas_limit, remainder) = u64::from_bytes(remainder)?;
+        Ok((
+            EvmCallRequest {
+                from,
+                to,
+                value,
+                input,
+                gas_limit,
+            },
+            remainder,
+        ))
+    }
+}
+
+/// Result of a read-only EVM call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EvmCallResult {
+    status: evm::ReceiptStatus,
+    output: Bytes,
+    gas_used: u64,
+}
+
+impl EvmCallResult {
+    /// Constructs a new EVM call result.
+    pub fn new(status: evm::ReceiptStatus, output: Bytes, gas_used: u64) -> Self {
+        Self {
+            status,
+            output,
+            gas_used,
+        }
+    }
+
+    /// Returns the call status.
+    pub fn status(&self) -> evm::ReceiptStatus {
+        self.status
+    }
+
+    /// Returns the call output bytes.
+    pub fn output(&self) -> &[u8] {
+        self.output.as_ref()
+    }
+
+    /// Returns gas used by the call.
+    pub fn gas_used(&self) -> u64 {
+        self.gas_used
+    }
+}
+
+impl ToBytes for EvmCallResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.status.serialized_length()
+            + self.output.serialized_length()
+            + self.gas_used.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.status.write_bytes(writer)?;
+        self.output.write_bytes(writer)?;
+        self.gas_used.write_bytes(writer)
+    }
+}
+
+impl FromBytes for EvmCallResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (status, remainder) = evm::ReceiptStatus::from_bytes(bytes)?;
+        let (output, remainder) = Bytes::from_bytes(remainder)?;
+        let (gas_used, remainder) = u64::from_bytes(remainder)?;
+        Ok((
+            EvmCallResult {
+                status,
+                output,
+                gas_used,
+            },
+            remainder,
+        ))
+    }
 }
 
 /// Type representing uptime.
@@ -777,6 +946,28 @@ mod tests {
                 block_height: rng.gen(),
                 execution_result: rng.gen::<bool>().then(|| ExecutionResult::random(rng)),
             }),
+        ));
+    }
+
+    #[test]
+    fn evm_call_request_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&EvmCallRequest::new(
+            evm::Address::new(rng.gen()),
+            rng.gen::<bool>().then(|| evm::Address::new(rng.gen())),
+            evm::Hash::new(rng.gen()),
+            Bytes::from(rng.random_vec(0..64)),
+            rng.gen(),
+        ));
+    }
+
+    #[test]
+    fn evm_call_result_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&EvmCallResult::new(
+            evm::Receipt::random(rng).status,
+            Bytes::from(rng.random_vec(0..64)),
+            rng.gen(),
         ));
     }
 

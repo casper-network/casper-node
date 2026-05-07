@@ -1723,7 +1723,10 @@ impl Storage {
             }
             (approvals_hash, finalized_approvals, transaction @ Transaction::Evm(_)) => {
                 match ApprovalsHash::compute(&finalized_approvals) {
-                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                    Ok(computed_approvals_hash)
+                        if computed_approvals_hash == approvals_hash
+                            && finalized_approvals == transaction.approvals() =>
+                    {
                         Ok(Some(transaction))
                     }
                     Ok(_computed_approvals_hash) => Ok(None),
@@ -2047,11 +2050,9 @@ impl Storage {
                 Some(Transaction::V1(transaction_v1)) => {
                     ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
                 }
-                Some(Transaction::Evm(transaction)) => ret.push((
-                    transaction_hash,
-                    transaction.as_ref().into(),
-                    execution_result,
-                )),
+                Some(Transaction::Evm(transaction)) => {
+                    ret.push((transaction_hash, (&transaction).into(), execution_result))
+                }
             };
         }
         Ok(Some(ret))

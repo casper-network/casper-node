@@ -76,11 +76,12 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-use operations::speculatively_execute;
+use operations::{evm_call, speculatively_execute};
 pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
+pub(crate) use utils::load_recent_evm_block_hashes;
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -735,6 +736,29 @@ impl ContractRuntime {
                             execution_engine_v1.as_ref(),
                             *block_header,
                             *transaction,
+                        )
+                    })
+                    .await;
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::EvmCall {
+                block_header,
+                block_hashes,
+                request,
+                responder,
+            } => {
+                let chainspec = Arc::clone(&self.chainspec);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let result = run_intensive_task(move || {
+                        evm_call(
+                            data_access_layer.as_ref(),
+                            chainspec.as_ref(),
+                            *block_header,
+                            block_hashes,
+                            *request,
                         )
                     })
                     .await;

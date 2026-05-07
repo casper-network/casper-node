@@ -10,12 +10,13 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 /// The number of bytes in an EVM 256-bit hash or word.
 pub const HASH_LENGTH: usize = 32;
-
-const HASH_SERIALIZED_LENGTH: usize = HASH_LENGTH;
 
 /// A 32-byte EVM hash or storage word.
 #[derive(
@@ -23,30 +24,30 @@ const HASH_SERIALIZED_LENGTH: usize = HASH_LENGTH;
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct Hash([u8; HASH_LENGTH]);
+pub struct Hash(Digest);
 
 impl Hash {
     /// The zero hash.
-    pub const ZERO: Hash = Hash([0; HASH_LENGTH]);
+    pub const ZERO: Hash = Hash(Digest::from_raw([0; HASH_LENGTH]));
 
     /// Creates a hash from raw bytes.
     pub const fn new(bytes: [u8; HASH_LENGTH]) -> Self {
-        Hash(bytes)
+        Hash(Digest::from_raw(bytes))
     }
 
     /// Returns the raw bytes backing this hash.
-    pub const fn value(self) -> [u8; HASH_LENGTH] {
-        self.0
+    pub fn value(self) -> [u8; HASH_LENGTH] {
+        self.0.value()
     }
 
     /// Returns the raw bytes backing this hash by reference.
-    pub const fn as_bytes(&self) -> &[u8; HASH_LENGTH] {
-        &self.0
+    pub fn as_bytes(&self) -> &[u8; HASH_LENGTH] {
+        <&[u8; HASH_LENGTH]>::try_from(self.0.as_ref()).expect("digest length is 32 bytes")
     }
 
     /// Returns `true` when all bytes are zero.
     pub fn is_zero(&self) -> bool {
-        self.0.iter().all(|byte| *byte == 0)
+        self.0.as_ref().iter().all(|byte| *byte == 0)
     }
 
     /// Returns a lower-case hexadecimal string without a `0x` prefix.
@@ -57,7 +58,7 @@ impl Hash {
 
 impl AsRef<[u8]> for Hash {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0.as_ref()
     }
 }
 
@@ -69,26 +70,20 @@ impl Display for Hash {
 
 impl ToBytes for Hash {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        Ok(self.0.to_vec())
+        self.0.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        HASH_SERIALIZED_LENGTH
+        self.0.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&self.0);
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
 impl FromBytes for Hash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        if bytes.len() < HASH_LENGTH {
-            return Err(bytesrepr::Error::EarlyEndOfStream);
-        }
-        let (hash, remainder) = bytes.split_at(HASH_LENGTH);
-        let hash = <[u8; HASH_LENGTH]>::try_from(hash).map_err(|_| bytesrepr::Error::Formatting)?;
-        Ok((Hash(hash), remainder))
+        Digest::from_bytes(bytes).map(|(digest, remainder)| (Hash(digest), remainder))
     }
 }

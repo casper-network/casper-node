@@ -6,7 +6,7 @@ use casper_storage::block_store::{
     lmdb::IndexedLmdbBlockStore, types::BlockHeight, BlockStoreError, BlockStoreProvider,
     DataReader,
 };
-use casper_types::{evm, BlockHeader};
+use casper_types::{BlockHash, BlockHeader};
 
 /// Result type returned by block hash providers.
 pub type BlockHashProviderResult<T> = core::result::Result<T, BlockHashProviderError>;
@@ -26,7 +26,7 @@ pub enum BlockHashProviderError {
 /// the zero hash. Providers only need to answer canonical historical heights.
 pub trait BlockHashProvider {
     /// Returns the block hash for `block_height`, or `None` when unavailable.
-    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<evm::Hash>>;
+    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<BlockHash>>;
 }
 
 /// Block hash provider that returns no historical hashes.
@@ -34,7 +34,7 @@ pub trait BlockHashProvider {
 pub struct NoBlockHashProvider;
 
 impl BlockHashProvider for NoBlockHashProvider {
-    fn block_hash(&self, _block_height: u64) -> BlockHashProviderResult<Option<evm::Hash>> {
+    fn block_hash(&self, _block_height: u64) -> BlockHashProviderResult<Option<BlockHash>> {
         Ok(None)
     }
 }
@@ -53,16 +53,10 @@ impl IndexedLmdbBlockHashProvider {
 }
 
 impl BlockHashProvider for IndexedLmdbBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<evm::Hash>> {
+    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<BlockHash>> {
         let txn = self.block_store.checkout_ro()?;
         let maybe_header: Option<BlockHeader> =
             DataReader::<BlockHeight, BlockHeader>::read(&txn, block_height)?;
-        Ok(maybe_header.map(|header| block_hash_to_evm_hash(header.block_hash())))
+        Ok(maybe_header.map(|header| header.block_hash()))
     }
-}
-
-fn block_hash_to_evm_hash(block_hash: casper_types::BlockHash) -> evm::Hash {
-    let mut bytes = [0u8; evm::HASH_LENGTH];
-    bytes.copy_from_slice(block_hash.as_ref());
-    evm::Hash::new(bytes)
 }

@@ -18,6 +18,7 @@ use casper_types::{
         ActionThresholds, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
     },
     contracts::NamedKeys,
+    evm,
     execution::Effects,
     system::{
         auction,
@@ -586,6 +587,7 @@ where
                 None,
                 main_purse,
             )?;
+            self.maybe_create_evm_account(&account, main_purse);
 
             total_supply += account_starting_balance;
         }
@@ -599,6 +601,19 @@ where
         );
 
         Ok(())
+    }
+
+    fn maybe_create_evm_account(&self, account: &GenesisAccount, main_purse: URef) {
+        if !self.config.enable_evm() {
+            return;
+        }
+        let Some(address) = evm::Address::from_public_key(&account.public_key()) else {
+            return;
+        };
+        self.tracking_copy.borrow_mut().write(
+            Key::EvmAccount(address),
+            StoredValue::EvmAccount(evm::Account::new(0, evm::EMPTY_CODE_HASH, main_purse)),
+        );
     }
 
     fn initial_seigniorage_recipients(

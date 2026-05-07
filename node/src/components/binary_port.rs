@@ -14,7 +14,7 @@ use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
     CommandTag, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
-    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    EntityIdentifier, EraIdentifier, ErrorCode, EvmCallRequest, GetRequest, GetTrieFullResult,
     GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
     ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::SpeculativeExecutionResult,
+    contract_runtime::{load_recent_evm_block_hashes, SpeculativeExecutionResult},
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -182,6 +182,7 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
+            Command::EvmCall { .. } => self.speculative_exec,
         }
     }
 }
@@ -221,6 +222,14 @@ where
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_speculative_execution(effect_builder, transaction).await
+        }
+        Command::EvmCall { request } => {
+            metrics.binary_port_try_speculative_exec_count.inc();
+            if !config.allow_request_speculative_exec {
+                debug!("received an EVM call request while speculative execution is disabled");
+                return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
+            }
+            try_evm_call(effect_builder, request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1379,6 +1388,33 @@ where
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result)
+        }
+    }
+}
+
+async fn try_evm_call<REv>(
+    effect_builder: EffectBuilder<REv>,
+    request: EvmCallRequest,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let tip = match effect_builder
+        .get_highest_complete_block_header_from_storage()
+        .await
+    {
+        Some(tip) => tip,
+        None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
+    };
+    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
+    match effect_builder
+        .evm_call(Box::new(tip), block_hashes, Box::new(request))
+        .await
+    {
+        Ok(result) => BinaryResponse::from_value(result),
+        Err(error) => {
+            debug!(%error, "EVM call failed");
+            BinaryResponse::new_error(ErrorCode::InternalError)
         }
     }
 }

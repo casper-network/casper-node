@@ -516,4 +516,8 @@ enabled = false
 chain_id = 1_129_533_441
 spec = 'prague'
 block_gas_limit = 30_000_000
-base_fee = 0
+# Base fee is denominated in motes per EVM gas. At 30,000,000 gas this
+# makes a full EVM block cost 30,000 CSPR, which keeps EVM execution
+# cheap enough for testing but expensive enough to discourage fill-block
+# spam with low-value logs or memory-heavy execution.
+base_fee = 1_000_000

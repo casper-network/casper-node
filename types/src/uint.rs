@@ -640,6 +640,14 @@ impl AsPrimitive<U512> for U512 {
     }
 }
 
+impl From<U256> for U512 {
+    fn from(value: U256) -> Self {
+        let mut result = U512::zero();
+        result.0[..4].clone_from_slice(&value.0[..4]);
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;

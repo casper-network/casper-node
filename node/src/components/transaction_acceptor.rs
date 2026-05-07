@@ -13,7 +13,9 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
-use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
+use casper_storage::data_access_layer::{
+    balance::BalanceHandling, BalanceIdentifier, BalanceRequest, ProofHandling,
+};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
@@ -212,19 +214,27 @@ impl TransactionAcceptor {
         };
 
         if event_metadata.source.is_client() {
-            let initiator_addr = event_metadata.transaction.initiator_addr();
-            let Some(account_hash) = initiator_addr.account_hash() else {
-                return self.reject_transaction(
-                    effect_builder,
-                    *event_metadata,
-                    Error::InvalidTransaction(InvalidTransaction::Evm(
-                        casper_types::evm::TransactionError::Decode(
-                            "EVM transactions are not routed through transaction acceptor"
-                                .to_string(),
-                        ),
-                    )),
+            if let Some(evm_transaction) = event_metadata.meta_transaction.as_evm() {
+                let balance_request = BalanceRequest::new(
+                    *block_header.state_root_hash(),
+                    block_header.protocol_version(),
+                    BalanceIdentifier::Evm(evm_transaction.from()),
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
                 );
-            };
+                return effect_builder
+                    .get_balance(balance_request)
+                    .event(move |balance_result| Event::GetBalanceResult {
+                        event_metadata,
+                        block_header,
+                        maybe_balance: balance_result.available_balance().copied(),
+                    });
+            }
+
+            let initiator_addr = event_metadata.transaction.initiator_addr();
+            let account_hash = initiator_addr
+                .account_hash()
+                .expect("non-EVM transaction initiator must be a Casper account");
             let entity_addr = EntityAddr::Account(account_hash.value());
             effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
@@ -414,6 +424,9 @@ impl TransactionAcceptor {
             MetaTransaction::Deploy(_) => {
                 self.verify_deploy_session(effect_builder, event_metadata, block_header)
             }
+            MetaTransaction::Evm(_) => {
+                self.validate_transaction_cryptography(effect_builder, event_metadata)
+            }
             MetaTransaction::V1(_) => {
                 self.verify_transaction_v1_body(effect_builder, event_metadata, block_header)
             }
@@ -428,6 +441,14 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         let session = match &event_metadata.meta_transaction {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.session(),
+            MetaTransaction::Evm(_) => {
+                error!("should only handle deploys in verify_deploy_session");
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::ExpectedDeploy,
+                );
+            }
             MetaTransaction::V1(txn) => {
                 error!(%txn, "should only handle deploys in verify_deploy_session");
                 return self.reject_transaction(
@@ -555,6 +576,14 @@ impl TransactionAcceptor {
                     Error::ExpectedTransactionV1,
                 );
             }
+            MetaTransaction::Evm(_) => {
+                error!("should only handle version 1 transactions in verify_transaction_v1_body");
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::ExpectedTransactionV1,
+                );
+            }
             MetaTransaction::V1(txn) => match txn.target() {
                 TransactionTarget::Stored { id, .. } => match id {
                     TransactionInvocationTarget::ByHash(entity_addr) => {
@@ -646,6 +675,10 @@ impl TransactionAcceptor {
                     .entry_point_name()
                     .to_string(),
             ),
+            MetaTransaction::Evm(_) => {
+                error!("should not fetch a contract to validate EVM transactions");
+                None
+            }
             MetaTransaction::V1(_) if is_payment => {
                 error!("should not fetch a contract to validate payment logic for transaction v1s");
                 None
@@ -856,6 +889,9 @@ impl TransactionAcceptor {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .is_valid()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
+            MetaTransaction::Evm(evm) => evm
+                .verify()
                 .map_err(|err| Error::InvalidTransaction(err.into())),
             MetaTransaction::V1(txn) => txn
                 .verify()

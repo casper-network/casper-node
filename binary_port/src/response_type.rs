@@ -20,8 +20,8 @@ use crate::{
     node_status::NodeStatus,
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
-        ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName, RewardResponse,
+        ConsensusStatus, ConsensusValidatorChanges, EvmCallResult, GetTrieFullResult, LastProgress,
+        NetworkName, ReactorStateName, RewardResponse,
     },
     AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
     DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
@@ -119,6 +119,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
+    /// Result of a read-only EVM call.
+    EvmCallResult,
 }
 
 impl ResponseType {
@@ -145,7 +147,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..44)).unwrap()
+        Self::try_from(rng.gen_range(0..45)).unwrap()
     }
 }
 
@@ -228,6 +230,7 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
+            x if x == ResponseType::EvmCallResult as u8 => Ok(ResponseType::EvmCallResult),
             _ => Err(()),
         }
     }
@@ -290,6 +293,7 @@ impl fmt::Display for ResponseType {
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
             }
+            ResponseType::EvmCallResult => write!(f, "EvmCallResult"),
         }
     }
 }
@@ -450,6 +454,10 @@ impl PayloadEntity for ValueWithProof<Package> {
 
 impl PayloadEntity for AddressableEntityInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
+}
+
+impl PayloadEntity for EvmCallResult {
+    const RESPONSE_TYPE: ResponseType = ResponseType::EvmCallResult;
 }
 
 impl<T> PayloadEntity for Box<T>

@@ -49,10 +49,9 @@ uint = { version = "0.9.0", default-features = false }
 untrusted = { version = "0.7.1", optional = true }
 derive_more = "0.99.17"
 version-sync = { version = "0.9", optional = true }
-alloy-consensus = { version = "=1.0.22", default-features = false, features = ["k256"] }
-alloy-primitives = { version = "=1.2.0", default-features = false, features = ["rlp", "sha3-keccak"] }
-alloy-eips = { version = "=1.0.22", default-features = false, features = ["k256"] }
-alloy-tx-macros = { version = "=1.0.22", default-features = false }
+alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
+alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak"] }
+alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
 
 [dev-dependencies]
 base16 = { version = "0.2.1", features = ["std"] }

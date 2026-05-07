@@ -12,7 +12,9 @@ mod hash;
 mod receipt;
 mod transaction;
 
-pub use account::{deterministic_purse, Account, ByteCode, StorageAddr, StorageValue};
+pub use account::{
+    deterministic_purse, Account, ByteCode, StorageAddr, StorageValue, EMPTY_CODE_HASH,
+};
 pub use address::{Address, ADDRESS_LENGTH};
 pub use config::{EvmConfig, EvmSpec};
 pub use hash::{Hash, HASH_LENGTH};

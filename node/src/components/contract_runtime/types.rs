@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{contract_runtime::StateResultError, types::TransactionHeader};
-use casper_types::{InitiatorAddr, Transfer};
+use casper_types::{evm, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
 
@@ -17,7 +17,7 @@ use casper_storage::{
 };
 use casper_types::{
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2},
+    execution::{Effects, EvmExecutionResult, ExecutionResult, ExecutionResultV2},
     BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidDeploy, InvalidTransaction,
     InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash, U512,
 };
@@ -83,6 +83,7 @@ pub(crate) struct ExecutionArtifactBuilder {
     size_estimate: u64,
     min_cost: U512,
     available: Option<U512>,
+    evm_receipt: Option<evm::Receipt>,
 }
 
 impl ExecutionArtifactBuilder {
@@ -109,6 +110,7 @@ impl ExecutionArtifactBuilder {
             size_estimate: transaction.size_estimate() as u64,
             min_cost,
             available: None,
+            evm_receipt: None,
         }
     }
 
@@ -133,6 +135,7 @@ impl ExecutionArtifactBuilder {
             size_estimate: transaction.size_estimate() as u64,
             min_cost: U512::zero(),
             available: None,
+            evm_receipt: None,
         }
     }
 
@@ -382,6 +385,24 @@ impl ExecutionArtifactBuilder {
         self
     }
 
+    pub fn with_zero_cost(&mut self) -> &mut Self {
+        self.cost = U512::zero();
+        self.min_cost = U512::zero();
+        self
+    }
+
+    pub fn with_evm_receipt(
+        &mut self,
+        receipt: evm::Receipt,
+        consumed: U512,
+        effects: Effects,
+    ) -> &mut Self {
+        self.evm_receipt = Some(receipt);
+        self.consumed = Gas::new(consumed);
+        self.with_appended_effects(effects);
+        self
+    }
+
     pub fn with_invalid_wasm_v1_request(
         &mut self,
         invalid_request: &InvalidWasmV1Request,
@@ -467,19 +488,33 @@ impl ExecutionArtifactBuilder {
 
     pub(crate) fn build(self) -> ExecutionArtifact {
         let actual_cost = self.cost_to_use();
-        let result = ExecutionResultV2 {
-            effects: self.effects,
-            transfers: self.transfers,
-            initiator: self.initiator,
-            refund: self.refund,
-            limit: self.limit,
-            consumed: self.consumed,
-            cost: actual_cost,
-            current_price: self.current_price,
-            size_estimate: self.size_estimate,
-            error_message: self.error_message,
+        let execution_result = if let Some(receipt) = self.evm_receipt {
+            let result = EvmExecutionResult {
+                initiator: self.initiator,
+                current_price: self.current_price,
+                limit: self.limit,
+                cost: actual_cost,
+                refund: self.refund,
+                size_estimate: self.size_estimate,
+                effects: self.effects,
+                receipt,
+            };
+            ExecutionResult::from(result)
+        } else {
+            let result = ExecutionResultV2 {
+                effects: self.effects,
+                transfers: self.transfers,
+                initiator: self.initiator,
+                refund: self.refund,
+                limit: self.limit,
+                consumed: self.consumed,
+                cost: actual_cost,
+                current_price: self.current_price,
+                size_estimate: self.size_estimate,
+                error_message: self.error_message,
+            };
+            ExecutionResult::V2(Box::new(result))
         };
-        let execution_result = ExecutionResult::V2(Box::new(result));
         ExecutionArtifact::new(self.hash, self.header, execution_result, self.messages)
     }
 
@@ -578,7 +613,7 @@ impl SpeculativeExecutionResult {
                 InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
             ),
             Transaction::Evm(_) => SpeculativeExecutionResult::InvalidTransaction(
-                InvalidTransaction::Evm(casper_types::evm::TransactionError::Decode(
+                InvalidTransaction::Evm(evm::TransactionError::Decode(
                     "EVM transactions are not routed through contract runtime".to_string(),
                 )),
             ),

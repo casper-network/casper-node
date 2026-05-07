@@ -97,6 +97,7 @@ wheelbuf = "0.2.0"
 casper-executor-wasm = { version = "0.1.3", path = "../executor/wasm" }
 casper-executor-wasm-interface = { version = "0.1.3", path = "../executor/wasm_interface" }
 fs_extra = "1.3.0"
+casper-executor-evm = { version = "0.1.0", path = "../executor/evm" }
 
 [dev-dependencies]
 casper-binary-port = { version = "1.1.1", path = "../binary_port", features = ["testing"] }
@@ -111,6 +112,11 @@ proptest-derive = "0.5.1"
 rand_core = "0.6.2"
 reqwest = { version = "0.11.27", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
+alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
+alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
+alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak", "k256"] }
+k256 = { version = "0.13.4", default-features = false, features = ["ecdsa"] }
+revm = { version = "38", features = ["dev"] }
 
 [features]
 failpoints = []

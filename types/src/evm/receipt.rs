@@ -389,8 +389,39 @@ pub struct Log {
     /// Contract address that emitted the log.
     pub address: Address,
     /// Indexed log topics.
+    ///
+    /// The EVM supports at most four topics per log because bytecode emits
+    /// logs with the `LOG0` through `LOG4` opcodes. For a non-anonymous
+    /// Solidity event, `topics[0]` is the full 32-byte Keccak-256 hash of
+    /// the canonical event signature such as `Transfer(address,address,uint256)`.
+    /// Indexed event arguments are ABI-encoded into the following topics.
+    /// Anonymous Solidity events omit the signature topic, allowing all four
+    /// topics to hold indexed arguments.
     pub topics: Vec<Hash>,
-    /// Unindexed log data.
+    /// ABI-encoded unindexed log data.
+    ///
+    /// This contains the event arguments that are not marked `indexed`,
+    /// including ABI offsets and lengths for dynamic values. The type does
+    /// not impose a fixed per-log byte limit; effective size is bounded by
+    /// transaction gas, block gas, EVM memory expansion, and the EVM log-data
+    /// gas cost. With the current Casper EVM `block_gas_limit` of 30,000,000
+    /// and revm's Ethereum gas schedule, the artificial best-case bound is:
+    ///
+    /// ```text
+    /// log_gas = 375 + 375 * topics + 8 * bytes + memory_gas(bytes)
+    /// memory_gas(bytes) = 3 * words + floor(words * words / 512)
+    /// words = ceil(bytes / 32)
+    /// ```
+    ///
+    /// There is no separate configured EVM memory cap here; memory is bounded
+    /// by gas. If one `LOG0` spent the whole 30,000,000 gas budget expanding
+    /// memory from zero and emitting data, the largest data payload would be
+    /// 2,376,064 bytes, or 74,252 32-byte memory words, costing 29,999,923
+    /// gas. For `LOG4`, the same calculation gives 2,375,968 bytes, or
+    /// 74,249 words, costing 29,999,776 gas. Both are about 2.27 MiB. Real
+    /// contracts have lower practical limits because they also spend gas on
+    /// transaction intrinsic cost, code, stack setup, memory writes, control
+    /// flow, and any surrounding state changes.
     pub data: Bytes,
 }
 
@@ -440,7 +471,13 @@ pub struct Receipt {
     pub status: ReceiptStatus,
     /// Gas consumed by EVM execution.
     pub gas_used: u64,
-    /// Effective gas price used for Ethereum receipt projection.
+    /// Effective gas price used for Ethereum receipt projection and Casper
+    /// EVM fee accounting.
+    ///
+    /// For accepted EIP-1559 transactions this is the configured EVM base fee
+    /// capped by `max_fee_per_gas`, since non-zero priority fees are rejected
+    /// while Casper does not prioritize transactions based on transaction gas
+    /// parameters.
     pub effective_gas_price: u128,
     /// Contract address created by the transaction, if any.
     pub contract_address: Option<Address>,

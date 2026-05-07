@@ -10,7 +10,12 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use alloy_primitives::keccak256;
+
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey,
+};
 
 /// The number of bytes in an EVM address.
 pub const ADDRESS_LENGTH: usize = 20;
@@ -47,6 +52,23 @@ impl Address {
     /// Returns a lower-case hexadecimal string without a `0x` prefix.
     pub fn to_hex_string(self) -> String {
         base16::encode_lower(&self.0)
+    }
+
+    /// Returns the Ethereum address for a secp256k1 public key.
+    ///
+    /// Ethereum addresses are the low 20 bytes of the Keccak-256 hash of the
+    /// uncompressed secp256k1 public key without its SEC1 prefix byte.
+    /// Non-secp256k1 Casper keys do not have an EVM-native address.
+    pub fn from_public_key(public_key: &PublicKey) -> Option<Self> {
+        let PublicKey::Secp256k1(public_key) = public_key else {
+            return None;
+        };
+        let encoded = public_key.to_encoded_point(false);
+        let bytes = encoded.as_bytes();
+        let digest = keccak256(&bytes[1..]);
+        let mut address = [0u8; ADDRESS_LENGTH];
+        address.copy_from_slice(&digest.as_slice()[digest.len() - ADDRESS_LENGTH..]);
+        Some(Address::new(address))
     }
 }
 

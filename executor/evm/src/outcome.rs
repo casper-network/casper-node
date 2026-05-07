@@ -26,10 +26,7 @@ impl ExecutionOutcome {
     pub(crate) fn from_revm_result(result: &ExecutionResult) -> Self {
         match result {
             ExecutionResult::Success {
-                gas_used,
-                logs,
-                output,
-                ..
+                gas, logs, output, ..
             } => {
                 let (output_bytes, created_contract_address) = match output {
                     Output::Call(bytes) => (bytes.to_vec(), None),
@@ -39,22 +36,22 @@ impl ExecutionOutcome {
                 };
                 Self {
                     status: ExecutionStatus::Success,
-                    gas_used: *gas_used,
+                    gas_used: gas.tx_gas_used(),
                     output: output_bytes,
                     logs: logs.iter().map(from_revm_log).collect(),
                     created_contract_address,
                 }
             }
-            ExecutionResult::Revert { gas_used, output } => Self {
+            ExecutionResult::Revert { gas, output, .. } => Self {
                 status: ExecutionStatus::Revert,
-                gas_used: *gas_used,
+                gas_used: gas.tx_gas_used(),
                 output: output.to_vec(),
                 logs: Vec::new(),
                 created_contract_address: None,
             },
-            ExecutionResult::Halt { gas_used, reason } => Self {
+            ExecutionResult::Halt { gas, reason, .. } => Self {
                 status: ExecutionStatus::Halt(from_revm_halt_reason(reason)),
-                gas_used: *gas_used,
+                gas_used: gas.tx_gas_used(),
                 output: Vec::new(),
                 logs: Vec::new(),
                 created_contract_address: None,
@@ -103,7 +100,9 @@ fn from_revm_halt_reason(reason: &RevmHaltReason) -> evm::HaltReason {
         RevmHaltReason::StackOverflow => evm::HaltReason::StackOverflow,
         RevmHaltReason::OutOfOffset => evm::HaltReason::OutOfOffset,
         RevmHaltReason::CreateCollision => evm::HaltReason::CreateCollision,
-        RevmHaltReason::PrecompileError => evm::HaltReason::PrecompileError,
+        RevmHaltReason::PrecompileError | RevmHaltReason::PrecompileErrorWithContext(_) => {
+            evm::HaltReason::PrecompileError
+        }
         RevmHaltReason::NonceOverflow => evm::HaltReason::NonceOverflow,
         RevmHaltReason::CreateContractSizeLimit => evm::HaltReason::CreateContractSizeLimit,
         RevmHaltReason::CreateContractStartingWithEF => {

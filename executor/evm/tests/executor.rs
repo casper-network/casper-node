@@ -5,7 +5,7 @@ use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
-    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
+    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, FeeCharge, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -17,9 +17,9 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    evm, CLValue, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig, HoldBalanceHandling,
-    Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
-    Timestamp, WasmConfig, U512,
+    evm, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
+    HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
+    StoredValue, SystemConfig, Timestamp, WasmConfig, U512,
 };
 use revm::bytecode::opcode;
 
@@ -99,15 +99,15 @@ fn block() -> BlockContext {
 struct HeightBlockHashProvider;
 
 impl BlockHashProvider for HeightBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<evm::Hash>> {
+    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<BlockHash>> {
         Ok(Some(block_hash_for_height(block_height)))
     }
 }
 
-fn block_hash_for_height(block_height: u64) -> evm::Hash {
-    let mut bytes = [0u8; evm::HASH_LENGTH];
+fn block_hash_for_height(block_height: u64) -> BlockHash {
+    let mut bytes = [0u8; BlockHash::LENGTH];
     bytes[24..].copy_from_slice(&block_height.to_be_bytes());
-    evm::Hash::new(bytes)
+    BlockHash::new(Digest::from_raw(bytes))
 }
 
 fn init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
@@ -172,6 +172,7 @@ fn call_request(
             nonce: 0,
             validation: CallValidation::UncheckedSimulation,
         }),
+        fee_charge: FeeCharge::Evm,
     }
 }
 
@@ -193,6 +194,7 @@ fn checked_call_request(
             nonce: 0,
             validation: CallValidation::Checked,
         }),
+        fee_charge: FeeCharge::Evm,
     }
 }
 
@@ -405,10 +407,7 @@ fn blockhash_uses_supplied_provider() {
         .expect("EVM execution should succeed");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(
-        outcome.output.as_slice(),
-        block_hash_for_height(1).as_bytes()
-    );
+    assert_eq!(outcome.output.as_slice(), block_hash_for_height(1).as_ref());
 }
 
 #[test]
@@ -706,6 +705,7 @@ fn signed_transactions_require_configured_chain_id() {
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(missing_chain_id),
+        fee_charge: FeeCharge::Evm,
     };
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
@@ -723,6 +723,7 @@ fn signed_transactions_require_configured_chain_id() {
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(transaction),
+        fee_charge: FeeCharge::Evm,
     };
     assert!(matches!(
         wrong_chain_executor.execute(&mut tracking_copy, request),
