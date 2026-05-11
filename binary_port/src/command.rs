@@ -149,7 +149,7 @@ impl Command {
                     casper_types::evm::Address::new(rng.gen()),
                     rng.gen::<bool>()
                         .then(|| casper_types::evm::Address::new(rng.gen())),
-                    casper_types::evm::Hash::new(rng.gen()),
+                    casper_types::U256::from_big_endian(&rng.gen::<[u8; 32]>()),
                     casper_types::bytesrepr::Bytes::from(rng.random_vec(0..64)),
                     rng.gen(),
                 ),

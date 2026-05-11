@@ -22,6 +22,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, Bytes, ToBytes},
     contracts::NamedKeys,
+    evm,
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     system::{
@@ -2219,7 +2220,9 @@ pub trait StateProvider: Send + Sync + Sized {
         );
 
         match transfer_target_mode {
-            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists { .. } => {
+            TransferTargetMode::ExistingAccount { .. }
+            | TransferTargetMode::ExistingEvmAccount { .. }
+            | TransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
             TransferTargetMode::CreateAccount(account_hash) => {
@@ -2237,6 +2240,21 @@ pub trait StateProvider: Send + Sync + Sized {
                 {
                     return TransferResult::Failure(tce.into());
                 }
+            }
+            TransferTargetMode::CreateEvmAccount(address) => {
+                let main_purse = evm::deterministic_purse(address);
+                let balance = match CLValue::from_t(U512::zero()) {
+                    Ok(balance) => balance,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                tc.borrow_mut().write(
+                    Key::EvmAccount(address),
+                    StoredValue::EvmAccount(evm::Account::new(0, evm::EMPTY_CODE_HASH, main_purse)),
+                );
+                tc.borrow_mut().write(
+                    Key::Balance(main_purse.addr()),
+                    StoredValue::CLValue(balance),
+                );
             }
         }
         let transfer_args = match runtime_args_builder.build(

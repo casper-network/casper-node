@@ -18,7 +18,7 @@ use casper_storage::data_access_layer::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
-    AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
+    AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, CLType, Chainspec, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, Package, PackageAddr, PackageHash, PackageIdentifier,
     Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
@@ -463,10 +463,20 @@ impl TransactionAcceptor {
             ExecutableDeployItem::Transfer { args } => {
                 // We rely on the `Deploy::is_config_compliant` to check
                 // that the transfer amount arg is present and is a valid U512.
-                if args.get(ARG_TARGET).is_none() {
+                let Some(target) = args.get(ARG_TARGET) else {
                     let error = Error::parameter_failure(
                         &block_header,
                         DeployParameterFailure::MissingTransferTarget.into(),
+                    );
+                    return self.reject_transaction(effect_builder, *event_metadata, error);
+                };
+                if !self.chainspec.evm_config.enabled
+                    && target.cl_type()
+                        == &CLType::ByteArray(casper_types::evm::ADDRESS_LENGTH as u32)
+                {
+                    let error = Error::parameter_failure(
+                        &block_header,
+                        DeployParameterFailure::EvmAddressTransferDisabled.into(),
                     );
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }

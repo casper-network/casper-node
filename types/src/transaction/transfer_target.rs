@@ -3,7 +3,7 @@ use rand::Rng;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{account::AccountHash, PublicKey, URef};
+use crate::{account::AccountHash, evm, PublicKey, URef};
 
 /// The various types which can be used as the `target` runtime argument of a native transfer.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -12,6 +12,8 @@ pub enum TransferTarget {
     PublicKey(PublicKey),
     /// An account hash.
     AccountHash(AccountHash),
+    /// An EVM address.
+    EvmAddress(evm::Address),
     /// A URef.
     URef(URef),
 }
@@ -38,6 +40,12 @@ impl From<PublicKey> for TransferTarget {
 impl From<AccountHash> for TransferTarget {
     fn from(account_hash: AccountHash) -> Self {
         Self::AccountHash(account_hash)
+    }
+}
+
+impl From<evm::Address> for TransferTarget {
+    fn from(address: evm::Address) -> Self {
+        Self::EvmAddress(address)
     }
 }
 

@@ -97,6 +97,7 @@ pub(crate) fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
         TransferTarget::AccountHash(account_hash) => {
             args.insert(TRANSFER_ARG_TARGET, account_hash)?
         }
+        TransferTarget::EvmAddress(address) => args.insert(TRANSFER_ARG_TARGET, address)?,
         TransferTarget::URef(uref) => args.insert(TRANSFER_ARG_TARGET, uref)?,
     }
     TRANSFER_ARG_AMOUNT.insert(&mut args, amount.into())?;
@@ -181,4 +182,31 @@ pub(crate) fn new_redelegate_args<A: Into<U512>>(
     REDELEGATE_ARG_AMOUNT.insert(&mut args, amount.into())?;
     REDELEGATE_ARG_NEW_VALIDATOR.insert(&mut args, new_validator)?;
     Ok(args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{evm, CLType};
+
+    #[test]
+    fn new_transfer_args_accepts_evm_address_target() {
+        let address = evm::Address::new([0x44; evm::ADDRESS_LENGTH]);
+        let args = new_transfer_args(U512::from(1), None, address, None)
+            .expect("EVM address transfer args should serialize");
+        let target = args
+            .get(TRANSFER_ARG_TARGET)
+            .expect("target argument should exist");
+
+        assert_eq!(
+            target.cl_type(),
+            &CLType::ByteArray(evm::ADDRESS_LENGTH as u32)
+        );
+        assert_eq!(
+            target
+                .to_t::<evm::Address>()
+                .expect("EVM address should deserialize"),
+            address
+        );
+    }
 }

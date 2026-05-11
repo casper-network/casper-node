@@ -115,6 +115,9 @@ impl From<Error> for BinaryPortErrorCode {
                     DeployParameterFailure::MissingTransferTarget => {
                         BinaryPortErrorCode::DeployMissingTransferTarget
                     }
+                    DeployParameterFailure::EvmAddressTransferDisabled => {
+                        BinaryPortErrorCode::DeployEvmAddressTransferDisabled
+                    }
                     DeployParameterFailure::MissingModuleBytes => {
                         BinaryPortErrorCode::DeployMissingModuleBytes
                     }
@@ -191,6 +194,9 @@ pub(crate) enum DeployParameterFailure {
     /// Missing transfer "target" runtime argument.
     #[error("missing transfer 'target' runtime argument")]
     MissingTransferTarget,
+    /// EVM address transfer target is disabled.
+    #[error("EVM address transfer target is disabled")]
+    EvmAddressTransferDisabled,
     /// Module bytes for session code cannot be empty.
     #[error("module bytes for session code cannot be empty")]
     MissingModuleBytes,

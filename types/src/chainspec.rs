@@ -28,7 +28,7 @@ use std::{fmt::Debug, sync::Arc};
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 #[cfg(any(feature = "testing", test))]
@@ -98,7 +98,7 @@ pub use vm_config::{
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(Clone, PartialEq, Eq, Serialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct Chainspec {

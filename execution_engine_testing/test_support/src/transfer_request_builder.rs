@@ -82,6 +82,7 @@ impl TransferRequestBuilder {
         let target_value = match target.into() {
             TransferTarget::PublicKey(public_key) => CLValue::from_t(public_key),
             TransferTarget::AccountHash(account_hash) => CLValue::from_t(account_hash),
+            TransferTarget::EvmAddress(address) => CLValue::from_t(address),
             TransferTarget::URef(uref) => CLValue::from_t(uref),
         }
         .unwrap();

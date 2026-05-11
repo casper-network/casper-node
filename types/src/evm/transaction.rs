@@ -42,6 +42,15 @@ use crate::{
 
 const TRANSACTION_KIND_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
+/// Ethereum transaction type ID for legacy transactions.
+pub const LEGACY_TRANSACTION_TYPE_ID: u8 = 0;
+
+/// Ethereum transaction type ID for EIP-2930 access-list transactions.
+pub const EIP2930_TRANSACTION_TYPE_ID: u8 = 1;
+
+/// Ethereum transaction type ID for EIP-1559 dynamic-fee transactions.
+pub const EIP1559_TRANSACTION_TYPE_ID: u8 = 2;
+
 /// Ethereum transaction type ID for EIP-4844 blob transactions.
 pub const EIP4844_TRANSACTION_TYPE_ID: u8 = EIP4844_TX_TYPE_ID;
 
@@ -54,6 +63,7 @@ pub const EIP7702_TRANSACTION_TYPE_ID: u8 = EIP7702_TX_TYPE_ID;
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "EvmTransactionHash"))]
 pub struct TransactionHash(Digest);
 
 impl TransactionHash {
@@ -152,12 +162,17 @@ pub enum TransactionKind {
 }
 
 impl TransactionKind {
-    fn tag(self) -> u8 {
+    /// Returns the Ethereum transaction type ID for this transaction kind.
+    pub const fn type_id(self) -> u8 {
         match self {
-            TransactionKind::Legacy => 0,
-            TransactionKind::Eip2930 => 1,
-            TransactionKind::Eip1559 => 2,
+            TransactionKind::Legacy => LEGACY_TRANSACTION_TYPE_ID,
+            TransactionKind::Eip2930 => EIP2930_TRANSACTION_TYPE_ID,
+            TransactionKind::Eip1559 => EIP1559_TRANSACTION_TYPE_ID,
         }
+    }
+
+    fn tag(self) -> u8 {
+        self.type_id()
     }
 }
 

@@ -39,8 +39,8 @@ Implemented in this workspace:
 - Contract runtime execution for finalized `Transaction::Evm` values.
 - Casper fee and refund handling for EVM transactions.
 - Binary-port `EvmCall` for read-only `eth_call` support.
-- EVM genesis account seeding for secp256k1 genesis accounts when
-  `[evm].enabled = true`.
+- Native Casper transfers to 20-byte EVM addresses when `[evm].enabled = true`,
+  creating or funding the corresponding EVM account record.
 
 Implemented in the sidecar workspace for validation:
 
@@ -338,11 +338,16 @@ An EVM account record contains:
 Balances are Casper purse balances. EVM balance reads and writes reconcile
 through the account main purse and `Key::Balance(main_purse.addr())`.
 
-When `[evm].enabled = true`, genesis creates an EVM account for each genesis
-secp256k1 account. The EVM address is derived from the public key using
-Ethereum address rules, and the EVM account uses the same main purse as the
-Casper account. This avoids duplicating supply while allowing Ethereum
-transactions to spend from the same funded devnet user.
+Genesis does not create EVM account records for Casper genesis accounts.
+Funding an EVM identity is explicit: a native Casper transfer can use a
+20-byte `evm::Address` as its `target` argument when `[evm].enabled = true`.
+If `Key::EvmAccount(address)` already exists, the transfer credits that
+account's main purse. If it does not exist, the transfer creates
+`StoredValue::EvmAccount(Account::new(0, EMPTY_CODE_HASH,
+evm::deterministic_purse(address)))`, initializes that deterministic purse
+with a zero balance, then transfers the requested motes into it. Transfer
+records keep the Casper transfer schema unchanged: `to` is `None`, and
+`target` is the EVM account's backing purse.
 
 ## Receipts
 
@@ -564,6 +569,24 @@ eth_chainId: 0x435350ff
 eth_getTransactionCount: 0x0
 ```
 
+### Fund EVM Identity
+
+Create and fund the EVM identity explicitly with a native Casper transfer:
+
+```bash
+casper-cli transaction transfer \
+    --from devnet:user-1 \
+    --to 0x24790C4849cCAE43c0c1749e2C5b8d00Cc63AB80 \
+    --amount 10000 \
+    --raw \
+    --no-interactive
+```
+
+The transfer target is encoded as `byte-array[20]`. A successful transfer
+creates `Key::EvmAccount(0x24790c...)`, initializes its deterministic backing
+purse, and credits it with the transferred motes. The EVM nonce remains `0x0`
+until the first EVM transaction is executed.
+
 ### Deploy Counter
 
 From the node workspace:
@@ -660,8 +683,9 @@ Expected output:
 
 ### Confirm Fees
 
-The EVM account uses the same main purse as devnet `user-1`, so the Casper
-balance should decrease after deployment and increment:
+The native transfer debits devnet `user-1` and credits the EVM identity's
+deterministic backing purse. EVM transaction fees are charged from that EVM
+backing purse, not from `user-1`'s Casper account purse:
 
 ```bash
 casper-cli account balance devnet:user-1
@@ -669,13 +693,6 @@ casper-cli account balance devnet:user-1
 
 With `--gas-price 1000000`, every 1,000 gas consumed is 1 CSPR before refund
 policy is applied.
-
-In the latest successful validation run, the post-deploy and post-increment
-balance was:
-
-```text
-999999999999999999999999074.848500000 CSPR
-```
 
 ## Useful Checks
 

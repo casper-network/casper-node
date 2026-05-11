@@ -9,7 +9,7 @@ use casper_types::{
     system::auction::DelegationRate,
     Account, AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
     ExecutionInfo, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, ValidatorChange,
-    U512,
+    U256, U512,
 };
 use serde::Serialize;
 
@@ -47,7 +47,7 @@ macro_rules! impl_bytesrepr_for_type_wrapper {
 pub struct EvmCallRequest {
     from: evm::Address,
     to: Option<evm::Address>,
-    value: evm::Hash,
+    value: U256,
     input: Bytes,
     gas_limit: u64,
 }
@@ -57,7 +57,7 @@ impl EvmCallRequest {
     pub fn new(
         from: evm::Address,
         to: Option<evm::Address>,
-        value: evm::Hash,
+        value: U256,
         input: Bytes,
         gas_limit: u64,
     ) -> Self {
@@ -81,7 +81,7 @@ impl EvmCallRequest {
     }
 
     /// Returns the call value.
-    pub fn value(&self) -> evm::Hash {
+    pub fn value(&self) -> U256 {
         self.value
     }
 
@@ -124,7 +124,7 @@ impl FromBytes for EvmCallRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (from, remainder) = evm::Address::from_bytes(bytes)?;
         let (to, remainder) = Option::<evm::Address>::from_bytes(remainder)?;
-        let (value, remainder) = evm::Hash::from_bytes(remainder)?;
+        let (value, remainder) = U256::from_bytes(remainder)?;
         let (input, remainder) = Bytes::from_bytes(remainder)?;
         let (gas_limit, remainder) = u64::from_bytes(remainder)?;
         Ok((
@@ -955,7 +955,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&EvmCallRequest::new(
             evm::Address::new(rng.gen()),
             rng.gen::<bool>().then(|| evm::Address::new(rng.gen())),
-            evm::Hash::new(rng.gen()),
+            U256::from_big_endian(&rng.gen::<[u8; 32]>()),
             Bytes::from(rng.random_vec(0..64)),
             rng.gen(),
         ));

@@ -241,6 +241,9 @@ impl ExecutableDeployItem {
             TransferTarget::AccountHash(account_hash) => args
                 .insert(TRANSFER_ARG_TARGET, account_hash)
                 .expect("should serialize account hash target arg"),
+            TransferTarget::EvmAddress(address) => args
+                .insert(TRANSFER_ARG_TARGET, address)
+                .expect("should serialize EVM address target arg"),
             TransferTarget::URef(uref) => args
                 .insert(TRANSFER_ARG_TARGET, uref)
                 .expect("should serialize uref target arg"),

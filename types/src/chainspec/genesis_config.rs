@@ -34,7 +34,6 @@ pub struct GenesisConfig {
     gas_hold_balance_handling: HoldBalanceHandling,
     gas_hold_interval_millis: u64,
     enable_addressable_entity: bool,
-    enable_evm: bool,
     rewards_ratio: Option<Ratio<u64>>,
     storage_costs: StorageCosts,
     minimum_delegation_rate: DelegationRate,
@@ -73,7 +72,6 @@ impl GenesisConfig {
             gas_hold_balance_handling,
             gas_hold_interval_millis,
             enable_addressable_entity,
-            enable_evm: false,
             rewards_ratio: rewards_handling,
             storage_costs,
             minimum_delegation_rate,
@@ -172,11 +170,6 @@ impl GenesisConfig {
         self.enable_addressable_entity
     }
 
-    /// Returns whether EVM genesis account records should be installed.
-    pub fn enable_evm(&self) -> bool {
-        self.enable_evm
-    }
-
     /// Set enable entity.
     pub fn set_enable_entity(&mut self, enable: bool) {
         self.enable_addressable_entity = enable
@@ -252,7 +245,6 @@ impl Distribution<GenesisConfig> for Standard {
             gas_hold_balance_handling,
             gas_hold_interval_millis,
             enable_addressable_entity: false,
-            enable_evm: false,
             rewards_ratio: None,
             storage_costs,
             minimum_delegation_rate,
@@ -287,7 +279,6 @@ impl From<&Chainspec> for GenesisConfig {
             gas_hold_balance_handling,
             gas_hold_interval_millis,
             enable_addressable_entity: chainspec.core_config.enable_addressable_entity,
-            enable_evm: chainspec.evm_config.enabled,
             rewards_ratio,
             storage_costs,
             minimum_delegation_rate: chainspec.core_config.minimum_delegation_rate,

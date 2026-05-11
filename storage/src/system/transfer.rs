@@ -4,6 +4,7 @@ use thiserror::Error;
 use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
+    evm,
     system::{mint, mint::Error as MintError},
     AccessRights, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion, RuntimeArgs,
     RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
@@ -87,6 +88,11 @@ pub enum TransferTargetMode {
         /// Main purse of a resolved account.
         main_purse: URef,
     },
+    /// Native transfer arguments resolved into a transfer to an existing EVM account.
+    ExistingEvmAccount {
+        /// Main purse of a resolved EVM account.
+        main_purse: URef,
+    },
     /// Native transfer arguments resolved into a transfer to a purse.
     PurseExists {
         /// Target account hash (if known).
@@ -96,6 +102,8 @@ pub enum TransferTargetMode {
     },
     /// Native transfer arguments resolved into a transfer to a new account.
     CreateAccount(AccountHash),
+    /// Native transfer arguments resolved into a transfer to a new EVM account.
+    CreateEvmAccount(evm::Address),
 }
 
 impl TransferTargetMode {
@@ -111,6 +119,8 @@ impl TransferTargetMode {
                 ..
             } => Some(*target_account_hash),
             TransferTargetMode::CreateAccount(target_account_hash) => Some(*target_account_hash),
+            TransferTargetMode::ExistingEvmAccount { .. }
+            | TransferTargetMode::CreateEvmAccount(_) => None,
         }
     }
 }
@@ -342,6 +352,26 @@ impl TransferRuntimeArgsBuilder {
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 self.map_cl_value(cl_value)?
             }
+            Some(cl_value)
+                if *cl_value.cl_type() == CLType::ByteArray(evm::ADDRESS_LENGTH as u32) =>
+            {
+                let address: evm::Address = self.map_cl_value(cl_value)?;
+                let key = Key::EvmAccount(address);
+                return match tracking_copy.borrow_mut().read(&key)? {
+                    Some(StoredValue::EvmAccount(account)) => {
+                        Ok(TransferTargetMode::ExistingEvmAccount {
+                            main_purse: account.main_purse().with_access_rights(AccessRights::ADD),
+                        })
+                    }
+                    Some(stored_value) => {
+                        Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                            "StoredValue::EvmAccount".to_string(),
+                            stored_value.type_name(),
+                        )))
+                    }
+                    None => Ok(TransferTargetMode::CreateEvmAccount(address)),
+                };
+            }
             Some(cl_value) if *cl_value.cl_type() == CLType::Key => {
                 let account_key: Key = self.map_cl_value(cl_value)?;
                 let account_hash: AccountHash = account_key
@@ -425,11 +455,15 @@ impl TransferRuntimeArgsBuilder {
                     main_purse: purse_uref,
                     target_account_hash: target_account,
                 } => (Some(target_account), purse_uref),
+                TransferTargetMode::ExistingEvmAccount {
+                    main_purse: purse_uref,
+                    ..
+                } => (None, purse_uref),
                 TransferTargetMode::PurseExists {
                     target_account_hash,
                     purse_uref,
                 } => (target_account_hash, purse_uref),
-                TransferTargetMode::CreateAccount(_) => {
+                TransferTargetMode::CreateAccount(_) | TransferTargetMode::CreateEvmAccount(_) => {
                     // Method "build()" is called after `resolve_transfer_target_mode` is first called
                     // and handled by creating a new account. Calling `resolve_transfer_target_mode`
                     // for the second time should never return `CreateAccount` variant.

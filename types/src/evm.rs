@@ -8,6 +8,7 @@
 mod account;
 mod address;
 mod config;
+mod eth_u256;
 mod hash;
 mod receipt;
 mod transaction;
@@ -17,9 +18,11 @@ pub use account::{
 };
 pub use address::{Address, ADDRESS_LENGTH};
 pub use config::{EvmConfig, EvmSpec};
+pub use eth_u256::EthU256;
 pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};
 pub use transaction::{
-    Transaction, TransactionError, TransactionHash, TransactionKind, EIP4844_TRANSACTION_TYPE_ID,
-    EIP7702_TRANSACTION_TYPE_ID,
+    Transaction, TransactionError, TransactionHash, TransactionKind, EIP1559_TRANSACTION_TYPE_ID,
+    EIP2930_TRANSACTION_TYPE_ID, EIP4844_TRANSACTION_TYPE_ID, EIP7702_TRANSACTION_TYPE_ID,
+    LEGACY_TRANSACTION_TYPE_ID,
 };

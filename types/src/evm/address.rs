@@ -14,7 +14,7 @@ use alloy_primitives::keccak256;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey,
+    CLType, CLTyped, PublicKey,
 };
 
 /// The number of bytes in an EVM address.
@@ -27,7 +27,6 @@ const ADDRESS_SERIALIZED_LENGTH: usize = ADDRESS_LENGTH;
     Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Address([u8; ADDRESS_LENGTH]);
 
 impl Address {
@@ -84,6 +83,27 @@ impl Display for Address {
     }
 }
 
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Address {
+    fn schema_name() -> String {
+        String::from("Address")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description =
+            Some("A 20-byte Ethereum account or contract address encoded as hexadecimal.".into());
+        schema_object.into()
+    }
+}
+
+impl CLTyped for Address {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(ADDRESS_LENGTH as u32)
+    }
+}
+
 impl ToBytes for Address {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         Ok(self.0.to_vec())
@@ -108,5 +128,28 @@ impl FromBytes for Address {
         let address =
             <[u8; ADDRESS_LENGTH]>::try_from(address).map_err(|_| bytesrepr::Error::Formatting)?;
         Ok((Address(address), remainder))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CLValue;
+
+    #[test]
+    fn evm_address_cl_value_roundtrip() {
+        let address = Address::new([0x11; ADDRESS_LENGTH]);
+        let cl_value = CLValue::from_t(address).expect("address should serialize");
+
+        assert_eq!(
+            cl_value.cl_type(),
+            &CLType::ByteArray(ADDRESS_LENGTH as u32)
+        );
+        assert_eq!(
+            cl_value
+                .to_t::<Address>()
+                .expect("address should deserialize"),
+            address
+        );
     }
 }
