@@ -394,8 +394,8 @@ The binary-port request carries:
 - input bytes,
 - gas limit.
 
-Node handles the request only when speculative execution is enabled for the
-binary port. Contract runtime checks out state at the requested/latest block,
+Node handles the request only when simulation is enabled for the binary port.
+Contract runtime checks out state at the requested/latest block,
 runs `casper-executor-evm` with:
 
 - `ExecuteKind::Call`,
@@ -484,7 +484,18 @@ cargo build -p casper-sidecar
 
 The devnet tool needs a custom asset named `evm` that points at the debug node
 and sidecar binaries built above, plus the local chainspec and config files
-from this workspace.
+from this workspace. Use a node config where
+`[binary_port_server].allow_request_simulate = true`; the checked-in local
+config defaults this to `false`, so copy `resources/local/config.toml` and
+enable it in the copy used for this custom asset.
+
+For example:
+
+```bash
+export EVM_DEVNET_NODE_CONFIG=/tmp/casper-node-evm-devnet-config.toml
+cp "$CASPER_NODE_WORKSPACE/resources/local/config.toml" "$EVM_DEVNET_NODE_CONFIG"
+# Edit $EVM_DEVNET_NODE_CONFIG so allow_request_simulate = true.
+```
 
 From a separate `casper-devnet` checkout, register the asset with:
 
@@ -494,7 +505,7 @@ cargo run -- assets add evm \
     --casper-node "$CASPER_NODE_WORKSPACE/target/debug/casper-node" \
     --casper-sidecar "$CASPER_SIDECAR_WORKSPACE/target/debug/casper-sidecar" \
     --chainspec "$CASPER_NODE_WORKSPACE/resources/local/chainspec.toml" \
-    --node-config "$CASPER_NODE_WORKSPACE/resources/local/config.toml" \
+    --node-config "$EVM_DEVNET_NODE_CONFIG" \
     --sidecar-config "$CASPER_SIDECAR_WORKSPACE/resources/example_configs/default_rpc_only_config.toml"
 ```
 
@@ -505,7 +516,7 @@ casper-devnet assets add evm \
     --casper-node "$CASPER_NODE_WORKSPACE/target/debug/casper-node" \
     --casper-sidecar "$CASPER_SIDECAR_WORKSPACE/target/debug/casper-sidecar" \
     --chainspec "$CASPER_NODE_WORKSPACE/resources/local/chainspec.toml" \
-    --node-config "$CASPER_NODE_WORKSPACE/resources/local/config.toml" \
+    --node-config "$EVM_DEVNET_NODE_CONFIG" \
     --sidecar-config "$CASPER_SIDECAR_WORKSPACE/resources/example_configs/default_rpc_only_config.toml"
 ```
 
@@ -700,7 +711,7 @@ Node workspace:
 
 ```bash
 cargo check -p casper-node --bin casper-node
-cargo test -p casper-binary-port evm_call --lib
+cargo test -p casper-binary-port simulation --lib
 ```
 
 Sidecar workspace:
