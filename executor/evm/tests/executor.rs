@@ -19,7 +19,7 @@ use casper_storage::{
 use casper_types::{
     evm, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
     HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
-    StoredValue, SystemConfig, Timestamp, WasmConfig, U512,
+    StoredValue, SystemConfig, Timestamp, U256 as CasperU256, WasmConfig, U512,
 };
 use revm::bytecode::opcode;
 
@@ -158,7 +158,7 @@ fn call_request(
     from: evm::Address,
     to: Option<evm::Address>,
     input: Vec<u8>,
-    value: evm::Hash,
+    value: CasperU256,
 ) -> ExecuteRequest {
     ExecuteRequest {
         block: block(),
@@ -180,7 +180,7 @@ fn checked_call_request(
     from: evm::Address,
     to: Option<evm::Address>,
     input: Vec<u8>,
-    value: evm::Hash,
+    value: CasperU256,
 ) -> ExecuteRequest {
     ExecuteRequest {
         block: block(),
@@ -208,7 +208,7 @@ fn execute_call<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     let outcome = executor
         .execute(
             tracking_copy,
-            call_request(from, to, input, evm::Hash::ZERO),
+            call_request(from, to, input, CasperU256::zero()),
         )
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -381,14 +381,14 @@ fn blockhash_uses_supplied_provider() {
     let outcome = executor
         .execute_with_block_hash_provider(
             &mut tracking_copy,
-            call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO),
+            call_request(from, Some(contract), Vec::new(), CasperU256::zero()),
             &block_hash_provider,
         )
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
 
-    let mut too_old_request = call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO);
+    let mut too_old_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     too_old_request.block.number = 258;
     let outcome = executor
         .execute_with_block_hash_provider(&mut tracking_copy, too_old_request, &block_hash_provider)
@@ -396,7 +396,7 @@ fn blockhash_uses_supplied_provider() {
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
 
-    let mut historical_request = call_request(from, Some(contract), Vec::new(), evm::Hash::ZERO);
+    let mut historical_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     historical_request.block.number = 2;
     let outcome = executor
         .execute_with_block_hash_provider(
@@ -455,7 +455,7 @@ fn erc20_and_native_purse_balances_update() {
     let (mut tracking_copy, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, owner, U512::from(1_000u64));
-    let transfer_value = word(250);
+    let transfer_value = CasperU256::from(250);
     let outcome = executor
         .execute(
             &mut tracking_copy,
@@ -741,7 +741,7 @@ fn checked_calls_enforce_transaction_validation() {
     let recipient = evm::Address::new([2; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();
 
-    let request = checked_call_request(from, Some(recipient), Vec::new(), word(1));
+    let request = checked_call_request(from, Some(recipient), Vec::new(), CasperU256::from(1));
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
         Err(Error::Revm(_))

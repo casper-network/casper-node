@@ -55,7 +55,7 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                 Some(address) => TxKind::Call(to_revm_address(address)),
                 None => TxKind::Create,
             })
-            .value(to_revm_hash_word(call.value))
+            .value(to_revm_u256(call.value))
             .data(Bytes::from(call.input.clone()))
             .nonce(call.nonce)
             .chain_id(Some(config.chain_id))

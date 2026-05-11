@@ -402,6 +402,7 @@ impl TestFixture {
                 allow_request_get_all_values: true,
                 allow_request_get_trie: true,
                 allow_request_speculative_exec: true,
+                allow_request_simulate: true,
                 ..Default::default()
             },
             ..Default::default()

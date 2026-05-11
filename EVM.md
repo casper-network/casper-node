@@ -38,7 +38,7 @@ Implemented in this workspace:
 - `casper-executor-evm`, backed by `revm`, with Casper-owned public types.
 - Contract runtime execution for finalized `Transaction::Evm` values.
 - Casper fee and refund handling for EVM transactions.
-- Binary-port `EvmCall` for read-only `eth_call` support.
+- Binary-port `Simulate` for read-only `eth_call` support.
 - Native Casper transfers to 20-byte EVM addresses when `[evm].enabled = true`,
   creating or funding the corresponding EVM account record.
 
@@ -384,7 +384,7 @@ Sidecar derives those fields from execution info and block transaction order:
 
 ## Read-only EVM Calls
 
-`eth_call` uses a node binary-port command, not transaction submission.
+`eth_call` uses the node binary-port `Simulate` command, not transaction submission.
 
 The binary-port request carries:
 

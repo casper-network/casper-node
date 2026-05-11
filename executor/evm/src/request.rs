@@ -1,6 +1,6 @@
 //! Public execution request types.
 
-use casper_types::evm;
+use casper_types::{evm, U256};
 
 use crate::tx;
 
@@ -36,7 +36,7 @@ pub struct CallRequest {
     /// Target account, or `None` for contract creation.
     pub to: Option<evm::Address>,
     /// Amount of wei to send, encoded as a big-endian 256-bit word.
-    pub value: evm::Hash,
+    pub value: U256,
     /// Calldata or contract init code.
     pub input: Vec<u8>,
     /// Gas available for execution.

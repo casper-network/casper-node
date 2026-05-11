@@ -2,7 +2,7 @@ use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 use std::collections::BTreeMap;
 
 use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractHash,
     evm,
     global_state::TrieMerkleProof,
@@ -13,7 +13,14 @@ use casper_types::{
 };
 use serde::Serialize;
 
+use crate::speculative_execution_result::SpeculativeExecutionResult;
+
 use super::GlobalStateQueryResult;
+
+const SIMULATION_REQUEST_EVM_CALL_TAG: u8 = 0;
+const SIMULATION_REQUEST_TRANSACTION_TAG: u8 = 1;
+const SIMULATION_RESULT_EVM_CALL_TAG: u8 = 0;
+const SIMULATION_RESULT_TRANSACTION_TAG: u8 = 1;
 
 // `bytesrepr` implementations for type wrappers are repetitive, hence this macro helper. We should
 // get rid of this after we introduce the proper "bytesrepr-derive" proc macro.
@@ -207,6 +214,135 @@ impl FromBytes for EvmCallResult {
             },
             remainder,
         ))
+    }
+}
+
+/// Request for a simulation against node state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum SimulationRequest {
+    /// Read-only EVM call.
+    EvmCall(EvmCallRequest),
+    /// Transaction simulation, reserved for future support.
+    Transaction(Transaction),
+}
+
+impl SimulationRequest {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut casper_types::testing::TestRng) -> Self {
+        use rand::Rng;
+
+        if rng.gen() {
+            SimulationRequest::EvmCall(EvmCallRequest::new(
+                evm::Address::new(rng.gen()),
+                rng.gen::<bool>().then(|| evm::Address::new(rng.gen())),
+                U256::from_big_endian(&rng.gen::<[u8; 32]>()),
+                Bytes::from(rng.random_vec(0..64)),
+                rng.gen(),
+            ))
+        } else {
+            SimulationRequest::Transaction(Transaction::random(rng))
+        }
+    }
+}
+
+impl ToBytes for SimulationRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                SimulationRequest::EvmCall(request) => request.serialized_length(),
+                SimulationRequest::Transaction(transaction) => transaction.serialized_length(),
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            SimulationRequest::EvmCall(request) => {
+                SIMULATION_REQUEST_EVM_CALL_TAG.write_bytes(writer)?;
+                request.write_bytes(writer)
+            }
+            SimulationRequest::Transaction(transaction) => {
+                SIMULATION_REQUEST_TRANSACTION_TAG.write_bytes(writer)?;
+                transaction.write_bytes(writer)
+            }
+        }
+    }
+}
+
+impl FromBytes for SimulationRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            SIMULATION_REQUEST_EVM_CALL_TAG => {
+                let (request, remainder) = EvmCallRequest::from_bytes(remainder)?;
+                Ok((SimulationRequest::EvmCall(request), remainder))
+            }
+            SIMULATION_REQUEST_TRANSACTION_TAG => {
+                let (transaction, remainder) = Transaction::from_bytes(remainder)?;
+                Ok((SimulationRequest::Transaction(transaction), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+/// Result of a simulation against node state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum SimulationResult {
+    /// Result of a read-only EVM call.
+    EvmCall(EvmCallResult),
+    /// Result of transaction simulation, reserved for future support.
+    Transaction(SpeculativeExecutionResult),
+}
+
+impl ToBytes for SimulationResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                SimulationResult::EvmCall(result) => result.serialized_length(),
+                SimulationResult::Transaction(result) => result.serialized_length(),
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            SimulationResult::EvmCall(result) => {
+                SIMULATION_RESULT_EVM_CALL_TAG.write_bytes(writer)?;
+                result.write_bytes(writer)
+            }
+            SimulationResult::Transaction(result) => {
+                SIMULATION_RESULT_TRANSACTION_TAG.write_bytes(writer)?;
+                result.write_bytes(writer)
+            }
+        }
+    }
+}
+
+impl FromBytes for SimulationResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            SIMULATION_RESULT_EVM_CALL_TAG => {
+                let (result, remainder) = EvmCallResult::from_bytes(remainder)?;
+                Ok((SimulationResult::EvmCall(result), remainder))
+            }
+            SIMULATION_RESULT_TRANSACTION_TAG => {
+                let (result, remainder) = SpeculativeExecutionResult::from_bytes(remainder)?;
+                Ok((SimulationResult::Transaction(result), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
     }
 }
 
@@ -968,6 +1104,44 @@ mod tests {
             evm::Receipt::random(rng).status,
             Bytes::from(rng.random_vec(0..64)),
             rng.gen(),
+        ));
+    }
+
+    #[test]
+    fn simulation_request_evm_call_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&SimulationRequest::EvmCall(EvmCallRequest::new(
+            evm::Address::new(rng.gen()),
+            rng.gen::<bool>().then(|| evm::Address::new(rng.gen())),
+            U256::from_big_endian(&rng.gen::<[u8; 32]>()),
+            Bytes::from(rng.random_vec(0..64)),
+            rng.gen(),
+        )));
+    }
+
+    #[test]
+    fn simulation_request_transaction_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&SimulationRequest::Transaction(
+            Transaction::random(rng),
+        ));
+    }
+
+    #[test]
+    fn simulation_result_evm_call_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&SimulationResult::EvmCall(EvmCallResult::new(
+            evm::Receipt::random(rng).status,
+            Bytes::from(rng.random_vec(0..64)),
+            rng.gen(),
+        )));
+    }
+
+    #[test]
+    fn simulation_result_transaction_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&SimulationResult::Transaction(
+            SpeculativeExecutionResult::random(rng),
         ));
     }
 

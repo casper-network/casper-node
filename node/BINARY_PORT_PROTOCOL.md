@@ -34,7 +34,7 @@ The Binary Port communication protocol is binary and supports a long lived tcp c
 
 ## Request model details
 
-Currently, there are 3 supported types of requests, but the request model can be extended. The request types are:
+Currently, there are 4 supported types of requests, but the request model can be extended. The request types are:
 
 - A `Get` request, which is one of:
   - A `Record` request asking for a record with an extensible `RecordId` tag and a key
@@ -45,3 +45,4 @@ Currently, there are 3 supported types of requests, but the request model can be
     - A `Trie` request asking for a trie given a `Digest`
 - A `TryAcceptTransaction` request for a transaction to be accepted and executed
 - A `TrySpeculativeExec` request for a transaction to be executed speculatively, without saving the transaction effects in global state
+- A `Simulate` request for VM simulation calls, currently supporting read-only EVM calls without saving effects in global state
