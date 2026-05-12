@@ -49,7 +49,7 @@ use super::{
     Approval, ApprovalsHash, InitiatorAddr, PricingMode,
 };
 #[cfg(any(feature = "std", feature = "testing", test))]
-use crate::bytesrepr::Bytes;
+use crate::{bytesrepr::Bytes, PublicKey};
 use crate::{Digest, DisplayIter, SecretKey, TimeDiff, Timestamp};
 
 pub use errors_v1::{
@@ -202,6 +202,38 @@ impl TransactionV1 {
         transaction
     }
 
+    #[cfg(any(feature = "std", test, feature = "testing"))]
+    pub(crate) fn build_with_system_initiator(
+        chain_name: String,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        pricing_mode: PricingMode,
+        fields: BTreeMap<u16, Bytes>,
+        initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
+    ) -> TransactionV1 {
+        let initiator_addr = InitiatorAddr::PublicKey(PublicKey::System);
+        let transaction_v1_payload = TransactionV1Payload::new(
+            chain_name,
+            timestamp,
+            ttl,
+            pricing_mode,
+            initiator_addr,
+            fields,
+        );
+        let hash = Digest::hash(
+            transaction_v1_payload
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+        );
+        let mut transaction =
+            TransactionV1::new(hash.into(), transaction_v1_payload, BTreeSet::new());
+
+        if let Some(secret_key) = initiator_addr_and_secret_key.secret_key() {
+            transaction.sign(secret_key);
+        }
+        transaction
+    }
+
     /// Adds a signature of this transaction's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
         let approval = Approval::create(&self.hash.into(), secret_key);
@@ -323,6 +355,34 @@ impl TransactionV1 {
             additional_computation_factor: 0,
         };
         TransactionV1::build(
+            rng.random_string(5..10),
+            timestamp,
+            TimeDiff::from_millis(ttl_millis),
+            pricing_mode,
+            container.to_map().unwrap(),
+            initiator_addr_and_secret_key,
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_with_system_initiator(
+        rng: &mut TestRng,
+        maybe_timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let secret_key = SecretKey::random(rng);
+        let timestamp = maybe_timestamp.unwrap_or_else(Timestamp::now);
+        let ttl_millis = ttl.map_or(
+            rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
+            |ttl| ttl.millis(),
+        );
+        let container = FieldsContainer::random_of_lane(rng, MINT_LANE_ID);
+        let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
+        let pricing_mode = PricingMode::Fixed {
+            gas_price_tolerance: 5,
+            additional_computation_factor: 0,
+        };
+        TransactionV1::build_with_system_initiator(
             rng.random_string(5..10),
             timestamp,
             TimeDiff::from_millis(ttl_millis),

@@ -8,6 +8,7 @@ use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use casper_types::{
     contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
+    PublicKey,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -141,6 +142,28 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
         ));
+
+        match meta_transaction.initiator_addr() {
+            InitiatorAddr::PublicKey(initiating_public_key) => {
+                if initiating_public_key == &PublicKey::System {
+                    return self.reject_transaction(
+                        effect_builder,
+                        *event_metadata,
+                        Error::InvalidInitiator,
+                    );
+                }
+            }
+            InitiatorAddr::AccountHash(initiating_account_hash) => {
+                let system_account_hash = PublicKey::System.to_account_hash();
+                if initiating_account_hash == &system_account_hash {
+                    return self.reject_transaction(
+                        effect_builder,
+                        *event_metadata,
+                        Error::InvalidInitiator,
+                    );
+                }
+            }
+        }
 
         if meta_transaction.is_install_or_upgrade()
             && meta_transaction.is_v2_wasm()

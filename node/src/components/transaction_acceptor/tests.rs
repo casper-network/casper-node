@@ -250,6 +250,8 @@ enum TestScenario {
         ContractVersionExistance,
     ),
     VmCasperV2ByPackageHash,
+    FromPeerWithSystemInitiator,
+    FromClientWithSystemInitiator,
 }
 
 impl TestScenario {
@@ -268,7 +270,8 @@ impl TestScenario {
             | TestScenario::FromPeerCustomPaymentContractPackage(_)
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..)
-            | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
+            | TestScenario::InvalidFieldsFromPeer
+            | TestScenario::FromPeerWithSystemInitiator => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
@@ -305,7 +308,8 @@ impl TestScenario {
             | TestScenario::RedelegateExceedingMaximumDelegation
             | TestScenario::DelegateExceedingMaximumDelegation
             | TestScenario::VmCasperV2ByPackageHash
-            | TestScenario::V1ByPackage(..) => Source::Client,
+            | TestScenario::V1ByPackage(..)
+            | TestScenario::FromClientWithSystemInitiator => Source::Client,
         }
     }
 
@@ -322,6 +326,17 @@ impl TestScenario {
             | TestScenario::FromClientInvalidTransaction(TxnType::V1) => {
                 let mut txn = TransactionV1::random(rng);
                 txn.invalidate();
+                Transaction::from(txn)
+            }
+            TestScenario::FromPeerWithSystemInitiator
+            | TestScenario::FromClientWithSystemInitiator => {
+                let txn = TransactionV1::random_with_system_initiator(rng, None, None);
+                let cloned = txn.clone();
+                assert_eq!(
+                    cloned.initiator_addr(),
+                    &InitiatorAddr::PublicKey(PublicKey::System)
+                );
+                cloned.verify().expect("must verify");
                 Transaction::from(txn)
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
@@ -937,6 +952,7 @@ impl TestScenario {
                     HashOrName::Name => true,
                 }
             },
+            TestScenario::FromPeerWithSystemInitiator | TestScenario::FromClientWithSystemInitiator => false,
         }
     }
 
@@ -1756,6 +1772,15 @@ async fn run_transaction_acceptor_without_timeout(
                     )
                 ),
             },
+            TestScenario::FromPeerWithSystemInitiator
+            | TestScenario::FromClientWithSystemInitiator => {
+                matches!(
+                    event,
+                    Event::TransactionAcceptorAnnouncement(
+                        TransactionAcceptorAnnouncement::InvalidTransaction { .. }
+                    )
+                )
+            }
         }
     };
     runner
@@ -3064,4 +3089,20 @@ async fn should_succeed_when_asking_for_active_exact_version() {
     ))
     .await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_as_initiator_from_peer() {
+    let scenario = TestScenario::FromPeerWithSystemInitiator;
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_as_initiator_from_client() {
+    let scenario = TestScenario::FromClientWithSystemInitiator;
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
 }
