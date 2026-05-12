@@ -48,6 +48,8 @@ Implemented in the sidecar workspace for validation:
   `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`,
   `eth_getTransactionCount`, `eth_sendRawTransaction`,
   `eth_getTransactionReceipt`, and `eth_call`.
+- `eth_getTransactionReceipt` projects logs stored in
+  `ExecutionResult::Evm` as Ethereum receipt log entries.
 - Development-only Cargo patches pointing sidecar at this node workspace for
   unreleased `casper-types` and `casper-binary-port` changes.
 
@@ -56,6 +58,9 @@ Not implemented yet:
 - Native Ethereum JSON-RPC in node.
 - `eth_estimateGas`, `eth_getBalance`, `eth_getCode`, historical `eth_call`,
   `eth_getLogs`, or `eth_getTransactionByHash`.
+- Ethereum filter and subscription methods, including `eth_newFilter`,
+  `eth_getFilterChanges`, `eth_getFilterLogs`, `eth_uninstallFilter`, and
+  `eth_subscribe`.
 - [EIP-4844][eip-4844] blob transactions.
 - [EIP-7702][eip-7702] set-code transactions.
 - Non-empty [EIP-2930][eip-2930]/[EIP-1559][eip-1559] access lists.
@@ -625,7 +630,7 @@ Expected output:
 ```text
 Deployer: 0x24790C4849cCAE43c0c1749e2C5b8d00Cc63AB80
 Deployed to: 0x6c0704679CA22b83778Ef815607359cf6F5352B6
-Transaction hash: 0xa86146276e1cc132ddb750e9e053c3e7a1381222104cefb0c6c567556e5e9198
+Transaction hash: <deployment transaction hash>
 ```
 
 Forge may create local `cache/` and `out/` directories. They are build
@@ -636,7 +641,7 @@ The corresponding receipt should contain:
 ```text
 status             0x1
 contractAddress    0x6c0704679ca22b83778ef815607359cf6f5352b6
-gasUsed            0x262ef
+gasUsed            <non-zero gas used>
 effectiveGasPrice  0xf4240
 ```
 
@@ -657,7 +662,9 @@ Expected output:
 ### Increment Counter
 
 ```bash
-cast send 0x6c0704679CA22b83778Ef815607359cf6F5352B6 \
+export COUNTER_ADDRESS=0x6c0704679CA22b83778Ef815607359cf6F5352B6
+
+cast send "$COUNTER_ADDRESS" \
     'increment()' \
     --rpc-url http://127.0.0.1:11101/rpc \
     --private-key 0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8 \
@@ -673,10 +680,45 @@ Expected receipt highlights:
 status               1 (success)
 type                 0
 effectiveGasPrice    1000000
-gasUsed              43803
+gasUsed              <non-zero gas used, including the event LOG cost>
 to                   0x6c0704679CA22b83778Ef815607359cf6F5352B6
 transactionHash      0x042ff975ec4b8fa8012f486bb7bd930e69978782b8b3c107ca2a276a43d7f293
 ```
+
+`increment()` emits:
+
+```solidity
+event CounterIncremented(address indexed caller, uint256 newValue);
+```
+
+For the deterministic devnet key, the increment receipt should include one log
+emitted by `$COUNTER_ADDRESS`. Sidecar currently exposes emitted events through
+`eth_getTransactionReceipt`, so receipt-oriented tooling can see and verify the
+event:
+
+```bash
+export INCREMENT_TX_HASH=0x042ff975ec4b8fa8012f486bb7bd930e69978782b8b3c107ca2a276a43d7f293
+
+cast receipt "$INCREMENT_TX_HASH" \
+    --rpc-url http://127.0.0.1:11101/rpc \
+    --json | jq '.logs[0]'
+
+cast sig-event 'CounterIncremented(address,uint256)'
+```
+
+Expected event checks:
+
+```text
+log.address == $COUNTER_ADDRESS
+log.topics[0] == 0x59950fb23669ee30425f6d79758e75fae698a6c88b2982f2980638d8bcd9397d
+log.topics[1] == 0x00000000000000000000000024790c4849ccae43c0c1749e2c5b8d00cc63ab80
+log.data      == 0x0000000000000000000000000000000000000000000000000000000000000001
+```
+
+That is enough for tools that validate a known transaction receipt. Generic
+Ethereum event discovery, for example `cast logs`, ethers.js filters, or
+web3.js filter polling, also needs sidecar support for `eth_getLogs` and the
+filter/subscription RPCs listed in the current caveats.
 
 ### Read Counter Again
 
@@ -727,6 +769,10 @@ cargo build -p casper-sidecar
 - `casper-devnet` SSE parsing is not yet updated for new EVM variants.
 - `eth_getBlockByNumber` currently returns enough typed fields for Foundry
   polling, but it is not a complete Ethereum block projection.
+- `eth_getBlockByNumber` currently returns placeholder block-level
+  `logsBloom`, `receiptsRoot`, and `gasUsed` values. Receipt-level log data is
+  available through `eth_getTransactionReceipt`, but block-level receipt-root
+  verification is not implemented.
 - Sidecar derives receipt fields from stored `ExecutionResult::Evm` and block
   metadata; efficient historical log queries are not implemented.
 - EVM call support is latest/pending only in sidecar.
