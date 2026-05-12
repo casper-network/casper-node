@@ -511,6 +511,19 @@ impl TransactionV1 {
             return Err(InvalidTransactionV1::EmptyApprovals);
         }
 
+        match &self.initiator_addr() {
+            InitiatorAddr::PublicKey(public_key) => {
+                if public_key == &PublicKey::System {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
+            InitiatorAddr::AccountHash(account_hash) => {
+                if account_hash == &PublicKey::System.to_account_hash() {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
+        }
+        
         self.has_valid_hash()?;
 
         for (index, approval) in self.approvals.iter().enumerate() {

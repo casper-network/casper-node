@@ -351,7 +351,6 @@ impl TestScenario {
                         &InitiatorAddr::AccountHash(PublicKey::System.to_account_hash())
                     )
                 };
-                cloned.verify().expect("must verify");
                 Transaction::from(txn)
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
