@@ -3111,7 +3111,12 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_peer() {
     let scenario = TestScenario::FromPeerWithSystemInitiator(true);
     let result = run_transaction_acceptor(scenario).await;
 
-    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidInitiator
+        )))
+    ))
 }
 
 #[tokio::test]
@@ -3119,7 +3124,13 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_client() {
     let scenario = TestScenario::FromClientWithSystemInitiator(true);
     let result = run_transaction_acceptor(scenario).await;
 
-    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -3127,7 +3138,12 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_peer() {
     let scenario = TestScenario::FromPeerWithSystemInitiator(false);
     let result = run_transaction_acceptor(scenario).await;
 
-    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidInitiator
+        )))
+    ))
 }
 
 #[tokio::test]
@@ -3135,5 +3151,11 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_client() {
     let scenario = TestScenario::FromClientWithSystemInitiator(false);
     let result = run_transaction_acceptor(scenario).await;
 
-    assert!(matches!(result, Err(super::Error::InvalidInitiator)))
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
+    ))
 }

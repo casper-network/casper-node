@@ -384,12 +384,13 @@ impl TransactionV1 {
         );
         let container = FieldsContainer::random_of_lane(rng, MINT_LANE_ID);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
-        let pricing_mode = PricingMode::Fixed {
-            gas_price_tolerance: 5,
-            additional_computation_factor: 0,
+        let pricing_mode = PricingMode::PaymentLimited {
+            payment_amount: 10_000_000_000u64,
+            gas_price_tolerance: 1,
+            standard_payment: false,
         };
         TransactionV1::build_with_system_initiator(
-            rng.random_string(5..10),
+            "casper-example".to_string(),
             timestamp,
             TimeDiff::from_millis(ttl_millis),
             pricing_mode,

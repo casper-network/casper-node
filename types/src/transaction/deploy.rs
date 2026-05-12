@@ -1714,6 +1714,10 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), InvalidDeploy> {
         return Err(InvalidDeploy::EmptyApprovals);
     }
 
+    if deploy.header().account() == &PublicKey::System {
+        return Err(InvalidDeploy::InvalidInitiator);
+    }
+
     deploy.has_valid_hash()?;
 
     for (index, approval) in deploy.approvals.iter().enumerate() {

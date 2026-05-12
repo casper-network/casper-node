@@ -53,8 +53,6 @@ pub(crate) enum Error {
     #[error("internal error: expected a transaction")]
     ExpectedTransactionV1,
 
-    #[error("txn with system account as inititator")]
-    InvalidInitiator,
 }
 
 impl Error {
@@ -126,7 +124,6 @@ impl From<Error> for BinaryPortErrorCode {
             Error::InvalidTransaction(invalid_transaction) => {
                 BinaryPortErrorCode::from(invalid_transaction)
             }
-            Error::InvalidInitiator => BinaryPortErrorCode::InvalidInitiator,
         }
     }
 }
