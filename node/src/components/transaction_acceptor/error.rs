@@ -52,7 +52,6 @@ pub(crate) enum Error {
     /// Component state error: expected a version 1 transaction.
     #[error("internal error: expected a transaction")]
     ExpectedTransactionV1,
-
 }
 
 impl Error {
