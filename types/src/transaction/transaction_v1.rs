@@ -48,8 +48,9 @@ use super::{
     serialization::{CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder},
     Approval, ApprovalsHash, InitiatorAddr, PricingMode,
 };
+use crate::PublicKey;
 #[cfg(any(feature = "std", feature = "testing", test))]
-use crate::{bytesrepr::Bytes, PublicKey};
+use crate::{bytesrepr::Bytes};
 use crate::{Digest, DisplayIter, SecretKey, TimeDiff, Timestamp};
 
 pub use errors_v1::{
