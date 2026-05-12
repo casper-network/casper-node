@@ -219,9 +219,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
 
         if !source.is_writeable() || !target.is_addable() {
-            // TODO: I don't think we should enforce is addable on the target
-            // Unlike other uses of URefs (such as a counter), in this context the value represents
-            // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
         let source_available_balance: U512 = match self.available_balance(source)? {

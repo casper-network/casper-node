@@ -282,6 +282,9 @@ pub enum InvalidTransaction {
     UnsupportedInvocationTarget {
         id: Option<TransactionInvocationTarget>,
     },
+
+    /// Invalid initiator for the transaction.
+    InvalidInitiator,
 }
 
 impl Display for InvalidTransaction {
@@ -527,6 +530,9 @@ impl Display for InvalidTransaction {
                             "the transaction invocation target is unsupported under V2 runtime",
                         )
                     }
+            InvalidTransaction::InvalidInitiator => {
+                write!(formatter, "the transaction has an invalid initiator")
+            }
         }
     }
 }
@@ -589,7 +595,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidMaximumDelegationAmount { .. }
             | InvalidTransaction::InvalidReservedSlots { .. }
             | InvalidTransaction::InvalidDelegationAmount { .. }
-            | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
+            | InvalidTransaction::UnsupportedInvocationTarget { .. }
+            | InvalidTransaction::InvalidInitiator => None,
         }
     }
 }
