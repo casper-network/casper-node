@@ -523,7 +523,7 @@ impl TransactionV1 {
                 }
             }
         }
-        
+
         self.has_valid_hash()?;
 
         for (index, approval) in self.approvals.iter().enumerate() {
