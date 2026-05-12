@@ -4,7 +4,7 @@ use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     KeyPrefix, TrackingCopy,
 };
-use casper_types::{evm, CLValue, Key, StoredValue, U512};
+use casper_types::{evm, ByteCode, ByteCodeKind, CLValue, Key, StoredValue, U512};
 use revm::{
     primitives::{Address, U256},
     state::{Account, EvmState},
@@ -64,7 +64,7 @@ where
 {
     // Check how to deal with Key::Balance after selfdestruct
     let address = tx::from_revm_address(address);
-    let account_key = Key::EvmAccount(address);
+    let account_key = Key::Evm(evm::EvmAddr::Account(address));
 
     if account.is_selfdestructed() {
         let main_purse = existing_main_purse(tracking_copy, &account_key)?
@@ -77,8 +77,13 @@ where
         let bytes = code.original_byte_slice();
         if !bytes.is_empty() {
             tracking_copy.write(
-                Key::EvmByteCode(tx::from_revm_hash(account.info.code_hash)),
-                StoredValue::EvmByteCode(evm::ByteCode::new(bytes.to_vec())),
+                Key::Evm(evm::EvmAddr::ByteCode(tx::from_revm_hash(
+                    account.info.code_hash,
+                ))),
+                StoredValue::Evm(evm::EvmValue::ByteCode(ByteCode::new(
+                    ByteCodeKind::EvmPrague,
+                    bytes.to_vec(),
+                ))),
             );
         }
     }
@@ -89,19 +94,26 @@ where
 
     tracking_copy.write(
         account_key,
-        StoredValue::EvmAccount(evm::Account::new(account.info.nonce, code_hash, main_purse)),
+        StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
+            account.info.nonce,
+            code_hash,
+            main_purse,
+        ))),
     );
     write_balance(tracking_copy, main_purse, account.info.balance)?;
 
     for (slot, value) in account.changed_storage_slots() {
-        let key = Key::EvmStorage(evm::StorageAddr::new(address, tx::from_revm_u256(*slot)));
+        let key = Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(
+            address,
+            tx::from_revm_storage_word(*slot),
+        )));
         if value.present_value.is_zero() {
             tracking_copy.prune(key);
         } else {
             tracking_copy.write(
                 key,
-                StoredValue::EvmStorage(evm::StorageValue::new(tx::from_revm_u256(
-                    value.present_value,
+                StoredValue::Evm(evm::EvmValue::Storage(evm::StorageValue::new(
+                    tx::from_revm_storage_word(value.present_value),
                 ))),
             );
         }
@@ -141,9 +153,9 @@ where
         .read(account_key)
         .map_err(|error| Error::State(error.to_string()))?
     {
-        Some(StoredValue::EvmAccount(account)) => Ok(Some(account.main_purse())),
+        Some(StoredValue::Evm(evm::EvmValue::Account(account))) => Ok(Some(account.main_purse())),
         Some(stored_value) => Err(Error::State(format!(
-            "unexpected stored value for {account_key}: expected StoredValue::EvmAccount, found {}",
+            "unexpected stored value for {account_key}: expected StoredValue::Evm(Account), found {}",
             stored_value.type_name()
         ))),
         None => Ok(None),

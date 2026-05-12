@@ -123,13 +123,13 @@ impl BalanceIdentifier {
                 }
             }
             BalanceIdentifier::Evm(address) => {
-                let key = Key::EvmAccount(*address);
+                let key = Key::Evm(evm::EvmAddr::Account(*address));
                 match tc.read(&key)? {
-                    Some(StoredValue::EvmAccount(account)) => account.main_purse(),
+                    Some(StoredValue::Evm(evm::EvmValue::Account(account))) => account.main_purse(),
                     Some(stored_value) => {
                         return Err(TrackingCopyError::TypeMismatch(
                             StoredValueTypeMismatch::new(
-                                "StoredValue::EvmAccount".to_string(),
+                                "StoredValue::Evm(Account)".to_string(),
                                 stored_value.type_name(),
                             ),
                         ));

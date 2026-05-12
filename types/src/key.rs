@@ -49,7 +49,7 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     evm::{
-        Address as EvmAddress, Hash as EvmHash, StorageAddr as EvmStorageAddr,
+        Address as EvmAddress, EvmAddr, Hash as EvmHash, StorageAddr as EvmStorageAddr,
         ADDRESS_LENGTH as EVM_ADDRESS_LENGTH,
     },
     package::PackageHash,
@@ -59,7 +59,7 @@ use crate::{
     },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
-    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    TRANSFER_ADDR_LENGTH, U256, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -87,6 +87,7 @@ const REWARDS_HANDLING_PREFIX: &str = "rewards-handling-";
 const EVM_ACCOUNT_PREFIX: &str = "evm-account-";
 const EVM_BYTE_CODE_PREFIX: &str = "evm-byte-code-";
 const EVM_STORAGE_PREFIX: &str = "evm-storage-";
+const EVM_STORAGE_FORMATTED_LENGTH: usize = EVM_ADDRESS_LENGTH + KEY_HASH_LENGTH;
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -125,10 +126,6 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_REWARDS_HANDLING_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
-const KEY_EVM_ACCOUNT_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + EVM_ADDRESS_LENGTH;
-const KEY_EVM_BYTE_CODE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
-const KEY_EVM_STORAGE_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + EVM_ADDRESS_LENGTH + KEY_HASH_LENGTH;
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
     + U8_SERIALIZED_LENGTH
@@ -178,16 +175,14 @@ pub enum KeyTag {
     EntryPoint = 23,
     State = 24,
     RewardsHandling = 25,
-    EvmAccount = 26,
-    EvmByteCode = 27,
-    EvmStorage = 28,
+    Evm = 26,
 }
 
 impl KeyTag {
     /// Returns a random `KeyTag`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=28) {
+        match rng.gen_range(0..=26) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -214,9 +209,7 @@ impl KeyTag {
             23 => KeyTag::EntryPoint,
             24 => KeyTag::State,
             25 => KeyTag::RewardsHandling,
-            26 => KeyTag::EvmAccount,
-            27 => KeyTag::EvmByteCode,
-            28 => KeyTag::EvmStorage,
+            26 => KeyTag::Evm,
             _ => unreachable!(),
         }
     }
@@ -251,9 +244,7 @@ impl Display for KeyTag {
             KeyTag::State => write!(f, "State"),
             KeyTag::EntryPoint => write!(f, "EntryPoint"),
             KeyTag::RewardsHandling => write!(f, "RewardsHandling"),
-            KeyTag::EvmAccount => write!(f, "EvmAccount"),
-            KeyTag::EvmByteCode => write!(f, "EvmByteCode"),
-            KeyTag::EvmStorage => write!(f, "EvmStorage"),
+            KeyTag::Evm => write!(f, "Evm"),
         }
     }
 }
@@ -305,9 +296,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             tag if tag == KeyTag::State as u8 => KeyTag::State,
             tag if tag == KeyTag::RewardsHandling as u8 => KeyTag::RewardsHandling,
-            tag if tag == KeyTag::EvmAccount as u8 => KeyTag::EvmAccount,
-            tag if tag == KeyTag::EvmByteCode as u8 => KeyTag::EvmByteCode,
-            tag if tag == KeyTag::EvmStorage as u8 => KeyTag::EvmStorage,
+            tag if tag == KeyTag::Evm as u8 => KeyTag::Evm,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -374,12 +363,8 @@ pub enum Key {
     State(EntityAddr),
     /// A `Key` under which we store rewards handling information
     RewardsHandling,
-    /// A `Key` under which EVM account metadata is stored.
-    EvmAccount(EvmAddress),
-    /// A `Key` under which EVM contract bytecode is stored by hash.
-    EvmByteCode(EvmHash),
-    /// A `Key` under which one EVM contract storage slot is stored.
-    EvmStorage(EvmStorageAddr),
+    /// A `Key` under which EVM account, bytecode, or storage data is stored.
+    Evm(EvmAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -563,6 +548,12 @@ impl Display for FromStrError {
     }
 }
 
+fn u256_to_padded_hex(value: U256) -> String {
+    let mut bytes = [0u8; KEY_HASH_LENGTH];
+    value.to_big_endian(&mut bytes);
+    base16::encode_lower(&bytes)
+}
+
 impl Key {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
@@ -594,9 +585,7 @@ impl Key {
             Key::EntryPoint(_) => String::from("Key::EntryPoint"),
             Key::State(_) => String::from("Key::State"),
             Key::RewardsHandling => String::from("Key::RewardsHandling"),
-            Key::EvmAccount(_) => String::from("Key::EvmAccount"),
-            Key::EvmByteCode(_) => String::from("Key::EvmByteCode"),
-            Key::EvmStorage(_) => String::from("Key::EvmStorage"),
+            Key::Evm(_) => String::from("Key::Evm"),
         }
     }
 
@@ -732,18 +721,18 @@ impl Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
-            Key::EvmAccount(address) => {
+            Key::Evm(EvmAddr::Account(address)) => {
                 format!("{}{}", EVM_ACCOUNT_PREFIX, address.to_hex_string())
             }
-            Key::EvmByteCode(hash) => {
+            Key::Evm(EvmAddr::ByteCode(hash)) => {
                 format!("{}{}", EVM_BYTE_CODE_PREFIX, hash.to_hex_string())
             }
-            Key::EvmStorage(addr) => {
+            Key::Evm(EvmAddr::Storage(addr)) => {
                 format!(
                     "{}{}{}",
                     EVM_STORAGE_PREFIX,
                     addr.address().to_hex_string(),
-                    addr.slot().to_hex_string()
+                    u256_to_padded_hex(addr.slot())
                 )
             }
         }
@@ -1078,7 +1067,7 @@ impl Key {
                 .map_err(|error| FromStrError::EvmAccount(error.to_string()))?;
             let address = <[u8; EVM_ADDRESS_LENGTH]>::try_from(bytes.as_ref())
                 .map_err(|error| FromStrError::EvmAccount(error.to_string()))?;
-            return Ok(Key::EvmAccount(EvmAddress::new(address)));
+            return Ok(Key::Evm(EvmAddr::Account(EvmAddress::new(address))));
         }
 
         if let Some(hex) = input.strip_prefix(EVM_BYTE_CODE_PREFIX) {
@@ -1086,16 +1075,16 @@ impl Key {
                 .map_err(|error| FromStrError::EvmByteCode(error.to_string()))?;
             let hash = <[u8; KEY_HASH_LENGTH]>::try_from(bytes.as_ref())
                 .map_err(|error| FromStrError::EvmByteCode(error.to_string()))?;
-            return Ok(Key::EvmByteCode(EvmHash::new(hash)));
+            return Ok(Key::Evm(EvmAddr::ByteCode(EvmHash::new(hash))));
         }
 
         if let Some(hex) = input.strip_prefix(EVM_STORAGE_PREFIX) {
             let bytes = checksummed_hex::decode(hex)
                 .map_err(|error| FromStrError::EvmStorage(error.to_string()))?;
-            if bytes.len() != EVM_ADDRESS_LENGTH + KEY_HASH_LENGTH {
+            if bytes.len() != EVM_STORAGE_FORMATTED_LENGTH {
                 return Err(FromStrError::EvmStorage(format!(
                     "expected {} bytes, got {}",
-                    EVM_ADDRESS_LENGTH + KEY_HASH_LENGTH,
+                    EVM_STORAGE_FORMATTED_LENGTH,
                     bytes.len()
                 )));
             }
@@ -1103,10 +1092,10 @@ impl Key {
                 .map_err(|error| FromStrError::EvmStorage(error.to_string()))?;
             let slot = <[u8; KEY_HASH_LENGTH]>::try_from(&bytes[EVM_ADDRESS_LENGTH..])
                 .map_err(|error| FromStrError::EvmStorage(error.to_string()))?;
-            return Ok(Key::EvmStorage(EvmStorageAddr::new(
+            return Ok(Key::Evm(EvmAddr::Storage(EvmStorageAddr::new(
                 EvmAddress::new(address),
-                EvmHash::new(slot),
-            )));
+                U256::from_big_endian(&slot),
+            ))));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1251,7 +1240,7 @@ impl Key {
 
     /// Returns the EVM address if this key stores an EVM account.
     pub fn as_evm_account(&self) -> Option<&EvmAddress> {
-        if let Self::EvmAccount(address) = self {
+        if let Self::Evm(EvmAddr::Account(address)) = self {
             Some(address)
         } else {
             None
@@ -1260,7 +1249,7 @@ impl Key {
 
     /// Returns the EVM storage owner and slot if this key stores an EVM storage value.
     pub fn as_evm_storage(&self) -> Option<&EvmStorageAddr> {
-        if let Self::EvmStorage(addr) = self {
+        if let Self::Evm(EvmAddr::Storage(addr)) = self {
             Some(addr)
         } else {
             None
@@ -1446,9 +1435,7 @@ impl Key {
             | Key::Message(_)
             | Key::BlockGlobal(_)
             | Key::EntryPoint(_)
-            | Key::EvmAccount(_)
-            | Key::EvmByteCode(_)
-            | Key::EvmStorage(_) => true,
+            | Key::Evm(_) => true,
             _ => false,
         };
         if !ret {
@@ -1606,10 +1593,10 @@ impl Display for Key {
                 "Key::RewardsHandling({})",
                 base16::encode_lower(&PADDING_BYTES),
             ),
-            Key::EvmAccount(address) => write!(f, "Key::EvmAccount({})", address),
-            Key::EvmByteCode(hash) => write!(f, "Key::EvmByteCode({})", hash),
-            Key::EvmStorage(addr) => {
-                write!(f, "Key::EvmStorage({}-{})", addr.address(), addr.slot())
+            Key::Evm(EvmAddr::Account(address)) => write!(f, "Key::Evm(Account({}))", address),
+            Key::Evm(EvmAddr::ByteCode(hash)) => write!(f, "Key::Evm(ByteCode({}))", hash),
+            Key::Evm(EvmAddr::Storage(addr)) => {
+                write!(f, "Key::Evm(Storage({}-{}))", addr.address(), addr.slot())
             }
         }
     }
@@ -1650,9 +1637,7 @@ impl Tagged<KeyTag> for Key {
             Key::EntryPoint(_) => KeyTag::EntryPoint,
             Key::State(_) => KeyTag::State,
             Key::RewardsHandling => KeyTag::RewardsHandling,
-            Key::EvmAccount(_) => KeyTag::EvmAccount,
-            Key::EvmByteCode(_) => KeyTag::EvmByteCode,
-            Key::EvmStorage(_) => KeyTag::EvmStorage,
+            Key::Evm(_) => KeyTag::Evm,
         }
     }
 }
@@ -1771,9 +1756,7 @@ impl ToBytes for Key {
             }
             Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
             Key::RewardsHandling => KEY_REWARDS_HANDLING_SERIALIZED_LENGTH,
-            Key::EvmAccount(_) => KEY_EVM_ACCOUNT_SERIALIZED_LENGTH,
-            Key::EvmByteCode(_) => KEY_EVM_BYTE_CODE_SERIALIZED_LENGTH,
-            Key::EvmStorage(_) => KEY_EVM_STORAGE_SERIALIZED_LENGTH,
+            Key::Evm(addr) => KEY_ID_SERIALIZED_LENGTH + addr.serialized_length(),
         }
     }
 
@@ -1809,9 +1792,7 @@ impl ToBytes for Key {
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
             Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
             Key::State(entity_addr) => entity_addr.write_bytes(writer),
-            Key::EvmAccount(address) => address.write_bytes(writer),
-            Key::EvmByteCode(hash) => hash.write_bytes(writer),
-            Key::EvmStorage(addr) => addr.write_bytes(writer),
+            Key::Evm(addr) => addr.write_bytes(writer),
         }
     }
 }
@@ -1934,17 +1915,9 @@ impl FromBytes for Key {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::RewardsHandling, rem))
             }
-            KeyTag::EvmAccount => {
-                let (address, rem) = EvmAddress::from_bytes(remainder)?;
-                Ok((Key::EvmAccount(address), rem))
-            }
-            KeyTag::EvmByteCode => {
-                let (hash, rem) = EvmHash::from_bytes(remainder)?;
-                Ok((Key::EvmByteCode(hash), rem))
-            }
-            KeyTag::EvmStorage => {
-                let (addr, rem) = EvmStorageAddr::from_bytes(remainder)?;
-                Ok((Key::EvmStorage(addr), rem))
+            KeyTag::Evm => {
+                let (addr, rem) = EvmAddr::from_bytes(remainder)?;
+                Ok((Key::Evm(addr), rem))
             }
         }
     }
@@ -1981,16 +1954,14 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::EntryPoint(_) => unimplemented!(),
         Key::State(_) => unimplemented!(),
         Key::RewardsHandling => unimplemented!(),
-        Key::EvmAccount(_) => unimplemented!(),
-        Key::EvmByteCode(_) => unimplemented!(),
-        Key::EvmStorage(_) => unimplemented!(),
+        Key::Evm(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=28) {
+        match rng.gen_range(0..=26) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -2017,12 +1988,7 @@ impl Distribution<Key> for Standard {
             23 => Key::EntryPoint(rng.gen()),
             24 => Key::State(rng.gen()),
             25 => Key::RewardsHandling,
-            26 => Key::EvmAccount(EvmAddress::new(rng.gen())),
-            27 => Key::EvmByteCode(EvmHash::new(rng.gen())),
-            28 => Key::EvmStorage(EvmStorageAddr::new(
-                EvmAddress::new(rng.gen()),
-                EvmHash::new(rng.gen()),
-            )),
+            26 => Key::Evm(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -2060,9 +2026,7 @@ mod serde_helpers {
         EntryPoint(&'a EntryPointAddr),
         State(&'a EntityAddr),
         RewardsHandling,
-        EvmAccount(&'a EvmAddress),
-        EvmByteCode(&'a EvmHash),
-        EvmStorage(&'a EvmStorageAddr),
+        Evm(&'a EvmAddr),
     }
 
     #[derive(Deserialize)]
@@ -2094,9 +2058,7 @@ mod serde_helpers {
         EntryPoint(EntryPointAddr),
         State(EntityAddr),
         RewardsHandling,
-        EvmAccount(EvmAddress),
-        EvmByteCode(EvmHash),
-        EvmStorage(EvmStorageAddr),
+        Evm(EvmAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -2132,9 +2094,7 @@ mod serde_helpers {
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
                 Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
                 Key::RewardsHandling => BinarySerHelper::RewardsHandling,
-                Key::EvmAccount(address) => BinarySerHelper::EvmAccount(address),
-                Key::EvmByteCode(hash) => BinarySerHelper::EvmByteCode(hash),
-                Key::EvmStorage(addr) => BinarySerHelper::EvmStorage(addr),
+                Key::Evm(addr) => BinarySerHelper::Evm(addr),
             }
         }
     }
@@ -2174,9 +2134,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
                 BinaryDeserHelper::RewardsHandling => Key::RewardsHandling,
-                BinaryDeserHelper::EvmAccount(address) => Key::EvmAccount(address),
-                BinaryDeserHelper::EvmByteCode(hash) => Key::EvmByteCode(hash),
-                BinaryDeserHelper::EvmStorage(addr) => Key::EvmStorage(addr),
+                BinaryDeserHelper::Evm(addr) => Key::Evm(addr),
             }
         }
     }

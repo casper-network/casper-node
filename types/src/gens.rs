@@ -198,6 +198,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         balance_hold_addr_arb().prop_map(Key::BalanceHold),
         entry_point_addr_arb().prop_map(Key::EntryPoint),
         entity_addr_arb().prop_map(Key::State),
+        evm_addr_arb().prop_map(Key::Evm),
     ]
 }
 
@@ -316,6 +317,17 @@ pub fn u128_arb() -> impl Strategy<Value = U128> {
 
 pub fn u256_arb() -> impl Strategy<Value = U256> {
     collection::vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
+}
+
+pub fn evm_addr_arb() -> impl Strategy<Value = evm::EvmAddr> {
+    prop_oneof![
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| evm::EvmAddr::Account(evm::Address::new(bytes))),
+        u8_slice_32().prop_map(|bytes| evm::EvmAddr::ByteCode(evm::Hash::new(bytes))),
+        (prop::array::uniform20(any::<u8>()), u256_arb()).prop_map(|(address, slot)| {
+            evm::EvmAddr::Storage(evm::StorageAddr::new(evm::Address::new(address), slot))
+        }),
+    ]
 }
 
 pub fn u512_arb() -> impl Strategy<Value = U512> {
@@ -987,16 +999,22 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         named_key_value_arb().prop_map(StoredValue::NamedKey),
         collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
         (any::<u64>(), u8_slice_32(), uref_arb()).prop_map(|(nonce, code_hash, main_purse)| {
-            StoredValue::EvmAccount(crate::evm::Account::new(
+            StoredValue::Evm(crate::evm::EvmValue::Account(crate::evm::Account::new(
                 nonce,
                 crate::evm::Hash::new(code_hash),
                 main_purse,
-            ))
+            )))
         }),
-        collection::vec(any::<u8>(), 0..1000)
-            .prop_map(|bytes| StoredValue::EvmByteCode(crate::evm::ByteCode::new(bytes))),
-        u8_slice_32().prop_map(|value| {
-            StoredValue::EvmStorage(crate::evm::StorageValue::new(crate::evm::Hash::new(value)))
+        collection::vec(any::<u8>(), 0..1000).prop_map(|bytes| {
+            StoredValue::Evm(crate::evm::EvmValue::ByteCode(ByteCode::new(
+                ByteCodeKind::EvmPrague,
+                bytes,
+            )))
+        }),
+        u256_arb().prop_map(|value| {
+            StoredValue::Evm(crate::evm::EvmValue::Storage(
+                crate::evm::StorageValue::new(value),
+            ))
         }),
     ]
     .prop_map(|stored_value|
@@ -1024,9 +1042,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
                 StoredValue::RawBytes(_) => stored_value,
-                StoredValue::EvmAccount(_) => stored_value,
-                StoredValue::EvmByteCode(_) => stored_value,
-                StoredValue::EvmStorage(_) => stored_value,
+                StoredValue::Evm(_) => stored_value,
         })
 }
 

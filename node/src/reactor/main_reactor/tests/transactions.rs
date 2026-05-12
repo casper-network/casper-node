@@ -825,7 +825,7 @@ pub fn exec_result_is_success(exec_result: &ExecutionResult) -> bool {
 const EVM_TEST_GAS_LIMIT: u64 = 500_000;
 const EVM_TEST_GAS_PRICE: u128 = 1;
 const EVM_INITIAL_BALANCE: u64 = 10_000_000_000_000;
-const EVM_LOG_TOPIC: evm::Hash = evm::Hash::new([0xAB; evm::HASH_LENGTH]);
+const EVM_LOG_TOPIC: evm::Topic = evm::Topic::new([0xAB; evm::HASH_LENGTH]);
 
 fn evm_log_emitting_init_code() -> Vec<u8> {
     const MEMORY_OFFSET: u8 = 0;
@@ -933,8 +933,12 @@ fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U
     let main_purse = evm::deterministic_purse(address);
     let values_to_write = vec![
         (
-            Key::EvmAccount(address),
-            StoredValue::EvmAccount(evm::Account::new(0, EMPTY_CODE_HASH, main_purse)),
+            Key::Evm(evm::EvmAddr::Account(address)),
+            StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
+                0,
+                EMPTY_CODE_HASH,
+                main_purse,
+            ))),
         ),
         (
             Key::Balance(main_purse.addr()),
@@ -1006,9 +1010,13 @@ fn evm_account_at(
         .expect("failure to read block header")
         .expect("should have header");
     let state_root_hash = *block_header.state_root_hash();
-    match query_global_state(fixture, state_root_hash, Key::EvmAccount(address)) {
+    match query_global_state(
+        fixture,
+        state_root_hash,
+        Key::Evm(evm::EvmAddr::Account(address)),
+    ) {
         Some(value) => match *value {
-            StoredValue::EvmAccount(account) => account,
+            StoredValue::Evm(evm::EvmValue::Account(account)) => account,
             value => panic!("expected EVM account, got {value:?}"),
         },
         value => panic!("expected EVM account, got {value:?}"),
@@ -1205,7 +1213,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
     assert!(query_global_state(
         &mut test.fixture,
         *block_header.state_root_hash(),
-        Key::EvmAccount(recipient)
+        Key::Evm(evm::EvmAddr::Account(recipient))
     )
     .is_none());
 }
@@ -1255,7 +1263,7 @@ async fn should_not_seed_evm_accounts_at_genesis() {
     assert!(query_global_state(
         &mut test.fixture,
         *block_header.state_root_hash(),
-        Key::EvmAccount(alice_evm_address),
+        Key::Evm(evm::EvmAddr::Account(alice_evm_address)),
     )
     .is_none());
 }

@@ -81,6 +81,10 @@ pub(crate) fn from_revm_hash(hash: B256) -> evm::Hash {
     evm::Hash::new(hash.0)
 }
 
+pub(crate) fn from_revm_topic(topic: B256) -> evm::Topic {
+    evm::Topic::new(topic.0)
+}
+
 pub(crate) fn to_revm_block_hash(block_hash: BlockHash) -> B256 {
     let mut bytes = [0u8; evm::HASH_LENGTH];
     bytes.copy_from_slice(block_hash.as_ref());
@@ -93,10 +97,11 @@ pub(crate) fn to_revm_u256(value: CasperU256) -> U256 {
     U256::from_be_slice(&bytes)
 }
 
-pub(crate) fn to_revm_hash_word(value: evm::Hash) -> U256 {
-    U256::from_be_slice(value.as_bytes())
+pub(crate) fn to_revm_storage_word(value: CasperU256) -> U256 {
+    to_revm_u256(value)
 }
 
-pub(crate) fn from_revm_u256(value: U256) -> evm::Hash {
-    evm::Hash::new(value.to_be_bytes())
+pub(crate) fn from_revm_storage_word(value: U256) -> CasperU256 {
+    let bytes = value.to_be_bytes::<32>();
+    CasperU256::from_big_endian(&bytes)
 }

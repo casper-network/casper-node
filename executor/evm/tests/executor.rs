@@ -19,7 +19,7 @@ use casper_storage::{
 use casper_types::{
     evm, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
     HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
-    StoredValue, SystemConfig, Timestamp, U256 as CasperU256, WasmConfig, U512,
+    StoredValue, SystemConfig, Timestamp, WasmConfig, U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
 
@@ -245,24 +245,30 @@ fn selector(signature: &str) -> Vec<u8> {
     revm::primitives::keccak256(signature.as_bytes())[..4].to_vec()
 }
 
-fn calldata(signature: &str, args: &[evm::Hash]) -> Vec<u8> {
+type AbiWord = [u8; evm::HASH_LENGTH];
+
+fn calldata(signature: &str, args: &[AbiWord]) -> Vec<u8> {
     let mut bytes = selector(signature);
     for arg in args {
-        bytes.extend_from_slice(arg.as_bytes());
+        bytes.extend_from_slice(arg);
     }
     bytes
 }
 
-fn word(value: u64) -> evm::Hash {
+fn word(value: u64) -> AbiWord {
     let mut bytes = [0u8; 32];
     bytes[24..].copy_from_slice(&value.to_be_bytes());
-    evm::Hash::new(bytes)
+    bytes
 }
 
-fn address_word(address: evm::Address) -> evm::Hash {
+fn storage_word(value: u64) -> CasperU256 {
+    CasperU256::from(value)
+}
+
+fn address_word(address: evm::Address) -> AbiWord {
     let mut bytes = [0u8; 32];
     bytes[12..].copy_from_slice(address.as_bytes());
-    evm::Hash::new(bytes)
+    bytes
 }
 
 fn decode_word(output: &[u8]) -> u64 {
@@ -312,13 +318,15 @@ fn legacy_transaction_without_chain_id() -> evm::Transaction {
 fn read_storage<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
-    slot: evm::Hash,
-) -> Option<evm::Hash> {
+    slot: CasperU256,
+) -> Option<CasperU256> {
     match tracking_copy
-        .read(&Key::EvmStorage(evm::StorageAddr::new(address, slot)))
+        .read(&Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(
+            address, slot,
+        ))))
         .expect("storage read should not fail")
     {
-        Some(StoredValue::EvmStorage(value)) => Some(value.value()),
+        Some(StoredValue::Evm(evm::EvmValue::Storage(value))) => Some(value.value()),
         Some(other) => panic!("unexpected storage value: {other:?}"),
         None => None,
     }
@@ -329,10 +337,10 @@ fn read_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     address: evm::Address,
 ) -> U512 {
     let purse = match tracking_copy
-        .read(&Key::EvmAccount(address))
+        .read(&Key::Evm(evm::EvmAddr::Account(address)))
         .expect("account read should not fail")
     {
-        Some(StoredValue::EvmAccount(account)) => account.main_purse(),
+        Some(StoredValue::Evm(evm::EvmValue::Account(account))) => account.main_purse(),
         Some(other) => panic!("unexpected account value: {other:?}"),
         None => return U512::zero(),
     };
@@ -353,8 +361,12 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
 ) {
     let main_purse = evm::deterministic_purse(address);
     tracking_copy.write(
-        Key::EvmAccount(address),
-        StoredValue::EvmAccount(evm::Account::new(0, EMPTY_CODE_HASH, main_purse)),
+        Key::Evm(evm::EvmAddr::Account(address)),
+        StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
+            0,
+            EMPTY_CODE_HASH,
+            main_purse,
+        ))),
     );
     tracking_copy.write(
         Key::Balance(main_purse.addr()),
@@ -386,7 +398,7 @@ fn blockhash_uses_supplied_provider() {
         )
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
+    assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
 
     let mut too_old_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     too_old_request.block.number = 258;
@@ -394,7 +406,7 @@ fn blockhash_uses_supplied_provider() {
         .execute_with_block_hash_provider(&mut tracking_copy, too_old_request, &block_hash_provider)
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.output.as_slice(), evm::Hash::ZERO.as_bytes());
+    assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
 
     let mut historical_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     historical_request.block.number = 2;
@@ -608,8 +620,8 @@ fn storage_zeroes_are_pruned() {
         calldata("set(uint256)", &[word(123)]),
     );
     assert_eq!(
-        read_storage(&mut tracking_copy, contract, evm::Hash::ZERO),
-        Some(word(123))
+        read_storage(&mut tracking_copy, contract, CasperU256::zero()),
+        Some(storage_word(123))
     );
 
     execute_call(
@@ -620,7 +632,7 @@ fn storage_zeroes_are_pruned() {
         selector("clear()"),
     );
     assert_eq!(
-        read_storage(&mut tracking_copy, contract, evm::Hash::ZERO),
+        read_storage(&mut tracking_copy, contract, CasperU256::zero()),
         None
     );
 }
@@ -642,9 +654,9 @@ fn selfdestruct_cleanup_follows_selected_fork() {
         read_storage(
             &mut shanghai_tracking_copy,
             shanghai_contract,
-            evm::Hash::ZERO
+            CasperU256::zero()
         ),
-        Some(word(7))
+        Some(storage_word(7))
     );
     execute_call(
         &shanghai_executor,
@@ -655,7 +667,7 @@ fn selfdestruct_cleanup_follows_selected_fork() {
     );
     assert_eq!(
         shanghai_tracking_copy
-            .read(&Key::EvmAccount(shanghai_contract))
+            .read(&Key::Evm(evm::EvmAddr::Account(shanghai_contract)))
             .unwrap(),
         None
     );
@@ -671,7 +683,7 @@ fn selfdestruct_cleanup_follows_selected_fork() {
         read_storage(
             &mut shanghai_tracking_copy,
             shanghai_contract,
-            evm::Hash::ZERO
+            CasperU256::zero()
         ),
         None
     );
@@ -692,7 +704,7 @@ fn selfdestruct_cleanup_follows_selected_fork() {
         calldata("destroy(address)", &[address_word(beneficiary)]),
     );
     assert!(prague_tracking_copy
-        .read(&Key::EvmAccount(prague_contract))
+        .read(&Key::Evm(evm::EvmAddr::Account(prague_contract)))
         .unwrap()
         .is_some());
 }

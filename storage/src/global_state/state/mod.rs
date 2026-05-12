@@ -2248,8 +2248,12 @@ pub trait StateProvider: Send + Sync + Sized {
                     Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
                 };
                 tc.borrow_mut().write(
-                    Key::EvmAccount(address),
-                    StoredValue::EvmAccount(evm::Account::new(0, evm::EMPTY_CODE_HASH, main_purse)),
+                    Key::Evm(evm::EvmAddr::Account(address)),
+                    StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
+                        0,
+                        evm::EMPTY_CODE_HASH,
+                        main_purse,
+                    ))),
                 );
                 tc.borrow_mut().write(
                     Key::Balance(main_purse.addr()),

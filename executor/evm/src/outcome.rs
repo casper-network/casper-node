@@ -136,7 +136,7 @@ fn from_revm_log(log: &revm::primitives::Log) -> evm::Log {
             .topics()
             .iter()
             .copied()
-            .map(tx::from_revm_hash)
+            .map(tx::from_revm_topic)
             .collect(),
         data: log.data.data.to_vec().into(),
     }

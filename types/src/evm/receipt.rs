@@ -10,7 +10,7 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{Address, Hash};
+use super::{Address, Topic};
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
@@ -397,7 +397,7 @@ pub struct Log {
     /// Indexed event arguments are ABI-encoded into the following topics.
     /// Anonymous Solidity events omit the signature topic, allowing all four
     /// topics to hold indexed arguments.
-    pub topics: Vec<Hash>,
+    pub topics: Vec<Topic>,
     /// ABI-encoded unindexed log data.
     ///
     /// This contains the event arguments that are not marked `indexed`,
@@ -448,7 +448,7 @@ impl ToBytes for Log {
 impl FromBytes for Log {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (address, remainder) = Address::from_bytes(bytes)?;
-        let (topics, remainder) = Vec::<Hash>::from_bytes(remainder)?;
+        let (topics, remainder) = Vec::<Topic>::from_bytes(remainder)?;
         let (data, remainder) = Bytes::from_bytes(remainder)?;
         Ok((
             Log {
@@ -494,7 +494,7 @@ impl Receipt {
             .map(|_| Log {
                 address: Address::new(rng.gen()),
                 topics: (0..rng.gen_range(0..4))
-                    .map(|_| Hash::new(rng.gen()))
+                    .map(|_| Topic::new(rng.gen()))
                     .collect(),
                 data: Bytes::from({
                     let mut data = vec![0; rng.gen_range(0..16)];

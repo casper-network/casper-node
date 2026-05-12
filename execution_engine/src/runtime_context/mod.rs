@@ -765,9 +765,7 @@ where
             | StoredValue::Prepayment(_)
             | StoredValue::EntryPoint(_)
             | StoredValue::RawBytes(_)
-            | StoredValue::EvmAccount(_)
-            | StoredValue::EvmByteCode(_)
-            | StoredValue::EvmStorage(_) => Ok(()),
+            | StoredValue::Evm(_) => Ok(()),
         }
     }
 

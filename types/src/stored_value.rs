@@ -79,12 +79,8 @@ pub enum StoredValueTag {
     EntryPoint = 19,
     /// Raw bytes.
     RawBytes = 20,
-    /// EVM account metadata.
-    EvmAccount = 21,
-    /// EVM contract bytecode.
-    EvmByteCode = 22,
-    /// EVM contract storage value.
-    EvmStorage = 23,
+    /// EVM account, bytecode, or storage value.
+    Evm = 21,
 }
 
 /// A value stored in Global State.
@@ -140,12 +136,8 @@ pub enum StoredValue {
     /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a
     /// [`crate::CLValue`] and [`crate::CLType`].
     RawBytes(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] Vec<u8>),
-    /// EVM account metadata.
-    EvmAccount(evm::Account),
-    /// EVM contract bytecode, addressed by [`crate::Key::EvmByteCode`].
-    EvmByteCode(evm::ByteCode),
-    /// EVM storage value for a single contract slot.
-    EvmStorage(evm::StorageValue),
+    /// EVM account, bytecode, or storage value.
+    Evm(evm::EvmValue),
 }
 
 impl StoredValue {
@@ -305,26 +297,26 @@ impl StoredValue {
         }
     }
 
-    /// Returns EVM account metadata if this is an `EvmAccount` variant.
+    /// Returns EVM account metadata if this is an EVM account value.
     pub fn as_evm_account(&self) -> Option<&evm::Account> {
         match self {
-            StoredValue::EvmAccount(account) => Some(account),
+            StoredValue::Evm(evm::EvmValue::Account(account)) => Some(account),
             _ => None,
         }
     }
 
-    /// Returns EVM bytecode if this is an `EvmByteCode` variant.
-    pub fn as_evm_byte_code(&self) -> Option<&evm::ByteCode> {
+    /// Returns EVM bytecode if this is an EVM bytecode value.
+    pub fn as_evm_byte_code(&self) -> Option<&ByteCode> {
         match self {
-            StoredValue::EvmByteCode(byte_code) => Some(byte_code),
+            StoredValue::Evm(evm::EvmValue::ByteCode(byte_code)) => Some(byte_code),
             _ => None,
         }
     }
 
-    /// Returns an EVM storage value if this is an `EvmStorage` variant.
+    /// Returns an EVM storage value if this is an EVM storage value.
     pub fn as_evm_storage(&self) -> Option<&evm::StorageValue> {
         match self {
-            StoredValue::EvmStorage(value) => Some(value),
+            StoredValue::Evm(evm::EvmValue::Storage(value)) => Some(value),
             _ => None,
         }
     }
@@ -483,9 +475,7 @@ impl StoredValue {
             StoredValue::Prepayment(_) => "Prepayment".to_string(),
             StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
             StoredValue::RawBytes(_) => "RawBytes".to_string(),
-            StoredValue::EvmAccount(_) => "EvmAccount".to_string(),
-            StoredValue::EvmByteCode(_) => "EvmByteCode".to_string(),
-            StoredValue::EvmStorage(_) => "EvmStorage".to_string(),
+            StoredValue::Evm(value) => value.type_name().to_string(),
         }
     }
 
@@ -513,9 +503,7 @@ impl StoredValue {
             StoredValue::Prepayment(_) => StoredValueTag::Prepayment,
             StoredValue::EntryPoint(_) => StoredValueTag::EntryPoint,
             StoredValue::RawBytes(_) => StoredValueTag::RawBytes,
-            StoredValue::EvmAccount(_) => StoredValueTag::EvmAccount,
-            StoredValue::EvmByteCode(_) => StoredValueTag::EvmByteCode,
-            StoredValue::EvmStorage(_) => StoredValueTag::EvmStorage,
+            StoredValue::Evm(_) => StoredValueTag::Evm,
         }
     }
 
@@ -824,9 +812,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Prepayment(prepayment_kind) => prepayment_kind.serialized_length(),
                 StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
                 StoredValue::RawBytes(bytes) => bytes.serialized_length(),
-                StoredValue::EvmAccount(account) => account.serialized_length(),
-                StoredValue::EvmByteCode(byte_code) => byte_code.serialized_length(),
-                StoredValue::EvmStorage(value) => value.serialized_length(),
+                StoredValue::Evm(value) => value.serialized_length(),
             }
     }
 
@@ -856,9 +842,7 @@ impl ToBytes for StoredValue {
             StoredValue::Prepayment(prepayment_kind) => prepayment_kind.write_bytes(writer),
             StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
             StoredValue::RawBytes(bytes) => bytes.write_bytes(writer),
-            StoredValue::EvmAccount(account) => account.write_bytes(writer),
-            StoredValue::EvmByteCode(byte_code) => byte_code.write_bytes(writer),
-            StoredValue::EvmStorage(value) => value.write_bytes(writer),
+            StoredValue::Evm(value) => value.write_bytes(writer),
         }
     }
 }
@@ -930,14 +914,8 @@ impl FromBytes for StoredValue {
                 let (bytes, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((StoredValue::RawBytes(bytes.into()), remainder))
             }
-            tag if tag == StoredValueTag::EvmAccount as u8 => evm::Account::from_bytes(remainder)
-                .map(|(account, remainder)| (StoredValue::EvmAccount(account), remainder)),
-            tag if tag == StoredValueTag::EvmByteCode as u8 => evm::ByteCode::from_bytes(remainder)
-                .map(|(byte_code, remainder)| (StoredValue::EvmByteCode(byte_code), remainder)),
-            tag if tag == StoredValueTag::EvmStorage as u8 => {
-                evm::StorageValue::from_bytes(remainder)
-                    .map(|(value, remainder)| (StoredValue::EvmStorage(value), remainder))
-            }
+            tag if tag == StoredValueTag::Evm as u8 => evm::EvmValue::from_bytes(remainder)
+                .map(|(value, remainder)| (StoredValue::Evm(value), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -981,9 +959,7 @@ pub mod serde_helpers {
         Prepayment(&'a PrepaymentKind),
         EntryPoint(&'a EntryPointValue),
         RawBytes(Bytes),
-        EvmAccount(&'a evm::Account),
-        EvmByteCode(Bytes),
-        EvmStorage(&'a evm::StorageValue),
+        Evm(&'a evm::EvmValue),
     }
 
     /// A value stored in Global State.
@@ -1040,12 +1016,8 @@ pub mod serde_helpers {
         /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of
         /// a [`crate::CLValue`] and [`crate::CLType`].
         RawBytes(Bytes),
-        /// EVM account metadata.
-        EvmAccount(evm::Account),
-        /// EVM contract bytecode.
-        EvmByteCode(Bytes),
-        /// EVM contract storage value.
-        EvmStorage(evm::StorageValue),
+        /// EVM account, bytecode, or storage value.
+        Evm(evm::EvmValue),
     }
 
     impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
@@ -1084,11 +1056,7 @@ pub mod serde_helpers {
                 StoredValue::RawBytes(bytes) => {
                     HumanReadableSerHelper::RawBytes(bytes.as_slice().into())
                 }
-                StoredValue::EvmAccount(account) => HumanReadableSerHelper::EvmAccount(account),
-                StoredValue::EvmByteCode(byte_code) => {
-                    HumanReadableSerHelper::EvmByteCode(byte_code.as_bytes().into())
-                }
-                StoredValue::EvmStorage(value) => HumanReadableSerHelper::EvmStorage(value),
+                StoredValue::Evm(value) => HumanReadableSerHelper::Evm(value),
             }
         }
     }
@@ -1156,11 +1124,7 @@ pub mod serde_helpers {
                 HumanReadableDeserHelper::Prepayment(prepayment_kind) => {
                     StoredValue::Prepayment(prepayment_kind)
                 }
-                HumanReadableDeserHelper::EvmAccount(account) => StoredValue::EvmAccount(account),
-                HumanReadableDeserHelper::EvmByteCode(bytes) => {
-                    StoredValue::EvmByteCode(evm::ByteCode::from(bytes))
-                }
-                HumanReadableDeserHelper::EvmStorage(value) => StoredValue::EvmStorage(value),
+                HumanReadableDeserHelper::Evm(value) => StoredValue::Evm(value),
             })
         }
     }
@@ -1230,7 +1194,7 @@ mod tests {
                     "access": "Public",
                     "entry_point_type": "Factory"
                 }
-                
+
             ],
             "protocol_version": "2.0.0"
         }

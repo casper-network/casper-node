@@ -34,6 +34,7 @@ use casper_types::{
     contracts::{
         ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey, NamedKeys,
     },
+    evm,
     global_state::TrieMerkleProof,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, Groups,
@@ -1125,7 +1126,9 @@ impl reactor::Reactor for Reactor {
                         | BalanceIdentifier::PenalizedAccount(account_hash) => {
                             Key::Account(*account_hash)
                         }
-                        BalanceIdentifier::Evm(address) => Key::EvmAccount(*address),
+                        BalanceIdentifier::Evm(address) => {
+                            Key::Evm(evm::EvmAddr::Account(*address))
+                        }
                         BalanceIdentifier::Entity(entity_addr) => {
                             Key::AddressableEntity(*entity_addr)
                         }

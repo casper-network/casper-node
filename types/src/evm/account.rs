@@ -1,3 +1,5 @@
+#[cfg(feature = "json-schema")]
+use alloc::string::String;
 use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
@@ -8,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{Address, Hash, ADDRESS_LENGTH};
 use crate::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Digest, URef,
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest, URef, U256,
 };
 
 /// Keccak-256 hash of empty EVM bytecode.
@@ -84,83 +86,22 @@ impl FromBytes for Account {
     }
 }
 
-/// EVM contract bytecode stored in global state.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct ByteCode(Vec<u8>);
-
-impl ByteCode {
-    /// Creates EVM bytecode from raw bytes.
-    pub fn new(bytes: Vec<u8>) -> Self {
-        ByteCode(bytes)
-    }
-
-    /// Returns the bytecode bytes.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Consumes the wrapper and returns the bytecode bytes.
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0
-    }
-}
-
-impl AsRef<[u8]> for ByteCode {
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-impl From<Vec<u8>> for ByteCode {
-    fn from(bytes: Vec<u8>) -> Self {
-        ByteCode::new(bytes)
-    }
-}
-
-impl From<Bytes> for ByteCode {
-    fn from(bytes: Bytes) -> Self {
-        ByteCode::new(bytes.into())
-    }
-}
-
-impl ToBytes for ByteCode {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)
-    }
-}
-
-impl FromBytes for ByteCode {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        Bytes::from_bytes(bytes).map(|(bytes, remainder)| (ByteCode::from(bytes), remainder))
-    }
-}
-
 /// EVM storage value stored in global state.
 #[derive(
     Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct StorageValue(Hash);
+pub struct StorageValue(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] U256);
 
 impl StorageValue {
-    /// Creates an EVM storage value from a 32-byte word.
-    pub const fn new(value: Hash) -> Self {
+    /// Creates an EVM storage value from a 256-bit word.
+    pub const fn new(value: U256) -> Self {
         StorageValue(value)
     }
 
-    /// Returns the 32-byte word stored in this slot.
-    pub const fn value(self) -> Hash {
+    /// Returns the 256-bit word stored in this slot.
+    pub const fn value(self) -> U256 {
         self.0
     }
 
@@ -170,13 +111,13 @@ impl StorageValue {
     }
 }
 
-impl From<Hash> for StorageValue {
-    fn from(value: Hash) -> Self {
+impl From<U256> for StorageValue {
+    fn from(value: U256) -> Self {
         StorageValue::new(value)
     }
 }
 
-impl From<StorageValue> for Hash {
+impl From<StorageValue> for U256 {
     fn from(value: StorageValue) -> Self {
         value.value()
     }
@@ -198,7 +139,7 @@ impl ToBytes for StorageValue {
 
 impl FromBytes for StorageValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        Hash::from_bytes(bytes).map(|(hash, remainder)| (StorageValue::new(hash), remainder))
+        U256::from_bytes(bytes).map(|(value, remainder)| (StorageValue::new(value), remainder))
     }
 }
 
@@ -211,12 +152,13 @@ impl FromBytes for StorageValue {
 #[serde(deny_unknown_fields)]
 pub struct StorageAddr {
     address: Address,
-    slot: Hash,
+    #[cfg_attr(feature = "json-schema", schemars(with = "String"))]
+    slot: U256,
 }
 
 impl StorageAddr {
     /// Creates an EVM storage address from a contract address and storage slot.
-    pub const fn new(address: Address, slot: Hash) -> Self {
+    pub const fn new(address: Address, slot: U256) -> Self {
         StorageAddr { address, slot }
     }
 
@@ -226,7 +168,7 @@ impl StorageAddr {
     }
 
     /// Returns the EVM storage slot key.
-    pub const fn slot(self) -> Hash {
+    pub const fn slot(self) -> U256 {
         self.slot
     }
 }
@@ -251,7 +193,7 @@ impl ToBytes for StorageAddr {
 impl FromBytes for StorageAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (address, remainder) = Address::from_bytes(bytes)?;
-        let (slot, remainder) = Hash::from_bytes(remainder)?;
+        let (slot, remainder) = U256::from_bytes(remainder)?;
         Ok((StorageAddr::new(address, slot), remainder))
     }
 }

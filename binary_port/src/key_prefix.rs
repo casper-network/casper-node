@@ -4,7 +4,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
-    evm::Address as EvmAddress,
+    evm::{Address as EvmAddress, EvmAddr},
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
@@ -101,7 +101,8 @@ impl ToBytes for KeyPrefix {
                 entity.write_bytes(writer)?;
             }
             KeyPrefix::EvmStorageByAddress(address) => {
-                writer.push(KeyTag::EvmStorage as u8);
+                writer.push(KeyTag::Evm as u8);
+                writer.push(EvmAddr::STORAGE_TAG);
                 address.write_bytes(writer)?;
             }
         }
@@ -131,7 +132,9 @@ impl ToBytes for KeyPrefix {
                 KeyPrefix::EntryPointsV2ByEntity(entity) => {
                     U8_SERIALIZED_LENGTH + entity.serialized_length()
                 }
-                KeyPrefix::EvmStorageByAddress(address) => address.serialized_length(),
+                KeyPrefix::EvmStorageByAddress(address) => {
+                    U8_SERIALIZED_LENGTH + address.serialized_length()
+                }
             }
     }
 }
@@ -191,9 +194,15 @@ impl FromBytes for KeyPrefix {
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }
-            tag if tag == KeyTag::EvmStorage as u8 => {
-                let (address, remainder) = EvmAddress::from_bytes(remainder)?;
-                (KeyPrefix::EvmStorageByAddress(address), remainder)
+            tag if tag == KeyTag::Evm as u8 => {
+                let (evm_addr_tag, remainder) = u8::from_bytes(remainder)?;
+                match evm_addr_tag {
+                    tag if tag == EvmAddr::STORAGE_TAG => {
+                        let (address, remainder) = EvmAddress::from_bytes(remainder)?;
+                        (KeyPrefix::EvmStorageByAddress(address), remainder)
+                    }
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
             }
             _ => return Err(bytesrepr::Error::Formatting),
         };

@@ -356,16 +356,16 @@ impl TransferRuntimeArgsBuilder {
                 if *cl_value.cl_type() == CLType::ByteArray(evm::ADDRESS_LENGTH as u32) =>
             {
                 let address: evm::Address = self.map_cl_value(cl_value)?;
-                let key = Key::EvmAccount(address);
+                let key = Key::Evm(evm::EvmAddr::Account(address));
                 return match tracking_copy.borrow_mut().read(&key)? {
-                    Some(StoredValue::EvmAccount(account)) => {
+                    Some(StoredValue::Evm(evm::EvmValue::Account(account))) => {
                         Ok(TransferTargetMode::ExistingEvmAccount {
                             main_purse: account.main_purse().with_access_rights(AccessRights::ADD),
                         })
                     }
                     Some(stored_value) => {
                         Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
-                            "StoredValue::EvmAccount".to_string(),
+                            "StoredValue::Evm(Account)".to_string(),
                             stored_value.type_name(),
                         )))
                     }

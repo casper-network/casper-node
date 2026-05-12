@@ -79,11 +79,13 @@ a raw signed RLP blob. The EVM transaction is stored as:
 - Ethereum signed transaction hash: `hash`.
 - Exactly one Casper `Approval` containing the Ethereum secp256k1 signature.
 
-`evm::Hash` and `evm::TransactionHash` are `Digest`-backed wrappers, but their
-constructors preserve the supplied 32 bytes as raw Ethereum values. They do
-not hash the bytes again. `evm::Hash` is used for EVM words, storage keys,
-storage values, topics, and bytecode hashes. `evm::TransactionHash` is the
-Ethereum transaction hash produced from the signed Ethereum envelope.
+`evm::Hash`, `evm::Topic`, and `evm::TransactionHash` are `Digest`-backed
+wrappers, but their constructors preserve the supplied 32 bytes as raw
+Ethereum values. They do not hash the bytes again. `evm::Hash` is used for
+EVM bytecode hashes and other hash-shaped EVM values. `evm::Topic` is used for
+EVM log topics. EVM storage slots and storage values use Casper `U256`, matching
+revm's `StorageKey = U256` and `StorageValue = U256` boundary. `evm::TransactionHash`
+is the Ethereum transaction hash produced from the signed Ethereum envelope.
 
 The Ethereum transaction hash remains Ethereum-compatible. For an EVM
 transaction:
@@ -330,9 +332,12 @@ handling.
 
 EVM state is stored in Casper global state using typed keys and values:
 
-- `Key::EvmAccount(Address)` stores `StoredValue::EvmAccount(Account)`.
-- `Key::EvmByteCode(Hash)` stores `StoredValue::EvmByteCode(ByteCode)`.
-- `Key::EvmStorage(StorageAddr)` stores `StoredValue::EvmStorage(StorageValue)`.
+- `Key::Evm(EvmAddr::Account(Address))` stores
+  `StoredValue::Evm(EvmValue::Account(Account))`.
+- `Key::Evm(EvmAddr::ByteCode(Hash))` stores
+  `StoredValue::Evm(EvmValue::ByteCode(ByteCode))`.
+- `Key::Evm(EvmAddr::Storage(StorageAddr))` stores
+  `StoredValue::Evm(EvmValue::Storage(StorageValue))`.
 
 An EVM account record contains:
 
@@ -346,10 +351,10 @@ through the account main purse and `Key::Balance(main_purse.addr())`.
 Genesis does not create EVM account records for Casper genesis accounts.
 Funding an EVM identity is explicit: a native Casper transfer can use a
 20-byte `evm::Address` as its `target` argument when `[evm].enabled = true`.
-If `Key::EvmAccount(address)` already exists, the transfer credits that
+If `Key::Evm(EvmAddr::Account(address))` already exists, the transfer credits that
 account's main purse. If it does not exist, the transfer creates
-`StoredValue::EvmAccount(Account::new(0, EMPTY_CODE_HASH,
-evm::deterministic_purse(address)))`, initializes that deterministic purse
+`StoredValue::Evm(EvmValue::Account(Account::new(0, EMPTY_CODE_HASH,
+evm::deterministic_purse(address))))`, initializes that deterministic purse
 with a zero balance, then transfers the requested motes into it. Transfer
 records keep the Casper transfer schema unchanged: `to` is `None`, and
 `target` is the EVM account's backing purse.
@@ -599,7 +604,7 @@ casper-cli transaction transfer \
 ```
 
 The transfer target is encoded as `byte-array[20]`. A successful transfer
-creates `Key::EvmAccount(0x24790c...)`, initializes its deterministic backing
+creates `Key::Evm(EvmAddr::Account(0x24790c...))`, initializes its deterministic backing
 purse, and credits it with the transferred motes. The EVM nonce remains `0x0`
 until the first EVM transaction is executed.
 
