@@ -209,10 +209,10 @@ impl TransactionV1 {
         ttl: TimeDiff,
         pricing_mode: PricingMode,
         fields: BTreeMap<u16, Bytes>,
-        should_use_public_key: bool, 
+        should_use_public_key: bool,
         initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
     ) -> TransactionV1 {
-        let initiator_addr =  if should_use_public_key {
+        let initiator_addr = if should_use_public_key {
             InitiatorAddr::PublicKey(PublicKey::System)
         } else {
             InitiatorAddr::AccountHash(PublicKey::System.to_account_hash())

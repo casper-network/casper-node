@@ -250,7 +250,7 @@ enum TestScenario {
         ContractVersionExistance,
     ),
     VmCasperV2ByPackageHash,
-    // For both these scenarios, 
+    // For both these scenarios,
     // true means use public key
     // false means use account hash
     FromPeerWithSystemInitiator(bool),
@@ -333,14 +333,19 @@ impl TestScenario {
             }
             TestScenario::FromPeerWithSystemInitiator(should_use_public_key)
             | TestScenario::FromClientWithSystemInitiator(should_use_public_key) => {
-                let txn = TransactionV1::random_with_system_initiator(rng, *should_use_public_key, None, None);
+                let txn = TransactionV1::random_with_system_initiator(
+                    rng,
+                    *should_use_public_key,
+                    None,
+                    None,
+                );
                 let cloned = txn.clone();
                 if *should_use_public_key {
                     assert_eq!(
                         cloned.initiator_addr(),
                         &InitiatorAddr::PublicKey(PublicKey::System)
                     )
-                }  else {
+                } else {
                     assert_eq!(
                         cloned.initiator_addr(),
                         &InitiatorAddr::AccountHash(PublicKey::System.to_account_hash())
