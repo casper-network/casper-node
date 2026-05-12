@@ -371,7 +371,7 @@ pub enum ErrorCode {
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget = 117,
     #[error("the transaction contained an invalid initiator")]
-    InvalidInitiator
+    InvalidInitiator,
 }
 
 impl TryFrom<u16> for ErrorCode {
