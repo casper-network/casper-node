@@ -40,7 +40,7 @@ jobs:
           python3 --version
 
       - name: Install cargo deb
-        run: cargo install cargo-deb
+        run: cargo install --git https://github.com/sacherjj/cargo-deb cargo-deb
 
       - name: Build update package
         run: ./ci/build_update_package.sh
