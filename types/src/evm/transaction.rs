@@ -267,6 +267,13 @@ pub enum TransactionError {
         /// Configured EVM block gas limit.
         block_gas_limit: u64,
     },
+    /// The transaction nonce does not match the account nonce in global state.
+    InvalidNonce {
+        /// Expected account nonce.
+        expected: u64,
+        /// Transaction nonce.
+        actual: u64,
+    },
     /// The transaction does not contain an EVM approval.
     MissingApproval,
     /// The transaction contains more than one approval.
@@ -342,6 +349,12 @@ impl Display for TransactionError {
                 write!(
                     formatter,
                     "EVM gas limit {gas_limit} exceeds block gas limit {block_gas_limit}"
+                )
+            }
+            TransactionError::InvalidNonce { expected, actual } => {
+                write!(
+                    formatter,
+                    "EVM transaction nonce {actual} does not match account nonce {expected}"
                 )
             }
             TransactionError::MissingApproval => formatter.write_str("missing EVM approval"),

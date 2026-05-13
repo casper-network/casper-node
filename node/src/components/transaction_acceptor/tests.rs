@@ -8,11 +8,18 @@ use std::{
     time::Duration,
 };
 
+use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
+use alloy_eips::Encodable2718;
+use alloy_primitives::{
+    Address as AlloyAddress, Bytes as AlloyBytes, Signature as AlloySignature, TxKind,
+    U256 as AlloyU256,
+};
 use derive_more::From;
 use futures::{
     channel::oneshot::{self, Sender},
     FutureExt,
 };
+use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
@@ -70,6 +77,8 @@ use crate::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(30);
+const EVM_TEST_CHAIN_ID: u64 = 1_129_533_695;
+const EVM_TEST_GAS_PRICE: u128 = 1_000_000;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -195,6 +204,7 @@ enum TxnType {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum TestScenario {
+    FromPeerEvmInvalidNonce,
     FromPeerInvalidTransaction(TxnType),
     FromPeerInvalidTransactionZeroPayment(TxnType),
     FromPeerExpired(TxnType),
@@ -208,6 +218,7 @@ enum TestScenario {
     FromPeerSessionContract(TxnType, ContractScenario),
     FromPeerSessionContractPackage(TxnType, ContractPackageScenario),
     FromClientInvalidTransaction(TxnType),
+    FromClientEvmInvalidNonce,
     FromClientInvalidTransactionZeroPayment(TxnType),
     FromClientSlightlyFutureDatedTransaction(TxnType),
     FromClientFutureDatedTransaction(TxnType),
@@ -257,6 +268,7 @@ impl TestScenario {
     fn source(&self, rng: &mut NodeRng) -> Source {
         match self {
             TestScenario::FromPeerInvalidTransaction(_)
+            | TestScenario::FromPeerEvmInvalidNonce
             | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
             | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
@@ -271,6 +283,7 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContractPackage(..)
             | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientEvmInvalidNonce
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
@@ -324,6 +337,9 @@ impl TestScenario {
                 let mut txn = TransactionV1::random(rng);
                 txn.invalidate();
                 Transaction::from(txn)
+            }
+            TestScenario::FromPeerEvmInvalidNonce | TestScenario::FromClientEvmInvalidNonce => {
+                Transaction::from(signed_evm_legacy_transaction(1))
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
@@ -877,10 +893,12 @@ impl TestScenario {
                     | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
                     | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
+                    | TestScenario::FromPeerEvmInvalidNonce
                     | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientInsufficientBalance(_)
                     | TestScenario::FromClientMissingAccount(_)
                     | TestScenario::FromClientInvalidTransaction(_)
+                    | TestScenario::FromClientEvmInvalidNonce
                     | TestScenario::FromClientInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientFutureDatedTransaction(_)
                     | TestScenario::FromClientAccountWithInsufficientWeight(_)
@@ -964,6 +982,39 @@ impl TestScenario {
     fn is_v2_casper_vm(&self) -> bool {
         matches!(self, TestScenario::VmCasperV2ByPackageHash)
     }
+
+    fn is_evm(&self) -> bool {
+        matches!(
+            self,
+            TestScenario::FromPeerEvmInvalidNonce | TestScenario::FromClientEvmInvalidNonce
+        )
+    }
+}
+
+fn signed_evm_legacy_transaction(nonce: u64) -> evm::Transaction {
+    let recipient = evm::Address::new([1; evm::ADDRESS_LENGTH]);
+    let transaction = TxLegacy {
+        chain_id: Some(EVM_TEST_CHAIN_ID),
+        nonce,
+        gas_price: EVM_TEST_GAS_PRICE,
+        gas_limit: 21_000,
+        to: TxKind::Call(AlloyAddress::from(recipient.value())),
+        value: AlloyU256::ZERO,
+        input: AlloyBytes::new(),
+    };
+    let signing_key =
+        SigningKey::from_slice(&[0x11; 32]).expect("test EVM private key should be valid");
+    let (signature, recovery_id) = signing_key
+        .sign_prehash(transaction.signature_hash().as_ref())
+        .expect("test EVM transaction signing should succeed");
+    let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
+    let envelope = TxEnvelope::from(signed);
+    evm::Transaction::from_signed_rlp(
+        envelope.encoded_2718(),
+        Timestamp::now(),
+        TimeDiff::from_seconds(300),
+    )
+    .expect("test EVM transaction should decode")
 }
 
 fn create_account(account_hash: AccountHash, test_scenario: &TestScenario) -> Account {
@@ -1037,9 +1088,17 @@ impl reactor::Reactor for Reactor {
                     request: query_request,
                     responder,
                 } => {
-                    let query_result = if let Key::Hash(_) | Key::SmartContract(_) =
+                    let query_result = if let Key::Evm(evm::EvmAddr::Account(address)) =
                         query_request.key()
                     {
+                        let main_purse = evm::deterministic_purse(address);
+                        QueryResult::Success {
+                            value: Box::new(StoredValue::Evm(evm::EvmValue::Account(
+                                evm::Account::new(0, evm::EMPTY_CODE_HASH, main_purse),
+                            ))),
+                            proofs: vec![],
+                        }
+                    } else if let Key::Hash(_) | Key::SmartContract(_) = query_request.key() {
                         match &self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContractPackage(
                                 ContractPackageScenario::MissingPackageAtHash,
@@ -1458,6 +1517,10 @@ async fn run_transaction_acceptor_without_timeout(
             chainspec.with_vm_casper_v2(true);
             chainspec
         }
+        test_scenario if test_scenario.is_evm() => {
+            chainspec.evm_config.enabled = true;
+            chainspec
+        }
         _ => chainspec,
     };
     chainspec.core_config.administrators = iter::once(PublicKey::from(&admin)).collect();
@@ -1542,6 +1605,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a client raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientEvmInvalidNonce
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
             | TestScenario::FromClientMissingAccount(_)
@@ -1630,6 +1694,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a peer raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromPeerInvalidTransaction(_)
+            | TestScenario::FromPeerEvmInvalidNonce
             | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
             | TestScenario::BalanceCheckForDeploySentByPeer
             | TestScenario::InvalidFieldsFromPeer => {
@@ -1845,6 +1910,20 @@ async fn should_reject_invalid_transaction_v1_from_peer() {
 }
 
 #[tokio::test]
+async fn should_reject_evm_transaction_with_invalid_nonce_from_peer() {
+    let result = run_transaction_acceptor(TestScenario::FromPeerEvmInvalidNonce).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
+            evm::TransactionError::InvalidNonce {
+                expected: 0,
+                actual: 1
+            }
+        )))
+    ))
+}
+
+#[tokio::test]
 async fn should_reject_zero_payment_transaction_v1_from_peer() {
     let result = run_transaction_acceptor(TestScenario::FromPeerInvalidTransactionZeroPayment(
         TxnType::V1,
@@ -1941,6 +2020,20 @@ async fn should_reject_invalid_transaction_v1_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::V1(_)))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_evm_transaction_with_invalid_nonce_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientEvmInvalidNonce).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
+            evm::TransactionError::InvalidNonce {
+                expected: 0,
+                actual: 1
+            }
+        )))
     ))
 }
 

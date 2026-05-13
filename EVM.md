@@ -197,15 +197,21 @@ For client-submitted EVM transactions, the acceptor currently validates:
 9. [EIP-1559][eip-1559] `max_priority_fee_per_gas` must be zero because
    Casper does not currently prioritize transactions based on transaction gas
    parameters.
-10. `BalanceIdentifier::Evm(from)` must resolve to a balance.
-11. That balance must meet the chain baseline motes requirement.
+10. The EVM account for `from` must exist and resolve to a balance.
+11. The transaction nonce must match the EVM account nonce in global state.
+12. That balance must meet the chain baseline motes requirement.
 
 The acceptor does not require a Casper `AddressableEntity` for the EVM sender.
 The sender identity is `InitiatorAddr::EvmAddress(transaction.from())`, and
-balance checks use `BalanceIdentifier::Evm(address)`. The acceptor only checks
-that the EVM initiator has a known balance and meets the same baseline balance
-requirement used for other client transactions. The runtime later checks the
-full EVM maximum fee amount.
+the acceptor reads the EVM account from global state before checking its backing
+main purse balance. The acceptor only checks that the EVM initiator has a known
+balance, uses the current account nonce, and meets the same baseline balance
+requirement used for other client transactions. The runtime later checks the full
+EVM maximum fee amount.
+
+The nonce check is also applied to peer-sourced EVM transactions before storage,
+so a gossiped transaction with a nonce that cannot execute at the current state
+root is rejected before it can enter the transaction buffer.
 
 ## Runtime Execution
 

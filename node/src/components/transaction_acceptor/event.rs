@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHeader,
+    contracts::ProtocolVersionMajor, evm, AddressableEntity, AddressableEntityHash, BlockHeader,
     EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
 };
 
@@ -77,6 +77,12 @@ pub(crate) enum Event {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         maybe_balance: Option<U512>,
+    },
+    /// The result of querying global state for the EVM account associated with an EVM transaction.
+    GetEvmAccountResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        maybe_account: Option<evm::Account>,
     },
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
@@ -173,6 +179,13 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying account balance to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetEvmAccountResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying EVM account nonce to validate transaction with hash {}",
                     event_metadata.transaction.hash()
                 )
             }

@@ -14,15 +14,15 @@ use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_storage::data_access_layer::{
-    balance::BalanceHandling, BalanceIdentifier, BalanceRequest, ProofHandling,
+    balance::BalanceHandling, BalanceRequest, ProofHandling, QueryRequest, QueryResult,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
+    account::AccountHash, addressable_entity::AddressableEntity, evm, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, CLType, Chainspec, EntityAddr,
     EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Package, PackageAddr, PackageHash, PackageIdentifier,
-    Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
-    DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, Key, Package, PackageAddr, PackageHash, PackageIdentifier,
+    StoredValue, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -45,6 +45,16 @@ pub(crate) use event::{Event, EventMetadata};
 const COMPONENT_NAME: &str = "transaction_acceptor";
 
 const ARG_TARGET: &str = "target";
+
+fn evm_account_from_query_result(query_result: QueryResult) -> Option<evm::Account> {
+    match query_result {
+        QueryResult::Success { value, .. } => match *value {
+            StoredValue::Evm(evm::EvmValue::Account(account)) => Some(account),
+            _ => None,
+        },
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => None,
+    }
+}
 
 /// A helper trait constraining `TransactionAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
@@ -213,24 +223,22 @@ impl TransactionAcceptor {
             }
         };
 
-        if event_metadata.source.is_client() {
-            if let Some(evm_transaction) = event_metadata.meta_transaction.as_evm() {
-                let balance_request = BalanceRequest::new(
-                    *block_header.state_root_hash(),
-                    block_header.protocol_version(),
-                    BalanceIdentifier::Evm(evm_transaction.from()),
-                    BalanceHandling::Available,
-                    ProofHandling::NoProofs,
-                );
-                return effect_builder
-                    .get_balance(balance_request)
-                    .event(move |balance_result| Event::GetBalanceResult {
-                        event_metadata,
-                        block_header,
-                        maybe_balance: balance_result.available_balance().copied(),
-                    });
-            }
+        if let Some(evm_transaction) = event_metadata.meta_transaction.as_evm() {
+            let query_request = QueryRequest::new(
+                *block_header.state_root_hash(),
+                Key::Evm(evm::EvmAddr::Account(evm_transaction.from())),
+                vec![],
+            );
+            return effect_builder
+                .query_global_state(query_request)
+                .event(move |query_result| Event::GetEvmAccountResult {
+                    event_metadata,
+                    block_header,
+                    maybe_account: evm_account_from_query_result(query_result),
+                });
+        }
 
+        if event_metadata.source.is_client() {
             let initiator_addr = event_metadata.transaction.initiator_addr();
             let account_hash = initiator_addr
                 .account_hash()
@@ -242,6 +250,61 @@ impl TransactionAcceptor {
                     event_metadata,
                     maybe_entity: result.into_option(),
                     block_header,
+                })
+        } else {
+            self.verify_payment(effect_builder, event_metadata, block_header)
+        }
+    }
+
+    fn handle_get_evm_account_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        maybe_account: Option<evm::Account>,
+    ) -> Effects<Event> {
+        let account = match maybe_account {
+            Some(account) => account,
+            None => {
+                let initiator_addr = event_metadata.transaction.initiator_addr();
+                let error = Error::parameter_failure(
+                    &block_header,
+                    ParameterFailure::UnknownBalance { initiator_addr },
+                );
+                return self.reject_transaction(effect_builder, *event_metadata, error);
+            }
+        };
+
+        let evm_transaction = event_metadata
+            .meta_transaction
+            .as_evm()
+            .expect("EVM account lookup should only be used for EVM transactions");
+        let expected = account.nonce();
+        let actual = evm_transaction.nonce();
+        if actual != expected {
+            return self.reject_transaction(
+                effect_builder,
+                *event_metadata,
+                Error::InvalidTransaction(InvalidTransaction::Evm(
+                    evm::TransactionError::InvalidNonce { expected, actual },
+                )),
+            );
+        }
+
+        if event_metadata.source.is_client() {
+            let balance_request = BalanceRequest::from_purse(
+                *block_header.state_root_hash(),
+                block_header.protocol_version(),
+                account.main_purse(),
+                BalanceHandling::Available,
+                ProofHandling::NoProofs,
+            );
+            effect_builder
+                .get_balance(balance_request)
+                .event(move |balance_result| Event::GetBalanceResult {
+                    event_metadata,
+                    block_header,
+                    maybe_balance: balance_result.available_balance().copied(),
                 })
         } else {
             self.verify_payment(effect_builder, event_metadata, block_header)
@@ -471,8 +534,7 @@ impl TransactionAcceptor {
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 };
                 if !self.chainspec.evm_config.enabled
-                    && target.cl_type()
-                        == &CLType::ByteArray(casper_types::evm::ADDRESS_LENGTH as u32)
+                    && target.cl_type() == &CLType::ByteArray(evm::ADDRESS_LENGTH as u32)
                 {
                     let error = Error::parameter_failure(
                         &block_header,
@@ -1090,6 +1152,16 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 event_metadata,
                 block_header,
                 maybe_balance,
+            ),
+            Event::GetEvmAccountResult {
+                event_metadata,
+                block_header,
+                maybe_account,
+            } => self.handle_get_evm_account_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                maybe_account,
             ),
             Event::GetContractResult {
                 event_metadata,
