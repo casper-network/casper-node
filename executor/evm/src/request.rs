@@ -11,8 +11,6 @@ pub struct ExecuteRequest {
     pub block: BlockContext,
     /// EVM work item to execute.
     pub kind: ExecuteKind,
-    /// Component responsible for charging EVM gas fees.
-    pub fee_charge: FeeCharge,
 }
 
 /// EVM work item to execute.
@@ -62,15 +60,6 @@ impl CallValidation {
     pub(crate) fn is_unchecked_simulation(self) -> bool {
         matches!(self, CallValidation::UncheckedSimulation)
     }
-}
-
-/// Component responsible for mutating account balances for gas fees.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FeeCharge {
-    /// Let the EVM apply Ethereum gas fee debits and refunds.
-    Evm,
-    /// Skip EVM gas fee balance mutation so the caller can charge fees externally.
-    External,
 }
 
 /// Per-execution block context.

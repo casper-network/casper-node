@@ -5,7 +5,7 @@ use alloy_eips::eip2718::Encodable2718;
 use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
-    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, FeeCharge, EMPTY_CODE_HASH,
+    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -172,7 +172,6 @@ fn call_request(
             nonce: 0,
             validation: CallValidation::UncheckedSimulation,
         }),
-        fee_charge: FeeCharge::Evm,
     }
 }
 
@@ -194,7 +193,6 @@ fn checked_call_request(
             nonce: 0,
             validation: CallValidation::Checked,
         }),
-        fee_charge: FeeCharge::Evm,
     }
 }
 
@@ -551,6 +549,49 @@ fn erc20_and_native_purse_balances_update() {
 }
 
 #[test]
+fn nonzero_gas_price_does_not_charge_evm_balances() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let recipient = evm::Address::new([2; 20]);
+    let beneficiary = evm::Address::new([3; 20]);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let initial_balance = U512::from(10_000_000u64);
+    let transfer_value = CasperU256::from(250u64);
+
+    seed_evm_balance(&mut tracking_copy, sender, initial_balance);
+    let mut block_context = block();
+    block_context.beneficiary = beneficiary;
+    let request = ExecuteRequest {
+        block: block_context,
+        kind: ExecuteKind::Call(CallRequest {
+            from: sender,
+            to: Some(recipient),
+            value: transfer_value,
+            input: Vec::new(),
+            gas_limit: 100_000,
+            gas_price: 2,
+            nonce: 0,
+            validation: CallValidation::Checked,
+        }),
+    };
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("native EVM transfer should succeed");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        read_balance(&mut tracking_copy, sender),
+        initial_balance - U512::from(250u64)
+    );
+    assert_eq!(
+        read_balance(&mut tracking_copy, recipient),
+        U512::from(250u64)
+    );
+    assert_eq!(read_balance(&mut tracking_copy, beneficiary), U512::zero());
+}
+
+#[test]
 fn erc721_mint_approve_and_transfer() {
     let executor = executor(evm::EvmSpec::Prague);
     let owner = evm::Address::new([1; 20]);
@@ -717,7 +758,6 @@ fn signed_transactions_require_configured_chain_id() {
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(missing_chain_id),
-        fee_charge: FeeCharge::Evm,
     };
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
@@ -735,7 +775,6 @@ fn signed_transactions_require_configured_chain_id() {
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(transaction),
-        fee_charge: FeeCharge::Evm,
     };
     assert!(matches!(
         wrong_chain_executor.execute(&mut tracking_copy, request),
@@ -753,7 +792,8 @@ fn checked_calls_enforce_transaction_validation() {
     let recipient = evm::Address::new([2; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();
 
-    let request = checked_call_request(from, Some(recipient), Vec::new(), CasperU256::from(1));
+    let mut request = checked_call_request(from, Some(recipient), Vec::new(), CasperU256::zero());
+    request.block.base_fee = Some(1);
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
         Err(Error::Revm(_))

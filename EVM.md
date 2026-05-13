@@ -263,7 +263,7 @@ When execution proceeds:
    - deterministic proposer-derived beneficiary,
    - `[evm].block_gas_limit`,
    - `[evm].base_fee`.
-5. Runtime calls `casper-executor-evm` with `FeeCharge::External`.
+5. Runtime calls `casper-executor-evm`.
 6. `revm` executes EVM account, nonce, code, storage, log, create, and value
    transfer semantics.
 7. Runtime commits EVM tracking-copy effects into scratch global state.
@@ -274,8 +274,8 @@ When execution proceeds:
 11. Runtime applies Casper fee handling.
 12. Runtime stores `ExecutionResult::Evm`.
 
-`FeeCharge::External` is important. It prevents `revm` from charging gas fees
-from EVM balances. Casper runtime owns fee and refund policy.
+The executor always disables `revm` gas fee balance mutation. Casper runtime
+owns fee and refund policy.
 
 ## Fee And Refund Policy
 
@@ -416,7 +416,6 @@ runs `casper-executor-evm` with:
 
 - `ExecuteKind::Call`,
 - `CallValidation::UncheckedSimulation`,
-- `FeeCharge::External`,
 
 and returns output, status, and gas used. The tracking-copy effects are
 discarded.

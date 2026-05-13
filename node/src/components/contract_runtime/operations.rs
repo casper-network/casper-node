@@ -14,7 +14,7 @@ use casper_executor_evm::{
     BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
     BlockHashProviderResult as EvmBlockHashProviderResult, EvmExecutor,
     ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
-    ExecutionStatus as EvmExecutionStatus, FeeCharge as EvmFeeCharge,
+    ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -719,7 +719,6 @@ pub fn execute_finalized_block(
                     let request = EvmExecuteRequest {
                         block: block_context,
                         kind: EvmExecuteKind::Transaction(evm_transaction.clone()),
-                        fee_charge: EvmFeeCharge::External,
                     };
                     let mut tracking_copy = scratch_state
                         .tracking_copy(state_root_hash)?
@@ -1654,7 +1653,6 @@ where
     let execute_request = EvmExecuteRequest {
         block: block_context,
         kind: EvmExecuteKind::Call(call),
-        fee_charge: EvmFeeCharge::External,
     };
     let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
     let outcome = EvmExecutor::new(chainspec.evm_config)

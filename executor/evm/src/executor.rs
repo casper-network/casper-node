@@ -13,7 +13,7 @@ use revm::{
 
 use crate::{
     db::CasperDb, state, tx, BlockHashProvider, DbError, Error, ExecuteKind, ExecuteRequest,
-    ExecutionOutcome, FeeCharge, NoBlockHashProvider, Result,
+    ExecutionOutcome, NoBlockHashProvider, Result,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -88,8 +88,6 @@ impl EvmExecutor {
             ExecuteKind::Transaction(_) => false,
             ExecuteKind::Call(call) => call.validation.is_unchecked_simulation(),
         };
-        let fee_charge_disabled =
-            matches!(request.fee_charge, FeeCharge::External) || skip_validation;
 
         let result_and_state = {
             let db = CasperDb::new(tracking_copy, block_hash_provider);
@@ -104,7 +102,7 @@ impl EvmExecutor {
                     cfg.disable_base_fee = skip_validation;
                     cfg.disable_balance_check = skip_validation;
                     cfg.disable_nonce_check = skip_validation;
-                    cfg.disable_fee_charge = fee_charge_disabled;
+                    cfg.disable_fee_charge = true;
                 })
                 .build_mainnet();
 
@@ -113,13 +111,11 @@ impl EvmExecutor {
 
         let outcome = ExecutionOutcome::from_revm_result(&result_and_state.result);
         let mut state = result_and_state.state;
-        if fee_charge_disabled {
-            // revm skips the upfront fee debit but still applies the
-            // post-execution gas reimbursement and beneficiary reward.
-            let disabled_fee_transfers =
-                disabled_fee_transfers(&self.config, spec, &request, &result_and_state.result);
-            state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
-        }
+        // revm skips the upfront fee debit but still applies the
+        // post-execution gas reimbursement and beneficiary reward.
+        let disabled_fee_transfers =
+            disabled_fee_transfers(&self.config, spec, &request, &result_and_state.result);
+        state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
         state::apply(tracking_copy, state)?;
         Ok(outcome)
     }
