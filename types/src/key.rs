@@ -87,6 +87,8 @@ const REWARDS_HANDLING_PREFIX: &str = "rewards-handling-";
 const EVM_ACCOUNT_PREFIX: &str = "evm-account-";
 const EVM_BYTE_CODE_PREFIX: &str = "evm-byte-code-";
 const EVM_STORAGE_PREFIX: &str = "evm-storage-";
+const EVM_NONCE_PREFIX: &str = "evm-nonce-";
+const EVM_CODE_HASH_PREFIX: &str = "evm-code-hash-";
 const EVM_STORAGE_FORMATTED_LENGTH: usize = EVM_ADDRESS_LENGTH + KEY_HASH_LENGTH;
 
 /// The number of bytes in a Blake2b hash
@@ -445,6 +447,10 @@ pub enum FromStrError {
     EvmByteCode(String),
     /// EVM storage key parse error.
     EvmStorage(String),
+    /// EVM nonce key parse error.
+    EvmNonce(String),
+    /// EVM code hash key parse error.
+    EvmCodeHash(String),
     RewardsHandling(String),
     /// Unknown prefix.
     UnknownPrefix,
@@ -539,6 +545,12 @@ impl Display for FromStrError {
             }
             FromStrError::EvmStorage(error) => {
                 write!(f, "evm-storage-key from string error: {}", error)
+            }
+            FromStrError::EvmNonce(error) => {
+                write!(f, "evm-nonce-key from string error: {}", error)
+            }
+            FromStrError::EvmCodeHash(error) => {
+                write!(f, "evm-code-hash-key from string error: {}", error)
             }
 
             FromStrError::RewardsHandling(error) => {
@@ -734,6 +746,12 @@ impl Key {
                     addr.address().to_hex_string(),
                     u256_to_padded_hex(addr.slot())
                 )
+            }
+            Key::Evm(EvmAddr::Nonce(address)) => {
+                format!("{}{}", EVM_NONCE_PREFIX, address.to_hex_string())
+            }
+            Key::Evm(EvmAddr::CodeHash(address)) => {
+                format!("{}{}", EVM_CODE_HASH_PREFIX, address.to_hex_string())
             }
         }
     }
@@ -1096,6 +1114,22 @@ impl Key {
                 EvmAddress::new(address),
                 U256::from_big_endian(&slot),
             ))));
+        }
+
+        if let Some(hex) = input.strip_prefix(EVM_NONCE_PREFIX) {
+            let bytes = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::EvmNonce(error.to_string()))?;
+            let address = <[u8; EVM_ADDRESS_LENGTH]>::try_from(bytes.as_ref())
+                .map_err(|error| FromStrError::EvmNonce(error.to_string()))?;
+            return Ok(Key::Evm(EvmAddr::Nonce(EvmAddress::new(address))));
+        }
+
+        if let Some(hex) = input.strip_prefix(EVM_CODE_HASH_PREFIX) {
+            let bytes = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::EvmCodeHash(error.to_string()))?;
+            let address = <[u8; EVM_ADDRESS_LENGTH]>::try_from(bytes.as_ref())
+                .map_err(|error| FromStrError::EvmCodeHash(error.to_string()))?;
+            return Ok(Key::Evm(EvmAddr::CodeHash(EvmAddress::new(address))));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1597,6 +1631,10 @@ impl Display for Key {
             Key::Evm(EvmAddr::ByteCode(hash)) => write!(f, "Key::Evm(ByteCode({}))", hash),
             Key::Evm(EvmAddr::Storage(addr)) => {
                 write!(f, "Key::Evm(Storage({}-{}))", addr.address(), addr.slot())
+            }
+            Key::Evm(EvmAddr::Nonce(address)) => write!(f, "Key::Evm(Nonce({}))", address),
+            Key::Evm(EvmAddr::CodeHash(address)) => {
+                write!(f, "Key::Evm(CodeHash({}))", address)
             }
         }
     }

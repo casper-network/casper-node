@@ -9,14 +9,14 @@ use casper_types::{
         HANDLE_PAYMENT,
     },
     AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, InitiatorAddr, Key,
-    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, TimeDiff, URef, URefAddr,
-    U512,
+    ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
 };
 use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
+    convert::TryFrom,
     fmt::{Display, Formatter},
 };
 use tracing::error;
@@ -62,8 +62,6 @@ pub enum BalanceIdentifier {
     Public(PublicKey),
     /// Use main purse of entity from account hash.
     Account(AccountHash),
-    /// Use main purse backing an EVM account.
-    Evm(evm::Address),
     /// Use main purse of entity.
     Entity(EntityAddr),
     /// Use purse at Key::Purse(URefAddr).
@@ -74,6 +72,42 @@ pub enum BalanceIdentifier {
     PenalizedPayment,
 }
 
+/// Error converting a transaction initiator into a balance identifier.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum BalanceIdentifierFromInitiatorError {
+    /// EVM initiators require EVM origin resolution before they can identify a purse.
+    EvmAddress(evm::Address),
+}
+
+impl Display for BalanceIdentifierFromInitiatorError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BalanceIdentifierFromInitiatorError::EvmAddress(address) => {
+                write!(
+                    formatter,
+                    "EVM initiator address {address:?} cannot directly identify a balance"
+                )
+            }
+        }
+    }
+}
+
+impl TryFrom<InitiatorAddr> for BalanceIdentifier {
+    type Error = BalanceIdentifierFromInitiatorError;
+
+    fn try_from(value: InitiatorAddr) -> Result<Self, Self::Error> {
+        match value {
+            InitiatorAddr::PublicKey(public_key) => Ok(BalanceIdentifier::Public(public_key)),
+            InitiatorAddr::AccountHash(account_hash) => {
+                Ok(BalanceIdentifier::Account(account_hash))
+            }
+            InitiatorAddr::EvmAddress(address) => {
+                Err(BalanceIdentifierFromInitiatorError::EvmAddress(address))
+            }
+        }
+    }
+}
+
 impl BalanceIdentifier {
     /// Returns underlying uref addr from balance identifier, if any.
     pub fn as_purse_addr(&self) -> Option<URefAddr> {
@@ -82,7 +116,6 @@ impl BalanceIdentifier {
             BalanceIdentifier::Purse(uref) => Some(uref.addr()),
             BalanceIdentifier::Public(_)
             | BalanceIdentifier::Account(_)
-            | BalanceIdentifier::Evm(_)
             | BalanceIdentifier::PenalizedAccount(_)
             | BalanceIdentifier::PenalizedPayment
             | BalanceIdentifier::Entity(_)
@@ -120,21 +153,6 @@ impl BalanceIdentifier {
                         .main_purse()
                         .ok_or(TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
-                }
-            }
-            BalanceIdentifier::Evm(address) => {
-                let key = Key::Evm(evm::EvmAddr::Account(*address));
-                match tc.read(&key)? {
-                    Some(StoredValue::Evm(evm::EvmValue::Account(account))) => account.main_purse(),
-                    Some(stored_value) => {
-                        return Err(TrackingCopyError::TypeMismatch(
-                            StoredValueTypeMismatch::new(
-                                "StoredValue::Evm(Account)".to_string(),
-                                stored_value.type_name(),
-                            ),
-                        ));
-                    }
-                    None => return Err(TrackingCopyError::KeyNotFound(key)),
                 }
             }
             BalanceIdentifier::Entity(entity_addr) => {
@@ -204,16 +222,6 @@ impl BalanceIdentifier {
 impl Default for BalanceIdentifier {
     fn default() -> Self {
         BalanceIdentifier::Purse(URef::default())
-    }
-}
-
-impl From<InitiatorAddr> for BalanceIdentifier {
-    fn from(value: InitiatorAddr) -> Self {
-        match value {
-            InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
-            InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
-            InitiatorAddr::EvmAddress(address) => BalanceIdentifier::Evm(address),
-        }
     }
 }
 

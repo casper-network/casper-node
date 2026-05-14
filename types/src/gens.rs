@@ -327,6 +327,10 @@ pub fn evm_addr_arb() -> impl Strategy<Value = evm::EvmAddr> {
         (prop::array::uniform20(any::<u8>()), u256_arb()).prop_map(|(address, slot)| {
             evm::EvmAddr::Storage(evm::StorageAddr::new(evm::Address::new(address), slot))
         }),
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| evm::EvmAddr::Nonce(evm::Address::new(bytes))),
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| evm::EvmAddr::CodeHash(evm::Address::new(bytes))),
     ]
 }
 
@@ -998,24 +1002,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
         collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
-        (any::<u64>(), u8_slice_32(), uref_arb()).prop_map(|(nonce, code_hash, main_purse)| {
-            StoredValue::Evm(crate::evm::EvmValue::Account(crate::evm::Account::new(
-                nonce,
-                crate::evm::Hash::new(code_hash),
-                main_purse,
-            )))
-        }),
-        collection::vec(any::<u8>(), 0..1000).prop_map(|bytes| {
-            StoredValue::Evm(crate::evm::EvmValue::ByteCode(ByteCode::new(
-                ByteCodeKind::EvmPrague,
-                bytes,
-            )))
-        }),
-        u256_arb().prop_map(|value| {
-            StoredValue::Evm(crate::evm::EvmValue::Storage(
-                crate::evm::StorageValue::new(value),
-            ))
-        }),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -1042,7 +1028,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::Prepayment(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
                 StoredValue::RawBytes(_) => stored_value,
-                StoredValue::Evm(_) => stored_value,
         })
 }
 

@@ -891,11 +891,6 @@ where
                 StoredValue::RawBytes(_) => {
                     return Ok(query.into_not_found_result("RawBytes value found."));
                 }
-                StoredValue::Evm(value) => {
-                    return Ok(
-                        query.into_not_found_result(&format!("{} value found.", value.type_name()))
-                    );
-                }
             }
         }
     }

@@ -40,19 +40,75 @@ use crate::{
 
 pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
-pub(crate) use event::{Event, EventMetadata};
+pub(crate) use event::{
+    Event, EventMetadata, EvmAccountLookup, EvmBalanceSource, EvmCodeHashLookup, EvmNonceLookup,
+};
 
 const COMPONENT_NAME: &str = "transaction_acceptor";
 
 const ARG_TARGET: &str = "target";
 
-fn evm_account_from_query_result(query_result: QueryResult) -> Option<evm::Account> {
+fn evm_account_lookup_from_query_result(query_result: QueryResult) -> EvmAccountLookup {
     match query_result {
         QueryResult::Success { value, .. } => match *value {
-            StoredValue::Evm(evm::EvmValue::Account(account)) => Some(account),
-            _ => None,
+            StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
+                Ok(Key::Account(account_hash)) => EvmAccountLookup::Account(account_hash),
+                Ok(Key::URef(uref)) => EvmAccountLookup::Purse(uref),
+                Ok(other) => {
+                    EvmAccountLookup::Invalid(format!("invalid EVM account identity key: {other}"))
+                }
+                Err(error) => EvmAccountLookup::Invalid(format!(
+                    "failed to decode EVM account identity key: {error}"
+                )),
+            },
+            stored_value => EvmAccountLookup::Invalid(format!(
+                "expected StoredValue::CLValue(Key), found {}",
+                stored_value.type_name()
+            )),
         },
-        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => None,
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            EvmAccountLookup::Missing
+        }
+    }
+}
+
+fn evm_nonce_from_query_result(query_result: QueryResult) -> EvmNonceLookup {
+    match query_result {
+        QueryResult::Success { value, .. } => match *value {
+            StoredValue::CLValue(cl_value) => match cl_value.into_t::<u64>() {
+                Ok(nonce) => EvmNonceLookup::Value(nonce),
+                Err(error) => {
+                    EvmNonceLookup::Invalid(format!("failed to decode EVM nonce: {error}"))
+                }
+            },
+            stored_value => EvmNonceLookup::Invalid(format!(
+                "expected StoredValue::CLValue(u64), found {}",
+                stored_value.type_name()
+            )),
+        },
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            EvmNonceLookup::Missing
+        }
+    }
+}
+
+fn evm_code_hash_from_query_result(query_result: QueryResult) -> EvmCodeHashLookup {
+    match query_result {
+        QueryResult::Success { value, .. } => match *value {
+            StoredValue::CLValue(cl_value) => match cl_value.into_t::<evm::Hash>() {
+                Ok(code_hash) => EvmCodeHashLookup::Value(code_hash),
+                Err(error) => {
+                    EvmCodeHashLookup::Invalid(format!("failed to decode EVM code hash: {error}"))
+                }
+            },
+            stored_value => EvmCodeHashLookup::Invalid(format!(
+                "expected StoredValue::CLValue(evm::Hash), found {}",
+                stored_value.type_name()
+            )),
+        },
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) | QueryResult::Failure(_) => {
+            EvmCodeHashLookup::Missing
+        }
     }
 }
 
@@ -224,6 +280,10 @@ impl TransactionAcceptor {
         };
 
         if let Some(evm_transaction) = event_metadata.meta_transaction.as_evm() {
+            // EVM senders are validated from the EVM identity record first. A
+            // Casper account lookup would be wrong here because an EVM address
+            // may be either linked to a Casper account or backed by an
+            // EVM-native purse.
             let query_request = QueryRequest::new(
                 *block_header.state_root_hash(),
                 Key::Evm(evm::EvmAddr::Account(evm_transaction.from())),
@@ -234,7 +294,7 @@ impl TransactionAcceptor {
                 .event(move |query_result| Event::GetEvmAccountResult {
                     event_metadata,
                     block_header,
-                    maybe_account: evm_account_from_query_result(query_result),
+                    account: evm_account_lookup_from_query_result(query_result),
                 });
         }
 
@@ -261,26 +321,264 @@ impl TransactionAcceptor {
         effect_builder: EffectBuilder<REv>,
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        maybe_account: Option<evm::Account>,
+        account: EvmAccountLookup,
     ) -> Effects<Event> {
-        let account = match maybe_account {
-            Some(account) => account,
-            None => {
-                let initiator_addr = event_metadata.transaction.initiator_addr();
-                let error = Error::parameter_failure(
-                    &block_header,
-                    ParameterFailure::UnknownBalance { initiator_addr },
-                );
-                return self.reject_transaction(effect_builder, *event_metadata, error);
-            }
-        };
-
         let evm_transaction = event_metadata
             .meta_transaction
             .as_evm()
             .expect("EVM account lookup should only be used for EVM transactions");
-        let expected = account.nonce();
+
+        match account {
+            // Existing identity pointers select the balance source directly.
+            // The nonce remains under `EvmAddr::Nonce`, so it is queried after
+            // identity resolution regardless of whether the payer is a Casper
+            // account or an EVM-native purse.
+            EvmAccountLookup::Account(account_hash) => self.query_evm_nonce(
+                effect_builder,
+                event_metadata,
+                block_header,
+                EvmBalanceSource::Account(account_hash),
+            ),
+            EvmAccountLookup::Purse(uref) => self.query_evm_nonce(
+                effect_builder,
+                event_metadata,
+                block_header,
+                EvmBalanceSource::Purse(uref),
+            ),
+            EvmAccountLookup::Invalid(error_message) => {
+                let error = Error::InvalidTransaction(InvalidTransaction::Evm(
+                    evm::TransactionError::Decode(error_message),
+                ));
+                self.reject_transaction(effect_builder, *event_metadata, error)
+            }
+            EvmAccountLookup::Missing => {
+                // A missing identity pointer does not necessarily mean all EVM
+                // metadata is missing. Runtime still checks split nonce and
+                // code-hash records before deciding whether the address can be
+                // linked to a Casper account or must remain EVM-native.
+                let query_request = QueryRequest::new(
+                    *block_header.state_root_hash(),
+                    Key::Evm(evm::EvmAddr::Nonce(evm_transaction.from())),
+                    vec![],
+                );
+                effect_builder
+                    .query_global_state(query_request)
+                    .event(
+                        move |query_result| Event::GetMissingEvmIdentityNonceResult {
+                            event_metadata,
+                            block_header,
+                            nonce: evm_nonce_from_query_result(query_result),
+                        },
+                    )
+            }
+        }
+    }
+
+    fn handle_get_missing_evm_identity_nonce_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        nonce: EvmNonceLookup,
+    ) -> Effects<Event> {
+        let evm_transaction = event_metadata
+            .meta_transaction
+            .as_evm()
+            .expect("missing EVM identity nonce lookup should only be used for EVM transactions");
+        let expected_nonce = match nonce {
+            EvmNonceLookup::Value(nonce) => nonce,
+            EvmNonceLookup::Missing => 0,
+            EvmNonceLookup::Invalid(error_message) => {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::Evm(
+                        evm::TransactionError::Decode(error_message),
+                    )),
+                );
+            }
+        };
+        let query_request = QueryRequest::new(
+            *block_header.state_root_hash(),
+            Key::Evm(evm::EvmAddr::CodeHash(evm_transaction.from())),
+            vec![],
+        );
+        effect_builder
+            .query_global_state(query_request)
+            .event(
+                move |query_result| Event::GetMissingEvmIdentityCodeHashResult {
+                    event_metadata,
+                    block_header,
+                    expected_nonce,
+                    code_hash: evm_code_hash_from_query_result(query_result),
+                },
+            )
+    }
+
+    fn handle_get_missing_evm_identity_code_hash_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        expected_nonce: u64,
+        code_hash: EvmCodeHashLookup,
+    ) -> Effects<Event> {
+        let evm_transaction = event_metadata.meta_transaction.as_evm().expect(
+            "missing EVM identity code-hash lookup should only be used for EVM transactions",
+        );
+        let address = evm_transaction.from();
+        let code_hash = match code_hash {
+            EvmCodeHashLookup::Value(code_hash) => code_hash,
+            EvmCodeHashLookup::Missing => evm::EMPTY_CODE_HASH,
+            EvmCodeHashLookup::Invalid(error_message) => {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::Evm(
+                        evm::TransactionError::Decode(error_message),
+                    )),
+                );
+            }
+        };
+
+        if code_hash != evm::EMPTY_CODE_HASH {
+            return self.validate_evm_nonce_and_balance(
+                effect_builder,
+                event_metadata,
+                block_header,
+                expected_nonce,
+                EvmBalanceSource::Purse(evm::deterministic_purse(address)),
+            );
+        }
+
+        let account_hash = match evm_transaction.signer() {
+            Ok(signer) => signer.to_account_hash(),
+            Err(error) => {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::Evm(error)),
+                );
+            }
+        };
+        let entity_addr = EntityAddr::Account(account_hash.value());
+        // If the recovered signer already has a Casper account, client balance
+        // validation should use that account. Otherwise it uses the
+        // deterministic EVM purse, matching the account-creation plan runtime
+        // will apply only after payment preconditions pass.
+        effect_builder
+            .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+            .event(move |result| Event::GetEvmAccountEntityResult {
+                event_metadata,
+                block_header,
+                expected_nonce,
+                account_hash,
+                maybe_entity: result.into_option(),
+            })
+    }
+
+    fn handle_get_evm_account_entity_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        expected_nonce: u64,
+        account_hash: AccountHash,
+        maybe_entity: Option<AddressableEntity>,
+    ) -> Effects<Event> {
+        let evm_transaction = event_metadata
+            .meta_transaction
+            .as_evm()
+            .expect("EVM account entity lookup should only be used for EVM transactions");
+        // This is still a read-only acceptor decision. It does not create the
+        // Casper account or write `EvmAddr::Account`; it only picks the balance
+        // source that runtime will use when it evaluates the same origin.
+        let balance_source = if maybe_entity.is_some() {
+            EvmBalanceSource::Account(account_hash)
+        } else {
+            EvmBalanceSource::Purse(evm::deterministic_purse(evm_transaction.from()))
+        };
+        self.validate_evm_nonce_and_balance(
+            effect_builder,
+            event_metadata,
+            block_header,
+            expected_nonce,
+            balance_source,
+        )
+    }
+
+    fn query_evm_nonce<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        balance_source: EvmBalanceSource,
+    ) -> Effects<Event> {
+        let evm_transaction = event_metadata
+            .meta_transaction
+            .as_evm()
+            .expect("EVM nonce lookup should only be used for EVM transactions");
+        let query_request = QueryRequest::new(
+            *block_header.state_root_hash(),
+            Key::Evm(evm::EvmAddr::Nonce(evm_transaction.from())),
+            vec![],
+        );
+        effect_builder
+            .query_global_state(query_request)
+            .event(move |query_result| Event::GetEvmNonceResult {
+                event_metadata,
+                block_header,
+                balance_source,
+                nonce: evm_nonce_from_query_result(query_result),
+            })
+    }
+
+    fn handle_get_evm_nonce_result<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        balance_source: EvmBalanceSource,
+        nonce: EvmNonceLookup,
+    ) -> Effects<Event> {
+        let expected_nonce = match nonce {
+            EvmNonceLookup::Value(nonce) => nonce,
+            EvmNonceLookup::Missing => 0,
+            EvmNonceLookup::Invalid(error_message) => {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::Evm(
+                        evm::TransactionError::Decode(error_message),
+                    )),
+                );
+            }
+        };
+        self.validate_evm_nonce_and_balance(
+            effect_builder,
+            event_metadata,
+            block_header,
+            expected_nonce,
+            balance_source,
+        )
+    }
+
+    fn validate_evm_nonce_and_balance<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        expected: u64,
+        balance_source: EvmBalanceSource,
+    ) -> Effects<Event> {
+        let evm_transaction = event_metadata
+            .meta_transaction
+            .as_evm()
+            .expect("EVM account validation should only be used for EVM transactions");
         let actual = evm_transaction.nonce();
+        // EVM nonce validation is independent of the identity pointer. Linking
+        // an EVM address to a Casper account does not change the EVM replay
+        // counter.
         if actual != expected {
             return self.reject_transaction(
                 effect_builder,
@@ -292,13 +590,22 @@ impl TransactionAcceptor {
         }
 
         if event_metadata.source.is_client() {
-            let balance_request = BalanceRequest::from_purse(
-                *block_header.state_root_hash(),
-                block_header.protocol_version(),
-                account.main_purse(),
-                BalanceHandling::Available,
-                ProofHandling::NoProofs,
-            );
+            let balance_request = match balance_source {
+                EvmBalanceSource::Purse(main_purse) => BalanceRequest::from_purse(
+                    *block_header.state_root_hash(),
+                    block_header.protocol_version(),
+                    main_purse,
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
+                ),
+                EvmBalanceSource::Account(account_hash) => BalanceRequest::from_account_hash(
+                    *block_header.state_root_hash(),
+                    block_header.protocol_version(),
+                    account_hash,
+                    BalanceHandling::Available,
+                    ProofHandling::NoProofs,
+                ),
+            };
             effect_builder
                 .get_balance(balance_request)
                 .event(move |balance_result| Event::GetBalanceResult {
@@ -1156,12 +1463,60 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
             Event::GetEvmAccountResult {
                 event_metadata,
                 block_header,
-                maybe_account,
+                account,
             } => self.handle_get_evm_account_result(
                 effect_builder,
                 event_metadata,
                 block_header,
-                maybe_account,
+                account,
+            ),
+            Event::GetEvmNonceResult {
+                event_metadata,
+                block_header,
+                balance_source,
+                nonce,
+            } => self.handle_get_evm_nonce_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                balance_source,
+                nonce,
+            ),
+            Event::GetMissingEvmIdentityNonceResult {
+                event_metadata,
+                block_header,
+                nonce,
+            } => self.handle_get_missing_evm_identity_nonce_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                nonce,
+            ),
+            Event::GetMissingEvmIdentityCodeHashResult {
+                event_metadata,
+                block_header,
+                expected_nonce,
+                code_hash,
+            } => self.handle_get_missing_evm_identity_code_hash_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                expected_nonce,
+                code_hash,
+            ),
+            Event::GetEvmAccountEntityResult {
+                event_metadata,
+                block_header,
+                expected_nonce,
+                account_hash,
+                maybe_entity,
+            } => self.handle_get_evm_account_entity_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                expected_nonce,
+                account_hash,
+                maybe_entity,
             ),
             Event::GetContractResult {
                 event_metadata,

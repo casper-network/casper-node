@@ -17,9 +17,10 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    evm, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
-    HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
-    StoredValue, SystemConfig, Timestamp, WasmConfig, U256 as CasperU256, U512,
+    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry,
+    Digest, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig,
+    U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
 
@@ -324,7 +325,7 @@ fn read_storage<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
         ))))
         .expect("storage read should not fail")
     {
-        Some(StoredValue::Evm(evm::EvmValue::Storage(value))) => Some(value.value()),
+        Some(StoredValue::CLValue(value)) => value.into_t::<CasperU256>().ok(),
         Some(other) => panic!("unexpected storage value: {other:?}"),
         None => None,
     }
@@ -338,7 +339,18 @@ fn read_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
         .read(&Key::Evm(evm::EvmAddr::Account(address)))
         .expect("account read should not fail")
     {
-        Some(StoredValue::Evm(evm::EvmValue::Account(account))) => account.main_purse(),
+        Some(StoredValue::CLValue(value)) => match value.into_t::<Key>().unwrap() {
+            Key::URef(uref) => uref,
+            Key::Account(account_hash) => match tracking_copy
+                .read(&Key::Account(account_hash))
+                .expect("linked account read should not fail")
+            {
+                Some(StoredValue::Account(account)) => account.main_purse(),
+                Some(other) => panic!("unexpected linked account value: {other:?}"),
+                None => return U512::zero(),
+            },
+            other => panic!("unexpected EVM account identity key: {other:?}"),
+        },
         Some(other) => panic!("unexpected account value: {other:?}"),
         None => return U512::zero(),
     };
@@ -360,16 +372,34 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     let main_purse = evm::deterministic_purse(address);
     tracking_copy.write(
         Key::Evm(evm::EvmAddr::Account(address)),
-        StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
-            0,
-            EMPTY_CODE_HASH,
-            main_purse,
-        ))),
+        StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(evm::EvmAddr::Nonce(address)),
+        StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(evm::EvmAddr::CodeHash(address)),
+        StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
     );
     tracking_copy.write(
         Key::Balance(main_purse.addr()),
         StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
     );
+}
+
+fn read_evm_nonce<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: evm::Address,
+) -> u64 {
+    match tracking_copy
+        .read(&Key::Evm(evm::EvmAddr::Nonce(address)))
+        .expect("nonce read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => value.into_t::<u64>().unwrap(),
+        Some(other) => panic!("unexpected nonce value: {other:?}"),
+        None => 0,
+    }
 }
 
 #[test]
@@ -783,6 +813,103 @@ fn signed_transactions_require_configured_chain_id() {
             actual: 7
         })
     ));
+}
+
+#[test]
+fn signed_transaction_sender_uses_linked_casper_account_identity() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let transaction = legacy_transaction(Some(7));
+    let signer = transaction
+        .signer()
+        .expect("transaction should have a signer");
+    let account_hash = signer.to_account_hash();
+    let main_purse = URef::new([9; 32], AccessRights::READ_ADD_WRITE);
+    let initial_balance = U512::from(1_000_000u64);
+
+    tracking_copy.write(
+        Key::Account(account_hash),
+        StoredValue::Account(Account::create(account_hash, NamedKeys::new(), main_purse)),
+    );
+    tracking_copy.write(
+        Key::Balance(main_purse.addr()),
+        StoredValue::CLValue(CLValue::from_t(initial_balance).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(evm::EvmAddr::Account(transaction.from())),
+        StoredValue::CLValue(CLValue::from_t(Key::Account(account_hash)).unwrap()),
+    );
+
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Transaction(transaction.clone()),
+    };
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("EVM execution should succeed");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
+    assert_eq!(
+        read_balance(&mut tracking_copy, transaction.from()),
+        initial_balance
+    );
+    match tracking_copy
+        .read(&Key::Evm(evm::EvmAddr::Account(transaction.from())))
+        .expect("identity read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => {
+            assert_eq!(value.into_t::<Key>().unwrap(), Key::Account(account_hash));
+        }
+        other => panic!("unexpected EVM identity value: {other:?}"),
+    }
+}
+
+#[test]
+fn signed_transaction_sender_keeps_evm_native_identity() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let transaction = legacy_transaction(Some(7));
+    let signer = transaction
+        .signer()
+        .expect("transaction should have a signer");
+    let account_hash = signer.to_account_hash();
+    let initial_balance = U512::from(1_000_000u64);
+
+    seed_evm_balance(&mut tracking_copy, transaction.from(), initial_balance);
+
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Transaction(transaction.clone()),
+    };
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("EVM execution should succeed");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
+    assert_eq!(
+        read_balance(&mut tracking_copy, transaction.from()),
+        initial_balance
+    );
+    assert_eq!(
+        tracking_copy
+            .read(&Key::Account(account_hash))
+            .expect("account read should not fail"),
+        None
+    );
+    match tracking_copy
+        .read(&Key::Evm(evm::EvmAddr::Account(transaction.from())))
+        .expect("identity read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => {
+            assert_eq!(
+                value.into_t::<Key>().unwrap(),
+                Key::URef(evm::deterministic_purse(transaction.from()))
+            );
+        }
+        other => panic!("unexpected EVM identity value: {other:?}"),
+    }
 }
 
 #[test]

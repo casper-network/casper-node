@@ -764,8 +764,7 @@ where
             | StoredValue::Message(_)
             | StoredValue::Prepayment(_)
             | StoredValue::EntryPoint(_)
-            | StoredValue::RawBytes(_)
-            | StoredValue::Evm(_) => Ok(()),
+            | StoredValue::RawBytes(_) => Ok(()),
         }
     }
 

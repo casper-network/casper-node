@@ -12,7 +12,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest,
+    CLType, CLTyped, Digest,
 };
 
 /// The number of bytes in an EVM 256-bit hash.
@@ -62,6 +62,12 @@ impl AsRef<[u8]> for Hash {
 impl Display for Hash {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "0x{}", self.to_hex_string())
+    }
+}
+
+impl CLTyped for Hash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(HASH_LENGTH as u32)
     }
 }
 

@@ -31,8 +31,8 @@ Implemented in this workspace:
   transactions, accounts, config, and receipts.
 - `Transaction::Evm` and `TransactionHash::Evm`.
 - `ExecutionResult::Evm` carrying EVM receipt data.
-- Global-state keys and values for EVM account metadata, bytecode, and
-  storage.
+- Global-state keys and values for EVM account identity links, nonce, code
+  hash, bytecode, and storage.
 - EVM hash wrappers backed by Casper `Digest` while preserving raw Ethereum
   32-byte values.
 - `casper-executor-evm`, backed by `revm`, with Casper-owned public types.
@@ -40,7 +40,7 @@ Implemented in this workspace:
 - Casper fee and refund handling for EVM transactions.
 - Binary-port `Simulate` for read-only `eth_call` support.
 - Native Casper transfers to 20-byte EVM addresses when `[evm].enabled = true`,
-  creating or funding the corresponding EVM account record.
+  creating or funding the corresponding EVM-native purse identity.
 
 Implemented in the sidecar workspace for validation:
 
@@ -178,7 +178,7 @@ top-level approval replacement hook used after storage lookup leaves
 
 `Transaction::Evm` is converted into `MetaTransaction::Evm` and routed through
 the normal transaction acceptor skeleton. EVM branches only where the payload
-genuinely differs from Deploy and V1/V2 transactions: identity, balance
+genuinely differs from Deploy and native Transaction::V1 payloads: identity, balance
 lookup, no Casper session/payment validation, and EVM-specific chainspec
 checks.
 
@@ -197,17 +197,22 @@ For client-submitted EVM transactions, the acceptor currently validates:
 9. [EIP-1559][eip-1559] `max_priority_fee_per_gas` must be zero because
    Casper does not currently prioritize transactions based on transaction gas
    parameters.
-10. The EVM account for `from` must exist and resolve to a balance.
-11. The transaction nonce must match the EVM account nonce in global state.
+10. The EVM account identity for `from` must resolve to a balance, or the
+    recovered secp256k1 signer must resolve to a Casper account balance or the
+    address's deterministic EVM purse balance.
+11. The transaction nonce must match the EVM nonce in global state, defaulting
+    to `0` before the first EVM transaction for that address.
 12. That balance must meet the chain baseline motes requirement.
 
-The acceptor does not require a Casper `AddressableEntity` for the EVM sender.
-The sender identity is `InitiatorAddr::EvmAddress(transaction.from())`, and
-the acceptor reads the EVM account from global state before checking its backing
-main purse balance. The acceptor only checks that the EVM initiator has a known
-balance, uses the current account nonce, and meets the same baseline balance
-requirement used for other client transactions. The runtime later checks the full
-EVM maximum fee amount.
+The acceptor does not require a Casper `AddressableEntity` for every EVM
+address. The sender identity is still
+`InitiatorAddr::EvmAddress(transaction.from())`. If the EVM address is linked to
+`Key::Account(account_hash)`, the Casper account's main purse is used. If it is
+an EVM-native identity, the stored purse is used. If no EVM identity exists yet,
+the acceptor uses the recovered signer public key to check the corresponding
+Casper account balance, falling back to the address's deterministic EVM purse
+when no Casper account exists. The runtime later checks the full EVM maximum
+fee amount.
 
 The nonce check is also applied to peer-sourced EVM transactions before storage,
 so a gossiped transaction with a nonce that cannot execute at the current state
@@ -216,7 +221,7 @@ root is rejected before it can enter the transaction buffer.
 ## Runtime Execution
 
 Finalized block execution now routes EVM transactions through the same
-per-transaction accounting skeleton used by Deploy and V1/V2 transactions.
+per-transaction accounting skeleton used by Deploy and native Transaction::V1 payloads.
 Runtime constructs `MetaTransaction::Evm` before entering the loop's normal
 balance, hold, refund, fee, and artifact builder flow.
 
@@ -253,8 +258,10 @@ precondition failure.
 
 When execution proceeds:
 
-1. Runtime creates a processing hold against
-   `BalanceIdentifier::Evm(transaction.from())`.
+1. Runtime resolves the EVM origin into a concrete payer
+   (`BalanceIdentifier::Account` for linked Casper accounts or
+   `BalanceIdentifier::Purse` for EVM-native identities) and creates a
+   processing hold against that payer.
 2. Runtime enters the shared execution `match` through the `_ if is_evm` arm.
 3. Runtime checks out a tracking copy at the current scratch state root.
 4. Runtime builds an EVM block context from Casper block data:
@@ -310,7 +317,7 @@ prioritize transactions based on transaction gas parameters. Accepted EIP-1559
 transactions therefore pay `[evm].base_fee`; `max_fee_per_gas` is only a
 sender cap and must be high enough to cover the base fee.
 
-The maximum fee is held from `BalanceIdentifier::Evm(from)`. After execution:
+The maximum fee is held from the resolved EVM payer. After execution:
 
 - Successful execution consumes `gas_used * effective_gas_price`.
 - Failed/reverted/halted execution consumes the full held amount.
@@ -318,7 +325,7 @@ The maximum fee is held from `BalanceIdentifier::Evm(from)`. After execution:
 - The final fee is processed through Casper `FeeHandling`.
 
 This keeps EVM transactions aligned with the same chain policy knobs used by
-Deploy and V1/V2 transactions. The EVM gas price is converted to motes before
+Deploy and native Transaction::V1 payloads. The EVM gas price is converted to motes before
 calling the balance/fee/refund machinery.
 
 In the shared accounting loop, EVM cost is already expressed as motes. Refund
@@ -338,32 +345,45 @@ handling.
 
 EVM state is stored in Casper global state using typed keys and values:
 
-- `Key::Evm(EvmAddr::Account(Address))` stores
-  `StoredValue::Evm(EvmValue::Account(Account))`.
+- `Key::Evm(EvmAddr::Account(Address))` stores a minimal identity pointer as
+  `StoredValue::CLValue(Key::Account(AccountHash))` for linked Casper accounts
+  or `StoredValue::CLValue(Key::URef(URef))` for EVM-native accounts.
+- `Key::Evm(EvmAddr::Nonce(Address))` stores `StoredValue::CLValue(u64)`.
+- `Key::Evm(EvmAddr::CodeHash(Address))` stores
+  `StoredValue::CLValue(evm::Hash)`.
 - `Key::Evm(EvmAddr::ByteCode(Hash))` stores
-  `StoredValue::Evm(EvmValue::ByteCode(ByteCode))`.
+  `StoredValue::ByteCode(ByteCode)`.
 - `Key::Evm(EvmAddr::Storage(StorageAddr))` stores
-  `StoredValue::Evm(EvmValue::Storage(StorageValue))`.
+  `StoredValue::CLValue(U256)`.
 
-An EVM account record contains:
-
-- nonce,
-- code hash,
-- main purse.
+`StoredValue::Evm` is not part of the current layout.
 
 Balances are Casper purse balances. EVM balance reads and writes reconcile
-through the account main purse and `Key::Balance(main_purse.addr())`.
+through either the linked Casper account main purse or the EVM-native purse and
+`Key::Balance(main_purse.addr())`.
 
 Genesis does not create EVM account records for Casper genesis accounts.
 Funding an EVM identity is explicit: a native Casper transfer can use a
 20-byte `evm::Address` as its `target` argument when `[evm].enabled = true`.
-If `Key::Evm(EvmAddr::Account(address))` already exists, the transfer credits that
-account's main purse. If it does not exist, the transfer creates
-`StoredValue::Evm(EvmValue::Account(Account::new(0, EMPTY_CODE_HASH,
-evm::deterministic_purse(address))))`, initializes that deterministic purse
-with a zero balance, then transfers the requested motes into it. Transfer
-records keep the Casper transfer schema unchanged: `to` is `None`, and
-`target` is the EVM account's backing purse.
+If `Key::Evm(EvmAddr::Account(address))` already exists, the transfer credits
+the linked account or purse. If it does not exist, the transfer writes an
+EVM-native identity pointing to `evm::deterministic_purse(address)`, initializes
+`Nonce(address)` to `0`, initializes `CodeHash(address)` to
+`EMPTY_CODE_HASH`, initializes that deterministic purse with a zero balance,
+then transfers the requested motes into it. Transfer records keep the Casper
+transfer schema unchanged: `to` is `None`, and `target` is the EVM account's
+backing purse.
+
+When a signed EVM transaction is executed for an address without a linked Casper
+identity, contract runtime uses the transaction approval to recover the
+secp256k1 public key before invoking the EVM executor. If the corresponding
+`Key::Account(account_hash)` already exists and no established EVM-native
+identity conflicts with it, `EvmAddr::Account(address)` is written as a bridge
+to that Casper account. If no Casper account exists, contract runtime creates a
+Casper account for that account hash backed by
+`evm::deterministic_purse(address)`, then writes the bridge. EVM addresses
+created by contract creation or normal runtime effects are not forced to have an
+account hash; they remain EVM-native purse identities.
 
 ## Receipts
 
@@ -595,23 +615,14 @@ eth_chainId: 0x435350ff
 eth_getTransactionCount: 0x0
 ```
 
-### Fund EVM Identity
+### No EVM Prefund Required
 
-Create and fund the EVM identity explicitly with a native Casper transfer:
-
-```bash
-casper-cli transaction transfer \
-    --from devnet:user-1 \
-    --to 0x24790C4849cCAE43c0c1749e2C5b8d00Cc63AB80 \
-    --amount 10000 \
-    --raw \
-    --no-interactive
-```
-
-The transfer target is encoded as `byte-array[20]`. A successful transfer
-creates `Key::Evm(EvmAddr::Account(0x24790c...))`, initializes its deterministic backing
-purse, and credits it with the transferred motes. The EVM nonce remains `0x0`
-until the first EVM transaction is executed.
+Do not fund the 20-byte EVM address before deploying. The first EVM transaction
+from `user-1` recovers the secp256k1 public key, resolves the existing Casper
+account, and writes the `EvmAddr::Account` identity link during execution. A
+native transfer to a missing 20-byte target is still supported, but that path
+creates an EVM-native purse identity instead of demonstrating Casper account
+linking.
 
 ### Deploy Counter
 

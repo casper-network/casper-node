@@ -2242,18 +2242,39 @@ pub trait StateProvider: Send + Sync + Sized {
                 }
             }
             TransferTargetMode::CreateEvmAccount(address) => {
+                // Native transfers to a missing 20-byte target cannot derive a
+                // Casper `AccountHash`, because no Ethereum signature/public key
+                // is part of the transfer. Initialize the minimal EVM-native
+                // identity instead: deterministic purse, zero nonce, empty code,
+                // and zero balance before the transfer credits it.
                 let main_purse = evm::deterministic_purse(address);
                 let balance = match CLValue::from_t(U512::zero()) {
                     Ok(balance) => balance,
                     Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
                 };
+                let identity = match CLValue::from_t(Key::URef(main_purse)) {
+                    Ok(identity) => identity,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                let nonce = match CLValue::from_t(0u64) {
+                    Ok(nonce) => nonce,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                let code_hash = match CLValue::from_t(evm::EMPTY_CODE_HASH) {
+                    Ok(code_hash) => code_hash,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
                 tc.borrow_mut().write(
                     Key::Evm(evm::EvmAddr::Account(address)),
-                    StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
-                        0,
-                        evm::EMPTY_CODE_HASH,
-                        main_purse,
-                    ))),
+                    StoredValue::CLValue(identity),
+                );
+                tc.borrow_mut().write(
+                    Key::Evm(evm::EvmAddr::Nonce(address)),
+                    StoredValue::CLValue(nonce),
+                );
+                tc.borrow_mut().write(
+                    Key::Evm(evm::EvmAddr::CodeHash(address)),
+                    StoredValue::CLValue(code_hash),
                 );
                 tc.borrow_mut().write(
                     Key::Balance(main_purse.addr()),

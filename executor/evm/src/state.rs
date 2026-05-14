@@ -10,7 +10,7 @@ use revm::{
     state::{Account, EvmState},
 };
 
-use crate::{tx, Error};
+use crate::{account_state, tx, Error};
 
 pub(crate) fn apply<R>(tracking_copy: &mut TrackingCopy<R>, state: EvmState) -> Result<(), Error>
 where
@@ -67,9 +67,12 @@ where
     let account_key = Key::Evm(evm::EvmAddr::Account(address));
 
     if account.is_selfdestructed() {
-        let main_purse = existing_main_purse(tracking_copy, &account_key)?
-            .unwrap_or_else(|| evm::deterministic_purse(address));
-        prune_account(tracking_copy, address, account_key, main_purse)?;
+        // Selfdestruct removes EVM metadata and storage, but linked Casper
+        // accounts remain Casper accounts. Only EVM-native purse balances are
+        // pruned below.
+        let identity = account_state::read_account_identity(tracking_copy, address)?;
+        let main_purse = existing_main_purse(tracking_copy, address, identity)?;
+        prune_account(tracking_copy, address, account_key, identity, main_purse)?;
         return Ok(());
     }
 
@@ -80,26 +83,23 @@ where
                 Key::Evm(evm::EvmAddr::ByteCode(tx::from_revm_hash(
                     account.info.code_hash,
                 ))),
-                StoredValue::Evm(evm::EvmValue::ByteCode(ByteCode::new(
-                    ByteCodeKind::EvmPrague,
-                    bytes.to_vec(),
-                ))),
+                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, bytes.to_vec())),
             );
         }
     }
 
-    let main_purse = existing_main_purse(tracking_copy, &account_key)?
-        .unwrap_or_else(|| evm::deterministic_purse(address));
+    let identity = account_state::read_account_identity(tracking_copy, address)?;
+    let main_purse = existing_main_purse(tracking_copy, address, identity)?;
     let code_hash = tx::from_revm_hash(account.info.code_hash);
 
-    tracking_copy.write(
-        account_key,
-        StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
-            account.info.nonce,
-            code_hash,
-            main_purse,
-        ))),
-    );
+    // Executor never creates a `Key::Account` bridge. Runtime applies that
+    // policy before execution. For accounts without such a bridge, ensure revm
+    // state changes have an EVM-native purse identity to attach balances to.
+    if !matches!(identity, Some(account_state::AccountIdentity::Account(_))) {
+        account_state::write_account_identity(tracking_copy, address, Key::URef(main_purse))?;
+    }
+    account_state::write_nonce(tracking_copy, address, account.info.nonce)?;
+    account_state::write_code_hash(tracking_copy, address, code_hash)?;
     write_balance(tracking_copy, main_purse, account.info.balance)?;
 
     for (slot, value) in account.changed_storage_slots() {
@@ -107,15 +107,14 @@ where
             address,
             tx::from_revm_storage_word(*slot),
         )));
+        // Storage slots are plain CLValue(U256) under their split storage key.
+        // Zero writes prune the slot, matching Ethereum's empty-storage model.
         if value.present_value.is_zero() {
             tracking_copy.prune(key);
         } else {
-            tracking_copy.write(
-                key,
-                StoredValue::Evm(evm::EvmValue::Storage(evm::StorageValue::new(
-                    tx::from_revm_storage_word(value.present_value),
-                ))),
-            );
+            let storage_value = CLValue::from_t(tx::from_revm_storage_word(value.present_value))
+                .map_err(|error| Error::State(error.to_string()))?;
+            tracking_copy.write(key, StoredValue::CLValue(storage_value));
         }
     }
 
@@ -126,6 +125,7 @@ fn prune_account<R>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
     account_key: Key,
+    identity: Option<account_state::AccountIdentity>,
     main_purse: casper_types::URef,
 ) -> Result<(), Error>
 where
@@ -137,28 +137,35 @@ where
     for key in storage_keys {
         tracking_copy.prune(key);
     }
-    tracking_copy.prune(Key::Balance(main_purse.addr()));
+    if !matches!(identity, Some(account_state::AccountIdentity::Account(_))) {
+        tracking_copy.prune(Key::Balance(main_purse.addr()));
+    }
     tracking_copy.prune(account_key);
+    tracking_copy.prune(Key::Evm(evm::EvmAddr::Nonce(address)));
+    tracking_copy.prune(Key::Evm(evm::EvmAddr::CodeHash(address)));
     Ok(())
 }
 
 fn existing_main_purse<R>(
     tracking_copy: &mut TrackingCopy<R>,
-    account_key: &Key,
-) -> Result<Option<casper_types::URef>, Error>
+    address: evm::Address,
+    identity: Option<account_state::AccountIdentity>,
+) -> Result<casper_types::URef, Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    match tracking_copy
-        .read(account_key)
-        .map_err(|error| Error::State(error.to_string()))?
-    {
-        Some(StoredValue::Evm(evm::EvmValue::Account(account))) => Ok(Some(account.main_purse())),
-        Some(stored_value) => Err(Error::State(format!(
-            "unexpected stored value for {account_key}: expected StoredValue::Evm(Account), found {}",
-            stored_value.type_name()
-        ))),
-        None => Ok(None),
+    match identity {
+        // Linked accounts use their Casper main purse. If the linked account is
+        // unexpectedly missing, fall back to the deterministic purse so pruning
+        // stays local to EVM state rather than deleting unrelated balances.
+        Some(account_state::AccountIdentity::Account(account_hash)) => Ok(
+            account_state::account_main_purse(tracking_copy, account_hash)?
+                .unwrap_or_else(|| evm::deterministic_purse(address)),
+        ),
+        // EVM-native accounts and contracts keep balances under the identity
+        // purse chosen by runtime/native-transfer initialization.
+        Some(account_state::AccountIdentity::Purse(main_purse)) => Ok(main_purse),
+        None => Ok(evm::deterministic_purse(address)),
     }
 }
 

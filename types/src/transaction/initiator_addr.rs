@@ -51,11 +51,14 @@ pub enum InitiatorAddr {
 }
 
 impl InitiatorAddr {
-    /// Returns the Casper account hash, if this initiator has one.
+    /// Returns the Casper account hash carried by this initiator, if it has one.
     ///
-    /// EVM initiators do not have a native Casper account hash. EVM-aware code
-    /// should use [`InitiatorAddr::evm_address`] or
-    /// [`crate::Transaction::evm_initiator_addr`].
+    /// EVM transaction initiators carry only a 20-byte EVM address. That address
+    /// may later resolve to a linked Casper account hash through global state and
+    /// signature context, but the mapping is not intrinsic to the initiator value.
+    /// EVM-aware code should use [`InitiatorAddr::evm_address`] or
+    /// [`crate::Transaction::evm_initiator_addr`] and perform explicit EVM origin
+    /// resolution where the transaction signer and state root are available.
     pub fn account_hash(&self) -> Option<AccountHash> {
         match self {
             InitiatorAddr::PublicKey(public_key) => Some(public_key.to_account_hash()),

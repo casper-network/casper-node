@@ -88,7 +88,11 @@ pub enum TransferTargetMode {
         /// Main purse of a resolved account.
         main_purse: URef,
     },
-    /// Native transfer arguments resolved into a transfer to an existing EVM account.
+    /// Native transfer arguments resolved into a transfer to an existing EVM identity.
+    ///
+    /// The identity may point to a linked Casper account main purse or to an
+    /// EVM-native purse. Transfer records still do not expose an account hash
+    /// for 20-byte EVM targets.
     ExistingEvmAccount {
         /// Main purse of a resolved EVM account.
         main_purse: URef,
@@ -102,7 +106,11 @@ pub enum TransferTargetMode {
     },
     /// Native transfer arguments resolved into a transfer to a new account.
     CreateAccount(AccountHash),
-    /// Native transfer arguments resolved into a transfer to a new EVM account.
+    /// Native transfer arguments resolved into a transfer to a new EVM-native identity.
+    ///
+    /// Native transfers do not have an Ethereum signature, so they cannot
+    /// discover or create a Casper account hash for the 20-byte target. Missing
+    /// EVM targets therefore get a deterministic purse identity.
     CreateEvmAccount(evm::Address),
 }
 
@@ -357,18 +365,46 @@ impl TransferRuntimeArgsBuilder {
             {
                 let address: evm::Address = self.map_cl_value(cl_value)?;
                 let key = Key::Evm(evm::EvmAddr::Account(address));
-                return match tracking_copy.borrow_mut().read(&key)? {
-                    Some(StoredValue::Evm(evm::EvmValue::Account(account))) => {
-                        Ok(TransferTargetMode::ExistingEvmAccount {
-                            main_purse: account.main_purse().with_access_rights(AccessRights::ADD),
-                        })
+                let maybe_stored_value = tracking_copy.borrow_mut().read(&key)?;
+                return match maybe_stored_value {
+                    Some(StoredValue::CLValue(cl_value)) => {
+                        let identity_key =
+                            cl_value.into_t::<Key>().map_err(TransferError::CLValue)?;
+                        match identity_key {
+                            // Existing EVM identity linked to a Casper account:
+                            // credit the account's main purse so native and EVM
+                            // sends converge on the same funds.
+                            Key::Account(account_hash) => {
+                                let (_, entity) = tracking_copy
+                                    .borrow_mut()
+                                    .runtime_footprint_by_account_hash(
+                                        protocol_version,
+                                        account_hash,
+                                    )?;
+                                let main_purse = entity
+                                    .main_purse()
+                                    .ok_or(TransferError::InvalidPurse)?
+                                    .with_access_rights(AccessRights::ADD);
+                                Ok(TransferTargetMode::ExistingEvmAccount { main_purse })
+                            }
+                            // Existing EVM-native identity: credit its backing
+                            // purse without attempting to infer a Casper
+                            // account hash from the 20-byte address.
+                            Key::URef(uref) => Ok(TransferTargetMode::ExistingEvmAccount {
+                                main_purse: uref.with_access_rights(AccessRights::ADD),
+                            }),
+                            other => Err(TransferError::UnexpectedKeyVariant(other)),
+                        }
                     }
                     Some(stored_value) => {
                         Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
-                            "StoredValue::Evm(Account)".to_string(),
+                            "StoredValue::CLValue(Key)".to_string(),
                             stored_value.type_name(),
                         )))
                     }
+                    // A native transfer has no EVM signature/public key. For a
+                    // new 20-byte target, create the EVM-native deterministic
+                    // purse identity and fund that purse.
                     None => Ok(TransferTargetMode::CreateEvmAccount(address)),
                 };
             }

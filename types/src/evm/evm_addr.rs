@@ -14,12 +14,16 @@ use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EvmAddr {
-    /// EVM account metadata address.
+    /// EVM account identity address.
     Account(Address),
     /// EVM contract bytecode address, keyed by code hash.
     ByteCode(Hash),
     /// EVM contract storage slot address.
     Storage(StorageAddr),
+    /// EVM account nonce address.
+    Nonce(Address),
+    /// EVM account code hash address.
+    CodeHash(Address),
 }
 
 impl EvmAddr {
@@ -29,6 +33,10 @@ impl EvmAddr {
     pub const BYTE_CODE_TAG: u8 = 1;
     /// Inner tag for EVM storage addresses.
     pub const STORAGE_TAG: u8 = 2;
+    /// Inner tag for EVM account nonce addresses.
+    pub const NONCE_TAG: u8 = 3;
+    /// Inner tag for EVM account code hash addresses.
+    pub const CODE_HASH_TAG: u8 = 4;
 }
 
 impl ToBytes for EvmAddr {
@@ -44,6 +52,8 @@ impl ToBytes for EvmAddr {
                 EvmAddr::Account(address) => address.serialized_length(),
                 EvmAddr::ByteCode(hash) => hash.serialized_length(),
                 EvmAddr::Storage(addr) => addr.serialized_length(),
+                EvmAddr::Nonce(address) => address.serialized_length(),
+                EvmAddr::CodeHash(address) => address.serialized_length(),
             }
     }
 
@@ -61,6 +71,14 @@ impl ToBytes for EvmAddr {
                 writer.push(Self::STORAGE_TAG);
                 addr.write_bytes(writer)
             }
+            EvmAddr::Nonce(address) => {
+                writer.push(Self::NONCE_TAG);
+                address.write_bytes(writer)
+            }
+            EvmAddr::CodeHash(address) => {
+                writer.push(Self::CODE_HASH_TAG);
+                address.write_bytes(writer)
+            }
         }
     }
 }
@@ -75,6 +93,10 @@ impl FromBytes for EvmAddr {
                 .map(|(hash, remainder)| (EvmAddr::ByteCode(hash), remainder)),
             Self::STORAGE_TAG => StorageAddr::from_bytes(remainder)
                 .map(|(addr, remainder)| (EvmAddr::Storage(addr), remainder)),
+            Self::NONCE_TAG => Address::from_bytes(remainder)
+                .map(|(address, remainder)| (EvmAddr::Nonce(address), remainder)),
+            Self::CODE_HASH_TAG => Address::from_bytes(remainder)
+                .map(|(address, remainder)| (EvmAddr::CodeHash(address), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -83,10 +105,12 @@ impl FromBytes for EvmAddr {
 #[cfg(any(feature = "testing", test))]
 impl rand::distributions::Distribution<EvmAddr> for rand::distributions::Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> EvmAddr {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..=4) {
             0 => EvmAddr::Account(Address::new(rng.gen())),
             1 => EvmAddr::ByteCode(Hash::new(rng.gen())),
             2 => EvmAddr::Storage(StorageAddr::new(Address::new(rng.gen()), rng.gen())),
+            3 => EvmAddr::Nonce(Address::new(rng.gen())),
+            4 => EvmAddr::CodeHash(Address::new(rng.gen())),
             _ => unreachable!(),
         }
     }
@@ -108,5 +132,7 @@ mod tests {
             address,
             U256::MAX,
         )));
+        bytesrepr::test_serialization_roundtrip(&EvmAddr::Nonce(address));
+        bytesrepr::test_serialization_roundtrip(&EvmAddr::CodeHash(address));
     }
 }

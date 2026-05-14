@@ -11,7 +11,7 @@ use revm::{
     state::{AccountInfo, Bytecode},
 };
 
-use crate::{tx, BlockHashProvider, DbError};
+use crate::{account_state, tx, BlockHashProvider, DbError};
 
 pub(crate) struct CasperDb<'a, R, B>
 where
@@ -57,32 +57,25 @@ where
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         let address = tx::from_revm_address(address);
-        let key = Key::Evm(evm::EvmAddr::Account(address));
-        match self.tracking_copy.read(&key)? {
-            Some(StoredValue::Evm(evm::EvmValue::Account(account))) => {
-                let balance = self.balance(account.main_purse())?;
-                Ok(Some(AccountInfo {
-                    balance,
-                    nonce: account.nonce(),
-                    code_hash: tx::to_revm_hash(account.code_hash()),
-                    account_id: None,
-                    code: None,
-                }))
-            }
-            Some(stored_value) => Err(DbError::TypeMismatch {
-                key: Box::new(key),
-                expected: "StoredValue::Evm(Account)",
-                found: stored_value.type_name(),
-            }),
-            None => Ok(None),
-        }
+        let Some(account) = account_state::read_account_metadata(self.tracking_copy, address)?
+        else {
+            return Ok(None);
+        };
+        let balance = self.balance(account.main_purse)?;
+        Ok(Some(AccountInfo {
+            balance,
+            nonce: account.nonce,
+            code_hash: tx::to_revm_hash(account.code_hash),
+            account_id: None,
+            code: None,
+        }))
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
         let code_hash = tx::from_revm_hash(code_hash);
         let key = Key::Evm(evm::EvmAddr::ByteCode(code_hash));
         match self.tracking_copy.read(&key)? {
-            Some(StoredValue::Evm(evm::EvmValue::ByteCode(byte_code))) => {
+            Some(StoredValue::ByteCode(byte_code)) => {
                 if !byte_code.kind().is_evm() {
                     return Err(DbError::TypeMismatch {
                         key: Box::new(key),
@@ -94,7 +87,7 @@ where
             }
             Some(stored_value) => Err(DbError::TypeMismatch {
                 key: Box::new(key),
-                expected: "StoredValue::Evm(ByteCode)",
+                expected: "StoredValue::ByteCode",
                 found: stored_value.type_name(),
             }),
             None => Ok(Bytecode::default()),
@@ -110,12 +103,17 @@ where
         let slot = tx::from_revm_storage_word(index);
         let key = Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(address, slot)));
         match self.tracking_copy.read(&key)? {
-            Some(StoredValue::Evm(evm::EvmValue::Storage(value))) => {
-                Ok(tx::to_revm_storage_word(value.value()))
-            }
+            Some(StoredValue::CLValue(cl_value)) => cl_value
+                .into_t::<casper_types::U256>()
+                .map(tx::to_revm_storage_word)
+                .map_err(|error| DbError::ValueDecode {
+                    key: Box::new(key),
+                    expected: "U256",
+                    error: error.to_string(),
+                }),
             Some(stored_value) => Err(DbError::TypeMismatch {
                 key: Box::new(key),
-                expected: "StoredValue::Evm(Storage)",
+                expected: "StoredValue::CLValue(U256)",
                 found: stored_value.type_name(),
             }),
             None => Ok(U256::ZERO),

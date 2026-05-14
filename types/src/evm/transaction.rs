@@ -674,6 +674,11 @@ impl Transaction {
         &self.approvals
     }
 
+    /// Returns the single public key that signed this EVM transaction.
+    pub fn signer(&self) -> Result<&PublicKey, TransactionError> {
+        Ok(self.single_approval()?.signer())
+    }
+
     /// Returns this transaction with a replacement approval set.
     ///
     /// The stored Ethereum transaction hash is intentionally left unchanged;

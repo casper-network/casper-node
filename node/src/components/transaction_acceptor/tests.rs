@@ -219,6 +219,7 @@ enum TestScenario {
     FromPeerSessionContractPackage(TxnType, ContractPackageScenario),
     FromClientInvalidTransaction(TxnType),
     FromClientEvmInvalidNonce,
+    FromClientEvmMissingIdentityWithCodeHash,
     FromClientInvalidTransactionZeroPayment(TxnType),
     FromClientSlightlyFutureDatedTransaction(TxnType),
     FromClientFutureDatedTransaction(TxnType),
@@ -284,6 +285,7 @@ impl TestScenario {
             | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientEvmInvalidNonce
+            | TestScenario::FromClientEvmMissingIdentityWithCodeHash
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
@@ -338,7 +340,9 @@ impl TestScenario {
                 txn.invalidate();
                 Transaction::from(txn)
             }
-            TestScenario::FromPeerEvmInvalidNonce | TestScenario::FromClientEvmInvalidNonce => {
+            TestScenario::FromPeerEvmInvalidNonce
+            | TestScenario::FromClientEvmInvalidNonce
+            | TestScenario::FromClientEvmMissingIdentityWithCodeHash => {
                 Transaction::from(signed_evm_legacy_transaction(1))
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
@@ -891,6 +895,7 @@ impl TestScenario {
                     | TestScenario::FromClientRepeatedValidTransaction(_)
                     | TestScenario::FromClientValidTransaction(_)
                     | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
+                    | TestScenario::FromClientEvmMissingIdentityWithCodeHash
                     | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
                     | TestScenario::FromPeerEvmInvalidNonce
@@ -986,7 +991,9 @@ impl TestScenario {
     fn is_evm(&self) -> bool {
         matches!(
             self,
-            TestScenario::FromPeerEvmInvalidNonce | TestScenario::FromClientEvmInvalidNonce
+            TestScenario::FromPeerEvmInvalidNonce
+                | TestScenario::FromClientEvmInvalidNonce
+                | TestScenario::FromClientEvmMissingIdentityWithCodeHash
         )
     }
 }
@@ -1091,12 +1098,19 @@ impl reactor::Reactor for Reactor {
                     let query_result = if let Key::Evm(evm::EvmAddr::Account(address)) =
                         query_request.key()
                     {
-                        let main_purse = evm::deterministic_purse(address);
-                        QueryResult::Success {
-                            value: Box::new(StoredValue::Evm(evm::EvmValue::Account(
-                                evm::Account::new(0, evm::EMPTY_CODE_HASH, main_purse),
-                            ))),
-                            proofs: vec![],
+                        if matches!(
+                            self.test_scenario,
+                            TestScenario::FromClientEvmMissingIdentityWithCodeHash
+                        ) {
+                            QueryResult::ValueNotFound("missing EVM identity".to_string())
+                        } else {
+                            let main_purse = evm::deterministic_purse(address);
+                            QueryResult::Success {
+                                value: Box::new(StoredValue::CLValue(
+                                    CLValue::from_t(Key::URef(main_purse)).unwrap(),
+                                )),
+                                proofs: vec![],
+                            }
                         }
                     } else if let Key::Hash(_) | Key::SmartContract(_) = query_request.key() {
                         match &self.test_scenario {
@@ -1167,8 +1181,36 @@ impl reactor::Reactor for Reactor {
                                 self.test_scenario
                             ),
                         }
+                    } else if let Key::Evm(evm::EvmAddr::Nonce(_)) = query_request.key() {
+                        let nonce = if matches!(
+                            self.test_scenario,
+                            TestScenario::FromClientEvmMissingIdentityWithCodeHash
+                        ) {
+                            1u64
+                        } else {
+                            0u64
+                        };
+                        QueryResult::Success {
+                            value: Box::new(StoredValue::CLValue(CLValue::from_t(nonce).unwrap())),
+                            proofs: vec![],
+                        }
+                    } else if let Key::Evm(evm::EvmAddr::CodeHash(_)) = query_request.key() {
+                        let code_hash = if matches!(
+                            self.test_scenario,
+                            TestScenario::FromClientEvmMissingIdentityWithCodeHash
+                        ) {
+                            evm::Hash::new([0x11; evm::HASH_LENGTH])
+                        } else {
+                            evm::EMPTY_CODE_HASH
+                        };
+                        QueryResult::Success {
+                            value: Box::new(StoredValue::CLValue(
+                                CLValue::from_t(code_hash).unwrap(),
+                            )),
+                            proofs: vec![],
+                        }
                     } else {
-                        panic!("expect only queries using Key::Package variant");
+                        panic!("unexpected query: {query_request:?}");
                     };
                     responder.respond(query_result).ignore()
                 }
@@ -1184,9 +1226,6 @@ impl reactor::Reactor for Reactor {
                         BalanceIdentifier::Account(account_hash)
                         | BalanceIdentifier::PenalizedAccount(account_hash) => {
                             Key::Account(*account_hash)
-                        }
-                        BalanceIdentifier::Evm(address) => {
-                            Key::Evm(evm::EvmAddr::Account(*address))
                         }
                         BalanceIdentifier::Entity(entity_addr) => {
                             Key::AddressableEntity(*entity_addr)
@@ -1737,6 +1776,7 @@ async fn run_transaction_acceptor_without_timeout(
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromClientValidTransaction(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
+            | TestScenario::FromClientEvmMissingIdentityWithCodeHash
             | TestScenario::FromClientSignedByAdmin(_) => {
                 matches!(
                     event,
@@ -2035,6 +2075,13 @@ async fn should_reject_evm_transaction_with_invalid_nonce_from_client() {
             }
         )))
     ))
+}
+
+#[tokio::test]
+async fn should_accept_missing_evm_identity_with_split_nonce_and_code_hash() {
+    let result =
+        run_transaction_acceptor(TestScenario::FromClientEvmMissingIdentityWithCodeHash).await;
+    assert!(result.is_ok())
 }
 
 #[tokio::test]

@@ -934,11 +934,15 @@ fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U
     let values_to_write = vec![
         (
             Key::Evm(evm::EvmAddr::Account(address)),
-            StoredValue::Evm(evm::EvmValue::Account(evm::Account::new(
-                0,
-                EMPTY_CODE_HASH,
-                main_purse,
-            ))),
+            StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
+        ),
+        (
+            Key::Evm(evm::EvmAddr::Nonce(address)),
+            StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
+        ),
+        (
+            Key::Evm(evm::EvmAddr::CodeHash(address)),
+            StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
         ),
         (
             Key::Balance(main_purse.addr()),
@@ -972,36 +976,22 @@ fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U
     }
 }
 
-fn evm_balance(fixture: &TestFixture, address: evm::Address, block_height: u64) -> U512 {
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let protocol_version = fixture.chainspec.protocol_version();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    let result = runner
-        .main_reactor()
-        .contract_runtime()
-        .data_access_layer()
-        .balance(BalanceRequest::new(
-            *block_header.state_root_hash(),
-            protocol_version,
-            BalanceIdentifier::Evm(address),
-            BalanceHandling::Total,
-            ProofHandling::NoProofs,
-        ));
-    *result
-        .total_balance()
-        .expect("EVM account should have a balance")
+struct EvmAccountView {
+    nonce: u64,
+    main_purse: URef,
 }
 
-fn evm_account_at(
-    fixture: &mut TestFixture,
-    block_height: u64,
-    address: evm::Address,
-) -> evm::Account {
+impl EvmAccountView {
+    fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    fn main_purse(&self) -> URef {
+        self.main_purse
+    }
+}
+
+fn evm_identity_at(fixture: &mut TestFixture, block_height: u64, address: evm::Address) -> Key {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     let block_header = runner
         .main_reactor()
@@ -1016,11 +1006,84 @@ fn evm_account_at(
         Key::Evm(evm::EvmAddr::Account(address)),
     ) {
         Some(value) => match *value {
-            StoredValue::Evm(evm::EvmValue::Account(account)) => account,
-            value => panic!("expected EVM account, got {value:?}"),
+            StoredValue::CLValue(cl_value) => cl_value
+                .into_t::<Key>()
+                .expect("EVM identity should decode to a key"),
+            value => panic!("expected EVM identity, got {value:?}"),
         },
-        value => panic!("expected EVM account, got {value:?}"),
+        value => panic!("expected EVM identity, got {value:?}"),
     }
+}
+
+fn evm_balance(fixture: &mut TestFixture, address: evm::Address, block_height: u64) -> U512 {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let protocol_version = fixture.chainspec.protocol_version();
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .expect("should have header");
+    let state_root_hash = *block_header.state_root_hash();
+    let main_purse = evm_account_at(fixture, block_height, address).main_purse();
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let result = runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .balance(BalanceRequest::from_purse(
+            state_root_hash,
+            protocol_version,
+            main_purse,
+            BalanceHandling::Total,
+            ProofHandling::NoProofs,
+        ));
+    *result
+        .total_balance()
+        .expect("EVM account should have a balance")
+}
+
+fn evm_account_at(
+    fixture: &mut TestFixture,
+    block_height: u64,
+    address: evm::Address,
+) -> EvmAccountView {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .expect("should have header");
+    let state_root_hash = *block_header.state_root_hash();
+    let identity = evm_identity_at(fixture, block_height, address);
+    let main_purse = match identity {
+        Key::URef(uref) => uref,
+        Key::Account(account_hash) => {
+            match query_global_state(fixture, state_root_hash, Key::Account(account_hash)) {
+                Some(value) => match *value {
+                    StoredValue::Account(account) => account.main_purse(),
+                    value => panic!("expected linked account, got {value:?}"),
+                },
+                value => panic!("expected linked account, got {value:?}"),
+            }
+        }
+        value => panic!("unexpected EVM identity key: {value:?}"),
+    };
+    let nonce = match query_global_state(
+        fixture,
+        state_root_hash,
+        Key::Evm(evm::EvmAddr::Nonce(address)),
+    ) {
+        Some(value) => match *value {
+            StoredValue::CLValue(cl_value) => {
+                cl_value.into_t::<u64>().expect("nonce should decode")
+            }
+            value => panic!("expected EVM nonce, got {value:?}"),
+        },
+        None => 0,
+    };
+    EvmAccountView { nonce, main_purse }
 }
 
 fn alloy_address_to_evm_address(address: AlloyAddress) -> evm::Address {
@@ -1089,10 +1152,19 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     assert_eq!(execution_result.receipt.logs[0].topics, vec![EVM_LOG_TOPIC]);
     assert!(execution_result.receipt.logs[0].data.is_empty());
 
-    let final_balance = evm_balance(&test.fixture, sender, block_height);
+    let final_balance = evm_balance(&mut test.fixture, sender, block_height);
     assert_eq!(final_balance, initial_balance - execution_result.cost);
     let account = evm_account_at(&mut test.fixture, block_height, sender);
     assert_eq!(account.nonce(), 1);
+    let signer_account_hash = evm_transaction
+        .signer()
+        .expect("EVM transaction should have a signer")
+        .to_account_hash();
+    assert_eq!(
+        evm_identity_at(&mut test.fixture, block_height, sender),
+        Key::Account(signer_account_hash)
+    );
+    assert_eq!(account.main_purse(), evm::deterministic_purse(sender));
     assert!(
         block_height > highest_block.height(),
         "EVM transaction should be included in a later block"
@@ -1148,7 +1220,7 @@ async fn should_apply_casper_refund_handling_to_evm_transaction() {
         max_fee_amount - consumed_fee_amount
     );
 
-    let final_balance = evm_balance(&test.fixture, sender, block_height);
+    let final_balance = evm_balance(&mut test.fixture, sender, block_height);
     assert_eq!(final_balance, initial_balance - consumed_fee_amount);
 }
 
@@ -1200,7 +1272,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
     assert_eq!(execution_result.refund, U512::zero());
     assert!(execution_result.effects.is_empty());
 
-    let final_balance = evm_balance(&test.fixture, sender, block_height);
+    let final_balance = evm_balance(&mut test.fixture, sender, block_height);
     assert_eq!(final_balance, U512::from(EVM_INITIAL_BALANCE));
 
     let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
@@ -1322,7 +1394,11 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
     let expected_purse = evm::deterministic_purse(recipient);
     assert_eq!(account.main_purse(), expected_purse);
     assert_eq!(
-        evm_balance(&test.fixture, recipient, block_height),
+        evm_identity_at(&mut test.fixture, block_height, recipient),
+        Key::URef(expected_purse)
+    );
+    assert_eq!(
+        evm_balance(&mut test.fixture, recipient, block_height),
         U512::from(transfer_amount)
     );
 

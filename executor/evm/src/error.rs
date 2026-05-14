@@ -3,7 +3,7 @@
 use casper_storage::tracking_copy::TrackingCopyError;
 use casper_types::Key;
 
-use crate::BlockHashProviderError;
+use crate::{account_state::AccountStorageError, BlockHashProviderError};
 
 /// Result type returned by the EVM executor.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -55,6 +55,16 @@ pub enum DbError {
         /// Actual stored-value shape.
         found: String,
     },
+    /// A Casper CLValue failed to decode as an expected EVM account field.
+    #[error("failed to decode {expected} at {key}: {error}")]
+    ValueDecode {
+        /// Global-state key that was read.
+        key: Box<Key>,
+        /// Expected decoded type.
+        expected: &'static str,
+        /// Decode error text.
+        error: String,
+    },
     /// A Casper balance does not fit into EVM U256.
     #[error("Casper balance at {key} does not fit into EVM U256")]
     BalanceOverflow {
@@ -77,6 +87,46 @@ pub enum DbError {
         /// Provider error.
         error: BlockHashProviderError,
     },
+}
+
+impl From<AccountStorageError> for DbError {
+    fn from(error: AccountStorageError) -> Self {
+        match error {
+            AccountStorageError::TrackingCopy(error) => DbError::TrackingCopy(error),
+            AccountStorageError::TypeMismatch {
+                key,
+                expected,
+                found,
+            } => DbError::TypeMismatch {
+                key: Box::new(key),
+                expected,
+                found,
+            },
+            AccountStorageError::Decode {
+                key,
+                expected,
+                error,
+            } => DbError::ValueDecode {
+                key: Box::new(key),
+                expected,
+                error,
+            },
+            AccountStorageError::MissingAccount {
+                identity_key,
+                account_key,
+            } => DbError::TypeMismatch {
+                key: Box::new(identity_key),
+                expected: "existing linked account",
+                found: format!("missing {account_key}"),
+            },
+        }
+    }
+}
+
+impl From<AccountStorageError> for Error {
+    fn from(error: AccountStorageError) -> Self {
+        Error::State(error.to_string())
+    }
 }
 
 impl revm::database_interface::DBErrorMarker for DbError {}

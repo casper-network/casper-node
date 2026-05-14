@@ -3,6 +3,7 @@
 //! This crate provides a small execution API over `TrackingCopy` and keeps
 //! `revm` details behind internal adapter modules.
 
+mod account_state;
 mod block_hash;
 mod db;
 mod error;
