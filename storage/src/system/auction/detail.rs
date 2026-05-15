@@ -659,7 +659,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
             }
             None => {
                 // in the case of missing validator or delegator bids, check unbonds
-                if let BidAddr::Validator(account_hash) = bid_addr {
+                if let BidAddr::Validator(account_hash) = current_validator_bid_addr {
                     let validator_unbond_key = BidAddr::UnbondAccount {
                         validator: account_hash,
                         unbonder: account_hash,
@@ -676,6 +676,8 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                 if let BidAddr::DelegatedAccount {
                     validator,
                     delegator,
+                    // This fine to be the original bid addr for the delegator since
+                    // we fetch those of the validator bid
                 } = bid_addr
                 {
                     let delegator_unbond_key = BidAddr::UnbondAccount {
