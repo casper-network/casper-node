@@ -13,7 +13,11 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::{BTreeMap, BTreeSet, HashMap, HashSet}, mem, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    mem,
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
