@@ -713,7 +713,7 @@ pub trait Auction:
             let validator_reward_amount = reward_info.validator_reward();
             let (validator_bonding_purse, min_del, max_del) =
                 match detail::get_distribution_target(self, validator_bid_addr) {
-                    Ok(target) => match target {
+                    Ok((bridged_addrs, target)) => match target {
                         DistributeTarget::Validator(mut validator_bid) => {
                             debug!(?validator_public_key, "validator payout starting ");
                             let validator_bonding_purse = *validator_bid.bonding_purse();
@@ -750,28 +750,41 @@ pub trait Auction:
                                 validator_bid.maximum_delegation_amount().into(),
                             )
                         }
-                        DistributeTarget::Unbond(unbond) => match unbond.target_unbond_era() {
-                            Some(mut unbond_era) => {
-                                let account_hash = validator_public_key.to_account_hash();
-                                let unbond_addr = BidAddr::UnbondAccount {
+                        DistributeTarget::Unbond(mut unbond) => {
+                            maybe_bridged_validator_addrs = Some(bridged_addrs);
+                            let account_hash = unbond.validator_public_key().to_account_hash();
+                            let unbond_addr = match unbond.unbond_kind() {
+                                UnbondKind::Validator(public_key)
+                                | UnbondKind::DelegatedPublicKey(public_key) => {
+                                    BidAddr::UnbondAccount {
+                                        validator: account_hash,
+                                        unbonder: public_key.to_account_hash(),
+                                    }
+                                }
+                                UnbondKind::DelegatedPurse(purse) => BidAddr::UnbondPurse {
                                     validator: account_hash,
-                                    unbonder: account_hash,
-                                };
-                                let validator_bonding_purse = *unbond_era.bonding_purse();
-                                let new_amount =
-                                    unbond_era.amount().saturating_add(validator_reward_amount);
-                                unbond_era.with_amount(new_amount);
-                                self.write_unbond(unbond_addr, Some(*unbond.clone()))?;
-                                (validator_bonding_purse, U512::MAX, U512::MAX)
+                                    unbonder: *purse,
+                                },
+                            };
+
+                            match unbond.target_unbond_era_mut() {
+                                Some(unbond_era) => {
+                                    let validator_bonding_purse = *unbond_era.bonding_purse();
+                                    let new_amount =
+                                        unbond_era.amount().saturating_add(validator_reward_amount);
+                                    unbond_era.with_amount(new_amount);
+                                    self.write_unbond(unbond_addr, Some(*unbond.clone()))?;
+                                    (validator_bonding_purse, U512::MAX, U512::MAX)
+                                }
+                                None => {
+                                    warn!(
+                                        ?validator_public_key,
+                                        "neither validator bid or unbond found"
+                                    );
+                                    continue;
+                                }
                             }
-                            None => {
-                                warn!(
-                                    ?validator_public_key,
-                                    "neither validator bid or unbond found"
-                                );
-                                continue;
-                            }
-                        },
+                        }
                         DistributeTarget::Delegator(_) => {
                             return Err(Error::UnexpectedBidVariant);
                         }
@@ -815,7 +828,7 @@ pub trait Auction:
                     } else {
                         let delegator_bid_key = delegator_bid_addr.into();
                         match detail::get_distribution_target(self, delegator_bid_addr) {
-                            Ok(target) => match target {
+                            Ok((_bridged_addrs, target)) => match target {
                                 DistributeTarget::Delegator(mut delegator_bid) => {
                                     let delegator_bonding_purse = *delegator_bid.bonding_purse();
                                     let increased_stake =
