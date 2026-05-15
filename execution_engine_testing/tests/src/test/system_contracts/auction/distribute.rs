@@ -4113,4 +4113,42 @@ fn should_correctly_find_unbond_purse_after_change_in_public_key() {
     .build();
 
     builder.exec(distribute_request).commit().expect_success();
+
+    let era_info = get_era_info(&mut builder);
+    let validator_reward = match era_info.select(VALIDATOR_1.clone()).next() {
+        Some(SeigniorageAllocation::Validator {
+            validator_public_key,
+            amount,
+        }) if *validator_public_key == *VALIDATOR_1 => *amount,
+        other => panic!("expected validator allocation for old key, got {other:?}"),
+    };
+    assert!(
+        !validator_reward.is_zero(),
+        "test setup should distribute a non-zero validator reward"
+    );
+
+    let withdraws = builder.get_unbonds();
+    let validator_unbond_kind = UnbondKind::Validator(VALIDATOR_2.clone());
+    let validator_unbonds = withdraws
+        .get(&validator_unbond_kind)
+        .expect("should keep the bridged validator unbond under the new key");
+    assert_eq!(
+        validator_unbonds.len(),
+        1,
+        "reward distribution should update the resolved new-key unbond without creating a duplicate"
+    );
+
+    let validator_unbond_amount = validator_unbonds[0]
+        .eras()
+        .first()
+        .expect("should have an unbond era")
+        .amount();
+    assert_eq!(
+        *validator_unbond_amount,
+        U512::from(VALIDATOR_1_STAKE) + validator_reward,
+        "validator reward should be added to the existing new-key unbond amount"
+    );
+
+    let unbonding_delay = builder.get_unbonding_delay();
+    builder.advance_eras_by(unbonding_delay + 1);
 }
