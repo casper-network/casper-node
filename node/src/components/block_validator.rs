@@ -13,10 +13,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::{BTreeMap, BTreeSet, HashMap, HashSet}, mem, sync::Arc};
 
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
@@ -197,6 +194,13 @@ impl BlockValidator {
     {
         debug!(sender = %request.sender, block = %request.block, "validating new proposed block");
         debug_assert!(!self.validation_states.contains_key(&request.block));
+
+        let signature_rewards_max_delay = self.chainspec.core_config.signature_rewards_max_delay;
+        if request.block.value().rewarded_signatures().len() > signature_rewards_max_delay as usize
+        {
+            let error = Box::new(InvalidProposalError::ExceedsSignatureMaxDelay);
+            return respond_invalid(error, Some(request.responder));
+        }
 
         if request.block.value().rewarded_signatures().has_some() {
             // The block contains cited signatures - we have to read the relevant blocks and find
@@ -384,7 +388,6 @@ impl BlockValidator {
                     ?missing_sigs,
                     "handle_got_past_blocks_with_metadata missing_sigs"
                 );
-
                 self.handle_new_request_with_signatures(effect_builder, request, missing_sigs)
             }
             Err(error) => {

@@ -575,26 +575,43 @@ impl ValidationContext {
         })
     }
 
-    fn proposed_block(&self, timestamp: Timestamp) -> ProposedBlock<ClContext> {
+    fn proposed_block(&self, timestamp: Timestamp, include_past_delay: bool) -> ProposedBlock<ClContext> {
         let rewards_window = self.chainspec.core_config.signature_rewards_max_delay;
         let rewarded_signatures = self
             .proposed_block_height
             .map(|proposed_block_height| {
-                RewardedSignatures::new(
-                    (1..=rewards_window)
-                        .filter_map(|height_diff| proposed_block_height.checked_sub(height_diff))
-                        .map(|height| {
-                            let signing_validators = self
-                                .signatures_to_include
-                                .get(&height)
-                                .cloned()
-                                .unwrap_or_default();
-                            SingleBlockRewardedSignatures::from_validator_set(
-                                &signing_validators,
-                                self.secret_keys.keys(),
-                            )
-                        }),
-                )
+                if include_past_delay {
+                    RewardedSignatures::new(
+                        (0..proposed_block_height)
+                            .map(|height| {
+                                let signing_validators = self
+                                    .signatures_to_include
+                                    .get(&height)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                SingleBlockRewardedSignatures::from_validator_set(
+                                    &signing_validators,
+                                    self.secret_keys.keys(),
+                                )
+                            }),
+                    )
+                } else {
+                    RewardedSignatures::new(
+                        (1..=rewards_window)
+                            .filter_map(|height_diff| proposed_block_height.checked_sub(height_diff))
+                            .map(|height| {
+                                let signing_validators = self
+                                    .signatures_to_include
+                                    .get(&height)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                SingleBlockRewardedSignatures::from_validator_set(
+                                    &signing_validators,
+                                    self.secret_keys.keys(),
+                                )
+                            }),
+                    )
+                }
             })
             .unwrap_or_default();
         new_proposed_block_with_cited_signatures(
@@ -607,17 +624,22 @@ impl ValidationContext {
         )
     }
 
-    async fn proposal_is_valid(&mut self, rng: &mut TestRng, timestamp: Timestamp) -> bool {
-        self.validate_proposed_block(rng, timestamp).await.is_ok()
+    async fn proposal_is_valid(&mut self, rng: &mut TestRng, timestamp: Timestamp, ) -> bool {
+        self.validate_proposed_block(rng, timestamp, false).await.is_ok()
     }
 
+    async fn proposal_is_valid_with_sigs_past_delay(&mut self, rng: &mut TestRng, timestamp: Timestamp, ) -> bool {
+        self.validate_proposed_block(rng, timestamp, true).await.is_ok()
+    }
+    
     /// Validates a block using a `BlockValidator` component, and returns the result.
     async fn validate_proposed_block(
         &mut self,
         rng: &mut TestRng,
         timestamp: Timestamp,
+        include_past_delay: bool,
     ) -> Result<(), Box<InvalidProposalError>> {
-        let proposed_block = self.proposed_block(timestamp);
+        let proposed_block = self.proposed_block(timestamp, include_past_delay);
 
         // Create the reactor and component.
         let our_secret_key = self
@@ -748,7 +770,9 @@ impl ValidationContext {
             for effect in effects {
                 tokio::spawn(effect).await.unwrap();
             }
-            return validation_result.await.unwrap();
+            let result = validation_result.await;
+            println!("Foo: {:?}", result);
+            return result.unwrap();
         }
 
         // Otherwise, we have more effects to handle. At this point, all the delayed blocks should
@@ -1235,6 +1259,66 @@ async fn should_fail_if_unable_to_fetch_signature() {
         .with_signatures_for_block(3, 5, &signing_validators)
         .include_signatures(3, 5, &validators);
 
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
+}
+
+#[tokio::test]
+#[should_panic]
+async fn should_fail_if_citing_signatures_past_delay_boundary() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+
+    let mut context = ValidationContext::new();
+    let max_delay = context.chainspec.core_config.signature_rewards_max_delay;
+    let tip_height = 5 + max_delay;
+
+    let context = context.with_num_validators(&mut rng, 3).with_past_blocks(
+        &mut rng,
+        0,
+        tip_height,
+        0.into(),
+    );
+
+    let validators = context.get_validators();
+    let signing_validators = context.get_validators().first().expect("must get").clone();
+
+    let height = context.proposed_block_height.expect("must get some block height")
+        .saturating_sub(max_delay + 1);
+    
+    let mut context = context
+        .with_signatures_for_block(0, tip_height, &validators);
+
+    assert!(!context.proposal_is_valid_with_sigs_past_delay(&mut rng, timestamp).await);
+}
+
+#[tokio::test]
+async fn should_fail_if_citing_signature_past_max_delay_2() {
+    let mut rng = TestRng::new();
+    let ttl = TimeDiff::from_millis(200);
+    let timestamp = Timestamp::from(1000);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer = new_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
+
+    let context = ValidationContext::new();
+    let max_delay = context.chainspec.core_config.signature_rewards_max_delay;
+    let tip_height = 5 + max_delay;
+
+    let context = context
+        .with_num_validators(&mut rng, 3)
+        .with_past_blocks(&mut rng, 0, tip_height, 0.into())
+        .with_transactions(vec![deploy, transaction_v1])
+        .with_transfers(vec![transfer, transfer_v1])
+        .include_all_transactions()
+        .include_all_transfers();
+
+    let validators = context.get_validators();
+    let signing_validators = context.get_validators().first().expect("must get").clone();
+
+    let mut context = context
+        .with_signatures_for_block(0, tip_height, &validators)
+        .with_fetchable_signatures(0, tip_height, &validators);
     assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
