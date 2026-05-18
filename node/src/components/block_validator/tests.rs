@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::{collections::VecDeque, mem, sync::Arc, time::Duration};
 
 use derive_more::From;
 use itertools::Itertools;
@@ -409,8 +409,7 @@ impl ValidationContext {
 
     fn get_delayed_blocks(&mut self) -> Vec<u64> {
         let heights = self.delayed_blocks.keys().cloned().collect();
-        self.past_blocks
-            .extend(std::mem::take(&mut self.delayed_blocks));
+        self.past_blocks.extend(mem::take(&mut self.delayed_blocks));
         heights
     }
 
@@ -1279,7 +1278,7 @@ async fn should_fail_if_citing_signatures_past_delay_boundary() {
     let mut rng = TestRng::new();
     let timestamp = Timestamp::from(1000);
 
-    let mut context = ValidationContext::new();
+    let context = ValidationContext::new();
     let max_delay = context.chainspec.core_config.signature_rewards_max_delay;
     let tip_height = 5 + max_delay;
 
@@ -1291,12 +1290,6 @@ async fn should_fail_if_citing_signatures_past_delay_boundary() {
     );
 
     let validators = context.get_validators();
-    let signing_validators = context.get_validators().first().expect("must get").clone();
-
-    let height = context
-        .proposed_block_height
-        .expect("must get some block height")
-        .saturating_sub(max_delay + 1);
 
     let mut context = context.with_signatures_for_block(0, tip_height, &validators);
 
@@ -1330,7 +1323,6 @@ async fn should_fail_if_citing_signature_past_max_delay_2() {
         .include_all_transfers();
 
     let validators = context.get_validators();
-    let signing_validators = context.get_validators().first().expect("must get").clone();
 
     let mut context = context
         .with_signatures_for_block(0, tip_height, &validators)

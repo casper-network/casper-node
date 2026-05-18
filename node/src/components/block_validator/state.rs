@@ -8,8 +8,8 @@ use datasize::DataSize;
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    Approval, ApprovalsHash, Chainspec, FinalitySignature, FinalitySignatureId, Timestamp,
-    TransactionConfig, TransactionHash,
+    Approval, ApprovalsHash, Chainspec, FinalitySignatureId, Timestamp, TransactionConfig,
+    TransactionHash,
 };
 
 use crate::{

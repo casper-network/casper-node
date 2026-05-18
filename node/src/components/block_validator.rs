@@ -15,7 +15,6 @@ mod tests;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    mem,
     sync::Arc,
 };
 
