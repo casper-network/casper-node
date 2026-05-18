@@ -22,6 +22,16 @@ use tracing::error;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct RewardedSignatures(Vec<SingleBlockRewardedSignatures>);
 
+impl RewardedSignatures {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// List of identifiers for finality signatures for a particular past block.
 ///
 /// That past block height is current_height - signature_rewards_max_delay, the latter being defined
@@ -35,7 +45,7 @@ pub struct RewardedSignatures(Vec<SingleBlockRewardedSignatures>);
 pub struct SingleBlockRewardedSignatures(Vec<u8>);
 
 impl SingleBlockRewardedSignatures {
-    /// Creates a new set of recorded finality signaures from the era's validators +
+    /// Creates a new set of recorded finality signatures from the era's validators +
     /// the list of validators which signed.
     pub fn from_validator_set<'a>(
         public_keys: &BTreeSet<PublicKey>,

@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "7.1.0"
+version = "7.1.1"
 dependencies = [
  "base16",
  "base64 0.13.1",

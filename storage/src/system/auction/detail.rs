@@ -630,27 +630,30 @@ impl DistributeTarget {
 pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
     provider: &mut P,
     bid_addr: BidAddr,
-) -> Result<DistributeTarget, Error> {
+) -> Result<(Vec<BidAddr>, DistributeTarget), Error> {
     let mut bridged_addrs = vec![];
     let mut current_validator_bid_addr = bid_addr;
     for _ in 0..MAX_BRIDGE_CHAIN_LENGTH {
         match provider.read_bid(&current_validator_bid_addr.into())? {
             Some(BidKind::Validator(validator_bid)) => {
                 if !bridged_addrs.is_empty() {
-                    return Ok(DistributeTarget::BridgedValidator {
-                        requested_validator_bid_addr: bid_addr,
-                        current_validator_bid_addr,
-                        bridged_validator_addrs: bridged_addrs,
-                        validator_bid,
-                    });
+                    return Ok((
+                        bridged_addrs.clone(),
+                        DistributeTarget::BridgedValidator {
+                            requested_validator_bid_addr: bid_addr,
+                            current_validator_bid_addr,
+                            bridged_validator_addrs: bridged_addrs,
+                            validator_bid,
+                        },
+                    ));
                 }
-                return Ok(DistributeTarget::Validator(validator_bid));
+                return Ok((bridged_addrs, DistributeTarget::Validator(validator_bid)));
             }
             Some(BidKind::Delegator(delegator_bid)) => {
-                return Ok(DistributeTarget::Delegator(delegator_bid));
+                return Ok((bridged_addrs, DistributeTarget::Delegator(delegator_bid)));
             }
             Some(BidKind::Unbond(unbond)) => {
-                return Ok(DistributeTarget::Unbond(unbond));
+                return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
             }
             Some(BidKind::Bridge(bridge)) => {
                 current_validator_bid_addr =
@@ -659,7 +662,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
             }
             None => {
                 // in the case of missing validator or delegator bids, check unbonds
-                if let BidAddr::Validator(account_hash) = bid_addr {
+                if let BidAddr::Validator(account_hash) = current_validator_bid_addr {
                     let validator_unbond_key = BidAddr::UnbondAccount {
                         validator: account_hash,
                         unbonder: account_hash,
@@ -668,7 +671,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&validator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::ValidatorNotFound);
                 }
@@ -676,6 +679,8 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                 if let BidAddr::DelegatedAccount {
                     validator,
                     delegator,
+                    // This fine to be the original bid addr for the delegator since
+                    // we fetch those of the validator bid
                 } = bid_addr
                 {
                     let delegator_unbond_key = BidAddr::UnbondAccount {
@@ -686,7 +691,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&delegator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::DelegatorNotFound);
                 }
@@ -704,7 +709,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&delegator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::DelegatorNotFound);
                 }
