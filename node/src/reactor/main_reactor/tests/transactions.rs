@@ -6298,6 +6298,74 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
     );
 }
 
+/// Regression for audit-confirmed-109: a forged V1 transaction whose declared `initiator_addr`
+/// is a victim account but whose approvals only carry an unrelated attacker key must not let
+/// fee finalization charge the victim. Without the fix, block execution selects the victim as
+/// the standard-payment payer before the execution engine performs account authorization, the
+/// session fails with `Authorization`, and fee finalization still debits the victim's main
+/// purse for the full declared `payment_amount`.
+#[tokio::test]
+async fn forged_initiator_must_not_drain_victim_fees() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // Use a no-op session module (`do_nothing.wasm`). It would never get to execute on a fixed
+    // runtime because authorization should fail before payment.
+    let do_nothing_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("do_nothing.wasm");
+    let module_bytes = Bytes::from(std::fs::read(do_nothing_path).expect("do_nothing wasm"));
+
+    let payment_amount = 100_000_000_000u64;
+    // Declared initiator: Bob (the victim). Signature: Charlie (the attacker).
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&CHARLIE_SECRET_KEY);
+
+    let (_, bob_before, _) = test.get_balances(None);
+    let (_txn_hash, block_height, _exec_result) = test.send_transaction(txn).await;
+    let (_, bob_after, _) = test.get_balances(Some(block_height));
+
+    let victim_loss = bob_before.total.saturating_sub(bob_after.total);
+    assert_eq!(
+        victim_loss,
+        U512::zero(),
+        "forged-approval transaction charged victim initiator: victim_loss={victim_loss}",
+    );
+}
+
 /// Regression for audit-confirmed-85: a VM1 custom-payment transaction must not let custom
 /// payment and the following session each spend the full approved amount from the caller's main
 /// purse. The custom payment in this test transfers `payment_amount` from Bob's main purse into
