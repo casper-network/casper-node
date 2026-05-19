@@ -13,7 +13,7 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AccessRights, AddressableEntity, Digest, EntityAddr, ExecutableDeployItem, ExecutionInfo,
-    TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
+    Phase, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -6295,6 +6295,129 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
         bob_before - bob_after,
         result.cost,
         "payer balance delta should match charged failed-payment gas"
+    );
+}
+
+/// Regression for audit-confirmed-80: a failed custom-payment transaction must not be allowed
+/// to settle pre-existing shared payment-purse funds as its own fee. The repro seeds the shared
+/// payment purse with 100 motes via a normal session, then runs a failing custom-payment whose
+/// `payment_amount` exceeds the actual consumed payment gas. Asserts the 100 seeded motes are
+/// still in the payment purse afterwards. Without the fix `fee_amount` was derived from the full
+/// post-payment purse balance, so fee finalization (PayToProposer / Burn / Accumulate) could
+/// pay or burn those unrelated motes.
+#[tokio::test]
+async fn failed_custom_payment_must_not_settle_preexisting_payment_purse_balance() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let seeded_amount = U512::from(100u64);
+    let seed_payment_purse_bytes = Bytes::from(
+        std::fs::read(base_path.join("get_phase_payment.wasm"))
+            .expect("cannot read get-phase-payment module bytes"),
+    );
+    let mut seed_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            seed_payment_purse_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 2_500_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(ALICE_PUBLIC_KEY.clone())
+        .with_runtime_args(runtime_args! {
+            "phase" => Phase::Session,
+            "amount" => seeded_amount,
+        })
+        .build()
+        .unwrap(),
+    );
+    seed_txn.sign(&ALICE_SECRET_KEY);
+
+    let (_txn_hash, seed_block_height, seed_result) = test.send_transaction(seed_txn).await;
+    assert!(
+        exec_result_is_success(&seed_result),
+        "payment-purse seeding transaction should succeed: {:?}",
+        seed_result
+    );
+
+    let seeded_payment_purse_balance =
+        get_payment_purse_balance(&mut test.fixture, Some(seed_block_height));
+    assert_eq!(
+        *seeded_payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        seeded_amount,
+        "repro requires a pre-existing payment purse balance"
+    );
+
+    let underpaying_payment_bytes = Bytes::from(
+        std::fs::read(base_path.join("underpaying_custom_payment.wasm"))
+            .expect("cannot read underpaying custom payment module bytes"),
+    );
+    let mut custom_payment_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            underpaying_payment_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 20_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    custom_payment_txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, custom_block_height, custom_result) =
+        test.send_transaction(custom_payment_txn).await;
+    assert!(
+        custom_result
+            .error_message()
+            .expect("custom payment should fail")
+            .starts_with("Insufficient custom payment"),
+        "{:?}",
+        custom_result
+    );
+
+    let payment_purse_balance =
+        get_payment_purse_balance(&mut test.fixture, Some(custom_block_height));
+    assert_eq!(
+        *payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        seeded_amount,
+        "failed custom payment fee finalization drained pre-existing shared payment-purse balance"
     );
 }
 
