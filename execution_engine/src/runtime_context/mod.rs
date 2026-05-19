@@ -1580,7 +1580,10 @@ where
             })
     }
 
-    pub(super) fn remaining_spending_limit(&self) -> U512 {
+    /// Returns the runtime context's remaining approved spending limit on the caller's main
+    /// purse. Public so the executor can forward the post-execution leftover into the next
+    /// phase of a custom-payment transaction.
+    pub fn remaining_spending_limit(&self) -> U512 {
         self.remaining_spending_limit
     }
 

@@ -360,6 +360,9 @@ pub fn execute_finalized_block(
         // unrelated funds; without this cap, fee finalization treats those unrelated funds as
         // available for this transaction and can settle them as proposer fee / burn / accumulate.
         let mut custom_payment_unwind_amount: Option<U512> = None;
+        // Captured from successful custom payment so the same approved-spending-limit budget is
+        // not handed fresh to the session phase.
+        let mut custom_payment_remaining_spending_limit: Option<U512> = None;
         let mut balance_identifier = {
             if is_standard_payment {
                 let contract_might_pay =
@@ -493,6 +496,10 @@ pub fn execute_finalized_block(
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, pay_result.effects().clone())?;
                     custom_payment_unwind_amount = Some(artifact_builder.cost_to_use());
+                    // Carry over the *post-payment* approved-spending-limit budget so the
+                    // following V1 session phase cannot re-spend the full transaction amount
+                    // from the caller's main purse.
+                    custom_payment_remaining_spending_limit = pay_result.remaining_spending_limit();
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -674,7 +681,29 @@ pub fn execute_finalized_block(
                         artifact_builder.gas_limit(),
                         &session_input_data,
                     ) {
-                        Ok(wasm_v1_request) => {
+                        Ok(mut wasm_v1_request) => {
+                            // For VM1 custom payment, the session phase must inherit the
+                            // *remaining* approved-spending-limit budget from the payment phase.
+                            // Otherwise the runtime would derive it freshly from the transaction
+                            // `amount` arg, letting the session debit the caller main purse for
+                            // the same amount that was already approved (and possibly spent) by
+                            // custom payment. `RuntimeArgs::insert` appends rather than replaces,
+                            // so we rebuild the args with `amount` taken from the post-payment
+                            // remaining spending limit.
+                            if let Some(remaining) = custom_payment_remaining_spending_limit {
+                                let mut new_args = casper_types::RuntimeArgs::new();
+                                if new_args.insert(ARG_AMOUNT, remaining).is_ok() {
+                                    for named in wasm_v1_request.args.named_args() {
+                                        if named.name() != ARG_AMOUNT {
+                                            new_args.insert_cl_value(
+                                                named.name(),
+                                                named.cl_value().clone(),
+                                            );
+                                        }
+                                    }
+                                    wasm_v1_request.args = new_args;
+                                }
+                            }
                             trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);

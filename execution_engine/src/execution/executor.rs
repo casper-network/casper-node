@@ -150,6 +150,7 @@ impl Executor {
                 stack,
             ),
         };
+        let remaining_spending_limit = runtime.context().remaining_spending_limit();
         match result {
             Ok(ret) => WasmV1Result::new(
                 gas_limit,
@@ -160,7 +161,8 @@ impl Executor {
                 None,
                 Some(ret),
                 Some(runtime.context().cache()),
-            ),
+            )
+            .with_remaining_spending_limit(remaining_spending_limit),
             Err(error) => WasmV1Result::new(
                 gas_limit,
                 runtime.context().gas_counter(),
@@ -170,7 +172,8 @@ impl Executor {
                 Some(error.into()),
                 None,
                 None,
-            ),
+            )
+            .with_remaining_spending_limit(remaining_spending_limit),
         }
     }
 

@@ -477,6 +477,11 @@ pub struct WasmV1Result {
     ret: Option<CLValue>,
     /// Tracking copy cache captured during execution.
     cache: Option<TrackingCopyCache>,
+    /// Remaining approved spending limit on the caller's main purse at the end of execution, if
+    /// the runtime context produced one. Used to forward the leftover budget from a
+    /// custom-payment Wasm into the following session phase so a transaction cannot reset its
+    /// approved spending limit twice.
+    remaining_spending_limit: Option<U512>,
 }
 
 impl WasmV1Result {
@@ -501,7 +506,19 @@ impl WasmV1Result {
             error,
             ret,
             cache,
+            remaining_spending_limit: None,
         }
+    }
+
+    /// Sets the post-execution remaining spending limit. Builder-style.
+    pub fn with_remaining_spending_limit(mut self, remaining: U512) -> Self {
+        self.remaining_spending_limit = Some(remaining);
+        self
+    }
+
+    /// Returns the post-execution remaining approved spending limit, if captured.
+    pub fn remaining_spending_limit(&self) -> Option<U512> {
+        self.remaining_spending_limit
     }
 
     /// Error, if any.
@@ -555,6 +572,7 @@ impl WasmV1Result {
             error: Some(EngineError::RootNotFound(state_hash)),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -569,6 +587,7 @@ impl WasmV1Result {
             error: Some(error),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -583,6 +602,7 @@ impl WasmV1Result {
             error: Some(EngineError::InvalidExecutableItem(error)),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -614,6 +634,7 @@ impl WasmV1Result {
                 error: None,
                 ret: None,
                 cache: Some(cache),
+                remaining_spending_limit: None,
             }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
@@ -625,6 +646,7 @@ impl WasmV1Result {
                     error: Some(EngineError::Transfer(te)),
                     ret: None,
                     cache: None,
+                    remaining_spending_limit: None,
                 })
             }
         }
