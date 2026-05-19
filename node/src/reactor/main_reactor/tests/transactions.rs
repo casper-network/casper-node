@@ -6298,6 +6298,65 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
     );
 }
 
+/// Regression for audit-confirmed-75: a VM1 custom payment that funds the payment purse with
+/// multiple valid transfers must be accepted as long as the total deposit matches the requested
+/// `payment_amount`. Without the fix `balance_increased_by_amount` only inspected the first
+/// `AddUInt512` transform on the payment-purse balance and required an exact match, so a split
+/// deposit was misclassified as `Insufficient custom payment` and the sender was penalized.
+#[tokio::test]
+async fn split_custom_payment_deposit_satisfies_payment_amount() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("split_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let payment_amount = 2_500_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        exec_result_is_success(&exec_result),
+        "split custom payment was penalized despite depositing the full payment amount: {:?}",
+        exec_result
+    );
+}
+
 /// Regression for audit-confirmed-57: custom-payment code must not be able to persist the system
 /// payment purse via a stored-helper subcall that resolves `handle_payment.get_payment_purse`.
 /// The parent runtime previously failed to see the marker set by the helper's context and let
