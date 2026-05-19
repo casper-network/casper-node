@@ -6297,3 +6297,134 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
         "payer balance delta should match charged failed-payment gas"
     );
 }
+
+/// Regression for audit-confirmed-57: custom-payment code must not be able to persist the system
+/// payment purse via a stored-helper subcall that resolves `handle_payment.get_payment_purse`.
+/// The parent runtime previously failed to see the marker set by the helper's context and let
+/// `put_key` accept the payment purse URef.
+#[tokio::test]
+async fn custom_payment_subcall_returned_payment_purse_cannot_be_persisted() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+    let payment_purse_persist_bytes = Bytes::from(
+        std::fs::read(base_path.join("payment_purse_persist.wasm"))
+            .expect("cannot read payment-purse-persist module bytes"),
+    );
+
+    let mut install_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            payment_purse_persist_bytes.clone(),
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "method" => "install_helper".to_string(),
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    install_txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, install_result) = test.send_transaction(install_txn).await;
+    assert!(
+        exec_result_is_success(&install_result),
+        "helper install should succeed: {:?}",
+        install_result
+    );
+
+    let payment_amount = U512::from(2_500_000_000u64);
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+        let chain_name = test.chainspec().network_config.name.clone();
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: payment_purse_persist_bytes,
+            args: runtime_args! {
+                "method" => "subcall_put_key".to_string(),
+                "amount" => payment_amount,
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("do_nothing.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "this_is_session" => true,
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(custom_payment_txn).await;
+    if exec_result_is_success(&exec_result) {
+        let state_root_hash = state_root_hash_at(&test.fixture, Some(block_height));
+        let bob_entity_addr = get_entity_addr_from_account_hash(
+            &mut test.fixture,
+            state_root_hash,
+            BOB_PUBLIC_KEY.to_account_hash(),
+        );
+        assert!(
+            get_entity_named_key(
+                &mut test.fixture,
+                state_root_hash,
+                bob_entity_addr,
+                "this_should_fail",
+            )
+            .is_none(),
+            "payment purse returned from subcall was persisted as a named key"
+        );
+        panic!("custom payment unexpectedly succeeded without persisting the payment purse");
+    }
+
+    let error_message = exec_result
+        .error_message()
+        .expect("custom payment should reject payment-purse persistence");
+    assert!(
+        error_message.contains("HandlePayment")
+            || error_message.contains("Handle Payment")
+            || error_message.contains("[40]")
+            || error_message.contains("error: 40"),
+        "custom payment failed before reaching the payment-purse persistence guard: {error_message}"
+    );
+}
