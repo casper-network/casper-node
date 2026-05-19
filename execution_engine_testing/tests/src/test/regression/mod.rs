@@ -31,6 +31,7 @@ mod ee_601;
 mod ee_771;
 mod ee_890;
 mod ee_966;
+mod get_balance_uref_bypass;
 mod get_named_arg_oversized_buffer;
 mod gh_1470;
 mod gh_1688;
