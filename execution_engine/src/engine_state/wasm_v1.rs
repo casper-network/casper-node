@@ -653,21 +653,25 @@ impl WasmV1Result {
     }
 
     /// Returns true if the effects on the balance at `addr` leave its value at >= `amount`.
+    pub fn balance_increased_by_amount(&self, addr: URefAddr, amount: U512) -> bool {
+        match self.balance_after_effects(addr) {
+            Some(total) => total >= amount,
+            None => false,
+        }
+    }
+
+    /// Returns the running balance value the effects leave at `addr`, folding `AddUInt512` and
+    /// `Write(CLValue<U512>)` transforms in execution order. Returns `None` if no balance-shape
+    /// effect on this key is observed.
     ///
-    /// The check now folds both `AddUInt512` and `Write(CLValue<U512>)` transforms in execution
-    /// order:
-    /// - the payment purse starts each transaction empty (it is a system invariant maintained by
+    /// - The payment purse starts each transaction empty (system invariant maintained by
     ///   audit-082's `Phase::Session` guard on `get_payment_purse`);
     /// - `mint::transfer` writes the new total balance via `write_balance`, producing a `Write`
     ///   transform whose CLValue contains the post-transfer purse balance;
     /// - `mint`'s `add_balance` path produces `AddUInt512`.
-    ///
-    /// Without folding both transform kinds, a valid custom payment that funds the payment purse
-    /// through a normal mint transfer would be rejected as insufficient even though the payment
-    /// purse balance reached the required amount.
-    pub fn balance_increased_by_amount(&self, addr: URefAddr, amount: U512) -> bool {
+    pub fn balance_after_effects(&self, addr: URefAddr) -> Option<U512> {
         if self.effects.is_empty() || self.effects.transforms().is_empty() {
-            return false;
+            return None;
         }
 
         let key = Key::Balance(addr);
@@ -690,7 +694,7 @@ impl WasmV1Result {
                 _ => {}
             }
         }
-        saw_balance_effect && total >= amount
+        saw_balance_effect.then_some(total)
     }
 }
 

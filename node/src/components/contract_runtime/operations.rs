@@ -542,7 +542,19 @@ pub fn execute_finalized_block(
                     // commit successful effects
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, pay_result.effects().clone())?;
-                    custom_payment_unwind_amount = Some(artifact_builder.cost_to_use());
+                    // Cap fee/refund finalization to this transaction's actual deposit into the
+                    // shared payment purse, not just the required cost. The payment purse is
+                    // empty before custom payment (audit-082 guard), so the balance the effects
+                    // leave is exactly this txn's contribution; using it as the unwind amount
+                    // keeps audit-080's "don't drain unrelated balance" invariant while also
+                    // settling any overpayment the payment Wasm pushed in past the declared cost
+                    // (audit-156's "no funds stuck in shared payment purse" invariant). Floor at
+                    // `cost_to_use()` so we never lose money the runtime promised to charge.
+                    let actual_deposit = pay_result
+                        .balance_after_effects(payment_balance_addr)
+                        .unwrap_or_else(|| artifact_builder.cost_to_use());
+                    custom_payment_unwind_amount =
+                        Some(actual_deposit.max(artifact_builder.cost_to_use()));
                     // Carry over the *post-payment* approved-spending-limit budget so the
                     // following V1 session phase cannot re-spend the full transaction amount
                     // from the caller's main purse.
