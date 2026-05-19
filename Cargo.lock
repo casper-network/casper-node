@@ -535,6 +535,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "burn-then-out-of-gas"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "bytecheck"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
