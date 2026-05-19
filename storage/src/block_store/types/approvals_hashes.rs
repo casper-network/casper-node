@@ -99,6 +99,7 @@ impl ApprovalsHashes {
         &self,
         v1_block: &BlockV1,
     ) -> Result<Vec<DeployId>, ApprovalsHashesValidationError> {
+        self.ensure_approvals_hashes_len(v1_block.deploy_and_transfer_hashes().count())?;
         let deploy_approvals_hashes = self.approvals_hashes.clone();
         Ok(v1_block
             .deploy_and_transfer_hashes()
@@ -114,6 +115,7 @@ impl ApprovalsHashes {
         &self,
         v2_block: &BlockV2,
     ) -> Result<Vec<TransactionId>, ApprovalsHashesValidationError> {
+        self.ensure_approvals_hashes_len(v2_block.all_transactions().count())?;
         v2_block
             .all_transactions()
             .zip(self.approvals_hashes.clone())
@@ -121,6 +123,19 @@ impl ApprovalsHashes {
                 Ok(TransactionId::new(*txn_hash, txn_approvals_hash))
             })
             .collect()
+    }
+
+    fn ensure_approvals_hashes_len(
+        &self,
+        expected: usize,
+    ) -> Result<(), ApprovalsHashesValidationError> {
+        let actual = self.approvals_hashes.len();
+        if actual != expected {
+            return Err(
+                ApprovalsHashesValidationError::ApprovalsHashesLengthMismatch { expected, actual },
+            );
+        }
+        Ok(())
     }
 
     /// Block hash.
@@ -224,6 +239,17 @@ pub enum ApprovalsHashesValidationError {
         computed_approvals_checksum: Digest,
         /// Value in proof.
         value_in_proof: Digest,
+    },
+
+    /// The number of approvals hashes doesn't match the number of block transactions.
+    #[error(
+        "approvals hashes count doesn't match block transaction count: expected {expected}, actual {actual}"
+    )]
+    ApprovalsHashesLengthMismatch {
+        /// The number of transactions in the block.
+        expected: usize,
+        /// The number of approvals hashes.
+        actual: usize,
     },
 
     /// Variant mismatch.
