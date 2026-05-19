@@ -574,6 +574,27 @@ pub trait Auction:
         detail::process_unbond_requests(self, max_delegators_per_validator)?;
         debug!("processing unbond request successful");
 
+        // Resolve any evicted public key that may identify a validator only via its prior
+        // (pre-rotation) key through the existing bridge chain. Without this step, an eviction
+        // for the old key would be silently ignored because the active bid lives under a new key.
+        let mut resolved_evicted: Vec<PublicKey> = Vec::with_capacity(evicted_validators.len());
+        for evicted in evicted_validators.iter() {
+            resolved_evicted.push(evicted.clone());
+            let mut current_addr = BidAddr::from(evicted.clone());
+            for _ in 0..detail::MAX_BRIDGE_CHAIN_LENGTH {
+                match self.read_bid(&current_addr.into())? {
+                    Some(BidKind::Bridge(bridge)) => {
+                        let new_key = bridge.new_validator_public_key().clone();
+                        current_addr = BidAddr::from(new_key.clone());
+                        if !resolved_evicted.contains(&new_key) {
+                            resolved_evicted.push(new_key);
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+
         let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 
         // Process bids
@@ -590,7 +611,7 @@ pub trait Auction:
                 bids_modified = true;
             }
 
-            if evicted_validators.contains(validator_public_key) {
+            if resolved_evicted.contains(validator_public_key) {
                 validator_bid.deactivate();
                 bids_modified = true;
             }

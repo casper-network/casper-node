@@ -22,7 +22,7 @@ use tracing::{debug, error, warn};
 
 /// Maximum length of bridge records chain.
 /// Used when looking for the most recent bid record to avoid unbounded computations.
-const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
+pub(super) const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
