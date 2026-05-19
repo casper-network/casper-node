@@ -2133,6 +2133,15 @@ where
             .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
         runtime.context.transfers().clone_into(transfers);
+        // Propagate the payment-purse marker from the child context back to the parent.
+        // Without this a stored helper subcall can resolve `handle_payment.get_payment_purse`,
+        // mark only its own context, and then return the URef so the parent runtime persists
+        // it under a named key (the put_key guard in the parent never sees the marker).
+        if self.context.maybe_payment_purse().is_none() {
+            if let Some(payment_purse) = runtime.context.maybe_payment_purse() {
+                self.context.set_payment_purse(payment_purse);
+            }
+        }
 
         match result {
             Ok(_) => {
