@@ -1,3 +1,4 @@
+mod burn_spending_limit;
 mod dictionary_read_uref_bypass;
 mod ee_1045;
 mod ee_1071;
