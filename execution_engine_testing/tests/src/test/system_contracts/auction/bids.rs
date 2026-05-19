@@ -5212,6 +5212,89 @@ fn should_not_change_validator_bid_public_key_to_system() {
     );
 }
 
+/// Regression for audit-confirmed-68: a `run_auction` with the *old* (pre-rotation) validator
+/// public key in `evicted_validators` must still deactivate the active bridged bid that lives
+/// under the new key. Without the fix the eviction was silently ignored because `run_auction`
+/// compared evicted keys to active-bid keys directly, missing the bridge.
+#[ignore]
+#[test]
+fn eviction_of_bridged_validator_key_deactivates_current_bid() {
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_NEW_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone()
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    builder
+        .exec(validator_1_fund_request)
+        .commit()
+        .expect_success();
+    builder
+        .exec(validator_2_fund_request)
+        .commit()
+        .expect_success();
+    builder
+        .exec(validator_1_add_bid_request)
+        .commit()
+        .expect_success();
+    builder
+        .exec(change_bid_public_key_request)
+        .commit()
+        .expect_success();
+
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + TIMESTAMP_MILLIS_INCREMENT,
+        vec![NON_FOUNDER_VALIDATOR_1_PK.clone()],
+    );
+
+    let bids_after_eviction = builder.get_bids();
+    let current_bid = bids_after_eviction
+        .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK)
+        .expect("current validator key should still own the bridged bid");
+    assert!(
+        current_bid.inactive(),
+        "evicting the old bridged validator key did not deactivate the current bid"
+    );
+}
+
 /// Regression for audit-confirmed-67: a zero-amount `withdraw_bid` must not create a validator
 /// unbond entry. Without the fix the call goes through, decreases stake by zero, and still
 /// commits a zero-value unbond era.
