@@ -16,17 +16,21 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_storage::block_store::{
-    types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers},
+    types::{
+        ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers, TransactionFinalizedApprovals,
+    },
     BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
 use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     generate_ed25519_keypair,
+    global_state::TrieMerkleProof,
     testing::TestRng,
-    ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithSignatures,
-    BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes,
-    Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas,
-    InitiatorAddr, ProtocolVersion, PublicKey, SecretKey, TestBlockBuilder, TestBlockV1Builder,
+    Approval, ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    BlockHeaderWithSignatures, BlockSignatures, BlockSignaturesV2, BlockV2, CLValue,
+    ChainNameDigest, Chainspec, ChainspecRawBytes, ChecksumRegistry, Deploy, DeployHash, Digest,
+    EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TestBlockV1Builder,
     TimeDiff, Transaction, TransactionConfig, TransactionHash, TransactionV1Hash, Transfer,
     TransferV2, U512,
 };
@@ -3123,4 +3127,74 @@ fn check_block_operations_with_node_1_5_2_storage() {
             new_highest_block_height,
         );
     }
+}
+
+/// Regression for audit-confirmed-81: `make_executable_block` must apply per-transaction
+/// `TransactionFinalizedApprovals` to the executable transaction list so that the block-level
+/// approvals-hash check sees the finalized approvals, not the originally stored ones.
+#[test]
+fn make_executable_block_applies_finalized_approvals() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+    let rng = &mut harness.rng;
+
+    // Original stored transaction.
+    let original_transaction = Transaction::random(rng);
+    let transaction_hash = original_transaction.hash();
+    let original_approvals = original_transaction.approvals();
+
+    // Distinct finalized approval set for the same transaction hash.
+    let mut finalized_approvals = original_approvals.clone();
+    while finalized_approvals == original_approvals {
+        finalized_approvals.insert(Approval::random(rng));
+    }
+    let finalized_transaction = original_transaction
+        .clone()
+        .with_approvals(finalized_approvals.clone());
+    let finalized_approvals_hash = finalized_transaction
+        .compute_approvals_hash()
+        .expect("should compute finalized approvals hash");
+
+    // Build a block referencing the transaction hash.
+    let block = TestBlockBuilder::new()
+        .transactions(&[finalized_transaction])
+        .build_versioned(rng);
+    let approvals_hashes = ApprovalsHashes::new(
+        *block.hash(),
+        vec![finalized_approvals_hash],
+        TrieMerkleProof::new(
+            Key::ChecksumRegistry,
+            StoredValue::CLValue(
+                CLValue::from_t(ChecksumRegistry::new()).expect("should build checksum"),
+            ),
+            std::collections::VecDeque::new(),
+        ),
+    );
+
+    {
+        let mut txn = storage
+            .block_store
+            .checkout_rw()
+            .expect("should open rw txn");
+        txn.write(&original_transaction)
+            .expect("should write transaction");
+        txn.write(&block).expect("should write block");
+        txn.write(&TransactionFinalizedApprovals {
+            transaction_hash,
+            finalized_approvals,
+        })
+        .expect("should write finalized approvals");
+        txn.write(&approvals_hashes)
+            .expect("should write approvals hashes");
+        txn.commit().expect("should commit");
+    }
+
+    let result = storage
+        .make_executable_block(block.hash())
+        .expect("make_executable_block must not fail");
+    assert!(
+        result.is_some(),
+        "make_executable_block must apply finalized approvals and return an executable block, \
+         not stall by returning None"
+    );
 }
