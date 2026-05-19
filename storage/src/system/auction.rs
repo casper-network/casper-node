@@ -989,6 +989,13 @@ pub trait Auction:
         public_key: PublicKey,
         new_public_key: PublicKey,
     ) -> Result<(), Error> {
+        // The normal `add_bid` path cannot create a `PublicKey::System` validator bid (the
+        // caller must own the validator key). Reject the same identity in the key-rotation
+        // path so a validator can't move its active bid into the reserved system identity.
+        if new_public_key == PublicKey::System {
+            return Err(Error::InvalidPublicKey);
+        }
+
         let validator_account_hash = AccountHash::from(&public_key);
 
         // check that the caller is the current bid's owner
