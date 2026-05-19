@@ -740,6 +740,11 @@ pub trait Auction:
 
             let validator_bid_addr = BidAddr::Validator(validator_public_key.to_account_hash());
             let mut maybe_bridged_validator_addrs: Option<Vec<BidAddr>> = None;
+            // The validator key to use for any same-call undelegation effects. For a bridged
+            // validator this is the *current* (post-rotation) key, not the stale reward-map key
+            // - otherwise the queued `undelegate` call below would look up a bid under the old
+            // key and fail with `ValidatorNotFound`.
+            let mut current_validator_public_key = validator_public_key.clone();
             let validator_reward_amount = reward_info.validator_reward();
             let (validator_bonding_purse, min_del, max_del) =
                 match detail::get_distribution_target(self, validator_bid_addr) {
@@ -767,6 +772,8 @@ pub trait Auction:
                         } => {
                             debug!(?validator_public_key, "bridged validator payout starting ");
                             maybe_bridged_validator_addrs = Some(bridged_validator_addrs); // <-- important
+                            current_validator_public_key =
+                                validator_bid.validator_public_key().clone();
                             let validator_bonding_purse = *validator_bid.bonding_purse();
                             validator_bid.increase_stake(validator_reward_amount)?;
 
@@ -868,7 +875,7 @@ pub trait Auction:
                                         // prune
                                         undelegates.push((
                                             delegator_kind.clone(),
-                                            validator_public_key.clone(),
+                                            current_validator_public_key.clone(),
                                             increased_stake,
                                         ));
                                         prunes.push(delegator_bid_addr);
@@ -878,7 +885,7 @@ pub trait Auction:
                                         if !unbond_amount.is_zero() {
                                             undelegates.push((
                                                 delegator_kind.clone(),
-                                                validator_public_key.clone(),
+                                                current_validator_public_key.clone(),
                                                 unbond_amount,
                                             ));
                                         }
