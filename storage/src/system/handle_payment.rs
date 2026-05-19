@@ -9,7 +9,7 @@ pub mod storage_provider;
 
 use casper_types::{
     system::handle_payment::{Error, REFUND_PURSE_KEY},
-    AccessRights, PublicKey, URef, U512,
+    AccessRights, Phase, PublicKey, URef, U512,
 };
 use num_rational::Ratio;
 use tracing::error;
@@ -23,6 +23,16 @@ use crate::system::handle_payment::{
 pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&mut self) -> Result<URef, Error> {
+        // Restrict to payment / finalize-payment / system contexts. Session code that resolves
+        // the payment purse can transfer into it; finalization only accounts for the expected
+        // payment amount, so stray deposits become a persistent nonzero balance in the shared
+        // system payment purse - hostile state for later custom-payment paths.
+        match self.get_phase() {
+            Phase::Payment | Phase::FinalizePayment | Phase::System => {}
+            Phase::Session => {
+                return Err(Error::GetPaymentPurseCalledOutsidePayment);
+            }
+        }
         let purse = internal::get_payment_purse(self)?;
         // Limit the access rights so only balance query and deposit are allowed.
         Ok(URef::new(purse.addr(), AccessRights::READ_ADD))

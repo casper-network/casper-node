@@ -268,6 +268,14 @@ pub enum Error {
     /// assert_eq!(40, Error::AttemptToPersistPaymentPurse as u8);
     /// ```
     AttemptToPersistPaymentPurse = 40,
+    /// `get_payment_purse` was called outside of `Phase::Payment` (or
+    /// `Phase::FinalizePayment` / system contexts), so session code cannot use it as a way to
+    /// strand funds in the shared system payment purse.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(41, Error::GetPaymentPurseCalledOutsidePayment as u8);
+    /// ```
+    GetPaymentPurseCalledOutsidePayment = 41,
 }
 
 impl Display for Error {
@@ -345,6 +353,9 @@ impl Display for Error {
             Error::UnexpectedKeyVariant => formatter.write_str("Unexpected key variant"),
             Error::AttemptToPersistPaymentPurse => {
                 formatter.write_str("Attempt to persist payment purse")
+            }
+            Error::GetPaymentPurseCalledOutsidePayment => {
+                formatter.write_str("get_payment_purse called outside of payment phase")
             }
         }
     }
@@ -424,6 +435,9 @@ impl TryFrom<u8> for Error {
             v if v == Error::UnexpectedKeyVariant as u8 => Error::UnexpectedKeyVariant,
             v if v == Error::AttemptToPersistPaymentPurse as u8 => {
                 Error::AttemptToPersistPaymentPurse
+            }
+            v if v == Error::GetPaymentPurseCalledOutsidePayment as u8 => {
+                Error::GetPaymentPurseCalledOutsidePayment
             }
             _ => return Err(()),
         };
