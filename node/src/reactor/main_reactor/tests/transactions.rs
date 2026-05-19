@@ -6298,6 +6298,77 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
     );
 }
 
+/// Regression for audit-confirmed-152: a failed VM1 session (here: burn from main purse then run
+/// out of gas) must not leave its state-changing effects applied. With `FeeHandling::PayToProposer`
+/// fee finalization itself does not move mint total supply, so the only way the supply could go
+/// down is if the failed session's burn was nevertheless committed. Asserts total supply is
+/// unchanged after the failed transaction.
+#[tokio::test]
+async fn failed_wasm_session_burn_must_not_reduce_total_supply() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let module_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("burn_then_out_of_gas.wasm");
+    let module_bytes = Bytes::from(std::fs::read(module_path).expect("burn_then_out_of_gas wasm"));
+
+    let supply_before = test.get_total_supply(None);
+
+    let burn_amount = U512::from(1_000_000u64);
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "amount" => burn_amount,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 2_500_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        !exec_result_is_success(&exec_result),
+        "burn_then_out_of_gas should fail: {:?}",
+        exec_result
+    );
+
+    let supply_after = test.get_total_supply(Some(block_height));
+    assert_eq!(
+        supply_before, supply_after,
+        "failed Wasm session burn reduced total supply: before={supply_before}, after={supply_after}",
+    );
+}
+
 /// Regression for audit-confirmed-109: a forged V1 transaction whose declared `initiator_addr`
 /// is a victim account but whose approvals only carry an unrelated attacker key must not let
 /// fee finalization charge the victim. Without the fix, block execution selects the victim as

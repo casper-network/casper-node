@@ -755,10 +755,17 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
-                            state_root_hash = scratch_state.commit_effects(
-                                state_root_hash,
-                                wasm_v1_result.effects().clone(),
-                            )?;
+                            // Only commit session effects when the Wasm execution itself
+                            // succeeded. Otherwise (e.g. "Out of gas error" after a mint
+                            // `burn` call) the failed transaction would leave its
+                            // state-changing side effects, including total-supply burns,
+                            // applied even though the execution result reports an error.
+                            if wasm_v1_result.error().is_none() {
+                                state_root_hash = scratch_state.commit_effects(
+                                    state_root_hash,
+                                    wasm_v1_result.effects().clone(),
+                                )?;
+                            }
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
