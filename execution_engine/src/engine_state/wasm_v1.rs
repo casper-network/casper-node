@@ -652,11 +652,19 @@ impl WasmV1Result {
         }
     }
 
-    /// Returns true if the cumulative `AddUInt512` transforms on the balance at `addr` total at
-    /// least `amount`. Effects are not coalesced, so a custom payment that deposits the required
-    /// amount through multiple valid transfers produces several `AddUInt512` transforms on the
-    /// same balance key; the previous "first transform must exactly match" check rejected such
-    /// fully-funded payments as `Insufficient custom payment`.
+    /// Returns true if the effects on the balance at `addr` leave its value at >= `amount`.
+    ///
+    /// The check now folds both `AddUInt512` and `Write(CLValue<U512>)` transforms in execution
+    /// order:
+    /// - the payment purse starts each transaction empty (it is a system invariant maintained by
+    ///   audit-082's `Phase::Session` guard on `get_payment_purse`);
+    /// - `mint::transfer` writes the new total balance via `write_balance`, producing a `Write`
+    ///   transform whose CLValue contains the post-transfer purse balance;
+    /// - `mint`'s `add_balance` path produces `AddUInt512`.
+    ///
+    /// Without folding both transform kinds, a valid custom payment that funds the payment purse
+    /// through a normal mint transfer would be rejected as insufficient even though the payment
+    /// purse balance reached the required amount.
     pub fn balance_increased_by_amount(&self, addr: URefAddr, amount: U512) -> bool {
         if self.effects.is_empty() || self.effects.transforms().is_empty() {
             return false;
@@ -664,12 +672,25 @@ impl WasmV1Result {
 
         let key = Key::Balance(addr);
         let mut total = U512::zero();
+        let mut saw_balance_effect = false;
         for transform in self.effects.transforms().iter().filter(|x| x.key() == &key) {
-            if let TransformKindV2::AddUInt512(added) = transform.kind() {
-                total = total.saturating_add(*added);
+            match transform.kind() {
+                TransformKindV2::AddUInt512(added) => {
+                    saw_balance_effect = true;
+                    total = total.saturating_add(*added);
+                }
+                TransformKindV2::Write(stored) => {
+                    if let Some(cl_value) = stored.as_cl_value() {
+                        if let Ok(written) = cl_value.clone().into_t::<U512>() {
+                            saw_balance_effect = true;
+                            total = written;
+                        }
+                    }
+                }
+                _ => {}
             }
         }
-        total >= amount
+        saw_balance_effect && total >= amount
     }
 }
 
