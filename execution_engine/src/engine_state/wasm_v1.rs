@@ -630,20 +630,24 @@ impl WasmV1Result {
         }
     }
 
-    /// Checks effects for an AddUInt512 transform to a balance at imputed addr
-    /// and for exactly the imputed amount.
+    /// Returns true if the cumulative `AddUInt512` transforms on the balance at `addr` total at
+    /// least `amount`. Effects are not coalesced, so a custom payment that deposits the required
+    /// amount through multiple valid transfers produces several `AddUInt512` transforms on the
+    /// same balance key; the previous "first transform must exactly match" check rejected such
+    /// fully-funded payments as `Insufficient custom payment`.
     pub fn balance_increased_by_amount(&self, addr: URefAddr, amount: U512) -> bool {
         if self.effects.is_empty() || self.effects.transforms().is_empty() {
             return false;
         }
 
         let key = Key::Balance(addr);
-        if let Some(transform) = self.effects.transforms().iter().find(|x| x.key() == &key) {
+        let mut total = U512::zero();
+        for transform in self.effects.transforms().iter().filter(|x| x.key() == &key) {
             if let TransformKindV2::AddUInt512(added) = transform.kind() {
-                return *added == amount;
+                total = total.saturating_add(*added);
             }
         }
-        false
+        total >= amount
     }
 }
 
