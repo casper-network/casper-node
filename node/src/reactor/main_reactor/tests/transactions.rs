@@ -532,6 +532,41 @@ fn get_bids(fixture: &mut TestFixture, block_height: Option<u64>) -> Option<Vec<
         .into_option()
 }
 
+fn handle_payment_refund_purse_is_set(fixture: &TestFixture, block_height: Option<u64>) -> bool {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let protocol_version = fixture.chainspec.protocol_version();
+    let state_hash = state_root_hash_at(fixture, block_height);
+    let request =
+        BalanceIdentifierPurseRequest::new(state_hash, protocol_version, BalanceIdentifier::Refund);
+
+    matches!(
+        runner
+            .main_reactor()
+            .contract_runtime()
+            .data_access_layer()
+            .balance_purse(request),
+        BalanceIdentifierPurseResult::Success { .. }
+    )
+}
+
+fn state_root_hash_at(fixture: &TestFixture, block_height: Option<u64>) -> Digest {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_height = block_height.unwrap_or(
+        runner
+            .main_reactor()
+            .storage()
+            .highest_complete_block_height()
+            .expect("missing highest completed block"),
+    );
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .expect("should have header");
+    *block_header.state_root_hash()
+}
+
 fn get_payment_purse_balance(
     fixture: &mut TestFixture,
     block_height: Option<u64>,
@@ -5810,4 +5845,201 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     fixture
         .assert_execution_in_lane(&largest_txn_hash, largest_lane_id, TEN_SECS)
         .await;
+}
+
+/// Regression for audit-confirmed-13: when the initial-balance precheck fails (initiator's main
+/// purse below `baseline_motes_amount`), `ExecutionArtifactBuilder::with_initial_balance_result`
+/// must return `Err(false)` so `execute_finalized_block` stops the transaction. Without the fix
+/// the precheck records an error but execution continues into custom payment and session code,
+/// the session writes a named key, and the handle-payment refund purse is left set.
+#[tokio::test]
+async fn failed_custom_payment_precheck_does_not_leave_refund_purse_set() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_baseline_motes_amount(2_500_000_000);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    assert!(
+        !handle_payment_refund_purse_is_set(&test.fixture, None),
+        "refund purse should start unset"
+    );
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let baseline_motes = test.chainspec().core_config.baseline_motes_amount_u512();
+    let custom_payment_amount = baseline_motes;
+    let custom_payment_purse_name = "custom_payment_purse";
+    let created_session_key = "hello-world";
+
+    let purse_setup_contract = base_path.join("transfer_main_purse_to_new_purse.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(purse_setup_contract).expect("cannot read module bytes"));
+    let mut purse_setup_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "destination" => custom_payment_purse_name,
+            "amount" => custom_payment_amount,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    purse_setup_txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(purse_setup_txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let (_, bob_initial_balance, _) = test.get_balances(None);
+    let drain_amount = bob_initial_balance.available.saturating_sub(baseline_motes) + U512::one();
+    let transfer_hold = U512::from(test.chainspec().system_costs_config.mint_costs().transfer);
+
+    let chain_name = test.chainspec().network_config.name.clone();
+    let mut drain_txn = Transaction::from(
+        TransactionV1Builder::new_transfer(drain_amount, None, CHARLIE_PUBLIC_KEY.clone(), None)
+            .unwrap()
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: transfer_hold.as_u64(),
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: true,
+            })
+            .with_chain_name(chain_name.clone())
+            .build()
+            .unwrap(),
+    );
+    drain_txn.sign(&BOB_SECRET_KEY);
+    let drain_txn_hash = drain_txn.hash();
+
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("named_purse_payment.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "amount" => custom_payment_amount,
+                "purse_name" => custom_payment_purse_name.to_string(),
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("named_keys.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "command" => "create-uref1".to_string(),
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+    let custom_payment_txn_hash = custom_payment_txn.hash();
+
+    test.fixture.inject_transaction(drain_txn).await;
+    test.fixture.inject_transaction(custom_payment_txn).await;
+
+    test.fixture
+        .run_until_executed_transaction(&custom_payment_txn_hash, TEN_SECS)
+        .await;
+
+    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+    let drain_exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(drain_txn_hash)
+        .expect("drain transaction should be included");
+    let custom_payment_exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(custom_payment_txn_hash)
+        .expect("custom payment transaction should be included");
+
+    assert_eq!(
+        drain_exec_info.block_height, custom_payment_exec_info.block_height,
+        "drain and custom payment transactions must execute in the same block"
+    );
+    let drain_exec_result = drain_exec_info
+        .execution_result
+        .expect("drain transaction should have an execution result");
+    assert!(
+        exec_result_is_success(&drain_exec_result),
+        "{:?}",
+        drain_exec_result
+    );
+
+    let exec_result = custom_payment_exec_info
+        .execution_result
+        .expect("custom payment transaction should have an execution result");
+    let error_message = exec_result
+        .error_message()
+        .expect("transaction should fail the initial balance precheck");
+    assert!(
+        error_message.contains(&format!("has less than {}", baseline_motes)),
+        "{error_message}"
+    );
+
+    let state_root_hash =
+        state_root_hash_at(&test.fixture, Some(custom_payment_exec_info.block_height));
+    let bob_entity_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+    assert!(
+        get_entity_named_key(
+            &mut test.fixture,
+            state_root_hash,
+            bob_entity_addr,
+            created_session_key,
+        )
+        .is_none(),
+        "failed custom payment precheck must not execute session code"
+    );
+    assert!(
+        !handle_payment_refund_purse_is_set(
+            &test.fixture,
+            Some(custom_payment_exec_info.block_height)
+        ),
+        "failed custom payment precheck must not leave the handle-payment refund purse set"
+    );
 }
