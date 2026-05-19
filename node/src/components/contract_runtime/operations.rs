@@ -299,6 +299,33 @@ pub fn execute_finalized_block(
         let is_v1_wasm = transaction.is_v1_wasm();
         let is_v2_wasm = transaction.is_v2_wasm();
         let refund_purse_active = is_custom_payment;
+
+        {
+            // Ensure the initiator's main purse can cover the penalty payment before proceeding,
+            // and before any effects (e.g. SetRefundPurse for custom payment) are committed.
+            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
+                state_root_hash,
+                protocol_version,
+                initiator_addr.clone().into(),
+                balance_handling,
+                ProofHandling::NoProofs,
+            ));
+
+            if let Err(root_not_found) = artifact_builder
+                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
+            {
+                if root_not_found {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                trace!(%transaction_hash, "insufficient initial balance");
+                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
+                artifacts.push(artifact_builder.build());
+                // only reads have happened so far, and we can't charge due
+                // to insufficient balance, so move on with no effects committed
+                continue;
+            }
+        }
+
         if refund_purse_active {
             // if custom payment before doing any processing, initialize the initiator's main purse
             //  to be the refund purse for this transaction.
@@ -325,31 +352,6 @@ pub fn execute_finalized_block(
             }
             state_root_hash = scratch_state
                 .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
-        }
-
-        {
-            // Ensure the initiator's main purse can cover the penalty payment before proceeding.
-            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
-                state_root_hash,
-                protocol_version,
-                initiator_addr.clone().into(),
-                balance_handling,
-                ProofHandling::NoProofs,
-            ));
-
-            if let Err(root_not_found) = artifact_builder
-                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
-            {
-                if root_not_found {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                trace!(%transaction_hash, "insufficient initial balance");
-                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
-                artifacts.push(artifact_builder.build());
-                // only reads have happened so far, and we can't charge due
-                // to insufficient balance, so move on with no effects committed
-                continue;
-            }
         }
 
         let mut balance_identifier = {
