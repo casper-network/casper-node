@@ -65,18 +65,24 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::ForgedReference);
         }
 
-        let source_available_balance: U512 = match self.balance(purse)? {
+        let source_available_balance: U512 = match self.available_balance(purse)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::PurseNotFound),
         };
-
-        let new_balance = source_available_balance
-            .checked_sub(amount)
-            .unwrap_or_else(U512::zero);
+        let source_total_balance = self.total_balance(purse)?;
+        // The burned amount is capped at the available balance so a caller cannot consume motes
+        // currently held by a balance hold.
+        let burned_amount = if amount > source_available_balance {
+            source_available_balance
+        } else {
+            amount
+        };
+        // The new purse total balance must be computed from the *total* balance, not the
+        // available balance: otherwise any active hold on the purse is silently erased.
+        let new_balance = source_total_balance.saturating_sub(burned_amount);
         // change balance
         self.write_balance(purse, new_balance)?;
         // reduce total supply AFTER changing balance in case changing balance errors
-        let burned_amount = source_available_balance.saturating_sub(new_balance);
         detail::reduce_total_supply_unsafe(self, burned_amount)
     }
 
