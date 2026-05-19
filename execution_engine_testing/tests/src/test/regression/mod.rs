@@ -65,6 +65,7 @@ mod regression_20220224;
 mod regression_20220303;
 mod regression_20220727;
 mod regression_20240105;
+mod session_payment_purse_deposit;
 mod slow_input;
 pub(crate) mod test_utils;
 mod transfer_from_purse_balance_oracle;
