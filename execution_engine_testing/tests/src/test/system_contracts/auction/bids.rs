@@ -5145,6 +5145,73 @@ fn should_fail_bid_public_key_change_if_conflicting_validator_bid_exists() {
         if auction_error == AuctionError::ValidatorBidExistsAlready as u8));
 }
 
+/// Regression for audit-confirmed-65: `change_bid_public_key` must reject `PublicKey::System` as
+/// the replacement key. Otherwise a validator can move its active bid into a `ValidatorBid`
+/// whose `validator_public_key` is the reserved system identity, leaving bridge records pointing
+/// to `PublicKey::System` and polluting auction state.
+#[ignore]
+#[test]
+fn should_not_change_validator_bid_public_key_to_system() {
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    builder
+        .exec(validator_1_fund_request)
+        .commit()
+        .expect_success();
+    builder
+        .exec(validator_1_add_bid_request)
+        .commit()
+        .expect_success();
+
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_NEW_PUBLIC_KEY => PublicKey::System,
+        },
+    )
+    .build();
+
+    builder.exec(change_bid_public_key_request).commit();
+
+    if let Some(error) = builder.get_error() {
+        assert!(matches!(
+            error,
+            Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
+            if auction_error == AuctionError::InvalidPublicKey as u8
+        ));
+        return;
+    }
+
+    let bids = builder.get_bids();
+    assert!(
+        bids.validator_bid(&PublicKey::System).is_none(),
+        "validator bid was moved to the system public key"
+    );
+}
+
 #[ignore]
 #[test]
 fn should_change_validator_bid_public_key() {
