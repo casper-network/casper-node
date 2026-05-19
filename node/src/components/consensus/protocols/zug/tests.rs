@@ -75,8 +75,18 @@ fn create_signed_message(
     content: Content<ClContext>,
     keypair: &Keypair,
 ) -> SignedMessage<ClContext> {
-    let validator_idx = validators.get_index(keypair.public_key()).unwrap();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
+    create_signed_message_with_instance(validators, round_id, instance_id, content, keypair)
+}
+
+fn create_signed_message_with_instance(
+    validators: &Validators<PublicKey>,
+    round_id: RoundId,
+    instance_id: <ClContext as Context>::InstanceId,
+    content: Content<ClContext>,
+    keypair: &Keypair,
+) -> SignedMessage<ClContext> {
+    let validator_idx = validators.get_index(keypair.public_key()).unwrap();
     SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair)
 }
 
@@ -351,6 +361,107 @@ fn abc_weights(
         weights.iter().cloned().collect(),
     );
     (weights, validators)
+}
+
+#[test]
+fn rejects_nested_sync_response_signed_message_from_wrong_instance() {
+    let mut rng = crate::new_rng();
+    let (weights, validators) = abc_weights(60, 30, 10);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let mut zug = new_test_zug(weights, vec![], &[alice_idx]);
+    let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
+    let sender = *ALICE_NODE_ID;
+    let timestamp = Timestamp::from(100000);
+    let wrong_instance_id = ClContext::hash(&[42]);
+    assert_ne!(wrong_instance_id, *zug.instance_id());
+
+    let signed_msg = create_signed_message_with_instance(
+        &validators,
+        0,
+        wrong_instance_id,
+        vote(false),
+        &alice_kp,
+    );
+    let sync_id = zug.sent_sync_requests.create_and_register_new_id(&mut rng);
+    let msg = Message::SyncResponse(SyncResponse {
+        round_id: 0,
+        proposal_or_hash: None,
+        echo_sigs: BTreeMap::new(),
+        true_vote_sigs: BTreeMap::new(),
+        false_vote_sigs: BTreeMap::new(),
+        signed_messages: vec![signed_msg],
+        evidence: Vec::new(),
+        instance_id: *zug.instance_id(),
+        sync_id,
+    });
+
+    let outcomes = zug.handle_message(
+        &mut rng,
+        sender,
+        SerializedMessage::from_message(&msg),
+        timestamp,
+    );
+
+    assert!(
+        outcomes.contains(&ProtocolOutcome::Disconnect(sender)),
+        "expected wrong-instance signed message to disconnect the peer, got {outcomes:?}",
+    );
+    assert!(zug
+        .round(0)
+        .is_none_or(|round| round.votes(false)[alice_idx].is_none()));
+}
+
+#[test]
+fn rejects_nested_sync_response_evidence_from_wrong_instance() {
+    let mut rng = crate::new_rng();
+    let (weights, validators) = abc_weights(60, 30, 10);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let mut zug = new_test_zug(weights, vec![], &[alice_idx]);
+    let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
+    let sender = *ALICE_NODE_ID;
+    let timestamp = Timestamp::from(100000);
+    let wrong_instance_id = ClContext::hash(&[42]);
+    assert_ne!(wrong_instance_id, *zug.instance_id());
+
+    let signed_msg = create_signed_message_with_instance(
+        &validators,
+        0,
+        wrong_instance_id,
+        vote(true),
+        &alice_kp,
+    );
+    let contradicting_msg = create_signed_message_with_instance(
+        &validators,
+        0,
+        wrong_instance_id,
+        vote(false),
+        &alice_kp,
+    );
+    let sync_id = zug.sent_sync_requests.create_and_register_new_id(&mut rng);
+    let msg = Message::SyncResponse(SyncResponse {
+        round_id: 0,
+        proposal_or_hash: None,
+        echo_sigs: BTreeMap::new(),
+        true_vote_sigs: BTreeMap::new(),
+        false_vote_sigs: BTreeMap::new(),
+        signed_messages: Vec::new(),
+        evidence: vec![(signed_msg, vote(false), contradicting_msg.signature)],
+        instance_id: *zug.instance_id(),
+        sync_id,
+    });
+
+    let outcomes = zug.handle_message(
+        &mut rng,
+        sender,
+        SerializedMessage::from_message(&msg),
+        timestamp,
+    );
+
+    assert!(
+        outcomes.contains(&ProtocolOutcome::Disconnect(sender)),
+        "expected wrong-instance evidence to disconnect the peer, got {outcomes:?}",
+    );
+    assert!(!zug.faults.contains_key(&alice_idx));
 }
 
 /// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echoes
