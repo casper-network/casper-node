@@ -35,7 +35,7 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, Transaction, TransactionEntryPoint,
+    Motes, ProtocolVersion, PublicKey, RefundHandling, Transaction, TransactionEntryPoint,
     AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
@@ -426,9 +426,17 @@ pub fn execute_finalized_block(
                 );
 
                 if insufficient_payment_deposited || pay_result.error().is_some() {
-                    // Charge initiator for the penalty payment amount
-                    // the most expedient way to do this that aligns with later code
-                    // is to transfer from the initiator's main purse to the payment purse
+                    // Charge initiator for the failed-payment penalty. The transfer amount must
+                    // cover the gas burned by the failed payment Wasm (capped by the transaction
+                    // cost), with the baseline as the minimum so cheap failures still pay it.
+                    let consumed_payment_motes =
+                        Motes::from_gas(pay_result.consumed(), current_gas_price)
+                            .map(|m| m.value())
+                            .unwrap_or(U512::zero());
+                    let transaction_cost = artifact_builder.actual_cost();
+                    let penalty_amount = consumed_payment_motes
+                        .min(transaction_cost)
+                        .max(baseline_motes_amount);
                     let transfer_result = scratch_state.transfer(TransferRequest::new_indirect(
                         native_runtime_config.clone(),
                         state_root_hash,
@@ -440,7 +448,7 @@ pub fn execute_finalized_block(
                             None,
                             initiator_addr.clone().into(),
                             BalanceIdentifier::Payment,
-                            baseline_motes_amount,
+                            penalty_amount,
                             None,
                         ),
                     ));
@@ -462,7 +470,12 @@ pub fn execute_finalized_block(
                     // commit penalty payment effects
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, transfer_result.effects().clone())?;
+                    // Failed custom payment must still record the gas the payment Wasm burned,
+                    // so the eventual cost reflects the work the sender forced the validator to
+                    // perform; otherwise expensive payment work that underdeposits would pay
+                    // only the baseline penalty.
                     artifact_builder
+                        .with_added_consumed(pay_result.consumed())
                         .with_error_message(msg)
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
