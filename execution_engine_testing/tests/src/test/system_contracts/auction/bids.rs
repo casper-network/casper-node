@@ -34,10 +34,12 @@ use casper_types::{
         Error as AuctionError, UnbondKind, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
         ARG_DELEGATOR, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT,
         ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
-        ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE,
+        ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
+        METHOD_DISTRIBUTE,
     },
-    EntityAddr, EraId, GenesisAccount, GenesisValidator, HoldBalanceHandling, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, TransactionHash, DEFAULT_MINIMUM_BID_AMOUNT, U256, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, HoldBalanceHandling, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TransactionHash,
+    DEFAULT_MINIMUM_BID_AMOUNT, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -5209,6 +5211,110 @@ fn should_not_change_validator_bid_public_key_to_system() {
     assert!(
         bids.validator_bid(&PublicKey::System).is_none(),
         "validator bid was moved to the system public key"
+    );
+}
+
+/// Regression for audit-confirmed-77: when a validator raises `minimum_delegation_amount` and
+/// the resulting forced delegator unbond hits `DelegatorFundsLocked` (e.g. vesting table not yet
+/// initialized but era past validator lockout), the unbond record must not be written.
+/// Otherwise auction state holds a pending unbond against an unchanged locked delegator bid -
+/// the same motes are both still delegated and queued for release once the unbond matures.
+#[ignore]
+#[test]
+fn should_not_create_forced_unbond_for_locked_delegator_without_reducing_stake() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let validator_1 = GenesisAccount::account(
+            VALIDATOR_1.clone(),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE),
+                VALIDATOR_1_DELEGATION_RATE,
+            )),
+        );
+        let delegator_1 = GenesisAccount::delegator(
+            VALIDATOR_1.clone(),
+            DELEGATOR_1.clone(),
+            Motes::new(DELEGATOR_1_BALANCE),
+            Motes::new(DELEGATOR_1_STAKE),
+        );
+        tmp.push(validator_1);
+        tmp.push(delegator_1);
+        tmp
+    };
+
+    let run_genesis_request = {
+        let exec_config = GenesisConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
+
+        GenesisRequest::new(
+            DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
+    let chainspec = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
+
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
+    builder.run_genesis(run_genesis_request);
+
+    let boundary_update_time = EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS
+        + CASPER_VESTING_SCHEDULE_PERIOD_MILLIS
+        + WEEK_MILLIS;
+    let auction_named_keys =
+        builder.get_named_keys_for_system_contract(builder.get_auction_contract_hash());
+    let era_end_timestamp_key = *auction_named_keys
+        .get(ERA_END_TIMESTAMP_MILLIS_KEY)
+        .expect("auction should have era end timestamp key");
+    let era_end_timestamp_uref = era_end_timestamp_key
+        .as_uref()
+        .expect("era end timestamp should be stored under a uref");
+    let era_end_timestamp_value = CLValue::from_t(boundary_update_time)
+        .expect("era end timestamp should serialize to CLValue");
+    builder.write_data_and_commit(
+        [(
+            Key::URef(*era_end_timestamp_uref),
+            StoredValue::CLValue(era_end_timestamp_value),
+        )]
+        .into_iter(),
+    );
+
+    let forced_boundary_update = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            ARG_AMOUNT => U512::one(),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_MINIMUM_DELEGATION_AMOUNT => DELEGATOR_1_STAKE + 1,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DEFAULT_MAXIMUM_DELEGATION_AMOUNT,
+        },
+    )
+    .build();
+
+    builder
+        .exec(forced_boundary_update)
+        .commit()
+        .expect_success();
+
+    let bids = builder.get_bids();
+    let delegator = bids
+        .delegator_by_kind(&VALIDATOR_1, &DelegatorKind::PublicKey(DELEGATOR_1.clone()))
+        .expect("locked delegator bid should still exist");
+    assert_eq!(
+        delegator.staked_amount(),
+        U512::from(DELEGATOR_1_STAKE),
+        "locked delegator stake should not be reduced by the failed forced unbond"
+    );
+
+    let unbond_kind = UnbondKind::DelegatedPublicKey(DELEGATOR_1.clone());
+    assert!(
+        !builder.get_unbonds().contains_key(&unbond_kind),
+        "forced boundary update created an unbond record for a locked delegator without reducing stake"
     );
 }
 
