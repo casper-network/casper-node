@@ -354,6 +354,12 @@ pub fn execute_finalized_block(
                 .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
+        // For custom payment, track how much of the payment-purse balance is attributable to
+        // *this* transaction (success: full required amount; failure: penalty amount transferred
+        // from the initiator's main purse). The shared payment purse may already contain
+        // unrelated funds; without this cap, fee finalization treats those unrelated funds as
+        // available for this transaction and can settle them as proposer fee / burn / accumulate.
+        let mut custom_payment_unwind_amount: Option<U512> = None;
         let mut balance_identifier = {
             if is_standard_payment {
                 let contract_might_pay =
@@ -437,6 +443,7 @@ pub fn execute_finalized_block(
                     let penalty_amount = consumed_payment_motes
                         .min(transaction_cost)
                         .max(baseline_motes_amount);
+                    custom_payment_unwind_amount = Some(penalty_amount);
                     let transfer_result = scratch_state.transfer(TransferRequest::new_indirect(
                         native_runtime_config.clone(),
                         state_root_hash,
@@ -485,6 +492,7 @@ pub fn execute_finalized_block(
                     // commit successful effects
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, pay_result.effects().clone())?;
+                    custom_payment_unwind_amount = Some(artifact_builder.cost_to_use());
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -504,7 +512,18 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
+        // For custom payment, the *available* the artifact builder uses to derive cost/fee must
+        // be bounded by the amount this transaction itself put into the shared payment purse
+        // (`custom_payment_unwind_amount`), not the full post-payment purse balance. Otherwise a
+        // failed custom payment whose penalty is smaller than the transaction's payment_limit
+        // can settle pre-existing payment-purse funds as its own fee.
+        let post_payment_available = post_payment_balance_result.available_balance().copied();
+        let transaction_available = if is_custom_payment {
+            custom_payment_unwind_amount.or(post_payment_available)
+        } else {
+            post_payment_available
+        };
+        artifact_builder.with_available(transaction_available);
         let lane_id = transaction.transaction_lane();
 
         let allow_execution = {
