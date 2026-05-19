@@ -28,6 +28,7 @@ use casper_storage::{
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
+    tracking_copy::TrackingCopyEntityExt,
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
@@ -299,6 +300,52 @@ pub fn execute_finalized_block(
         let is_v1_wasm = transaction.is_v1_wasm();
         let is_v2_wasm = transaction.is_v2_wasm();
         let refund_purse_active = is_custom_payment;
+
+        // Authorize the declared initiator against the transaction's signer set *before* any
+        // payment / fee work happens. Otherwise a forged transaction (initiator = victim, signed
+        // by an unrelated key) reaches block execution, contract-runtime selects the victim as
+        // the standard-payment payer, the Wasm execution then fails with Authorization, and fee
+        // finalization charges the victim's main purse for the full declared payment amount.
+        let initiator_account_hash = initiator_addr.clone().account_hash();
+        if initiator_account_hash != PublicKey::System.to_account_hash() {
+            let administrative_accounts: std::collections::BTreeSet<
+                casper_types::account::AccountHash,
+            > = chainspec
+                .core_config
+                .administrators
+                .iter()
+                .map(|pk| pk.to_account_hash())
+                .collect();
+            let admin_signed = !administrative_accounts.is_empty()
+                && administrative_accounts
+                    .intersection(&authorization_keys)
+                    .next()
+                    .is_some();
+            if !admin_signed {
+                let mut tc = match scratch_state.tracking_copy(state_root_hash) {
+                    Ok(Some(tc)) => tc,
+                    Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+                    Err(err) => {
+                        return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
+                    }
+                };
+                let authorized = match tc
+                    .runtime_footprint_by_account_hash(protocol_version, initiator_account_hash)
+                {
+                    Ok((_addr, footprint)) => {
+                        footprint.can_authorize(&authorization_keys)
+                            && footprint.can_deploy_with(&authorization_keys)
+                    }
+                    Err(_) => false,
+                };
+                if !authorized {
+                    debug!(%transaction_hash, "forged-initiator authorization failure; skipping payment/fee");
+                    artifact_builder.with_error_message("Authorization failure".to_string());
+                    artifacts.push(artifact_builder.build());
+                    continue;
+                }
+            }
+        }
 
         {
             // Ensure the initiator's main purse can cover the penalty payment before proceeding,
