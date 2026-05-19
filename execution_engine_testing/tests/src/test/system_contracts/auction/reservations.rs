@@ -25,8 +25,9 @@ use casper_types::{
     system::auction::{
         BidsExt, DelegationRate, DelegatorKind, Error as AuctionError, Reservation,
         SeigniorageAllocation, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATORS,
-        ARG_ENTRY_POINT, ARG_NEW_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_RESERVATIONS, ARG_RESERVED_SLOTS,
-        ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT,
+        ARG_NEW_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_RESERVATIONS, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP,
+        ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
     ProtocolVersion, PublicKey, SecretKey, U512,
 };
@@ -983,6 +984,56 @@ fn should_distribute_rewards_with_reserved_slots() {
         Some(SeigniorageAllocation::DelegatorKind { delegator_kind: DelegatorKind::PublicKey(delegator_public_key), amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
     ));
+}
+
+/// Regression for audit-confirmed-64: an `add_bid` call that raises `minimum_delegation_amount`
+/// (forcing an existing under-minimum delegator into an unbond in the same execution) and at the
+/// same time sets `reserved_slots = 1` must be accepted - the freed delegator slot should make
+/// room for the new reservation. Without the fix the auction's reservation-slot validation does
+/// a prefix scan via the raw state reader, which doesn't see the same-execution prune of the
+/// freed delegator, so the bid is rejected with `ExceededReservationSlotsLimit`.
+#[test]
+fn should_reserve_slot_after_forced_delegator_unbond_in_same_add_bid_call() {
+    let mut builder = setup_accounts(1);
+    setup_validator_bid(&mut builder, 0);
+
+    let delegation_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+    builder.exec(delegation_request).expect_success().commit();
+
+    let update_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            ARG_AMOUNT => U512::from(1),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_MINIMUM_DELEGATION_AMOUNT => DEFAULT_MINIMUM_DELEGATION_AMOUNT + 1,
+            ARG_RESERVED_SLOTS => 1u32,
+        },
+    )
+    .build();
+
+    builder.exec(update_bid_request).expect_success().commit();
+
+    let bids = builder.get_bids();
+    assert!(
+        bids.delegator_by_kind(&VALIDATOR_1, &DelegatorKind::PublicKey(DELEGATOR_1.clone()))
+            .is_none(),
+        "delegator below the raised minimum should be fully unbonded"
+    );
+
+    let validator_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        .expect("validator bid should remain after updating delegation constraints");
+    assert_eq!(validator_bid.reserved_slots(), 1);
 }
 
 /// Regression for audit-confirmed-61: `change_bid_public_key` must migrate reservation bid
