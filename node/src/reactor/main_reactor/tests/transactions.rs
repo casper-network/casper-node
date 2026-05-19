@@ -6298,6 +6298,98 @@ async fn failed_custom_payment_charges_consumed_payment_gas() {
     );
 }
 
+/// Regression for audit-confirmed-85: a VM1 custom-payment transaction must not let custom
+/// payment and the following session each spend the full approved amount from the caller's main
+/// purse. The custom payment in this test transfers `payment_amount` from Bob's main purse into
+/// the system payment purse (consuming the approved spending limit), and the session then tries
+/// to transfer `payment_amount` again from the main purse into a fresh named purse. Without the
+/// fix the session sees a fresh full spending limit derived from the same `amount` runtime arg
+/// and the transaction debits Bob's main purse for `2 * payment_amount`.
+#[tokio::test]
+async fn custom_payment_and_session_share_spending_limit() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let payment_amount = U512::from(500_000_000_000u64);
+    let new_purse_name = "audit-85-overflow-purse";
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let payment_bytes =
+        std::fs::read(base_path.join("non_standard_payment.wasm")).expect("payment wasm");
+    let session_bytes = std::fs::read(base_path.join("transfer_main_purse_to_new_purse.wasm"))
+        .expect("session wasm");
+
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: payment_bytes.into(),
+            args: runtime_args! {
+                "amount" => payment_amount,
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: session_bytes.into(),
+            args: runtime_args! {
+                "amount" => payment_amount,
+                "destination" => new_purse_name.to_string(),
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+
+    let (_, bob_before, _) = test.get_balances(None);
+    let (_txn_hash, block_height, _exec_result) = test.send_transaction(custom_payment_txn).await;
+    let (_, bob_after, _) = test.get_balances(Some(block_height));
+
+    let caller_loss = bob_before.total.saturating_sub(bob_after.total);
+    // With the spending-limit reset bug, custom payment and session each transfer
+    // `payment_amount` out of Bob's main purse, so caller_loss > payment_amount * 2 - epsilon.
+    // The fixed runtime forwards the post-payment remaining spending limit into the session
+    // request, which surfaces as the session reverting with UnapprovedSpendingAmount (rolling
+    // back its main-purse debit); only the payment-phase transfer commits.
+    assert!(
+        caller_loss < payment_amount * U512::from(2u64),
+        "custom payment and session each spent the approved amount from the main purse: \
+         approved={payment_amount}, caller_loss={caller_loss}"
+    );
+}
+
 /// Regression for audit-confirmed-80: a failed custom-payment transaction must not be allowed
 /// to settle pre-existing shared payment-purse funds as its own fee. The repro seeds the shared
 /// payment purse with 100 motes via a normal session, then runs a failing custom-payment whose
