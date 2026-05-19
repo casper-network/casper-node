@@ -226,6 +226,12 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
+        // Mirror the zero-amount guard already applied to `add_bid` / `delegate`. Otherwise a
+        // zero withdraw would still persist a meaningless validator unbond era.
+        if amount.is_zero() {
+            return Err(Error::BondTooSmall);
+        }
+
         let validator_bid_addr = BidAddr::from(public_key.clone());
         let validator_bid_key = validator_bid_addr.into();
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
