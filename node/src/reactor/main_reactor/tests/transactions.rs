@@ -6128,3 +6128,71 @@ async fn native_burn_with_active_gas_hold_preserves_held_balance() {
         "native burn with an active gas hold removed more from the purse than the burned amount: before={bob_after_hold:?}, after={bob_after_burn:?}"
     );
 }
+
+/// Regression for audit-confirmed-35: V1 custom payment must not be executed with a gas budget
+/// independent of the transaction's declared payment-limited gas. Otherwise payment-phase Wasm
+/// can consume far more gas than the transaction limit (since cost is later capped at the limit),
+/// undercharging the sender while still using validator execution resources.
+#[tokio::test]
+async fn custom_payment_cannot_consume_more_than_transaction_limit() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("overlimit_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let payment_amount = 2_500_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+
+    assert!(
+        result.consumed <= result.limit,
+        "custom payment consumed more gas than the transaction limit: consumed={}, limit={}, cost={}, error={:?}",
+        result.consumed.value(),
+        result.limit.value(),
+        result.cost,
+        result.error_message,
+    );
+}
