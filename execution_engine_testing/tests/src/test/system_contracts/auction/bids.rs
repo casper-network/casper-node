@@ -5212,6 +5212,141 @@ fn should_not_change_validator_bid_public_key_to_system() {
     );
 }
 
+/// Regression for audit-confirmed-72: during reward distribution, when a reward map entry uses
+/// the *old* (pre-rotation) validator key and the resolved delegator reward pushes the delegator
+/// above the validator's `maximum_delegation_amount`, the queued automatic undelegation for the
+/// overage must use the *current* validator key. Otherwise `undelegate` later looks for the bid
+/// under the stale bridged key and fails with `ValidatorNotFound`, blocking the whole
+/// distribution call.
+#[ignore]
+#[test]
+fn bridged_validator_delegator_reward_over_max_unbonds_from_current_bid() {
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_NEW_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone()
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    for request in [
+        system_fund_request,
+        validator_1_fund_request,
+        validator_2_fund_request,
+        delegator_1_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+    ] {
+        builder.exec(request).commit().expect_success();
+    }
+
+    builder.advance_eras_by_default_auction_delay();
+    builder
+        .exec(change_bid_public_key_request)
+        .commit()
+        .expect_success();
+
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+    let total_payout = builder.base_round_reward(None, protocol_version);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), vec![total_payout]);
+    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *SYSTEM_ADDR,
+        builder.get_auction_contract_hash(),
+        METHOD_DISTRIBUTE,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARDS_MAP => rewards
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request).commit();
+
+    if let Some(error) = builder.get_error() {
+        panic!("bridged validator delegator reward overage failed to unbond from the current bid: {error}");
+    }
+
+    let delegator_kind = DelegatorKind::PublicKey(BID_ACCOUNT_1_PK.clone());
+    let delegator = builder
+        .get_bids()
+        .delegator_by_kind(&NON_FOUNDER_VALIDATOR_2_PK, &delegator_kind)
+        .expect("delegator should remain under the current validator key");
+    assert_eq!(
+        delegator.staked_amount(),
+        U512::from(DELEGATE_AMOUNT_1),
+        "delegator reward overage was not unbonded from the current validator bid"
+    );
+}
+
 /// Regression for audit-confirmed-68: a `run_auction` with the *old* (pre-rotation) validator
 /// public key in `evicted_validators` must still deactivate the active bridged bid that lives
 /// under the new key. Without the fix the eviction was silently ignored because `run_auction`
