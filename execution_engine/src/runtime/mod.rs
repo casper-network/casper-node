@@ -3707,6 +3707,7 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, ExecError> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+        self.context.validate_uref(&source)?;
         let target_key = Key::Account(target);
 
         // Look up the account at the given key
