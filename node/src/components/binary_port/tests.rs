@@ -6,12 +6,13 @@ use rand::Rng;
 use serde::Serialize;
 
 use casper_binary_port::{
-    BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest, RecordId,
+    BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest, KeyPrefix,
+    RecordId,
 };
 
 use casper_types::{
-    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
-    TransactionV1,
+    BlockHeader, Digest, EntityAddr, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp,
+    Transaction, TransactionV1,
 };
 
 use crate::{
@@ -147,6 +148,39 @@ async fn should_return_error_for_disabled_functions() {
         };
         assert_eq!(result.error_code(), EXPECTED_ERROR_CODE as u16)
     }
+}
+
+/// Regression for audit-confirmed-04: `ItemsByPrefix` must be gated behind
+/// `allow_request_get_all_values` (default-deny), matching `AllItems`. Without the gate a remote
+/// caller can drive the node to materialize/serialize an unbounded prefix result before the
+/// outgoing message-size check rejects the response.
+#[tokio::test]
+async fn should_reject_items_by_prefix_when_all_values_disabled() {
+    let mut rng = TestRng::new();
+
+    let test_case = TestCase {
+        allow_request_get_all_values: DISABLED,
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: rng.gen(),
+        request_generator: Either::Left(|_| items_by_prefix_request()),
+    };
+
+    let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
+
+    let result = tokio::select! {
+        result = receiver => result.expect("expected successful response"),
+        _ = runner.crank_until(
+            &mut rng,
+            got_contract_runtime_request,
+            Duration::from_secs(10),
+        ) => {
+            panic!(
+                "expected ItemsByPrefix to be rejected with FunctionDisabled before any \
+                 contract-runtime request was enqueued",
+            )
+        }
+    };
+    assert_eq!(result.error_code(), ErrorCode::FunctionDisabled as u16);
 }
 
 #[tokio::test]
@@ -423,6 +457,16 @@ fn all_values_request() -> Command {
         Some(state_identifier),
         GlobalStateEntityQualifier::AllItems {
             key_tag: KeyTag::Account,
+        },
+    ))))
+}
+
+fn items_by_prefix_request() -> Command {
+    let state_identifier = GlobalStateIdentifier::StateRootHash(Digest::hash([1u8; 32]));
+    Command::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+        Some(state_identifier),
+        GlobalStateEntityQualifier::ItemsByPrefix {
+            key_prefix: KeyPrefix::MessagesByEntity(EntityAddr::SmartContract([7u8; 32])),
         },
     ))))
 }
