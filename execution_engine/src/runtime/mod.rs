@@ -4442,6 +4442,10 @@ where
         }
 
         let dictionary_key = self.key_from_mem(key_ptr, key_size)?;
+        if !dictionary_key.is_dictionary_key() {
+            return Ok(Err(ApiError::UnexpectedKeyVariant));
+        }
+
         let cl_value = match self.context.dictionary_read(dictionary_key)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
