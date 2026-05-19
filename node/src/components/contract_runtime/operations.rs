@@ -390,9 +390,13 @@ pub fn execute_finalized_block(
             } else if is_custom_payment {
                 // this is the custom payment flow
                 // the initiating account will pay, but wants to do so with a different purse or
-                // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                let custom_payment_gas_limit =
-                    Gas::new(chainspec.transaction_config.native_transfer_minimum_motes * 5);
+                // in a custom way. If anything goes wrong, penalize the sender, do not execute.
+                //
+                // Custom payment execution must be bounded by the transaction's declared
+                // payment-limited gas budget, not an unrelated constant. Otherwise payment-phase
+                // Wasm can spend significantly more gas than the transaction limit while cost is
+                // later capped at the limit, undercharging the sender.
+                let custom_payment_gas_limit = artifact_builder.gas_limit();
                 let pay_result = match WasmV1Request::new_custom_payment(
                     BlockInfo::new(
                         state_root_hash,
