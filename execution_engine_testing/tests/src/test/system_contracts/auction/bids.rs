@@ -5212,6 +5212,80 @@ fn should_not_change_validator_bid_public_key_to_system() {
     );
 }
 
+/// Regression for audit-confirmed-67: a zero-amount `withdraw_bid` must not create a validator
+/// unbond entry. Without the fix the call goes through, decreases stake by zero, and still
+/// commits a zero-value unbond era.
+#[ignore]
+#[test]
+fn should_not_create_zero_amount_validator_unbond() {
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let zero_withdraw_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_WITHDRAW_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::zero(),
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    builder
+        .exec(validator_1_fund_request)
+        .commit()
+        .expect_success();
+    builder
+        .exec(validator_1_add_bid_request)
+        .commit()
+        .expect_success();
+
+    builder.exec(zero_withdraw_bid_request).commit();
+
+    if let Some(error) = builder.get_error() {
+        assert!(matches!(
+            error,
+            Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
+            if auction_error == AuctionError::BondTooSmall as u8
+        ));
+        return;
+    }
+
+    let unbond_kind = UnbondKind::Validator(NON_FOUNDER_VALIDATOR_1_PK.clone());
+    let has_zero_unbond = builder
+        .get_unbonds()
+        .get(&unbond_kind)
+        .into_iter()
+        .flat_map(|unbonds| unbonds.iter())
+        .flat_map(|unbond| unbond.eras().iter())
+        .any(|era| era.amount().is_zero());
+
+    assert!(
+        !has_zero_unbond,
+        "zero-amount withdraw_bid created a validator unbond entry"
+    );
+}
+
 #[ignore]
 #[test]
 fn should_change_validator_bid_public_key() {
