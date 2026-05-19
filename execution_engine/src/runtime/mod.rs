@@ -1371,6 +1371,12 @@ where
             let transfers = self.context.transfers_mut();
             runtime.context.transfers().clone_into(transfers);
         }
+        // Propagate the child auction runtime's reduced remaining spending limit back to the
+        // parent context (mirroring `call_host_mint` and `execute_contract`). Without this a
+        // session that calls auction `add_bid` / `delegate` multiple times would receive the
+        // original approved amount on every call, letting it spend more than `amount` approved.
+        self.context
+            .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
 
         Ok(ret)
     }
