@@ -654,7 +654,10 @@ pub trait Auction:
 
         let total = {
             let mut ret = U512::zero();
-            for rewards_vec in rewards.values() {
+            for (public_key, rewards_vec) in rewards.iter() {
+                if public_key == &PublicKey::System {
+                    continue;
+                }
                 for reward in rewards_vec {
                     ret += *reward
                 }
