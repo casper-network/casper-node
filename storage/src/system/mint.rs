@@ -77,6 +77,24 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         } else {
             amount
         };
+
+        // Apply the transaction's approved-spending-limit cap to mint burn from the caller's main
+        // purse, mirroring `Mint::transfer`. Without this check a non-system caller could burn
+        // arbitrarily large amounts from its own main purse with a tiny transaction
+        // `amount`, turning burn into an uncapped debit path that bypasses the spending limit.
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            let main_purse_addr = match self.get_main_purse() {
+                None => return Err(Error::InvalidURef),
+                Some(uref) => uref.addr(),
+            };
+            if main_purse_addr == purse.addr() {
+                if burned_amount > self.get_approved_spending_limit() {
+                    return Err(Error::UnapprovedSpendingAmount);
+                }
+                self.sub_approved_spending_limit(burned_amount);
+            }
+        }
+
         // The new purse total balance must be computed from the *total* balance, not the
         // available balance: otherwise any active hold on the purse is silently erased.
         let new_balance = source_total_balance.saturating_sub(burned_amount);
