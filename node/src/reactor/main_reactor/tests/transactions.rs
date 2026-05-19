@@ -6196,3 +6196,104 @@ async fn custom_payment_cannot_consume_more_than_transaction_limit() {
         result.error_message,
     );
 }
+
+/// Regression for audit-confirmed-51: a failed-custom-payment transaction must include the gas
+/// consumed by the payment Wasm in `consumed` and charge for it. Without the fix expensive
+/// payment work that underdeposits records `consumed = 0` and only the baseline penalty cost is
+/// charged, letting senders burn unaccounted gas.
+#[tokio::test]
+async fn failed_custom_payment_charges_consumed_payment_gas() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("underpaying_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let bob_before = get_balance(&test.fixture, &BOB_PUBLIC_KEY, None, true)
+        .total_balance()
+        .copied()
+        .expect("Bob should have a balance");
+
+    let payment_amount = 20_000_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .expect("custom payment should fail")
+            .starts_with("Insufficient custom payment"),
+        "{:?}",
+        result.error_message
+    );
+
+    let baseline_motes = test.chainspec().core_config.baseline_motes_amount_u512();
+    assert!(
+        result.consumed.value() > baseline_motes,
+        "failed custom payment recorded only {} consumed gas after expensive payment work; baseline={}, cost={}, limit={}, error={:?}",
+        result.consumed.value(),
+        baseline_motes,
+        result.cost,
+        result.limit.value(),
+        result.error_message,
+    );
+    assert_eq!(
+        result.cost,
+        result.consumed.value(),
+        "failed custom payment charged {} despite consuming {} gas",
+        result.cost,
+        result.consumed.value(),
+    );
+
+    let bob_after = get_balance(&test.fixture, &BOB_PUBLIC_KEY, Some(block_height), true)
+        .total_balance()
+        .copied()
+        .expect("Bob should have a balance");
+    assert_eq!(
+        bob_before - bob_after,
+        result.cost,
+        "payer balance delta should match charged failed-payment gas"
+    );
+}
