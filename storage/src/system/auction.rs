@@ -1051,6 +1051,25 @@ pub trait Auction:
             self.prune_bid(delegator_bid_addr);
         }
 
+        debug!("transferring reservation bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
+        let reservations = detail::read_reservation_bids(self, &public_key)?;
+        for mut reservation in reservations {
+            let reservation_bid_addr =
+                BidAddr::new_reservation_kind(&public_key, reservation.delegator_kind());
+
+            reservation.with_validator_public_key(new_public_key.clone());
+            let new_reservation_bid_addr =
+                BidAddr::new_reservation_kind(&new_public_key, reservation.delegator_kind());
+
+            self.write_bid(
+                new_reservation_bid_addr.into(),
+                BidKind::Reservation(Box::new(reservation)),
+            )?;
+
+            debug!("pruning reservation bid {reservation_bid_addr}");
+            self.prune_bid(reservation_bid_addr);
+        }
+
         Ok(())
     }
 
