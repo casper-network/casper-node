@@ -3861,6 +3861,7 @@ where
                 Err(error) => return Ok(Err(error.into())),
             }
         };
+        self.context.validate_uref(&purse)?;
 
         let balance = match self.available_balance(purse)? {
             Some(balance) => balance,
