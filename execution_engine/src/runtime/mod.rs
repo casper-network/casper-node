@@ -4025,14 +4025,12 @@ where
             None => return Ok(Err(ApiError::MissingArgument)),
         };
 
-        if arg.inner_bytes().len() > output_size {
+        let arg_bytes = arg.inner_bytes();
+        if arg_bytes.len() > output_size {
             return Ok(Err(ApiError::OutOfMemory));
         }
 
-        if let Err(error) = self
-            .try_get_memory()?
-            .set(output_ptr, &arg.inner_bytes()[..output_size])
-        {
+        if let Err(error) = self.try_get_memory()?.set(output_ptr, arg_bytes) {
             return Err(ExecError::Interpreter(error.into()).into());
         }
 
