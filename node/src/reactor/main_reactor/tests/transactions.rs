@@ -7,13 +7,14 @@ use casper_storage::data_access_layer::{
     AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
     BalanceIdentifierPurseResult, ProofHandling, QueryRequest, QueryResult,
 };
+use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeyAddr,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
-    AccessRights, AddressableEntity, Digest, EntityAddr, ExecutableDeployItem, ExecutionInfo,
-    Phase, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
+    AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, ExecutableDeployItem,
+    ExecutionInfo, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -565,6 +566,51 @@ fn state_root_hash_at(fixture: &TestFixture, block_height: Option<u64>) -> Diges
         .expect("failure to read block header")
         .expect("should have header");
     *block_header.state_root_hash()
+}
+
+fn seed_payment_purse_balance_at_tip(fixture: &mut TestFixture, amount: U512) {
+    let protocol_version = fixture.chainspec.protocol_version();
+
+    for runner in fixture.network.runners_mut() {
+        let reactor = runner.reactor_mut().inner_mut().inner_mut();
+        let highest_block = reactor
+            .storage()
+            .read_highest_block()
+            .expect("highest block should exist");
+        let state_root_hash = *highest_block.state_root_hash();
+        let data_access_layer = reactor.contract_runtime().data_access_layer();
+        let payment_purse_addr =
+            match data_access_layer.balance_purse(BalanceIdentifierPurseRequest::new(
+                state_root_hash,
+                protocol_version,
+                BalanceIdentifier::Payment,
+            )) {
+                BalanceIdentifierPurseResult::Success { purse_addr } => purse_addr,
+                other => panic!("payment purse should exist: {other:?}"),
+            };
+
+        let seeded_state_root_hash = data_access_layer
+            .commit_values(
+                state_root_hash,
+                vec![(
+                    Key::Balance(payment_purse_addr),
+                    StoredValue::CLValue(
+                        CLValue::from_t(amount).expect("seeded amount is CLValue"),
+                    ),
+                )],
+                BTreeSet::new(),
+            )
+            .expect("payment purse seed should commit");
+
+        reactor.contract_runtime.set_initial_state(
+            crate::components::contract_runtime::ExecutionPreState::new(
+                highest_block.height() + 1,
+                seeded_state_root_hash,
+                *highest_block.hash(),
+                *highest_block.accumulated_seed(),
+            ),
+        );
+    }
 }
 
 fn get_payment_purse_balance(
@@ -6531,7 +6577,7 @@ async fn custom_payment_and_session_share_spending_limit() {
 
 /// Regression for audit-confirmed-80: a failed custom-payment transaction must not be allowed
 /// to settle pre-existing shared payment-purse funds as its own fee. The repro seeds the shared
-/// payment purse with 100 motes via a normal session, then runs a failing custom-payment whose
+/// payment purse with 100 motes directly in test state, then runs a failing custom-payment whose
 /// `payment_amount` exceeds the actual consumed payment gas. Asserts the 100 seeded motes are
 /// still in the payment purse afterwards. Without the fix `fee_amount` was derived from the full
 /// post-payment purse balance, so fee finalization (PayToProposer / Burn / Accumulate) could
@@ -6555,57 +6601,14 @@ async fn failed_custom_payment_must_not_settle_preexisting_payment_purse_balance
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
+    let seeded_amount = U512::from(100u64);
+    seed_payment_purse_balance_at_tip(&mut test.fixture, seeded_amount);
+
     let base_path = RESOURCES_PATH
         .join("..")
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release");
-
-    let seeded_amount = U512::from(100u64);
-    let seed_payment_purse_bytes = Bytes::from(
-        std::fs::read(base_path.join("get_phase_payment.wasm"))
-            .expect("cannot read get-phase-payment module bytes"),
-    );
-    let mut seed_txn = Transaction::from(
-        TransactionV1Builder::new_session(
-            true,
-            seed_payment_purse_bytes,
-            TransactionRuntimeParams::VmCasperV1,
-        )
-        .with_chain_name(CHAIN_NAME)
-        .with_pricing_mode(PricingMode::PaymentLimited {
-            payment_amount: 2_500_000_000u64,
-            gas_price_tolerance: MIN_GAS_PRICE,
-            standard_payment: true,
-        })
-        .with_initiator_addr(ALICE_PUBLIC_KEY.clone())
-        .with_runtime_args(runtime_args! {
-            "phase" => Phase::Session,
-            "amount" => seeded_amount,
-        })
-        .build()
-        .unwrap(),
-    );
-    seed_txn.sign(&ALICE_SECRET_KEY);
-
-    let (_txn_hash, seed_block_height, seed_result) = test.send_transaction(seed_txn).await;
-    // After the audit-082 fix the seeding session itself cannot resolve the system payment
-    // purse, so this repro path is unreachable. Treat that as the desired behaviour and bail
-    // out early so the test still passes; the original audit-080 attack only applies if the
-    // session-side phase guard is broken.
-    if !exec_result_is_success(&seed_result) {
-        return;
-    }
-
-    let seeded_payment_purse_balance =
-        get_payment_purse_balance(&mut test.fixture, Some(seed_block_height));
-    if *seeded_payment_purse_balance
-        .total_balance()
-        .expect("should have total balance")
-        != seeded_amount
-    {
-        return;
-    }
 
     let underpaying_payment_bytes = Bytes::from(
         std::fs::read(base_path.join("underpaying_custom_payment.wasm"))
