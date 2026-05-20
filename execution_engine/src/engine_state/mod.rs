@@ -68,6 +68,7 @@ impl ExecutionEngineV1 {
             args,
             authorization_keys,
             phase,
+            is_speculative,
         } = wasm_v1_request;
         // NOTE to core engineers: it is intended for the EE to ONLY execute wasm targeting the
         // casper v1 virtual machine. it should not handle native behavior, database / global state
@@ -94,6 +95,7 @@ impl ExecutionEngineV1 {
                 account_hash,
                 &authorization_keys,
                 &self.config().administrative_accounts,
+                is_speculative,
             ) {
                 Ok((runtime_footprint, entity_hash)) => (runtime_footprint, entity_hash),
                 Err(tce) => {
@@ -142,6 +144,7 @@ impl ExecutionEngineV1 {
         args: RuntimeArgs,
         authorization_keys: BTreeSet<AccountHash>,
         phase: Phase,
+        is_speculative: bool,
     ) -> WasmV1Result
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -161,6 +164,7 @@ impl ExecutionEngineV1 {
                 account_hash,
                 &authorization_keys,
                 &self.config().administrative_accounts,
+                is_speculative,
             ) {
                 Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
                 Err(tce) => {

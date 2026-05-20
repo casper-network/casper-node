@@ -59,12 +59,14 @@ pub trait TrackingCopyEntityExt<R> {
     ) -> Result<(EntityAddr, RuntimeFootprint), Self::Error>;
 
     /// Get runtime information for an account if authorized, else error.
+    /// When `is_speculative` is true the authorization key checks are skipped
     fn authorized_runtime_footprint_by_account(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        is_speculative: bool,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error>;
 
     /// Returns runtime information and access rights if authorized, else error.
@@ -74,6 +76,7 @@ pub trait TrackingCopyEntityExt<R> {
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        is_speculative: bool,
     ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
 
     /// Returns runtime information for systemic functionality.
@@ -387,9 +390,14 @@ where
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        is_speculative: bool,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error> {
         let (entity_addr, footprint) =
             self.runtime_footprint_by_account_hash(protocol_version, account_hash)?;
+
+        if is_speculative {
+            return Ok((footprint, entity_addr));
+        }
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
@@ -420,6 +428,7 @@ where
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
+        is_speculative: bool,
     ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
         if initiating_address == PublicKey::System.to_account_hash() {
             return self.system_entity_runtime_footprint(protocol_version);
@@ -430,6 +439,7 @@ where
             initiating_address,
             authorization_keys,
             administrative_accounts,
+            is_speculative,
         )?;
         let access_rights = footprint.extract_access_rights(entity_addr.value());
         Ok((entity_addr, footprint, access_rights))

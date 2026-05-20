@@ -350,6 +350,8 @@ pub struct WasmV1Request {
     pub authorization_keys: BTreeSet<AccountHash>,
     /// Execution phase.
     pub phase: Phase,
+    /// Is speculative execution
+    pub is_speculative: bool,
 }
 
 impl WasmV1Request {
@@ -414,6 +416,7 @@ impl WasmV1Request {
             entry_point: executable_info.entry_point().clone(),
             args: executable_info.args().clone(),
             phase: executable_info.phase(),
+            is_speculative: false,
         }
     }
 
@@ -435,6 +438,22 @@ impl WasmV1Request {
             authorization_keys,
             session_info,
         ))
+    }
+
+    /// Creates a new request from a transaction for use as the session code in speculative
+    /// execution flows.
+    pub fn new_session_speculative(
+        block_info: BlockInfo,
+        gas_limit: Gas,
+        session_input_data: &SessionInputData,
+    ) -> Result<Self, InvalidRequest> {
+        match Self::new_session(block_info, gas_limit, session_input_data) {
+            Ok(mut request) => {
+                request.is_speculative = true;
+                Ok(request)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Creates a new request from a transaction for use as custom payment.

@@ -35,7 +35,7 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, Transaction, TransactionEntryPoint,
+    ProtocolVersion, PublicKey, RefundHandling, TimeDiff, Transaction, TransactionEntryPoint,
     AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
@@ -1353,6 +1353,11 @@ where
         return SpeculativeExecutionResult::invalid_transaction(error);
     }
     let transaction = maybe_transaction.unwrap();
+    if let Err(error) =
+        transaction.is_config_compliant(chainspec, TimeDiff::ZERO, transaction.timestamp())
+    {
+        return SpeculativeExecutionResult::invalid_transaction(error);
+    }
     let state_root_hash = block_header.state_root_hash();
     let parent_block_hash = block_header.block_hash();
     let block_height = block_header.height();
@@ -1406,20 +1411,45 @@ where
                 execution_engine_v1.config().protocol_version(),
             );
             let session_input_data = transaction.to_session_input_data();
-            let wasm_v1_result =
-                match WasmV1Request::new_session(block_info, gas_limit, &session_input_data) {
-                    Ok(wasm_v1_request) => {
-                        execution_engine_v1.execute(state_provider, wasm_v1_request)
-                    }
-                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-                };
+            let wasm_v1_result = match WasmV1Request::new_session_speculative(
+                block_info,
+                gas_limit,
+                &session_input_data,
+            ) {
+                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+                Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+            };
             SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
                 wasm_v1_result,
                 block_header.block_hash(),
             )))
         }
+    } else if transaction.is_wasm() {
+        let block_info = BlockInfo::new(
+            *state_root_hash,
+            block_time.into(),
+            parent_block_hash,
+            block_height,
+            execution_engine_v1.config().protocol_version(),
+        );
+        let session_input_data = transaction.to_session_input_data();
+        let wasm_v1_result = match WasmV1Request::new_session_speculative(
+            block_info,
+            gas_limit,
+            &session_input_data,
+        ) {
+            Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+            Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+        };
+        SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
+            wasm_v1_result,
+            block_header.block_hash(),
+        )))
     } else {
-        SpeculativeExecutionResult::ReceivedV1Transaction
+        // TODO: placeholder error
+        SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::CannotCalculateFieldsHash,
+        ))
     }
 }
 

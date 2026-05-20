@@ -856,16 +856,6 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
-        // If this has been received from the speculative exec server, we just want to call the
-        // responder and finish.  Otherwise store the transaction and announce it if required.
-        if let Source::SpeculativeExec = event_metadata.source {
-            if let Some(responder) = event_metadata.maybe_responder {
-                return responder.respond(Ok(())).ignore();
-            }
-            error!("speculative exec source should always have a responder");
-            return Effects::new();
-        }
-
         effect_builder
             .put_transaction_to_storage(event_metadata.transaction.clone())
             .event(move |is_new| Event::PutToStorageResult {

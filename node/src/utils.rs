@@ -260,8 +260,6 @@ pub(crate) enum Source {
     Peer(NodeId),
     /// A client.
     Client,
-    /// A client via the speculative_exec server.
-    SpeculativeExec,
     /// This node.
     Ourself,
 }
@@ -270,7 +268,7 @@ impl Source {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_client(&self) -> bool {
         match self {
-            Source::Client | Source::SpeculativeExec => true,
+            Source::Client => true,
             Source::PeerGossiped(_) | Source::Peer(_) | Source::Ourself => false,
         }
     }
@@ -279,7 +277,7 @@ impl Source {
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
             Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
-            Source::Client | Source::SpeculativeExec | Source::Ourself => None,
+            Source::Client | Source::Ourself => None,
         }
     }
 }
@@ -291,7 +289,6 @@ impl Display for Source {
                 Display::fmt(node_id, formatter)
             }
             Source::Client => write!(formatter, "client"),
-            Source::SpeculativeExec => write!(formatter, "client (speculative exec)"),
             Source::Ourself => write!(formatter, "ourself"),
         }
     }

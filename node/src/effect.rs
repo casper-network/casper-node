@@ -857,7 +857,6 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-        is_speculative: bool,
     ) -> Result<(), transaction_acceptor::Error>
     where
         REv: From<AcceptTransactionRequest>,
@@ -865,7 +864,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
-                is_speculative,
                 responder,
             },
             QueueKind::Api,

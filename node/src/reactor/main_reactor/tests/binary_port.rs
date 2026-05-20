@@ -14,7 +14,7 @@ use casper_binary_port::{
     GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
     InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    Uptime, ValueWithProof,
+    SpeculativeExecutionResult, Uptime, ValueWithProof,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -25,13 +25,13 @@ use casper_types::{
     execution::{Effects, TransformKindV2, TransformV2},
     system::auction::DelegatorKind,
     testing::TestRng,
-    Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
-    BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
-    ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
-    EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, Transfer, URef, U512,
+    Account, AddressableEntity, AddressableEntityHash, AvailableBlockRange, Block, BlockHash,
+    BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode,
+    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes,
+    Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest,
+    EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade,
+    Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey,
+    StoredValue, Transaction, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -463,6 +463,13 @@ async fn binary_port_component_handles_all_requests() {
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
         try_spec_exec_invalid(&mut rng),
+        spec_exec_v1_session_signed(&secret_signing_key),
+        spec_exec_v1_session_garbage_bytes(&secret_signing_key),
+        spec_exec_v1_session_install_upgrade(&secret_signing_key),
+        spec_exec_v1_native_rejected(&secret_signing_key),
+        spec_exec_v1_stored_not_found(&secret_signing_key, &mut rng),
+        spec_exec_v1_wrong_chain_name(&mut rng),
+        spec_exec_v1_unsigned_executed(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, effects.pre_migration_account_hash),
@@ -1353,6 +1360,197 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
         name: "try_spec_exec_invalid",
         request: Command::TrySpeculativeExec { transaction },
         asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
+    }
+}
+
+fn assert_spec_exec_result<F>(response: &BinaryResponse, check: F) -> bool
+where
+    F: FnOnce(SpeculativeExecutionResult) -> bool,
+{
+    assert_response::<SpeculativeExecutionResult, F>(
+        response,
+        Some(ResponseType::SpeculativeExecutionResult),
+        check,
+    )
+}
+
+// Minimal valid WASM module `(module)` — parses but has no "call" entry point.
+const MINIMAL_WASM: &[u8] = &[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+// Bytes that are not valid WASM at all.
+const GARBAGE_BYTES: &[u8] = &[0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe];
+
+/// V1 Session wasm, signed, valid wasm bytes — routes to the EE; the wasm has
+/// no "call" entry point so execution fails, but a SpeculativeExecutionResult
+/// is returned rather than an error code.
+fn spec_exec_v1_session_signed(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(MINIMAL_WASM),
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_session_signed",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            assert_spec_exec_result(response, |result| result.error().is_some())
+        }),
+    }
+}
+
+/// V1 Session wasm, signed, garbage bytes — EE rejects the wasm but still
+/// returns a SpeculativeExecutionResult.
+fn spec_exec_v1_session_garbage_bytes(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(GARBAGE_BYTES),
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_session_garbage_bytes",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            assert_spec_exec_result(response, |result| result.error().is_some())
+        }),
+    }
+}
+
+/// V1 Session wasm with is_install_upgrade=true — same routing as a regular
+/// session; must return SpeculativeExecutionResult.
+fn spec_exec_v1_session_install_upgrade(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_session(
+            true,
+            Bytes::from(MINIMAL_WASM),
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_session_install_upgrade",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            assert_spec_exec_result(response, |result| result.error().is_some())
+        }),
+    }
+}
+
+/// V1 Native transfer — is_wasm() == false, so speculatively_execute returns
+/// InvalidTransaction(CannotCalculateFieldsHash); the response must carry an
+/// error code and no SpeculativeExecutionResult payload.
+fn spec_exec_v1_native_rejected(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_transfer(
+            U512::from(1_000_000_000u64),
+            None,
+            casper_types::TransferTarget::AccountHash(AccountHash([1u8; 32])),
+            None::<u64>,
+        )
+        .unwrap()
+        .with_chain_name("casper-example")
+        .with_secret_key(key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_native_rejected",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            !validate_metadata(response, Some(ResponseType::SpeculativeExecutionResult))
+                && response.error_code() != ErrorCode::NoError as u16
+        }),
+    }
+}
+
+/// V1 Stored target pointing at a non-existent entity — is_wasm() == true, so
+/// the request reaches the EE; the EE fails when the entity is not found, but
+/// the response is still a SpeculativeExecutionResult.
+fn spec_exec_v1_stored_not_found(key: &SecretKey, rng: &mut TestRng) -> TestCase {
+    let missing_hash: [u8; 32] = rng.gen();
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_targeting_invocable_entity(
+            AddressableEntityHash::new(missing_hash),
+            "call",
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_stored_not_found",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            assert_spec_exec_result(response, |result| result.error().is_some())
+        }),
+    }
+}
+
+/// V1 Session wasm with the wrong chain name, signed with a fresh key.
+/// The pre-flight acceptor call was removed, so chain name is no longer
+/// validated before execution. The transaction reaches the EE (where it fails
+/// because the account is absent from state) and returns SpeculativeExecutionResult.
+fn spec_exec_v1_wrong_chain_name(rng: &mut TestRng) -> TestCase {
+    let key = SecretKey::random(rng);
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(MINIMAL_WASM),
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("wrong-chain")
+        .with_secret_key(&key)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_wrong_chain_name",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            !validate_metadata(response, Some(ResponseType::SpeculativeExecutionResult))
+                && response.error_code() != ErrorCode::NoError as u16
+        }),
+    }
+}
+
+/// V1 Session wasm, unsigned — speculative execution skips approval verification,
+/// so the transaction reaches the EE and returns a SpeculativeExecutionResult
+/// (with an execution error, same as the signed variant).
+fn spec_exec_v1_unsigned_executed(rng: &mut TestRng) -> TestCase {
+    let key = SecretKey::random(rng);
+    let initiator = casper_types::InitiatorAddr::PublicKey(PublicKey::from(&key));
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(MINIMAL_WASM),
+            casper_types::TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("casper-example")
+        .with_initiator_addr(initiator)
+        .build()
+        .unwrap(),
+    );
+    TestCase {
+        name: "spec_exec_v1_unsigned_executed",
+        request: Command::TrySpeculativeExec { transaction },
+        asserter: Box::new(|response| {
+            assert_spec_exec_result(response, |result| result.error().is_some())
+        }),
     }
 }
 
