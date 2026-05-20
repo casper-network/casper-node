@@ -973,9 +973,17 @@ pub fn execute_finalized_block(
         };
         artifact_builder.with_refund_amount(refund_amount);
 
-        // take the lower of the difference between cost - refund OR available
-        let fee_amount = artifact_builder
-            .cost_to_use()
+        // For custom payment, fee finalization must consume whatever amount this transaction put
+        // into the shared payment purse after refund processing. Otherwise a payment Wasm that
+        // deposits more than the declared cost leaves the excess stranded in the payment purse.
+        let fee_basis = if is_custom_payment {
+            custom_payment_unwind_amount.unwrap_or_else(|| artifact_builder.cost_to_use())
+        } else {
+            artifact_builder.cost_to_use()
+        };
+
+        // take the lower of the difference between the fee basis - refund OR available
+        let fee_amount = fee_basis
             .saturating_sub(refund_amount)
             .min(artifact_builder.available().unwrap_or(U512::zero()));
 
