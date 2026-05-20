@@ -32,6 +32,13 @@ bench = false
 doctest = false
 test = false
 
+[[bin]]
+name = "overfund_custom_payment"
+path = "src/overfund_custom_payment.rs"
+bench = false
+doctest = false
+test = false
+
 [dependencies]
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }

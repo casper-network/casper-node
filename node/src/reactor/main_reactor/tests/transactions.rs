@@ -6713,6 +6713,112 @@ async fn split_custom_payment_deposit_satisfies_payment_amount() {
     );
 }
 
+/// Regression for audit-confirmed-156: a VM1 custom payment that deposits more than the required
+/// payment amount must not leave the excess stranded in the shared system payment purse. The
+/// payment phase spends from a pre-funded named purse so the overfund is not blocked by the main
+/// purse approved-spending limit.
+#[tokio::test]
+async fn overfunded_custom_payment_drains_payment_purse() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::Burn);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+    let payment_amount = 20_000_000_000u64;
+    let overfund_amount = U512::from(1_000u64);
+    let source_purse_name = "audit-156-overfund-source";
+
+    let setup_bytes = Bytes::from(
+        std::fs::read(base_path.join("transfer_main_purse_to_new_purse.wasm"))
+            .expect("cannot read setup module bytes"),
+    );
+    let mut setup_txn = Transaction::from(
+        TransactionV1Builder::new_session(true, setup_bytes, TransactionRuntimeParams::VmCasperV1)
+            .with_chain_name(CHAIN_NAME)
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount,
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: true,
+            })
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_runtime_args(runtime_args! {
+                "destination" => source_purse_name.to_string(),
+                "amount" => U512::from(payment_amount) + overfund_amount,
+            })
+            .build()
+            .unwrap(),
+    );
+    setup_txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _setup_block_height, setup_result) = test.send_transaction(setup_txn).await;
+    assert!(
+        exec_result_is_success(&setup_result),
+        "source purse setup should succeed: {:?}",
+        setup_result
+    );
+
+    let payment_bytes = Bytes::from(
+        std::fs::read(base_path.join("overfund_custom_payment.wasm"))
+            .expect("cannot read overfund custom payment module bytes"),
+    );
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            payment_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .with_runtime_args(runtime_args! {
+            "source" => source_purse_name.to_string(),
+            "extra" => overfund_amount,
+        })
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        exec_result_is_success(&exec_result),
+        "overfunded custom payment should succeed: {:?}",
+        exec_result
+    );
+
+    let payment_purse_balance = get_payment_purse_balance(&mut test.fixture, Some(block_height));
+    assert_eq!(
+        *payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        U512::zero(),
+        "overfunded custom payment left motes in the shared payment purse"
+    );
+}
+
 /// Regression for audit-confirmed-57: custom-payment code must not be able to persist the system
 /// payment purse via a stored-helper subcall that resolves `handle_payment.get_payment_purse`.
 /// The parent runtime previously failed to see the marker set by the helper's context and let
