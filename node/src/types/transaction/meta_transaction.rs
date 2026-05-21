@@ -668,6 +668,46 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_accepts_unsigned_call() {
+        let chainspec = chainspec();
+        let meta = evm_meta(&chainspec, unsigned_call(CHAIN_ID, BASE_FEE.into(), 21_000));
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("unsigned EVM call should be config compliant");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_unsigned_call_mismatched_chain_id() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            unsigned_call(CHAIN_ID + 1, BASE_FEE.into(), 21_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(evm::TransactionError::ChainIdMismatch {
+                expected: CHAIN_ID,
+                actual
+            })) if actual == CHAIN_ID + 1
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_unsigned_call_gas_price_below_base_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            unsigned_call(CHAIN_ID, u128::from(BASE_FEE - 1), 21_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(evm::TransactionError::GasPriceBelowBaseFee {
+                gas_price,
+                base_fee
+            })) if gas_price == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+        ));
+    }
+
+    #[test]
     fn evm_config_compliance_rejects_max_fee_below_base_fee() {
         let chainspec = chainspec();
         let meta = evm_meta(
@@ -832,6 +872,20 @@ mod tests {
             &chainspec.transaction_config,
         )
         .expect("EVM transaction metadata should be created")
+    }
+
+    fn unsigned_call(chain_id: u64, gas_price: u128, gas_limit: u64) -> evm::Transaction {
+        evm::Transaction::new_unsigned_call(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+            chain_id,
+            evm::Address::new([1u8; 20]),
+            Some(evm::Address::new([2u8; 20])),
+            casper_types::U256::zero(),
+            Default::default(),
+            gas_limit,
+            gas_price,
+        )
     }
 
     fn legacy_transaction(

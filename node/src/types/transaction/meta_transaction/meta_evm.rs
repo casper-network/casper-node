@@ -97,7 +97,9 @@ impl MetaEvmTransaction {
             return Err(evm::TransactionError::Disabled);
         }
 
-        transaction.verify()?;
+        if !transaction.is_unsigned_call() {
+            transaction.verify()?;
+        }
 
         let expected = evm_config.chain_id;
         let actual = transaction

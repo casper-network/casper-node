@@ -236,6 +236,20 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
+        if event_metadata
+            .meta_transaction
+            .as_evm()
+            .is_some_and(|evm_transaction| evm_transaction.is_unsigned_call())
+        {
+            return self.reject_transaction(
+                effect_builder,
+                *event_metadata,
+                Error::InvalidTransaction(InvalidTransaction::Evm(
+                    evm::TransactionError::MissingApproval,
+                )),
+            );
+        }
+
         // We only perform expiry checks on transactions received from the client.
         let current_node_timestamp = event_metadata.verification_start_timestamp;
         if event_metadata.source.is_client()

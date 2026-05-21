@@ -32,9 +32,6 @@ const DEFAULT_ACCEPT_TRANSACTION_REQUEST_TERMINATION_DELAY: &str = "24 seconds";
 // Default amount of time which is given to a connection to extend it's lifetime when a valid
 // [`Command::TrySpeculativeExec`] is sent to the node
 const DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
-// Default amount of time which is given to a connection to extend it's lifetime when a valid
-// [`Command::Simulate`] is sent to the node
-const DEFAULT_SIMULATE_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -53,8 +50,6 @@ pub struct Config {
     pub allow_request_get_trie: bool,
     /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
     pub allow_request_speculative_exec: bool,
-    /// Flag used to enable/disable the [`Simulate`] request.
-    pub allow_request_simulate: bool,
     /// Maximum size of the binary port message.
     pub max_message_size_bytes: u32,
     /// Maximum number of connections to the server.
@@ -81,9 +76,6 @@ pub struct Config {
     // The amount of time which is given to a connection to extend it's lifetime when a valid
     // [`Command::TrySpeculativeExec`] is sent to the node
     pub speculative_exec_request_termination_delay: TimeDiff,
-    // The amount of time which is given to a connection to extend it's lifetime when a valid
-    // [`Command::Simulate`] is sent to the node
-    pub simulate_request_termination_delay: TimeDiff,
 }
 
 impl Config {
@@ -95,7 +87,6 @@ impl Config {
             allow_request_get_all_values: false,
             allow_request_get_trie: false,
             allow_request_speculative_exec: false,
-            allow_request_simulate: false,
             max_message_size_bytes: DEFAULT_MAX_MESSAGE_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             qps_limit: DEFAULT_QPS_LIMIT,
@@ -123,10 +114,6 @@ impl Config {
             .unwrap(),
             speculative_exec_request_termination_delay: TimeDiff::from_str(
                 DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY,
-            )
-            .unwrap(),
-            simulate_request_termination_delay: TimeDiff::from_str(
-                DEFAULT_SIMULATE_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
         }

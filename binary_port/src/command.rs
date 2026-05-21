@@ -5,7 +5,7 @@ use casper_types::{
     Transaction,
 };
 
-use crate::{get_request::GetRequest, SimulationRequest};
+use crate::get_request::GetRequest;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -116,11 +116,6 @@ pub enum Command {
         /// Transaction to execute.
         transaction: Transaction,
     },
-    /// Request to run a simulation.
-    Simulate {
-        /// Simulation request.
-        request: SimulationRequest,
-    },
 }
 
 impl Command {
@@ -130,7 +125,6 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
-            Command::Simulate { .. } => CommandTag::Simulate,
         }
     }
 
@@ -143,9 +137,6 @@ impl Command {
             },
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
-            },
-            CommandTag::Simulate => Self::Simulate {
-                request: SimulationRequest::random(rng),
             },
         }
     }
@@ -163,7 +154,6 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::Simulate { request } => request.write_bytes(writer),
         }
     }
 
@@ -172,7 +162,6 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::Simulate { request } => request.serialized_length(),
         }
     }
 }
@@ -194,10 +183,6 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
-            CommandTag::Simulate => {
-                let (request, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::Simulate { request }, remainder)
-            }
         };
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
@@ -216,19 +201,16 @@ pub enum CommandTag {
     TryAcceptTransaction = 1,
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
-    /// Request to run a simulation.
-    Simulate = 3,
 }
 
 impl CommandTag {
     /// Creates a random `CommandTag`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
-            3 => CommandTag::Simulate,
             _ => unreachable!(),
         }
     }
@@ -242,7 +224,6 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
-            3 => Ok(CommandTag::Simulate),
             _ => Err(InvalidCommandTag),
         }
     }
@@ -275,24 +256,6 @@ mod tests {
         let rng = &mut TestRng::new();
 
         let val = Command::random(rng);
-        let bytes = val.to_bytes().expect("should serialize");
-        assert_eq!(Command::try_from((val.tag(), &bytes[..])), Ok(val));
-    }
-
-    #[test]
-    fn simulate_request_bytesrepr_roundtrip() {
-        let rng = &mut TestRng::new();
-
-        let val = Command::Simulate {
-            request: SimulationRequest::EvmCall(crate::EvmCallRequest::new(
-                casper_types::evm::Address::new(rng.gen()),
-                rng.gen::<bool>()
-                    .then(|| casper_types::evm::Address::new(rng.gen())),
-                casper_types::U256::from_big_endian(&rng.gen::<[u8; 32]>()),
-                casper_types::bytesrepr::Bytes::from(rng.random_vec(0..64)),
-                rng.gen(),
-            )),
-        };
         let bytes = val.to_bytes().expect("should serialize");
         assert_eq!(Command::try_from((val.tag(), &bytes[..])), Ok(val));
     }

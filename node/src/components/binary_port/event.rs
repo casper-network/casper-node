@@ -3,7 +3,7 @@ use std::{
     net::SocketAddr,
 };
 
-use casper_binary_port::{BinaryResponse, Command, GetRequest, SimulationRequest};
+use casper_binary_port::{BinaryResponse, Command, GetRequest};
 use tokio::net::TcpStream;
 
 use crate::effect::Responder;
@@ -47,14 +47,6 @@ impl Display for Event {
                 Command::TrySpeculativeExec { transaction, .. } => {
                     write!(f, "try speculative exec ({})", transaction.hash())
                 }
-                Command::Simulate { request } => match request {
-                    SimulationRequest::EvmCall(request) => {
-                        write!(f, "simulate evm call ({:?})", request.to())
-                    }
-                    SimulationRequest::Transaction(transaction) => {
-                        write!(f, "simulate transaction ({})", transaction.hash())
-                    }
-                },
             },
         }
     }

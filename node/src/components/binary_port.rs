@@ -14,11 +14,11 @@ use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
     BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
     CommandTag, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
-    EntityIdentifier, EraIdentifier, ErrorCode, EvmCallRequest, GetRequest, GetTrieFullResult,
+    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
-    ReactorStateName, RecordId, ResponseType, RewardResponse, SimulationRequest, SimulationResult,
-    TransactionWithExecutionInfo, ValueWithProof,
+    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
+    ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -161,7 +161,6 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-    simulate: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -173,7 +172,6 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-            simulate: config.simulate_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -184,7 +182,6 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::Simulate { .. } => self.simulate,
         }
     }
 }
@@ -224,22 +221,6 @@ where
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_speculative_execution(effect_builder, transaction).await
-        }
-        Command::Simulate { request } => {
-            metrics.binary_port_simulate_count.inc();
-            if !config.allow_request_simulate {
-                debug!("received a simulation request while simulation is disabled");
-                return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
-            }
-            match request {
-                SimulationRequest::EvmCall(request) => try_evm_call(effect_builder, request).await,
-                SimulationRequest::Transaction(_) => {
-                    // POC EVM integration only supports read-only EVM call through Simulate.
-                    // Transaction simulation variants are reserved for future Deploy, V1, and EVM
-                    // transaction work.
-                    BinaryResponse::new_error(ErrorCode::UnsupportedRequest)
-                }
-            }
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1387,8 +1368,10 @@ where
         None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
     };
 
+    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
+
     let result = effect_builder
-        .speculatively_execute(Box::new(tip), Box::new(transaction))
+        .speculatively_execute(Box::new(tip), block_hashes, Box::new(transaction))
         .await;
 
     match result {
@@ -1399,32 +1382,8 @@ where
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result)
         }
-    }
-}
-
-async fn try_evm_call<REv>(
-    effect_builder: EffectBuilder<REv>,
-    request: EvmCallRequest,
-) -> BinaryResponse
-where
-    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
-{
-    let tip = match effect_builder
-        .get_highest_complete_block_header_from_storage()
-        .await
-    {
-        Some(tip) => tip,
-        None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
-    };
-    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
-    match effect_builder
-        .evm_call(Box::new(tip), block_hashes, Box::new(request))
-        .await
-    {
-        Ok(result) => BinaryResponse::from_value(SimulationResult::EvmCall(result)),
-        Err(error) => {
-            debug!(%error, "EVM call failed");
-            BinaryResponse::new_error(ErrorCode::InternalError)
+        SpeculativeExecutionResult::Evm(spec_exec_result) => {
+            BinaryResponse::from_value(spec_exec_result)
         }
     }
 }

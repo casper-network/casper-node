@@ -625,6 +625,93 @@ impl<'de> Deserialize<'de> for Transaction {
 }
 
 impl Transaction {
+    /// Constructs an unsigned EVM call transaction for speculative execution.
+    ///
+    /// This is intended for read-only `eth_call` style execution through the
+    /// node's speculative execution path, so it intentionally carries no
+    /// approvals and should not be accepted as a network transaction.
+    /// The chain ID and gas price are still part of the marker payload so the
+    /// node can enforce EVM configuration compliance before execution.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_unsigned_call(
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        chain_id: u64,
+        from: Address,
+        to: Option<Address>,
+        value: U256,
+        input: Vec<u8>,
+        gas_limit: u64,
+        gas_price: u128,
+    ) -> Self {
+        let mut transaction = Transaction {
+            timestamp,
+            ttl,
+            hash: TransactionHash::default(),
+            from,
+            kind: TransactionKind::Legacy,
+            to,
+            nonce: 0,
+            gas_limit,
+            gas_price: Some(gas_price),
+            max_fee_per_gas: 0,
+            max_priority_fee_per_gas: None,
+            value,
+            input,
+            chain_id: Some(chain_id),
+            authorization_list: Vec::new(),
+            approvals: BTreeSet::new(),
+        };
+        transaction.hash = transaction.unsigned_call_hash();
+        transaction
+    }
+
+    fn unsigned_call_hash(&self) -> TransactionHash {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"casper-evm-call");
+        self.timestamp
+            .write_bytes(&mut bytes)
+            .expect("timestamp should serialize");
+        self.ttl
+            .write_bytes(&mut bytes)
+            .expect("ttl should serialize");
+        self.from
+            .write_bytes(&mut bytes)
+            .expect("from address should serialize");
+        self.to
+            .write_bytes(&mut bytes)
+            .expect("to address should serialize");
+        self.value
+            .write_bytes(&mut bytes)
+            .expect("value should serialize");
+        Bytes::from(self.input.clone())
+            .write_bytes(&mut bytes)
+            .expect("input should serialize");
+        self.gas_limit
+            .write_bytes(&mut bytes)
+            .expect("gas limit should serialize");
+        self.gas_price
+            .write_bytes(&mut bytes)
+            .expect("gas price should serialize");
+        self.chain_id
+            .write_bytes(&mut bytes)
+            .expect("chain ID should serialize");
+        TransactionHash::new(Digest::hash(bytes))
+    }
+
+    /// Returns `true` if this is an unsigned read-only call transaction.
+    pub fn is_unsigned_call(&self) -> bool {
+        self.approvals.is_empty()
+            && self.hash == self.unsigned_call_hash()
+            && self.kind == TransactionKind::Legacy
+            && self.nonce == 0
+            && self.gas_price.is_some()
+            && self.max_fee_per_gas == 0
+            && self.max_priority_fee_per_gas.is_none()
+            && self.chain_id.is_some()
+            && self.authorization_list.is_empty()
+    }
+
     /// Decodes a signed Ethereum RLP transaction into an unsigned payload plus approval.
     pub fn from_signed_rlp(
         raw_signed_rlp: Vec<u8>,
@@ -1170,9 +1257,11 @@ impl FromBytes for Transaction {
             authorization_list,
             approvals,
         };
-        transaction
-            .verify()
-            .map_err(|_| bytesrepr::Error::Formatting)?;
+        if !transaction.is_unsigned_call() {
+            transaction
+                .verify()
+                .map_err(|_| bytesrepr::Error::Formatting)?;
+        }
         Ok((transaction, remainder))
     }
 }
@@ -1296,6 +1385,54 @@ mod tests {
         assert!(error
             .to_string()
             .contains("unexpected EVM set-code authorization list"));
+    }
+
+    #[test]
+    fn unsigned_call_transaction_bytesrepr_roundtrips_without_approvals() {
+        let transaction = Transaction::new_unsigned_call(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(300),
+            7,
+            Address::new([1; crate::evm::ADDRESS_LENGTH]),
+            Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
+            U256::from(3),
+            vec![0xde, 0xad],
+            1_000,
+            1,
+        );
+
+        assert!(transaction.approvals().is_empty());
+        assert!(transaction.is_unsigned_call());
+        assert!(matches!(
+            transaction.verify(),
+            Err(TransactionError::MissingApproval)
+        ));
+        bytesrepr::test_serialization_roundtrip(&transaction);
+    }
+
+    #[test]
+    fn non_marker_unsigned_transaction_bytesrepr_is_rejected() {
+        let mut transaction = Transaction::new_unsigned_call(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(300),
+            7,
+            Address::new([1; crate::evm::ADDRESS_LENGTH]),
+            Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
+            U256::from(3),
+            vec![0xde, 0xad],
+            1_000,
+            1,
+        );
+        transaction.gas_price = Some(2);
+
+        assert!(transaction.approvals().is_empty());
+        assert!(!transaction.is_unsigned_call());
+        assert!(Transaction::from_bytes(
+            &transaction
+                .to_bytes()
+                .expect("transaction should serialize")
+        )
+        .is_err());
     }
 
     fn signed_legacy_transaction() -> Transaction {

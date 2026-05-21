@@ -6,15 +6,14 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
 use wasm_v2_request::{WasmV2Request, WasmV2Result};
 
-use casper_binary_port::{EvmCallRequest, EvmCallResult};
 use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
 };
 use casper_executor_evm::{
     BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
-    BlockHashProviderResult as EvmBlockHashProviderResult, EvmExecutor,
-    ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
-    ExecutionStatus as EvmExecutionStatus,
+    BlockHashProviderResult as EvmBlockHashProviderResult, CallRequest as EvmExecutorCallRequest,
+    CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
+    ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -40,7 +39,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     evm::{
         Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
@@ -1830,6 +1829,7 @@ pub(super) fn speculatively_execute<S>(
     chainspec: &Chainspec,
     execution_engine_v1: &ExecutionEngineV1,
     block_header: BlockHeader,
+    block_hashes: BTreeMap<u64, BlockHash>,
     input_transaction: Transaction,
 ) -> SpeculativeExecutionResult
 where
@@ -1856,14 +1856,15 @@ where
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
-    let gas_limit = match input_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
-        Ok(gas_limit) => gas_limit,
-        Err(_) => {
-            return SpeculativeExecutionResult::invalid_gas_limit(input_transaction);
-        }
-    };
 
     if transaction.is_deploy_transaction() {
+        let gas_limit = match input_transaction.gas_limit(chainspec, transaction.transaction_lane())
+        {
+            Ok(gas_limit) => gas_limit,
+            Err(_) => {
+                return SpeculativeExecutionResult::invalid_gas_limit(input_transaction);
+            }
+        };
         if transaction.is_native() {
             let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
             let protocol_version = chainspec.protocol_version();
@@ -1917,6 +1918,13 @@ where
             )))
         }
     } else if transaction.is_wasm() {
+        let gas_limit = match input_transaction.gas_limit(chainspec, transaction.transaction_lane())
+        {
+            Ok(gas_limit) => gas_limit,
+            Err(_) => {
+                return SpeculativeExecutionResult::invalid_gas_limit(input_transaction);
+            }
+        };
         let block_info = BlockInfo::new(
             *state_root_hash,
             block_time.into(),
@@ -1937,6 +1945,14 @@ where
             wasm_v1_result,
             block_header.block_hash(),
         )))
+    } else if let Some(evm_transaction) = transaction.as_evm() {
+        speculatively_execute_evm(
+            state_provider,
+            chainspec,
+            block_header,
+            block_hashes,
+            evm_transaction,
+        )
     } else {
         // TODO: placeholder error
         SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::V1(
@@ -1945,26 +1961,48 @@ where
     }
 }
 
-/// Executes a read-only EVM call against a checked-out block state.
-pub(super) fn evm_call<S>(
+fn speculatively_execute_evm<S>(
     state_provider: &S,
     chainspec: &Chainspec,
     block_header: BlockHeader,
     block_hashes: BTreeMap<u64, BlockHash>,
-    request: EvmCallRequest,
-) -> Result<EvmCallResult, String>
+    evm_transaction: &casper_types::evm::Transaction,
+) -> SpeculativeExecutionResult
 where
     S: StateProvider,
 {
     if !chainspec.evm_config.enabled {
-        return Err("EVM execution is disabled".to_string());
+        return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+            casper_types::evm::TransactionError::Disabled,
+        ));
+    }
+    if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
+        return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+            casper_types::evm::TransactionError::GasLimitExceedsBlockGasLimit {
+                gas_limit: evm_transaction.gas_limit(),
+                block_gas_limit: chainspec.evm_config.block_gas_limit,
+            },
+        ));
     }
 
     let state_root_hash = block_header.state_root_hash();
-    let mut tracking_copy = state_provider
-        .tracking_copy(*state_root_hash)
-        .map_err(|error| format!("failed to check out EVM call state: {error}"))?
-        .ok_or_else(|| format!("state root {state_root_hash} not found"))?;
+    let mut tracking_copy = match state_provider.tracking_copy(*state_root_hash) {
+        Ok(Some(tracking_copy)) => tracking_copy,
+        Ok(None) => {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+                casper_types::evm::TransactionError::Decode(format!(
+                    "state root {state_root_hash} not found"
+                )),
+            ))
+        }
+        Err(error) => {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+                casper_types::evm::TransactionError::Decode(format!(
+                    "failed to check out EVM speculative execution state: {error}"
+                )),
+            ))
+        }
+    };
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
@@ -1975,29 +2013,55 @@ where
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(chainspec.evm_config.base_fee),
     };
-    let call = casper_executor_evm::CallRequest {
-        from: request.from(),
-        to: request.to(),
-        value: request.value(),
-        input: request.input().to_vec(),
-        gas_limit: request.gas_limit(),
-        gas_price: u128::from(chainspec.evm_config.base_fee),
-        nonce: 0,
-        validation: casper_executor_evm::CallValidation::UncheckedSimulation,
+    let kind = if evm_transaction.is_unsigned_call() {
+        EvmExecuteKind::Call(EvmExecutorCallRequest {
+            from: evm_transaction.from(),
+            to: evm_transaction.to(),
+            value: evm_transaction.value(),
+            input: evm_transaction.input().to_vec(),
+            gas_limit: evm_transaction.gas_limit(),
+            gas_price: u128::from(chainspec.evm_config.base_fee),
+            nonce: evm_transaction.nonce(),
+            validation: EvmCallValidation::UncheckedSimulation,
+        })
+    } else {
+        EvmExecuteKind::Transaction(evm_transaction.clone())
     };
     let execute_request = EvmExecuteRequest {
         block: block_context,
-        kind: EvmExecuteKind::Call(call),
+        kind,
     };
     let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
-    let outcome = EvmExecutor::new(chainspec.evm_config)
-        .execute_with_block_hash_provider(&mut tracking_copy, execute_request, &block_hash_provider)
-        .map_err(|error| error.to_string())?;
-    let receipt = outcome.to_receipt(0);
-    Ok(EvmCallResult::new(
-        receipt.status,
-        outcome.output.into(),
-        outcome.gas_used,
+    let outcome = match EvmExecutor::new(chainspec.evm_config).execute_with_block_hash_provider(
+        &mut tracking_copy,
+        execute_request,
+        &block_hash_provider,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+                casper_types::evm::TransactionError::Decode(error.to_string()),
+            ))
+        }
+    };
+    let effects = tracking_copy.effects();
+    let effective_gas_price = if evm_transaction.is_unsigned_call() {
+        u128::from(chainspec.evm_config.base_fee)
+    } else {
+        evm_transaction.effective_gas_price(chainspec.evm_config.base_fee)
+    };
+    let receipt = outcome.to_receipt(effective_gas_price);
+    let error = receipt.status.message().map(str::to_string);
+    SpeculativeExecutionResult::Evm(Box::new(
+        casper_binary_port::EvmSpeculativeExecutionResult::new(
+            block_header.block_hash(),
+            Gas::new(evm_transaction.gas_limit()),
+            Gas::new(outcome.gas_used),
+            effects,
+            error,
+            receipt,
+            Bytes::from(outcome.output),
+        ),
     ))
 }
 

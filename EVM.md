@@ -6,7 +6,7 @@ execution, and how to reproduce the working Foundry deployment flow.
 
 The current scope is intentionally narrow. Casper node can accept and execute
 `Transaction::Evm` transactions, store EVM execution results, and serve
-read-only EVM calls through a binary-port command consumed by sidecar. Native
+read-only EVM calls through binary-port speculative execution consumed by sidecar. Native
 Ethereum JSON-RPC remains a sidecar concern.
 
 ## EIP Glossary
@@ -38,7 +38,7 @@ Implemented in this workspace:
 - `casper-executor-evm`, backed by `revm`, with Casper-owned public types.
 - Contract runtime execution for finalized `Transaction::Evm` values.
 - Casper fee and refund handling for EVM transactions.
-- Binary-port `Simulate` for read-only `eth_call` support.
+- Binary-port `TrySpeculativeExec` for read-only `eth_call` support.
 - Native Casper transfers to 20-byte EVM addresses when `[evm].enabled = true`,
   creating or funding the corresponding EVM-native purse identity.
 - [EIP-7702][eip-7702] type `0x04` set-code transactions, with authorization
@@ -425,25 +425,36 @@ Sidecar derives those fields from execution info and block transaction order:
 
 ## Read-only EVM Calls
 
-`eth_call` uses the node binary-port `Simulate` command, not transaction submission.
+`eth_call` uses the node binary-port `TrySpeculativeExec` command, not
+`TryAcceptTransaction` submission.
 
-The binary-port request carries:
+Sidecar constructs a `Transaction::Evm` with
+`evm::Transaction::new_unsigned_call`, which carries:
 
+- chain ID,
 - `from`,
 - `to`,
 - `value`,
 - input bytes,
-- gas limit.
+- gas limit,
+- gas price.
 
-Node handles the request only when simulation is enabled for the binary port.
+Node handles the request only when speculative execution is enabled for the binary port.
+The unsigned call still passes EVM config compliance checks, including EVM
+enablement, chain ID, gas price, and block gas limit. It only
+skips signature verification because read-only `eth_call` requests are not
+signed Ethereum transactions. The transaction acceptor still rejects this
+marker shape so unsigned calls cannot be submitted through `TryAcceptTransaction`.
 Contract runtime checks out state at the requested/latest block,
 runs `casper-executor-evm` with:
 
 - `ExecuteKind::Call`,
 - `CallValidation::UncheckedSimulation`,
 
-and returns output, status, and gas used. The tracking-copy effects are
-discarded.
+and returns output, receipt status, and gas used in
+`EvmSpeculativeExecutionResult`, carried by the contract-runtime
+`SpeculativeExecutionResult::Evm` variant.
+The tracking-copy effects are discarded.
 
 ## Block Hashes
 
@@ -525,7 +536,7 @@ cargo build -p casper-sidecar
 The devnet tool needs a custom asset named `evm` that points at the debug node
 and sidecar binaries built above, plus the local chainspec and config files
 from this workspace. Use a node config where
-`[binary_port_server].allow_request_simulate = true`; the checked-in local
+`[binary_port_server].allow_request_speculative_exec = true`; the checked-in local
 config defaults this to `false`, so copy `resources/local/config.toml` and
 enable it in the copy used for this custom asset.
 
@@ -534,7 +545,7 @@ For example:
 ```bash
 export EVM_DEVNET_NODE_CONFIG=/tmp/casper-node-evm-devnet-config.toml
 cp "$CASPER_NODE_WORKSPACE/resources/local/config.toml" "$EVM_DEVNET_NODE_CONFIG"
-# Edit $EVM_DEVNET_NODE_CONFIG so allow_request_simulate = true.
+# Edit $EVM_DEVNET_NODE_CONFIG so allow_request_speculative_exec = true.
 ```
 
 From a separate `casper-devnet` checkout, register the asset with:
@@ -925,7 +936,7 @@ Node workspace:
 
 ```bash
 cargo check -p casper-node --bin casper-node
-cargo test -p casper-binary-port simulation --lib
+cargo test -p casper-binary-port --lib
 ```
 
 Sidecar workspace:

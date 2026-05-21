@@ -46,11 +46,10 @@ pub use node_status::NodeStatus;
 pub use purse_identifier::PurseIdentifier;
 pub use record_id::{RecordId, UnknownRecordId};
 pub use response_type::{PayloadEntity, ResponseType};
-pub use speculative_execution_result::SpeculativeExecutionResult;
+pub use speculative_execution_result::{EvmSpeculativeExecutionResult, SpeculativeExecutionResult};
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
     AccountInformation, AddressableEntityInformation, ConsensusStatus, ConsensusValidatorChanges,
-    ContractInformation, DictionaryQueryResult, EvmCallRequest, EvmCallResult, GetTrieFullResult,
-    LastProgress, NetworkName, ReactorStateName, RewardResponse, SimulationRequest,
-    SimulationResult, TransactionWithExecutionInfo, Uptime, ValueWithProof,
+    ContractInformation, DictionaryQueryResult, GetTrieFullResult, LastProgress, NetworkName,
+    ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };

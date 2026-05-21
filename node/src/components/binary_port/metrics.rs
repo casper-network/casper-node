@@ -11,9 +11,6 @@ const BINARY_PORT_TRY_SPECULATIVE_EXEC_COUNT_NAME: &str = "binary_port_try_specu
 const BINARY_PORT_TRY_SPECULATIVE_EXEC_COUNT_HELP: &str =
     "number of TrySpeculativeExec queries received";
 
-const BINARY_PORT_SIMULATE_COUNT_NAME: &str = "binary_port_simulate_count";
-const BINARY_PORT_SIMULATE_COUNT_HELP: &str = "number of Simulate queries received";
-
 const BINARY_PORT_GET_RECORD_COUNT_NAME: &str = "binary_port_get_record_count";
 const BINARY_PORT_GET_RECORD_COUNT_HELP: &str = "number of received Get queries for records";
 
@@ -39,8 +36,6 @@ pub(crate) struct Metrics {
     pub(super) binary_port_try_accept_transaction_count: IntCounter,
     /// Number of `TrySpeculativeExec` queries received.
     pub(super) binary_port_try_speculative_exec_count: IntCounter,
-    /// Number of `Simulate` queries received.
-    pub(super) binary_port_simulate_count: IntCounter,
     /// Number of `Get::Record` queries received.
     pub(super) binary_port_get_record_count: IntCounter,
     /// Number of `Get::Information` queries received.
@@ -66,11 +61,6 @@ impl Metrics {
         let binary_port_try_speculative_exec_count = IntCounter::new(
             BINARY_PORT_TRY_SPECULATIVE_EXEC_COUNT_NAME.to_string(),
             BINARY_PORT_TRY_SPECULATIVE_EXEC_COUNT_HELP.to_string(),
-        )?;
-
-        let binary_port_simulate_count = IntCounter::new(
-            BINARY_PORT_SIMULATE_COUNT_NAME.to_string(),
-            BINARY_PORT_SIMULATE_COUNT_HELP.to_string(),
         )?;
 
         let binary_port_get_record_count = IntCounter::new(
@@ -100,7 +90,6 @@ impl Metrics {
 
         registry.register(Box::new(binary_port_try_accept_transaction_count.clone()))?;
         registry.register(Box::new(binary_port_try_speculative_exec_count.clone()))?;
-        registry.register(Box::new(binary_port_simulate_count.clone()))?;
         registry.register(Box::new(binary_port_get_record_count.clone()))?;
         registry.register(Box::new(binary_port_get_info_count.clone()))?;
         registry.register(Box::new(binary_port_get_state_count.clone()))?;
@@ -110,7 +99,6 @@ impl Metrics {
         Ok(Metrics {
             binary_port_try_accept_transaction_count,
             binary_port_try_speculative_exec_count,
-            binary_port_simulate_count,
             binary_port_get_record_count,
             binary_port_get_info_count,
             binary_port_get_state_count,
@@ -125,7 +113,6 @@ impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.binary_port_try_accept_transaction_count);
         unregister_metric!(self.registry, self.binary_port_try_speculative_exec_count);
-        unregister_metric!(self.registry, self.binary_port_simulate_count);
         unregister_metric!(self.registry, self.binary_port_get_record_count);
         unregister_metric!(self.registry, self.binary_port_get_info_count);
         unregister_metric!(self.registry, self.binary_port_get_state_count);

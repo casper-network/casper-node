@@ -2306,6 +2306,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn speculatively_execute(
         self,
         block_header: Box<BlockHeader>,
+        block_hashes: BTreeMap<u64, BlockHash>,
         transaction: Box<Transaction>,
     ) -> SpeculativeExecutionResult
     where
@@ -2314,29 +2315,8 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativelyExecute {
                 block_header,
-                transaction,
-                responder,
-            },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Requests a read-only EVM call, without committing its effects.
-    pub(crate) async fn evm_call(
-        self,
-        block_header: Box<BlockHeader>,
-        block_hashes: BTreeMap<u64, BlockHash>,
-        request: Box<casper_binary_port::EvmCallRequest>,
-    ) -> Result<casper_binary_port::EvmCallResult, String>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::EvmCall {
-                block_header,
                 block_hashes,
-                request,
+                transaction,
                 responder,
             },
             QueueKind::ContractRuntime,

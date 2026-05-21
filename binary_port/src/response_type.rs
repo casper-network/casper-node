@@ -18,14 +18,13 @@ use casper_types::{
 use crate::{
     global_state_query_result::GlobalStateQueryResult,
     node_status::NodeStatus,
-    speculative_execution_result::SpeculativeExecutionResult,
+    speculative_execution_result::{EvmSpeculativeExecutionResult, SpeculativeExecutionResult},
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
     },
     AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
-    DictionaryQueryResult, RecordId, SimulationResult, TransactionWithExecutionInfo, Uptime,
-    ValueWithProof,
+    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -120,8 +119,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
-    /// Result of a simulation.
-    SimulationResult,
+    /// Result of the EVM speculative execution.
+    EvmSpeculativeExecutionResult,
 }
 
 impl ResponseType {
@@ -231,7 +230,9 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
-            x if x == ResponseType::SimulationResult as u8 => Ok(ResponseType::SimulationResult),
+            x if x == ResponseType::EvmSpeculativeExecutionResult as u8 => {
+                Ok(ResponseType::EvmSpeculativeExecutionResult)
+            }
             _ => Err(()),
         }
     }
@@ -294,7 +295,9 @@ impl fmt::Display for ResponseType {
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
             }
-            ResponseType::SimulationResult => write!(f, "SimulationResult"),
+            ResponseType::EvmSpeculativeExecutionResult => {
+                write!(f, "EvmSpeculativeExecutionResult")
+            }
         }
     }
 }
@@ -393,6 +396,10 @@ impl PayloadEntity for SpeculativeExecutionResult {
     const RESPONSE_TYPE: ResponseType = ResponseType::SpeculativeExecutionResult;
 }
 
+impl PayloadEntity for EvmSpeculativeExecutionResult {
+    const RESPONSE_TYPE: ResponseType = ResponseType::EvmSpeculativeExecutionResult;
+}
+
 impl PayloadEntity for NodeStatus {
     const RESPONSE_TYPE: ResponseType = ResponseType::NodeStatus;
 }
@@ -457,10 +464,6 @@ impl PayloadEntity for AddressableEntityInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
 }
 
-impl PayloadEntity for SimulationResult {
-    const RESPONSE_TYPE: ResponseType = ResponseType::SimulationResult;
-}
-
 impl<T> PayloadEntity for Box<T>
 where
     T: PayloadEntity,
@@ -479,13 +482,5 @@ mod tests {
 
         let val = ResponseType::random(rng);
         assert_eq!(ResponseType::try_from(val as u8), Ok(val));
-    }
-
-    #[test]
-    fn simulation_result_response_type_roundtrip() {
-        assert_eq!(
-            ResponseType::try_from(ResponseType::SimulationResult as u8),
-            Ok(ResponseType::SimulationResult)
-        );
     }
 }

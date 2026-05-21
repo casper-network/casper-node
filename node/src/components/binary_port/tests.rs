@@ -6,13 +6,12 @@ use rand::Rng;
 use serde::Serialize;
 
 use casper_binary_port::{
-    BinaryResponse, Command, EvmCallRequest, GetRequest, GlobalStateEntityQualifier,
-    GlobalStateRequest, RecordId, SimulationRequest,
+    BinaryResponse, Command, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest, RecordId,
 };
 
 use casper_types::{
-    bytesrepr::Bytes, evm, BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey,
-    Timestamp, Transaction, TransactionV1, U256,
+    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
+    TransactionV1,
 };
 
 use crate::{
@@ -57,7 +56,6 @@ struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
     allow_request_speculative_exec: bool,
-    allow_request_simulate: bool,
     request_generator: Either<fn(&mut TestRng) -> Command, Command>,
 }
 
@@ -69,7 +67,6 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: ENABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -77,7 +74,6 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: ENABLED,
         allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -85,23 +81,13 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: ENABLED,
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(try_speculative_exec_request),
-    };
-
-    let simulate_evm_call_enabled = TestCase {
-        allow_request_get_all_values: rng.gen(),
-        allow_request_get_trie: rng.gen(),
-        allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: ENABLED,
-        request_generator: Either::Left(simulate_evm_call_request),
     };
 
     for test_case in [
         get_all_values_enabled,
         get_trie_enabled,
         try_speculative_exec_enabled,
-        simulate_evm_call_enabled,
     ] {
         let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -125,7 +111,6 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: DISABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -133,7 +118,6 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: DISABLED,
         allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -141,23 +125,13 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: DISABLED,
-        allow_request_simulate: rng.gen(),
         request_generator: Either::Left(try_speculative_exec_request),
-    };
-
-    let simulate_evm_call_disabled = TestCase {
-        allow_request_get_all_values: rng.gen(),
-        allow_request_get_trie: rng.gen(),
-        allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: DISABLED,
-        request_generator: Either::Left(simulate_evm_call_request),
     };
 
     for test_case in [
         get_all_values_disabled,
         get_trie_disabled,
         try_speculative_exec_disabled,
-        simulate_evm_call_disabled,
     ] {
         let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -176,32 +150,6 @@ async fn should_return_error_for_disabled_functions() {
 }
 
 #[tokio::test]
-async fn should_return_error_for_unsupported_simulation_transaction() {
-    let mut rng = TestRng::new();
-    let test_case = TestCase {
-        allow_request_get_all_values: rng.gen(),
-        allow_request_get_trie: rng.gen(),
-        allow_request_speculative_exec: rng.gen(),
-        allow_request_simulate: ENABLED,
-        request_generator: Either::Left(simulate_transaction_request),
-    };
-
-    let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
-
-    let result = tokio::select! {
-        result = receiver => result.expect("expected successful response"),
-        _ = runner.crank_until(
-            &mut rng,
-            got_contract_runtime_request,
-            Duration::from_secs(10),
-        ) => {
-            panic!("expected receiver to complete first")
-        }
-    };
-    assert_eq!(result.error_code(), ErrorCode::UnsupportedRequest as u16)
-}
-
-#[tokio::test]
 async fn should_return_empty_response_when_fetching_empty_key() {
     let mut rng = TestRng::new();
 
@@ -211,7 +159,6 @@ async fn should_return_empty_response_when_fetching_empty_key() {
             allow_request_get_all_values: DISABLED,
             allow_request_get_trie: DISABLED,
             allow_request_speculative_exec: DISABLED,
-            allow_request_simulate: DISABLED,
             request_generator: Either::Right(request),
         })
         .collect();
@@ -239,7 +186,6 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
-        allow_request_simulate,
         request_generator,
     }: TestCase,
     rng: &mut TestRng,
@@ -252,7 +198,6 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
-        allow_request_simulate,
         max_message_size_bytes: 1024,
         max_connections: 2,
         ..Default::default()
@@ -503,24 +448,6 @@ fn trie_request() -> Command {
 fn try_speculative_exec_request(rng: &mut TestRng) -> Command {
     Command::TrySpeculativeExec {
         transaction: Transaction::V1(TransactionV1::random(rng)),
-    }
-}
-
-fn simulate_evm_call_request(rng: &mut TestRng) -> Command {
-    Command::Simulate {
-        request: SimulationRequest::EvmCall(EvmCallRequest::new(
-            evm::Address::new(rng.gen()),
-            rng.gen::<bool>().then(|| evm::Address::new(rng.gen())),
-            U256::from_big_endian(&rng.gen::<[u8; 32]>()),
-            Bytes::from(rng.random_vec(0..64)),
-            rng.gen(),
-        )),
-    }
-}
-
-fn simulate_transaction_request(rng: &mut TestRng) -> Command {
-    Command::Simulate {
-        request: SimulationRequest::Transaction(Transaction::V1(TransactionV1::random(rng))),
     }
 }
 
