@@ -543,8 +543,8 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_consensus::{SignableTransaction, TxEip1559, TxEnvelope, TxLegacy};
-    use alloy_eips::eip2718::Encodable2718;
+    use alloy_consensus::{SignableTransaction, TxEip1559, TxEip7702, TxEnvelope, TxLegacy};
+    use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
     use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
     use casper_types::TransactionLaneDefinition;
 
@@ -698,12 +698,89 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_accepts_eip7702() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 0, 60_000),
+        );
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("valid EIP-7702 transaction should be config compliant");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip7702_mismatched_chain_id() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID + 1, BASE_FEE.into(), 0, 60_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(evm::TransactionError::ChainIdMismatch {
+                expected: CHAIN_ID,
+                actual
+            })) if actual == CHAIN_ID + 1
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip7702_max_fee_below_base_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID, u128::from(BASE_FEE - 1), 0, 60_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(evm::TransactionError::MaxFeePerGasBelowBaseFee {
+                max_fee_per_gas,
+                base_fee
+            })) if max_fee_per_gas == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip7702_non_zero_priority_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 1, 60_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                evm::TransactionError::NonZeroMaxPriorityFeePerGas {
+                    max_priority_fee_per_gas: 1
+                }
+            ))
+        ));
+    }
+
+    #[test]
     fn evm_config_compliance_rejects_gas_limit_above_block_limit() {
         let chainspec = chainspec();
         let gas_limit = chainspec.evm_config.block_gas_limit + 1;
         let meta = evm_meta(
             &chainspec,
             legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), gas_limit),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(evm::TransactionError::GasLimitExceedsBlockGasLimit {
+                gas_limit: actual_gas_limit,
+                block_gas_limit
+            })) if actual_gas_limit == gas_limit && block_gas_limit == chainspec.evm_config.block_gas_limit
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip7702_gas_limit_above_block_limit() {
+        let chainspec = chainspec();
+        let gas_limit = chainspec.evm_config.block_gas_limit + 1;
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 0, gas_limit),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -796,6 +873,33 @@ mod tests {
             to: TxKind::Call(AlloyAddress::from([1u8; 20])),
             value: U256::ZERO,
             access_list: Default::default(),
+            input: Default::default(),
+        };
+        signed_transaction(tx.into_signed(Signature::test_signature()).into())
+    }
+
+    fn eip7702_transaction(
+        chain_id: u64,
+        max_fee_per_gas: u128,
+        max_priority_fee_per_gas: u128,
+        gas_limit: u64,
+    ) -> evm::Transaction {
+        let authorization = AlloyAuthorization {
+            chain_id: U256::from(chain_id),
+            address: AlloyAddress::from([2u8; 20]),
+            nonce: 0,
+        }
+        .into_signed(Signature::test_signature());
+        let tx = TxEip7702 {
+            chain_id,
+            nonce: 0,
+            gas_limit,
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
+            to: AlloyAddress::from([1u8; 20]),
+            value: U256::ZERO,
+            access_list: Default::default(),
+            authorization_list: vec![authorization],
             input: Default::default(),
         };
         signed_transaction(tx.into_signed(Signature::test_signature()).into())

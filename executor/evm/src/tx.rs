@@ -1,5 +1,8 @@
 //! Translation from Casper-owned EVM requests into revm transaction environments.
 
+use alloy_eips::eip7702::{
+    Authorization as RevmAuthorization, SignedAuthorization as RevmSignedAuthorization,
+};
 use casper_types::{evm, BlockHash, U256 as CasperU256};
 use revm::{
     context::TxEnv,
@@ -26,6 +29,8 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                         .unwrap_or_else(|| transaction.max_fee_per_gas()),
                 ),
                 evm::TransactionKind::Eip1559 => {
+                    let max_priority_fee_per_gas =
+                        Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
                     // Preserve the EIP-1559 fields when translating into
                     // revm. Node config compliance currently only admits
                     // zero-priority-fee EIP-1559 transactions because Casper
@@ -34,7 +39,22 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                     // typed-transaction adapter.
                     builder
                         .max_fee_per_gas(transaction.max_fee_per_gas())
-                        .gas_priority_fee(transaction.max_priority_fee_per_gas())
+                        .gas_priority_fee(max_priority_fee_per_gas)
+                }
+                evm::TransactionKind::Eip7702 => {
+                    let max_priority_fee_per_gas =
+                        Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
+                    builder
+                        .max_fee_per_gas(transaction.max_fee_per_gas())
+                        .gas_priority_fee(max_priority_fee_per_gas)
+                        .tx_type(Some(evm::EIP7702_TRANSACTION_TYPE_ID))
+                        .authorization_list_signed(
+                            transaction
+                                .authorization_list()
+                                .iter()
+                                .map(to_revm_authorization)
+                                .collect(),
+                        )
                 }
             };
 
@@ -67,6 +87,19 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
 
 pub(crate) fn to_revm_address(address: evm::Address) -> Address {
     Address::from(address.value())
+}
+
+fn to_revm_authorization(authorization: &evm::SetCodeAuthorization) -> RevmSignedAuthorization {
+    RevmSignedAuthorization::new_unchecked(
+        RevmAuthorization {
+            chain_id: to_revm_u256(authorization.chain_id),
+            address: to_revm_address(authorization.address),
+            nonce: authorization.nonce,
+        },
+        authorization.y_parity,
+        to_revm_u256(authorization.r),
+        to_revm_u256(authorization.s),
+    )
 }
 
 pub(crate) fn from_revm_address(address: Address) -> evm::Address {

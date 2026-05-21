@@ -9,12 +9,15 @@ use core::fmt::{self, Display, Formatter};
 use alloy_consensus::{
     constants::{EIP4844_TX_TYPE_ID, EIP7702_TX_TYPE_ID},
     transaction::SignerRecoverable,
-    SignableTransaction, Transaction as AlloyTransaction, TxEip1559, TxEip2930, TxEnvelope,
-    TxLegacy, TypedTransaction,
+    SignableTransaction, Transaction as AlloyTransaction, TxEip1559, TxEip2930, TxEip7702,
+    TxEnvelope, TxLegacy, TypedTransaction,
 };
 use alloy_eips::{
     eip2718::{Decodable2718, Encodable2718},
     eip2930::AccessList,
+    eip7702::{
+        Authorization as AlloyAuthorization, SignedAuthorization as AlloyAuthorizationListItem,
+    },
 };
 use alloy_primitives::{
     keccak256, Address as AlloyAddress, Bytes as AlloyBytes, Signature as AlloySignature,
@@ -159,6 +162,8 @@ pub enum TransactionKind {
     Eip2930,
     /// An EIP-1559 dynamic-fee transaction.
     Eip1559,
+    /// An EIP-7702 set-code transaction.
+    Eip7702,
 }
 
 impl TransactionKind {
@@ -168,6 +173,7 @@ impl TransactionKind {
             TransactionKind::Legacy => LEGACY_TRANSACTION_TYPE_ID,
             TransactionKind::Eip2930 => EIP2930_TRANSACTION_TYPE_ID,
             TransactionKind::Eip1559 => EIP1559_TRANSACTION_TYPE_ID,
+            TransactionKind::Eip7702 => EIP7702_TRANSACTION_TYPE_ID,
         }
     }
 
@@ -182,6 +188,7 @@ impl Display for TransactionKind {
             TransactionKind::Legacy => formatter.write_str("legacy"),
             TransactionKind::Eip2930 => formatter.write_str("eip2930"),
             TransactionKind::Eip1559 => formatter.write_str("eip1559"),
+            TransactionKind::Eip7702 => formatter.write_str("eip7702"),
         }
     }
 }
@@ -208,9 +215,103 @@ impl FromBytes for TransactionKind {
             0 => TransactionKind::Legacy,
             1 => TransactionKind::Eip2930,
             2 => TransactionKind::Eip1559,
+            EIP7702_TRANSACTION_TYPE_ID => TransactionKind::Eip7702,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((kind, remainder))
+    }
+}
+
+/// A signed EIP-7702 authorization-list item.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct SetCodeAuthorization {
+    /// Chain ID that scopes the authorization; zero follows EIP-7702 wildcard semantics.
+    pub chain_id: U256,
+    /// Address whose code the authorized account delegates to.
+    pub address: Address,
+    /// Nonce expected on the authorizing account.
+    pub nonce: u64,
+    /// secp256k1 signature recovery parity.
+    pub y_parity: u8,
+    /// secp256k1 signature `r` value.
+    pub r: U256,
+    /// secp256k1 signature `s` value.
+    pub s: U256,
+}
+
+impl SetCodeAuthorization {
+    fn from_alloy(value: &AlloyAuthorizationListItem) -> Self {
+        SetCodeAuthorization {
+            chain_id: alloy_u256_to_casper(*value.chain_id()),
+            address: alloy_address_to_address(*value.address()),
+            nonce: value.nonce(),
+            y_parity: value.y_parity(),
+            r: alloy_u256_to_casper(value.r()),
+            s: alloy_u256_to_casper(value.s()),
+        }
+    }
+
+    fn to_alloy(&self) -> AlloyAuthorizationListItem {
+        AlloyAuthorizationListItem::new_unchecked(
+            AlloyAuthorization {
+                chain_id: casper_u256_to_alloy(self.chain_id),
+                address: to_alloy_address(self.address),
+                nonce: self.nonce,
+            },
+            self.y_parity,
+            casper_u256_to_alloy(self.r),
+            casper_u256_to_alloy(self.s),
+        )
+    }
+}
+
+impl ToBytes for SetCodeAuthorization {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.chain_id.serialized_length()
+            + self.address.serialized_length()
+            + self.nonce.serialized_length()
+            + self.y_parity.serialized_length()
+            + self.r.serialized_length()
+            + self.s.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.chain_id.write_bytes(writer)?;
+        self.address.write_bytes(writer)?;
+        self.nonce.write_bytes(writer)?;
+        self.y_parity.write_bytes(writer)?;
+        self.r.write_bytes(writer)?;
+        self.s.write_bytes(writer)
+    }
+}
+
+impl FromBytes for SetCodeAuthorization {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (chain_id, remainder) = U256::from_bytes(bytes)?;
+        let (address, remainder) = Address::from_bytes(remainder)?;
+        let (nonce, remainder) = u64::from_bytes(remainder)?;
+        let (y_parity, remainder) = u8::from_bytes(remainder)?;
+        let (r, remainder) = U256::from_bytes(remainder)?;
+        let (s, remainder) = U256::from_bytes(remainder)?;
+        Ok((
+            SetCodeAuthorization {
+                chain_id,
+                address,
+                nonce,
+                y_parity,
+                r,
+                s,
+            },
+            remainder,
+        ))
     }
 }
 
@@ -227,6 +328,12 @@ pub enum TransactionError {
     UnsupportedTransactionType(u8),
     /// The transaction contains an access list, which this first-pass executor does not model.
     UnsupportedAccessList,
+    /// Only EIP-7702 transactions may carry a set-code authorization list.
+    UnexpectedAuthorizationList,
+    /// An EIP-7702 transaction must contain at least one authorization.
+    EmptyAuthorizationList,
+    /// An EIP-7702 transaction must call an existing target and cannot create a contract.
+    MissingSetCodeTarget,
     /// A chain ID was required by the transaction envelope but was missing.
     MissingChainId,
     /// A gas price was required by the transaction envelope but was missing.
@@ -304,6 +411,15 @@ impl Display for TransactionError {
             }
             TransactionError::UnsupportedAccessList => {
                 formatter.write_str("unsupported EVM transaction access list")
+            }
+            TransactionError::UnexpectedAuthorizationList => {
+                formatter.write_str("unexpected EVM set-code authorization list")
+            }
+            TransactionError::EmptyAuthorizationList => {
+                formatter.write_str("missing EVM set-code authorization list")
+            }
+            TransactionError::MissingSetCodeTarget => {
+                formatter.write_str("missing EVM set-code transaction target")
             }
             TransactionError::MissingChainId => formatter.write_str("missing EVM chain ID"),
             TransactionError::MissingGasPrice => formatter.write_str("missing EVM gas price"),
@@ -410,6 +526,7 @@ pub struct Transaction {
     value: U256,
     input: Vec<u8>,
     chain_id: Option<u64>,
+    authorization_list: Vec<SetCodeAuthorization>,
     approvals: BTreeSet<Approval>,
 }
 
@@ -430,6 +547,7 @@ struct TransactionSerHelper<'a> {
     value: U256,
     input: &'a Vec<u8>,
     chain_id: Option<u64>,
+    authorization_list: &'a Vec<SetCodeAuthorization>,
     approvals: &'a BTreeSet<Approval>,
 }
 
@@ -450,6 +568,7 @@ struct TransactionDeserHelper {
     value: U256,
     input: Vec<u8>,
     chain_id: Option<u64>,
+    authorization_list: Vec<SetCodeAuthorization>,
     approvals: BTreeSet<Approval>,
 }
 
@@ -471,6 +590,7 @@ impl Serialize for Transaction {
             value: self.value,
             input: &self.input,
             chain_id: self.chain_id,
+            authorization_list: &self.authorization_list,
             approvals: &self.approvals,
         }
         .serialize(serializer)
@@ -496,6 +616,7 @@ impl<'de> Deserialize<'de> for Transaction {
             value: helper.value,
             input: helper.input,
             chain_id: helper.chain_id,
+            authorization_list: helper.authorization_list,
             approvals: helper.approvals,
         };
         transaction.verify().map_err(de::Error::custom)?;
@@ -524,20 +645,6 @@ impl Transaction {
             ));
         }
 
-        if matches!(raw_signed_rlp.first(), Some(&EIP7702_TRANSACTION_TYPE_ID)) {
-            // EIP-7702 lets EOAs temporarily behave like they have delegated
-            // code by attaching an `authorization_list`; the protocol
-            // processes those authorizations before execution and writes
-            // delegation indicators like `0xef0100 || address` into account
-            // code. Our current transaction type does not store an
-            // authorization list, and the executor/state adapter does not
-            // implement that pre-execution account-code mutation and nonce
-            // logic.
-            return Err(TransactionError::UnsupportedTransactionType(
-                raw_signed_rlp[0],
-            ));
-        }
-
         let mut encoded = raw_signed_rlp.as_slice();
         let envelope = TxEnvelope::decode_2718(&mut encoded)
             .map_err(|error| TransactionError::Decode(format!("{error:?}")))?;
@@ -559,6 +666,8 @@ impl Transaction {
             TransactionKind::Eip2930
         } else if envelope.is_eip1559() {
             TransactionKind::Eip1559
+        } else if envelope.is_eip7702() {
+            TransactionKind::Eip7702
         } else {
             return Err(TransactionError::UnsupportedTransactionType(
                 envelope.tx_type() as u8,
@@ -576,6 +685,22 @@ impl Transaction {
         let from = envelope
             .recover_signer()
             .map_err(|error| TransactionError::SenderRecovery(format!("{error:?}")))?;
+        let authorization_list = match envelope.as_eip7702() {
+            Some(transaction) => {
+                if transaction.tx().authorization_list.is_empty() {
+                    // Keep raw decode errors precise before constructing a
+                    // transaction that `verify` would reject anyway.
+                    return Err(TransactionError::EmptyAuthorizationList);
+                }
+                transaction
+                    .tx()
+                    .authorization_list
+                    .iter()
+                    .map(SetCodeAuthorization::from_alloy)
+                    .collect()
+            }
+            None => Vec::new(),
+        };
         Ok(Transaction {
             timestamp,
             ttl,
@@ -591,6 +716,7 @@ impl Transaction {
             value: alloy_u256_to_casper(envelope.value()),
             input: envelope.input().to_vec(),
             chain_id: envelope.chain_id(),
+            authorization_list,
             approvals,
         })
     }
@@ -771,6 +897,11 @@ impl Transaction {
         self.chain_id
     }
 
+    /// Returns the EIP-7702 set-code authorization list.
+    pub fn authorization_list(&self) -> &[SetCodeAuthorization] {
+        &self.authorization_list
+    }
+
     /// Returns the effective gas price at the supplied block base fee.
     ///
     /// Legacy and EIP-2930 transactions use their signed gas price directly.
@@ -788,7 +919,7 @@ impl Transaction {
             TransactionKind::Legacy | TransactionKind::Eip2930 => {
                 self.gas_price.unwrap_or(self.max_fee_per_gas)
             }
-            TransactionKind::Eip1559 => {
+            TransactionKind::Eip1559 | TransactionKind::Eip7702 => {
                 let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or(0);
                 let priority_fee = self.max_fee_per_gas.saturating_sub(u128::from(base_fee));
                 if priority_fee > max_priority_fee_per_gas {
@@ -835,7 +966,27 @@ impl Transaction {
         Ok(unsigned.into_envelope(signature))
     }
 
+    fn validate_authorization_list(&self) -> Result<(), TransactionError> {
+        match self.kind {
+            TransactionKind::Eip7702 => {
+                if self.authorization_list.is_empty() {
+                    return Err(TransactionError::EmptyAuthorizationList);
+                }
+                if self.to.is_none() {
+                    return Err(TransactionError::MissingSetCodeTarget);
+                }
+            }
+            TransactionKind::Legacy | TransactionKind::Eip2930 | TransactionKind::Eip1559 => {
+                if !self.authorization_list.is_empty() {
+                    return Err(TransactionError::UnexpectedAuthorizationList);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn unsigned_transaction(&self) -> Result<TypedTransaction, TransactionError> {
+        self.validate_authorization_list()?;
         let to = match self.to {
             Some(address) => AlloyTxKind::Call(to_alloy_address(address)),
             None => AlloyTxKind::Create,
@@ -873,6 +1024,25 @@ impl Transaction {
                 access_list: AccessList::default(),
                 input,
             })),
+            TransactionKind::Eip7702 => {
+                let address = self.to.expect("EIP-7702 target validated above");
+                Ok(TypedTransaction::Eip7702(TxEip7702 {
+                    chain_id: self.chain_id.ok_or(TransactionError::MissingChainId)?,
+                    nonce: self.nonce,
+                    gas_limit: self.gas_limit,
+                    max_fee_per_gas: self.max_fee_per_gas,
+                    max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(0),
+                    to: to_alloy_address(address),
+                    value,
+                    access_list: AccessList::default(),
+                    authorization_list: self
+                        .authorization_list
+                        .iter()
+                        .map(SetCodeAuthorization::to_alloy)
+                        .collect(),
+                    input,
+                }))
+            }
         }
     }
 
@@ -940,6 +1110,7 @@ impl ToBytes for Transaction {
             + self.value.serialized_length()
             + Bytes::from(self.input.clone()).serialized_length()
             + self.chain_id.serialized_length()
+            + self.authorization_list.serialized_length()
             + self.approvals.serialized_length()
     }
 
@@ -958,6 +1129,7 @@ impl ToBytes for Transaction {
         self.value.write_bytes(writer)?;
         Bytes::from(self.input.clone()).write_bytes(writer)?;
         self.chain_id.write_bytes(writer)?;
+        self.authorization_list.write_bytes(writer)?;
         self.approvals.write_bytes(writer)
     }
 }
@@ -978,6 +1150,7 @@ impl FromBytes for Transaction {
         let (value, remainder) = U256::from_bytes(remainder)?;
         let (input, remainder) = Bytes::from_bytes(remainder)?;
         let (chain_id, remainder) = Option::<u64>::from_bytes(remainder)?;
+        let (authorization_list, remainder) = Vec::<SetCodeAuthorization>::from_bytes(remainder)?;
         let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
         let transaction = Transaction {
             timestamp,
@@ -994,6 +1167,7 @@ impl FromBytes for Transaction {
             value,
             input: input.into(),
             chain_id,
+            authorization_list,
             approvals,
         };
         transaction
@@ -1081,4 +1255,119 @@ fn casper_u256_to_alloy(value: U256) -> AlloyU256 {
     let mut bytes = [0u8; 32];
     value.to_big_endian(&mut bytes);
     AlloyU256::from_be_slice(&bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_consensus::crypto::secp256k1;
+
+    use super::*;
+
+    const SIGNING_SECRET: [u8; 32] = [7; 32];
+    const AUTHORIZATION_SECRET: [u8; 32] = [8; 32];
+
+    #[test]
+    fn eip7702_transaction_serde_roundtrips_authorization_list() {
+        let transaction = signed_eip7702_transaction();
+
+        let serialized = serde_json::to_string(&transaction).expect("transaction should serialize");
+        assert!(serialized.contains("authorization_list"));
+        let deserialized: Transaction =
+            serde_json::from_str(&serialized).expect("transaction should deserialize");
+
+        assert_eq!(deserialized, transaction);
+        assert_eq!(
+            deserialized.authorization_list(),
+            transaction.authorization_list()
+        );
+    }
+
+    #[test]
+    fn non_eip7702_transaction_serde_rejects_authorization_list() {
+        let mut transaction = signed_legacy_transaction();
+        transaction
+            .authorization_list
+            .push(set_code_authorization());
+        let serialized = serde_json::to_string(&transaction).expect("transaction should serialize");
+
+        let error =
+            serde_json::from_str::<Transaction>(&serialized).expect_err("transaction should fail");
+
+        assert!(error
+            .to_string()
+            .contains("unexpected EVM set-code authorization list"));
+    }
+
+    fn signed_legacy_transaction() -> Transaction {
+        let tx = TxLegacy {
+            chain_id: Some(7),
+            nonce: 3,
+            gas_price: 1,
+            gas_limit: 21_000,
+            to: AlloyTxKind::Call(AlloyAddress::from([4; 20])),
+            value: AlloyU256::ZERO,
+            input: AlloyBytes::default(),
+        };
+        let transaction_signature =
+            secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+                .expect("transaction signing should succeed");
+        let envelope: TxEnvelope = tx.into_signed(transaction_signature).into();
+
+        Transaction::from_signed_rlp(
+            envelope.encoded_2718(),
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+        )
+        .expect("transaction should decode")
+    }
+
+    fn signed_eip7702_transaction() -> Transaction {
+        let authorization = AlloyAuthorization {
+            chain_id: AlloyU256::from(7),
+            address: AlloyAddress::from([9; 20]),
+            nonce: 4,
+        };
+        let authorization_signature = secp256k1::sign_message(
+            B256::from(AUTHORIZATION_SECRET),
+            authorization.signature_hash(),
+        )
+        .expect("authorization signing should succeed");
+        let tx = TxEip7702 {
+            chain_id: 7,
+            nonce: 3,
+            gas_limit: 70_000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 0,
+            to: AlloyAddress::from([4; 20]),
+            value: AlloyU256::from(987u64),
+            access_list: AccessList::default(),
+            authorization_list: vec![authorization.into_signed(authorization_signature)],
+            input: AlloyBytes::from(vec![0xde, 0xad]),
+        };
+        let transaction_signature =
+            secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+                .expect("transaction signing should succeed");
+        let envelope: TxEnvelope = tx.into_signed(transaction_signature).into();
+
+        Transaction::from_signed_rlp(
+            envelope.encoded_2718(),
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+        )
+        .expect("transaction should decode")
+    }
+
+    fn set_code_authorization() -> SetCodeAuthorization {
+        let authorization = AlloyAuthorization {
+            chain_id: AlloyU256::from(7),
+            address: AlloyAddress::from([9; 20]),
+            nonce: 4,
+        };
+        let signature = secp256k1::sign_message(
+            B256::from(AUTHORIZATION_SECRET),
+            authorization.signature_hash(),
+        )
+        .expect("authorization signing should succeed");
+        SetCodeAuthorization::from_alloy(&authorization.into_signed(signature))
+    }
 }

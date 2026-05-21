@@ -24,7 +24,7 @@ pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};
 pub use topic::Topic;
 pub use transaction::{
-    Transaction, TransactionError, TransactionHash, TransactionKind, EIP1559_TRANSACTION_TYPE_ID,
-    EIP2930_TRANSACTION_TYPE_ID, EIP4844_TRANSACTION_TYPE_ID, EIP7702_TRANSACTION_TYPE_ID,
-    LEGACY_TRANSACTION_TYPE_ID,
+    SetCodeAuthorization, Transaction, TransactionError, TransactionHash, TransactionKind,
+    EIP1559_TRANSACTION_TYPE_ID, EIP2930_TRANSACTION_TYPE_ID, EIP4844_TRANSACTION_TYPE_ID,
+    EIP7702_TRANSACTION_TYPE_ID, LEGACY_TRANSACTION_TYPE_ID,
 };

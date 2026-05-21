@@ -1,8 +1,13 @@
 use std::path::PathBuf;
 
-use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
-use alloy_eips::eip2718::Encodable2718;
-use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
+use alloy_consensus::{crypto::secp256k1, SignableTransaction, TxEip7702, TxEnvelope, TxLegacy};
+use alloy_eips::{
+    eip2718::Encodable2718,
+    eip7702::{
+        Authorization as AlloyAuthorization, SignedAuthorization as AlloySignedAuthorization,
+    },
+};
+use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
     EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
@@ -17,12 +22,16 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry,
-    Digest, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig,
-    U256 as CasperU256, U512,
+    bytesrepr::{FromBytes, ToBytes},
+    contracts::NamedKeys,
+    evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount,
+    GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
+    StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig, U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
+
+const SIGNING_SECRET: [u8; 32] = [7; 32];
+const AUTHORIZATION_SECRET: [u8; 32] = [8; 32];
 
 fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
     let accounts = (1u8..=3)
@@ -155,6 +164,27 @@ fn blockhash_contract_init_code() -> Vec<u8> {
     init_code_returning(runtime)
 }
 
+fn return_word_contract_init_code(value: u8) -> Vec<u8> {
+    let runtime = vec![
+        opcode::PUSH1,
+        value,
+        opcode::PUSH1,
+        0,
+        opcode::MSTORE,
+        opcode::PUSH1,
+        32,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code_returning(runtime)
+}
+
+fn reverting_contract_init_code() -> Vec<u8> {
+    let runtime = vec![opcode::PUSH1, 0, opcode::PUSH1, 0, opcode::REVERT];
+    init_code_returning(runtime)
+}
+
 fn call_request(
     from: evm::Address,
     to: Option<evm::Address>,
@@ -212,6 +242,33 @@ fn execute_call<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
     outcome
+}
+
+fn execute_transaction<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    executor: &EvmExecutor,
+    tracking_copy: &mut TrackingCopy<R>,
+    transaction: evm::Transaction,
+) -> casper_executor_evm::ExecutionOutcome {
+    executor
+        .execute(
+            tracking_copy,
+            ExecuteRequest {
+                block: block(),
+                kind: ExecuteKind::Transaction(transaction),
+            },
+        )
+        .expect("EVM transaction execution should succeed")
+}
+
+fn deploy_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    executor: &EvmExecutor,
+    tracking_copy: &mut TrackingCopy<R>,
+    from: evm::Address,
+    code: Vec<u8>,
+) -> evm::Address {
+    execute_call(executor, tracking_copy, from, None, code)
+        .created_contract_address
+        .expect("deploy should return a contract address")
 }
 
 fn deploy<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
@@ -290,6 +347,14 @@ fn decode_hex(hex: &str) -> Vec<u8> {
         .collect()
 }
 
+fn to_alloy_address(address: evm::Address) -> AlloyAddress {
+    AlloyAddress::from(address.value())
+}
+
+fn alloy_address_to_evm(address: AlloyAddress) -> evm::Address {
+    evm::Address::new(address.into_array())
+}
+
 fn legacy_transaction(chain_id: Option<u64>) -> evm::Transaction {
     let tx = TxLegacy {
         chain_id,
@@ -308,6 +373,96 @@ fn legacy_transaction(chain_id: Option<u64>) -> evm::Transaction {
         casper_types::TimeDiff::from_seconds(60),
     )
     .expect("transaction should decode")
+}
+
+fn eip7702_transaction(
+    to: evm::Address,
+    delegate: evm::Address,
+    authorization_nonce: u64,
+    transaction_nonce: u64,
+    input: Vec<u8>,
+) -> (evm::Transaction, evm::Address) {
+    let authorization = signed_authorization(delegate, authorization_nonce);
+    let authority = alloy_address_to_evm(
+        authorization
+            .recover_authority()
+            .expect("authorization should recover authority"),
+    );
+    let tx = TxEip7702 {
+        chain_id: 7,
+        nonce: transaction_nonce,
+        gas_limit: 1_000_000,
+        max_fee_per_gas: 1,
+        max_priority_fee_per_gas: 0,
+        to: to_alloy_address(to),
+        value: U256::ZERO,
+        access_list: Default::default(),
+        authorization_list: vec![authorization],
+        input: input.into(),
+    };
+    let signature = secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+        .expect("transaction signing should succeed");
+    let envelope: TxEnvelope = tx.into_signed(signature).into();
+    let transaction = evm::Transaction::from_signed_rlp(
+        envelope.encoded_2718(),
+        Timestamp::zero(),
+        casper_types::TimeDiff::from_seconds(60),
+    )
+    .expect("transaction should decode");
+    (transaction, authority)
+}
+
+fn eip7702_transaction_without_priority_fee(transaction: evm::Transaction) -> evm::Transaction {
+    assert_eq!(transaction.max_priority_fee_per_gas(), Some(0));
+    let mut bytes = transaction
+        .to_bytes()
+        .expect("transaction should serialize");
+    let mut offset = 0;
+    offset += transaction.timestamp().serialized_length();
+    offset += transaction.ttl().serialized_length();
+    offset += transaction.hash().serialized_length();
+    offset += transaction.from().serialized_length();
+    offset += transaction.kind().serialized_length();
+    offset += transaction.to().serialized_length();
+    offset += transaction.nonce().serialized_length();
+    offset += transaction.gas_limit().serialized_length();
+    offset += transaction.gas_price().serialized_length();
+    offset += transaction.max_fee_per_gas().serialized_length();
+
+    assert_eq!(bytes[offset], 1);
+    let some_priority_length = transaction.max_priority_fee_per_gas().serialized_length();
+    let none_priority = Option::<u128>::None
+        .to_bytes()
+        .expect("none priority fee should serialize");
+    bytes.splice(offset..offset + some_priority_length, none_priority);
+
+    let (transaction, remainder) =
+        evm::Transaction::from_bytes(&bytes).expect("transaction should deserialize");
+    assert!(remainder.is_empty());
+    assert_eq!(transaction.max_priority_fee_per_gas(), None);
+    transaction
+}
+
+fn signed_authorization(delegate: evm::Address, nonce: u64) -> AlloySignedAuthorization {
+    let authorization = AlloyAuthorization {
+        chain_id: U256::from(7),
+        address: to_alloy_address(delegate),
+        nonce,
+    };
+    let signature = secp256k1::sign_message(
+        B256::from(AUTHORIZATION_SECRET),
+        authorization.signature_hash(),
+    )
+    .expect("authorization signing should succeed");
+    authorization.into_signed(signature)
+}
+
+fn authorization_authority() -> evm::Address {
+    alloy_address_to_evm(
+        signed_authorization(evm::Address::ZERO, 0)
+            .recover_authority()
+            .expect("authorization should recover authority"),
+    )
 }
 
 fn legacy_transaction_without_chain_id() -> evm::Transaction {
@@ -402,6 +557,40 @@ fn read_evm_nonce<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     }
 }
 
+fn read_code_hash<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: evm::Address,
+) -> evm::Hash {
+    match tracking_copy
+        .read(&Key::Evm(evm::EvmAddr::CodeHash(address)))
+        .expect("code hash read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => value.into_t::<evm::Hash>().unwrap(),
+        Some(other) => panic!("unexpected code hash value: {other:?}"),
+        None => EMPTY_CODE_HASH,
+    }
+}
+
+fn read_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    code_hash: evm::Hash,
+) -> Option<Vec<u8>> {
+    match tracking_copy
+        .read(&Key::Evm(evm::EvmAddr::ByteCode(code_hash)))
+        .expect("bytecode read should not fail")
+    {
+        Some(StoredValue::ByteCode(byte_code)) => Some(byte_code.bytes().to_vec()),
+        Some(other) => panic!("unexpected bytecode value: {other:?}"),
+        None => None,
+    }
+}
+
+fn delegation_code(delegate: evm::Address) -> Vec<u8> {
+    let mut code = vec![0xef, 0x01, 0x00];
+    code.extend_from_slice(delegate.as_bytes());
+    code
+}
+
 #[test]
 fn blockhash_uses_supplied_provider() {
     let executor = executor(evm::EvmSpec::Prague);
@@ -448,6 +637,161 @@ fn blockhash_uses_supplied_provider() {
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), block_hash_for_height(1).as_ref());
+}
+
+#[test]
+fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let authority = authorization_authority();
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let delegate = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        deployer,
+        return_word_contract_init_code(42),
+    );
+    let (transaction, recovered_authority) =
+        eip7702_transaction(authority, delegate, 0, 0, Vec::new());
+    assert_eq!(recovered_authority, authority);
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
+
+    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(decode_word(&outcome.output), 42);
+    let code_hash = read_code_hash(&mut tracking_copy, authority);
+    assert_ne!(code_hash, EMPTY_CODE_HASH);
+    assert_eq!(
+        read_code(&mut tracking_copy, code_hash),
+        Some(delegation_code(delegate))
+    );
+}
+
+#[test]
+fn eip7702_missing_priority_fee_defaults_to_zero_for_execution() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let authority = authorization_authority();
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let delegate = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        deployer,
+        return_word_contract_init_code(42),
+    );
+    let (transaction, _) = eip7702_transaction(authority, delegate, 0, 0, Vec::new());
+    let transaction = eip7702_transaction_without_priority_fee(transaction);
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
+
+    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(decode_word(&outcome.output), 42);
+}
+
+#[test]
+fn eip7702_delegation_persists_when_call_reverts() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let authority = authorization_authority();
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let delegate = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        deployer,
+        reverting_contract_init_code(),
+    );
+    let (transaction, _) = eip7702_transaction(authority, delegate, 0, 0, Vec::new());
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
+
+    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+    let code_hash = read_code_hash(&mut tracking_copy, authority);
+    assert_eq!(
+        read_code(&mut tracking_copy, code_hash),
+        Some(delegation_code(delegate))
+    );
+}
+
+#[test]
+fn eip7702_stale_authorization_is_skipped() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let authority = authorization_authority();
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let delegate = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        deployer,
+        return_word_contract_init_code(42),
+    );
+    let (transaction, _) = eip7702_transaction(authority, delegate, 1, 0, Vec::new());
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
+
+    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert!(outcome.output.is_empty());
+    assert_eq!(read_evm_nonce(&mut tracking_copy, authority), 0);
+    assert_eq!(
+        read_code_hash(&mut tracking_copy, authority),
+        EMPTY_CODE_HASH
+    );
+}
+
+#[test]
+fn eip7702_zero_address_authorization_clears_delegation() {
+    let executor = executor(evm::EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let authority = authorization_authority();
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let delegate = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        deployer,
+        return_word_contract_init_code(42),
+    );
+    let (transaction, _) = eip7702_transaction(authority, delegate, 0, 0, Vec::new());
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
+    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+
+    let (clear_transaction, _) =
+        eip7702_transaction(authority, evm::Address::ZERO, 1, 1, Vec::new());
+    let outcome = execute_transaction(&executor, &mut tracking_copy, clear_transaction);
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        read_code_hash(&mut tracking_copy, authority),
+        EMPTY_CODE_HASH
+    );
 }
 
 #[test]

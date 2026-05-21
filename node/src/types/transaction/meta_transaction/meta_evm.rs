@@ -129,12 +129,13 @@ impl MetaEvmTransaction {
                     });
                 }
             }
-            evm::TransactionKind::Eip1559 => {
+            evm::TransactionKind::Eip1559 | evm::TransactionKind::Eip7702 => {
                 // `max_fee_per_gas` is still meaningful on Casper as the user's
-                // EIP-1559 total price cap. It must at least cover the configured
-                // EVM base fee; with the priority fee forced to zero below, this
-                // cap is what lets Ethereum tooling submit type-2 transactions
-                // without implying transaction priority based on gas parameters.
+                // dynamic-fee total price cap. It must at least cover the
+                // configured EVM base fee; with the priority fee forced to zero
+                // below, this cap is what lets Ethereum tooling submit typed
+                // dynamic-fee transactions without implying transaction
+                // priority based on gas parameters.
                 let max_fee_per_gas = transaction.max_fee_per_gas();
                 if max_fee_per_gas < base_fee {
                     return Err(evm::TransactionError::MaxFeePerGasBelowBaseFee {

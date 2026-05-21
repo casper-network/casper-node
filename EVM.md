@@ -21,7 +21,7 @@ Only EIPs referenced by this document or the current code are listed here.
 | [EIP-2930][eip-2930] | <https://eips.ethereum.org/EIPS/eip-2930> | Optional access-list transaction type. Empty access-list transactions decode; non-empty access lists are rejected for now. |
 | [EIP-1559][eip-1559] | <https://eips.ethereum.org/EIPS/eip-1559> | Dynamic-fee transaction type with max fee and priority fee. Casper accepts this envelope for tooling compatibility only when the priority fee is zero. |
 | [EIP-4844][eip-4844] | <https://eips.ethereum.org/EIPS/eip-4844> | Blob transaction support. Rejected because blob sidecars, blob gas, and KZG data are not modeled. |
-| [EIP-7702][eip-7702] | <https://eips.ethereum.org/EIPS/eip-7702> | Set-code transactions for EOAs. Rejected because authorization-list processing and account-code mutation are not implemented. |
+| [EIP-7702][eip-7702] | <https://eips.ethereum.org/EIPS/eip-7702> | Set-code transactions for EOAs. Type `0x04` transactions are accepted with non-empty authorization lists; Casper still rejects non-empty access lists and non-zero priority fees. |
 
 ## Current Scope
 
@@ -41,6 +41,8 @@ Implemented in this workspace:
 - Binary-port `Simulate` for read-only `eth_call` support.
 - Native Casper transfers to 20-byte EVM addresses when `[evm].enabled = true`,
   creating or funding the corresponding EVM-native purse identity.
+- [EIP-7702][eip-7702] type `0x04` set-code transactions, with authorization
+  lists passed through to `revm` for Prague execution.
 
 Implemented in the sidecar workspace for validation:
 
@@ -62,8 +64,8 @@ Not implemented yet:
   `eth_getFilterChanges`, `eth_getFilterLogs`, `eth_uninstallFilter`, and
   `eth_subscribe`.
 - [EIP-4844][eip-4844] blob transactions.
-- [EIP-7702][eip-7702] set-code transactions.
 - Non-empty [EIP-2930][eip-2930]/[EIP-1559][eip-1559] access lists.
+- Non-empty [EIP-7702][eip-7702] access lists and non-zero priority fees.
 - EVM log indexing optimized for historical queries.
 
 ## Transaction Shape
@@ -75,6 +77,7 @@ a raw signed RLP blob. The EVM transaction is stored as:
 - Casper envelope metadata: `timestamp` and `ttl`.
 - Decoded unsigned Ethereum payload fields:
   `kind`, `chain_id`, `nonce`, gas fields, `value`, `input`, and `to`.
+- [EIP-7702][eip-7702] authorization-list items when `kind` is `Eip7702`.
 - Claimed/recovered EVM sender address: `from`.
 - Ethereum signed transaction hash: `hash`.
 - Exactly one Casper `Approval` containing the Ethereum secp256k1 signature.
@@ -112,16 +115,18 @@ The current `eth_sendRawTransaction` flow is:
 3. `from_signed_rlp` decodes the Ethereum envelope.
 4. It rejects unsupported transaction forms:
    - [EIP-4844][eip-4844] blob transactions.
-   - [EIP-7702][eip-7702] set-code transactions.
    - Non-empty access lists.
    - Unknown typed transactions.
-5. It extracts the unsigned Ethereum payload fields.
-6. It recovers the secp256k1 public key and EVM address.
-7. It converts the Ethereum signature into one Casper `Approval`:
+5. For [EIP-7702][eip-7702] type `0x04`, it requires a non-empty
+   authorization list and a call target, then stores authorization tuples as
+   EVM transaction data.
+6. It extracts the unsigned Ethereum payload fields.
+7. It recovers the secp256k1 public key and EVM address.
+8. It converts the Ethereum signature into one Casper `Approval`:
    - `Approval.signer` is the recovered secp256k1 public key.
    - `Approval.signature` is the 64-byte secp256k1 signature.
-8. It stores the Ethereum signed transaction hash.
-9. Sidecar wraps the value as `Transaction::Evm` and submits it to node over
+9. It stores the Ethereum signed transaction hash.
+10. Sidecar wraps the value as `Transaction::Evm` and submits it to node over
    the existing binary-port transaction submission path.
 
 Node does not receive the raw RLP blob for `eth_sendRawTransaction`. Node
@@ -753,6 +758,152 @@ Expected output:
 
 ```text
 1
+```
+
+### Verify EIP-7702 Set-Code
+
+The deployed `Counter` contract can also be used as the delegate target for an
+[EIP-7702][eip-7702] set-code transaction. This verifies the full path through
+off-the-shelf Ethereum tooling:
+
+- `cast wallet sign-auth` signs the authorization tuple.
+- `cast send --auth` submits a type `0x04` transaction through
+  `eth_sendRawTransaction`.
+- `cast receipt` sees the projected receipt as `type: 0x4`.
+- A later transaction without `--auth` still executes the delegated code,
+  proving the delegation persisted in EVM state.
+
+Use `user-1` as the fee payer and a separate authority EOA as the account
+whose code is delegated. The authority key does not need to be funded; it only
+signs the EIP-7702 authorization. The `user-1` account pays for the transaction.
+
+```bash
+export RPC_URL=http://127.0.0.1:11101/rpc
+export USER_PRIVATE_KEY=0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8
+export USER_ADDRESS=0x24790C4849cCAE43c0c1749e2C5b8d00Cc63AB80
+
+export AUTHORITY_PRIVATE_KEY=0x59c6995e998f97a5a0044966f0945381cf28caaa54a7dc353d821cabcd789def
+export AUTHORITY_ADDRESS=$(cast wallet address --private-key "$AUTHORITY_PRIVATE_KEY")
+export COUNTER_ADDRESS=0x6c0704679CA22b83778Ef815607359cf6F5352B6
+
+export USER_NONCE=$(cast nonce "$USER_ADDRESS" --rpc-url "$RPC_URL")
+```
+
+On a fresh devnet where the deploy and increment examples above were run,
+`USER_NONCE` should be `2`. If only the deployment was run, it should be `1`.
+The authority nonce should be `0` before its first authorization:
+
+```bash
+cast nonce "$AUTHORITY_ADDRESS" --rpc-url "$RPC_URL"
+```
+
+Expected output:
+
+```text
+0
+```
+
+Sign the authorization for the authority account to delegate to the deployed
+`Counter` code. The chain ID is the decimal form of `0x435350ff`.
+
+```bash
+export SET_CODE_AUTH=$(cast wallet sign-auth "$COUNTER_ADDRESS" \
+    --private-key "$AUTHORITY_PRIVATE_KEY" \
+    --chain 1129533695 \
+    --nonce 0)
+```
+
+Submit the set-code transaction. Do not pass `--legacy`; the authorization list
+causes Foundry to build an EIP-7702 transaction. Pass
+`--priority-gas-price 0` because Casper currently rejects non-zero priority
+fees.
+
+```bash
+cast send "$AUTHORITY_ADDRESS" \
+    'increment()' \
+    --rpc-url "$RPC_URL" \
+    --private-key "$USER_PRIVATE_KEY" \
+    --auth "$SET_CODE_AUTH" \
+    --gas-price 1000000 \
+    --priority-gas-price 0 \
+    --gas-limit 300000 \
+    --nonce "$USER_NONCE" \
+    --json | tee /tmp/casper-eip7702-set-code.json
+```
+
+Expected receipt checks:
+
+```bash
+export SET_CODE_TX_HASH=$(jq -r .transactionHash /tmp/casper-eip7702-set-code.json)
+
+cast receipt "$SET_CODE_TX_HASH" \
+    --rpc-url "$RPC_URL" \
+    --json | tee /tmp/casper-eip7702-set-code-receipt.json
+
+jq '{type,status,gasUsed,effectiveGasPrice,from,to,logs: [.logs[] | {address,topics,data}]}' \
+    /tmp/casper-eip7702-set-code-receipt.json
+```
+
+Expected highlights:
+
+```text
+type               0x4
+status             0x1
+effectiveGasPrice  0xf4240
+from               0x24790c4849ccae43c0c1749e2c5b8d00cc63ab80
+to                 $AUTHORITY_ADDRESS
+logs[0].address    $AUTHORITY_ADDRESS
+logs[0].topics[0]  0x59950fb23669ee30425f6d79758e75fae698a6c88b2982f2980638d8bcd9397d
+logs[0].topics[1]  0x00000000000000000000000024790c4849ccae43c0c1749e2c5b8d00cc63ab80
+logs[0].data       0x0000000000000000000000000000000000000000000000000000000000000001
+```
+
+Reading `get()` through the authority address should now execute delegated
+`Counter` code and return `1`. The deployed `Counter` contract has separate
+storage; the authority's counter starts from zero even if the original
+`Counter` was incremented earlier.
+
+```bash
+cast call "$AUTHORITY_ADDRESS" \
+    'get()(uint256)' \
+    --rpc-url "$RPC_URL"
+
+cast nonce "$AUTHORITY_ADDRESS" --rpc-url "$RPC_URL"
+```
+
+Expected output:
+
+```text
+1
+1
+```
+
+Finally, prove that the delegation persists after the set-code transaction by
+calling the authority again with a normal legacy transaction and no
+authorization list:
+
+```bash
+export USER_NONCE=$((USER_NONCE + 1))
+
+cast send "$AUTHORITY_ADDRESS" \
+    'increment()' \
+    --rpc-url "$RPC_URL" \
+    --private-key "$USER_PRIVATE_KEY" \
+    --legacy \
+    --gas-price 1000000 \
+    --gas-limit 100000 \
+    --nonce "$USER_NONCE" \
+    --json | tee /tmp/casper-eip7702-persisted-delegation.json
+
+cast call "$AUTHORITY_ADDRESS" \
+    'get()(uint256)' \
+    --rpc-url "$RPC_URL"
+```
+
+Expected output from the final `cast call`:
+
+```text
+2
 ```
 
 ### Confirm Fees
