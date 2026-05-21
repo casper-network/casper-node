@@ -1229,17 +1229,11 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
-    pub(crate) is_speculative: bool,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
 impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "accept transaction {} is_speculative: {}",
-            self.transaction.hash(),
-            self.is_speculative
-        )
+        write!(f, "accept transaction {}", self.transaction.hash(),)
     }
 }

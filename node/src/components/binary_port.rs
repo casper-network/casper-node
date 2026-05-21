@@ -209,7 +209,7 @@ where
     match req {
         Command::TryAcceptTransaction { transaction } => {
             metrics.binary_port_try_accept_transaction_count.inc();
-            try_accept_transaction(effect_builder, transaction, false).await
+            try_accept_transaction(effect_builder, transaction).await
         }
         Command::TrySpeculativeExec { transaction } => {
             metrics.binary_port_try_speculative_exec_count.inc();
@@ -219,10 +219,6 @@ where
                     "received a request for speculative execution while the feature is disabled"
                 );
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
-            }
-            let response = try_accept_transaction(effect_builder, transaction.clone(), true).await;
-            if !response.is_success() {
-                return response;
             }
             try_speculative_execution(effect_builder, transaction).await
         }
@@ -1343,13 +1339,12 @@ where
 async fn try_accept_transaction<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
-    is_speculative: bool,
 ) -> BinaryResponse
 where
     REv: From<AcceptTransactionRequest>,
 {
     effect_builder
-        .try_accept_transaction(transaction, is_speculative)
+        .try_accept_transaction(transaction)
         .await
         .map_or_else(
             |err| BinaryResponse::new_error(err.into()),
@@ -1383,9 +1378,6 @@ where
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result)
-        }
-        SpeculativeExecutionResult::ReceivedV1Transaction => {
-            BinaryResponse::new_error(ErrorCode::ReceivedV1Transaction)
         }
     }
 }

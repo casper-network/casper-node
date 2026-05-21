@@ -66,6 +66,10 @@ impl SpeculativeExecutionResult {
         }
     }
 
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     pub fn example() -> &'static Self {

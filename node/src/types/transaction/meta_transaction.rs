@@ -94,6 +94,13 @@ impl MetaTransaction {
         }
     }
 
+    pub(crate) fn is_wasm(&self) -> bool {
+        match self {
+            MetaTransaction::Deploy(meta_deploy) => !meta_deploy.deploy().is_transfer(),
+            MetaTransaction::V1(v1_txn) => *v1_txn.target() != TransactionTarget::Native,
+        }
+    }
+
     /// Should this transaction use standard payment processing?
     pub(crate) fn is_standard_payment(&self) -> bool {
         match self {
