@@ -1015,6 +1015,34 @@ fn evm_identity_at(fixture: &mut TestFixture, block_height: u64, address: evm::A
     }
 }
 
+fn evm_code_hash_at(
+    fixture: &mut TestFixture,
+    block_height: u64,
+    address: evm::Address,
+) -> evm::Hash {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .expect("should have header");
+    let state_root_hash = *block_header.state_root_hash();
+    match query_global_state(
+        fixture,
+        state_root_hash,
+        Key::Evm(evm::EvmAddr::CodeHash(address)),
+    ) {
+        Some(value) => match *value {
+            StoredValue::CLValue(cl_value) => cl_value
+                .into_t::<evm::Hash>()
+                .expect("EVM code hash should decode"),
+            value => panic!("expected EVM code hash, got {value:?}"),
+        },
+        None => EMPTY_CODE_HASH,
+    }
+}
+
 fn evm_balance(fixture: &mut TestFixture, address: evm::Address, block_height: u64) -> U512 {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     let protocol_version = fixture.chainspec.protocol_version();
@@ -1410,6 +1438,93 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
     assert_eq!(transfer.to, None);
     assert_eq!(transfer.target.addr(), expected_purse.addr());
     assert_eq!(transfer.amount, U512::from(transfer_amount));
+}
+
+#[tokio::test]
+async fn should_reject_native_transfer_to_evm_contract_address() {
+    let evm_config = evm::EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: evm::EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 0,
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config)
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
+    let evm_sender = evm_transaction.from();
+    seed_evm_account(
+        &mut test.fixture,
+        evm_sender,
+        U512::from(EVM_INITIAL_BALANCE),
+    );
+
+    let (_txn_hash, deploy_block_height, deploy_execution_result) = test
+        .send_transaction(Transaction::from(evm_transaction))
+        .await;
+    let ExecutionResult::Evm(deploy_execution_result) = deploy_execution_result else {
+        panic!("expected EVM execution result");
+    };
+    assert_eq!(
+        deploy_execution_result.receipt.status,
+        evm::ReceiptStatus::Success
+    );
+
+    let contract_address = deploy_execution_result
+        .receipt
+        .contract_address
+        .expect("EVM deployment should create a contract");
+    assert_ne!(
+        evm_code_hash_at(&mut test.fixture, deploy_block_height, contract_address),
+        EMPTY_CODE_HASH
+    );
+
+    let contract_balance_before =
+        evm_balance(&mut test.fixture, contract_address, deploy_block_height);
+    assert_eq!(contract_balance_before, U512::zero());
+
+    let transfer_amount = test
+        .fixture
+        .chainspec
+        .transaction_config
+        .native_transfer_minimum_motes
+        + 100;
+    let alice_secret_key = Arc::clone(&test.fixture.node_contexts[0].secret_key);
+    let (_txn_hash, transfer_block_height, transfer_execution_result) = transfer_to_evm_address(
+        &mut test.fixture,
+        transfer_amount,
+        &alice_secret_key,
+        contract_address,
+        PricingMode::Fixed {
+            gas_price_tolerance: 1,
+            additional_computation_factor: 0,
+        },
+        Some(0xE1),
+    )
+    .await;
+
+    assert!(
+        !exec_result_is_success(&transfer_execution_result),
+        "native transfer to EVM contract address should fail: {transfer_execution_result:?}"
+    );
+    assert_eq!(
+        evm_balance(&mut test.fixture, contract_address, transfer_block_height),
+        contract_balance_before
+    );
 }
 
 #[tokio::test]

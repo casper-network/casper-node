@@ -51,6 +51,9 @@ pub enum TransferError {
     /// Invalid operation.
     #[error("Invalid operation")]
     InvalidOperation,
+    /// Native transfer to an EVM contract address.
+    #[error("Native transfer to EVM contract address {0} is not allowed")]
+    EvmContractAddress(evm::Address),
     /// Disallowed transfer attempt (private chain).
     #[error("Either the source or the target must be an admin (private chain).")]
     RestrictedTransferAttempted,
@@ -364,6 +367,7 @@ impl TransferRuntimeArgsBuilder {
                 if *cl_value.cl_type() == CLType::ByteArray(evm::ADDRESS_LENGTH as u32) =>
             {
                 let address: evm::Address = self.map_cl_value(cl_value)?;
+                self.reject_evm_contract_target(address, Rc::clone(&tracking_copy))?;
                 let key = Key::Evm(evm::EvmAddr::Account(address));
                 let maybe_stored_value = tracking_copy.borrow_mut().read(&key)?;
                 return match maybe_stored_value {
@@ -441,6 +445,37 @@ impl TransferRuntimeArgsBuilder {
         }
     }
 
+    fn reject_evm_contract_target<R>(
+        &self,
+        address: evm::Address,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+    ) -> Result<(), TransferError>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
+        let key = Key::Evm(evm::EvmAddr::CodeHash(address));
+        match tracking_copy.borrow_mut().read(&key)? {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let code_hash = cl_value
+                    .into_t::<evm::Hash>()
+                    .map_err(TransferError::CLValue)?;
+                // Crediting a contract purse directly would bypass Ethereum value-transfer
+                // semantics. Preserving those semantics would require executing recipient
+                // EVM code, which is intentionally outside native transfer behavior.
+                if code_hash == evm::EMPTY_CODE_HASH {
+                    Ok(())
+                } else {
+                    Err(TransferError::EvmContractAddress(address))
+                }
+            }
+            Some(stored_value) => Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                "StoredValue::CLValue(evm::Hash)".to_string(),
+                stored_value.type_name(),
+            ))),
+            None => Ok(()),
+        }
+    }
+
     /// Resolves amount.
     ///
     /// User has to specify "amount" argument that could be either a [`U512`] or a u64.
@@ -485,27 +520,28 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let (to, target) =
-            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::ExistingAccount {
-                    main_purse: purse_uref,
-                    target_account_hash: target_account,
-                } => (Some(target_account), purse_uref),
-                TransferTargetMode::ExistingEvmAccount {
-                    main_purse: purse_uref,
-                    ..
-                } => (None, purse_uref),
-                TransferTargetMode::PurseExists {
-                    target_account_hash,
-                    purse_uref,
-                } => (target_account_hash, purse_uref),
-                TransferTargetMode::CreateAccount(_) | TransferTargetMode::CreateEvmAccount(_) => {
-                    // Method "build()" is called after `resolve_transfer_target_mode` is first called
-                    // and handled by creating a new account. Calling `resolve_transfer_target_mode`
-                    // for the second time should never return `CreateAccount` variant.
-                    return Err(TransferError::InvalidOperation);
-                }
-            };
+        let (to, target) = match self
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
+        {
+            TransferTargetMode::ExistingAccount {
+                main_purse: purse_uref,
+                target_account_hash: target_account,
+            } => (Some(target_account), purse_uref),
+            TransferTargetMode::ExistingEvmAccount {
+                main_purse: purse_uref,
+                ..
+            } => (None, purse_uref),
+            TransferTargetMode::PurseExists {
+                target_account_hash,
+                purse_uref,
+            } => (target_account_hash, purse_uref),
+            TransferTargetMode::CreateAccount(_) | TransferTargetMode::CreateEvmAccount(_) => {
+                // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                // for the second time should never return `CreateAccount` variant.
+                return Err(TransferError::InvalidOperation);
+            }
+        };
 
         let source = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
 
