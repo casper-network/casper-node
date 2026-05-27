@@ -76,9 +76,7 @@ impl ExecutionEngineV1 {
         // A good deal of effort has been put into removing all such behaviors; please do not
         // come along and start adding it back.
 
-        let account_hash = initiator_addr
-            .account_hash()
-            .expect("Wasm v1 initiator must be a Casper account");
+        let account_hash = initiator_addr.account_hash();
         let protocol_version = self.config.protocol_version();
         let state_hash = block_info.state_hash;
         let tc = match state_provider.tracking_copy(state_hash) {
@@ -157,9 +155,7 @@ impl ExecutionEngineV1 {
         // A good deal of effort has been put into removing all such behaviors; please do not
         // come along and start adding it back.
 
-        let account_hash = initiator_addr
-            .account_hash()
-            .expect("Wasm v1 initiator must be a Casper account");
+        let account_hash = initiator_addr.account_hash();
         let protocol_version = self.config.protocol_version();
         let tc = Rc::new(RefCell::new(tracking_copy));
         let (runtime_footprint, entity_addr) = {

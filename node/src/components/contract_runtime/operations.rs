@@ -48,9 +48,9 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
-    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InitiatorAddr, InvalidTransaction,
+    InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff,
+    Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -87,15 +87,82 @@ fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
 }
 
 #[derive(Clone, Debug)]
-struct EvmOriginResolution {
-    // Concrete payer selected before payment checks. This is deliberately a
-    // Casper balance identifier, not an EVM-specific balance mode, so the rest
-    // of block execution can use the normal hold/refund/fee machinery.
-    balance_identifier: BalanceIdentifier,
-    // State mutation to perform later, inside the same tracking copy as EVM
-    // execution. Origin resolution itself is read-only so a rejected
-    // transaction does not create accounts or links as a side effect.
-    identity_plan: EvmIdentityPlan,
+enum RuntimeOrigin {
+    Initiator {
+        initiator_addr: InitiatorAddr,
+        payer: BalanceIdentifier,
+    },
+    Evm {
+        // Concrete payer selected before payment checks. This is deliberately a
+        // data-access balance identifier, not an EVM-specific balance mode, so
+        // the rest of block execution can use the normal hold/refund/fee
+        // machinery.
+        balance_identifier: BalanceIdentifier,
+        // State mutation to perform later, inside the same tracking copy as EVM
+        // execution. Origin resolution itself is read-only so a rejected
+        // transaction does not create accounts or links as a side effect.
+        identity_plan: EvmIdentityPlan,
+    },
+}
+
+impl RuntimeOrigin {
+    fn from_initiator_addr(initiator_addr: InitiatorAddr) -> Self {
+        RuntimeOrigin::Initiator {
+            payer: BalanceIdentifier::from(initiator_addr.clone()),
+            initiator_addr,
+        }
+    }
+
+    fn from_evm_parts(
+        balance_identifier: BalanceIdentifier,
+        identity_plan: EvmIdentityPlan,
+    ) -> Self {
+        RuntimeOrigin::Evm {
+            balance_identifier,
+            identity_plan,
+        }
+    }
+
+    fn payer_balance_identifier(&self) -> BalanceIdentifier {
+        match self {
+            RuntimeOrigin::Initiator { payer, .. } => payer.clone(),
+            RuntimeOrigin::Evm {
+                balance_identifier, ..
+            } => balance_identifier.clone(),
+        }
+    }
+
+    fn initiator_addr(&self) -> Result<InitiatorAddr, BlockExecutionError> {
+        match self {
+            RuntimeOrigin::Initiator { initiator_addr, .. } => Ok(initiator_addr.clone()),
+            RuntimeOrigin::Evm { .. } => Err(BlockExecutionError::InvalidTransactionVariant),
+        }
+    }
+
+    fn account_hash(&self) -> Result<AccountHash, BlockExecutionError> {
+        self.initiator_addr()
+            .map(|initiator_addr| initiator_addr.account_hash())
+    }
+
+    fn fee_initiator(&self) -> Option<Box<InitiatorAddr>> {
+        match self {
+            RuntimeOrigin::Initiator { initiator_addr, .. } => {
+                Some(Box::new(initiator_addr.clone()))
+            }
+            RuntimeOrigin::Evm { .. } => None,
+        }
+    }
+
+    fn evm_identity_plan(&self) -> Option<EvmIdentityPlan> {
+        match self {
+            RuntimeOrigin::Initiator { .. } => None,
+            RuntimeOrigin::Evm { identity_plan, .. } => Some(*identity_plan),
+        }
+    }
+
+    fn is_evm(&self) -> bool {
+        matches!(self, RuntimeOrigin::Evm { .. })
+    }
 }
 
 /// Deferred write needed to make an EVM sender's identity explicit in global state.
@@ -129,12 +196,12 @@ enum EvmIdentityPlan {
 /// This function only reads state. That matters because it runs before payment
 /// preconditions are known to pass. If execution is later allowed, the returned
 /// [`EvmIdentityPlan`] is applied in the tracking copy used for EVM execution.
-fn resolve_evm_origin(
+fn resolve_evm_runtime_origin(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
     protocol_version: ProtocolVersion,
     transaction: &casper_types::evm::Transaction,
-) -> Result<EvmOriginResolution, BlockExecutionError> {
+) -> Result<RuntimeOrigin, BlockExecutionError> {
     let address = transaction.from();
     // The signer gives us a Casper `AccountHash` preimage from the secp256k1
     // public key. That account hash is not derivable from the 20-byte EVM
@@ -169,10 +236,10 @@ fn resolve_evm_origin(
                 // Existing bridge records are authoritative. Once an EVM
                 // address is linked, the payer is the linked Casper account's
                 // main purse.
-                Key::Account(account_hash) => Ok(EvmOriginResolution {
-                    balance_identifier: BalanceIdentifier::Account(account_hash),
-                    identity_plan: EvmIdentityPlan::None,
-                }),
+                Key::Account(account_hash) => Ok(RuntimeOrigin::from_evm_parts(
+                    BalanceIdentifier::Account(account_hash),
+                    EvmIdentityPlan::None,
+                )),
                 // Existing EVM-native identities keep paying from their stored
                 // purse. We may still plan an upgrade to a Casper link, but
                 // only when doing so cannot steal a contract identity or move
@@ -186,10 +253,10 @@ fn resolve_evm_origin(
                         purse,
                         deterministic_purse,
                     )?;
-                    Ok(EvmOriginResolution {
-                        balance_identifier: BalanceIdentifier::Purse(purse),
+                    Ok(RuntimeOrigin::from_evm_parts(
+                        BalanceIdentifier::Purse(purse),
                         identity_plan,
-                    })
+                    ))
                 }
                 other => Err(BlockExecutionError::PaymentError(format!(
                     "invalid EVM account identity key: {other}"
@@ -205,33 +272,33 @@ fn resolve_evm_origin(
             // already a contract/runtime-created EVM account. Contracts do not
             // have a signing key, so they must remain EVM-native.
             if evm_account_has_code(&mut tracking_copy, address)? {
-                return Ok(EvmOriginResolution {
-                    balance_identifier: BalanceIdentifier::Purse(deterministic_purse),
-                    identity_plan: EvmIdentityPlan::None,
-                });
+                return Ok(RuntimeOrigin::from_evm_parts(
+                    BalanceIdentifier::Purse(deterministic_purse),
+                    EvmIdentityPlan::None,
+                ));
             }
             match account_main_purse(&mut tracking_copy, protocol_version, account_hash)? {
                 // A Casper account exists for the recovered signer, but the EVM
                 // address has not been seen before. Use the account for payment
                 // immediately and write the bridge only if execution proceeds.
-                Some(_) => Ok(EvmOriginResolution {
-                    balance_identifier: BalanceIdentifier::Account(account_hash),
-                    identity_plan: EvmIdentityPlan::LinkExisting {
+                Some(_) => Ok(RuntimeOrigin::from_evm_parts(
+                    BalanceIdentifier::Account(account_hash),
+                    EvmIdentityPlan::LinkExisting {
                         address,
                         account_hash,
                     },
-                }),
+                )),
                 // First use of this signing pair on both sides. Runtime will
                 // create a Casper account whose main purse is the deterministic
                 // EVM purse, then write the bridge record.
-                None => Ok(EvmOriginResolution {
-                    balance_identifier: BalanceIdentifier::Purse(deterministic_purse),
-                    identity_plan: EvmIdentityPlan::CreateAccount {
+                None => Ok(RuntimeOrigin::from_evm_parts(
+                    BalanceIdentifier::Purse(deterministic_purse),
+                    EvmIdentityPlan::CreateAccount {
                         address,
                         account_hash,
                         main_purse: deterministic_purse,
                     },
-                }),
+                )),
             }
         }
     }
@@ -552,15 +619,8 @@ pub fn execute_finalized_block(
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
-        let initiator_addr = stored_transaction.initiator_addr();
         let transaction_hash = stored_transaction.hash();
         let authorization_keys = stored_transaction.authorization_keys();
-
-        if !is_evm {
-            if let Some(address) = initiator_addr.evm_address() {
-                return Err(BlockExecutionError::EvmInitiatorForNonEvmTransaction { address });
-            }
-        }
 
         /*
         we solve for halting state using a `gas limit` which is the maximum amount of
@@ -655,16 +715,20 @@ pub fn execute_finalized_block(
         let is_custom_payment = !is_standard_payment && transaction.is_custom_payment();
         let is_v1_wasm = transaction.is_v1_wasm();
         let is_v2_wasm = transaction.is_v2_wasm();
-        let evm_origin = if let Some(evm_transaction) = evm_transaction {
-            Some(resolve_evm_origin(
+        let runtime_origin = if let Some(evm_transaction) = evm_transaction {
+            resolve_evm_runtime_origin(
                 &scratch_state,
                 state_root_hash,
                 protocol_version,
                 evm_transaction,
-            )?)
+            )?
         } else {
-            None
+            let initiator_addr = stored_transaction
+                .initiator_addr()
+                .ok_or(BlockExecutionError::InvalidTransactionVariant)?;
+            RuntimeOrigin::from_initiator_addr(initiator_addr)
         };
+        let payer_balance_identifier = runtime_origin.payer_balance_identifier();
 
         let refund_purse_active = is_custom_payment;
         if refund_purse_active {
@@ -678,7 +742,7 @@ pub fn execute_finalized_block(
                 protocol_version,
                 transaction_hash,
                 HandleRefundMode::SetRefundPurse {
-                    target: Box::new(initiator_addr.clone().try_into()?),
+                    target: Box::new(payer_balance_identifier.clone()),
                 },
             );
             let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
@@ -700,10 +764,7 @@ pub fn execute_finalized_block(
             let initial_balance_result = scratch_state.balance(BalanceRequest::new(
                 state_root_hash,
                 protocol_version,
-                evm_origin.as_ref().map_or_else(
-                    || initiator_addr.clone().try_into(),
-                    |origin| Ok(origin.balance_identifier.clone()),
-                )?,
+                payer_balance_identifier.clone(),
                 balance_handling,
                 ProofHandling::NoProofs,
             ));
@@ -733,7 +794,7 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            if let Some(origin) = evm_origin.as_ref() {
+            if runtime_origin.is_evm() {
                 // EVM transactions intentionally do not participate in Casper custom payment
                 // or refund-purse setup. Ethereum payloads carry a gas limit and gas price fields,
                 // but this chain still owns the fee/refund policy through the same chainspec
@@ -742,7 +803,7 @@ pub fn execute_finalized_block(
                 // calculation, and final fee handling, while revm runs with gas fee
                 // charging disabled and only mutates EVM nonce, code, storage,
                 // logs, creates, and value transfers.
-                origin.balance_identifier.clone()
+                payer_balance_identifier.clone()
             } else if is_standard_payment {
                 let contract_might_pay =
                     addressable_entity_enabled && transaction.is_contract_by_hash_invocation();
@@ -753,29 +814,26 @@ pub fn execute_finalized_block(
                         Ok(None) => {
                             // the initiating account pays using its main purse
                             trace!(%transaction_hash, "direct invocation with account payment");
-                            initiator_addr.clone().try_into()?
+                            payer_balance_identifier.clone()
                         }
                         Err(err) => {
                             trace!(%transaction_hash, "failed to resolve contract self payment");
                             artifact_builder
                                 .with_state_result_error(err)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                            let account_hash = initiator_addr
-                                .account_hash()
-                                .expect("contract runtime initiator must be a Casper account");
-                            BalanceIdentifier::PenalizedAccount(account_hash)
+                            BalanceIdentifier::PenalizedAccount(runtime_origin.account_hash()?)
                         }
                     }
                 } else {
                     // the initiating account pays using its main purse
                     trace!(%transaction_hash, "account session with standard payment");
-                    initiator_addr.clone().try_into()?
+                    payer_balance_identifier.clone()
                 }
             } else if is_v2_wasm {
                 // vm2 does not support custom payment, so it MUST be standard payment
                 // if transaction runtime is v2 then the initiating account will pay using
                 // the refund purse
-                initiator_addr.clone().try_into()?
+                payer_balance_identifier.clone()
             } else if is_custom_payment {
                 // this is the custom payment flow
                 // the initiating account will pay, but wants to do so with a different purse or
@@ -819,11 +877,11 @@ pub fn execute_finalized_block(
                         state_root_hash,
                         protocol_version,
                         transaction_hash,
-                        initiator_addr.clone(),
+                        runtime_origin.initiator_addr()?,
                         authorization_keys.clone(),
                         BalanceIdentifierTransferArgs::new(
                             None,
-                            initiator_addr.clone().try_into()?,
+                            payer_balance_identifier.clone(),
                             BalanceIdentifier::Payment,
                             baseline_motes_amount,
                             None,
@@ -864,10 +922,7 @@ pub fn execute_finalized_block(
                     BalanceIdentifier::Payment
                 }
             } else {
-                let account_hash = initiator_addr
-                    .account_hash()
-                    .expect("contract runtime initiator must be a Casper account");
-                BalanceIdentifier::PenalizedAccount(account_hash)
+                BalanceIdentifier::PenalizedAccount(runtime_origin.account_hash()?)
             }
         };
 
@@ -959,7 +1014,7 @@ pub fn execute_finalized_block(
                                 state_root_hash,
                                 protocol_version,
                                 transaction_hash,
-                                initiator_addr.clone(),
+                                runtime_origin.initiator_addr()?,
                                 authorization_keys,
                                 runtime_args.clone(),
                             ));
@@ -975,7 +1030,7 @@ pub fn execute_finalized_block(
                             state_root_hash,
                             protocol_version,
                             transaction_hash,
-                            initiator_addr.clone(),
+                            runtime_origin.initiator_addr()?,
                             authorization_keys,
                             runtime_args.clone(),
                         ));
@@ -1005,7 +1060,7 @@ pub fn execute_finalized_block(
                                 state_root_hash,
                                 protocol_version,
                                 transaction_hash,
-                                initiator_addr.clone(),
+                                runtime_origin.initiator_addr()?,
                                 authorization_keys,
                                 auction_method,
                             ));
@@ -1045,7 +1100,7 @@ pub fn execute_finalized_block(
                     let mut tracking_copy = scratch_state
                         .tracking_copy(state_root_hash)?
                         .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
-                    if let Some(origin) = evm_origin.as_ref() {
+                    if let Some(identity_plan) = runtime_origin.evm_identity_plan() {
                         // Apply the deferred bridge/account creation only now,
                         // after balance preconditions have allowed execution.
                         // This keeps rejected EVM transactions from mutating
@@ -1054,7 +1109,7 @@ pub fn execute_finalized_block(
                         apply_evm_identity_plan(
                             &mut tracking_copy,
                             protocol_version,
-                            origin.identity_plan,
+                            identity_plan,
                         )?;
                     }
                     let outcome = EvmExecutor::new(chainspec.evm_config)
@@ -1230,7 +1285,7 @@ pub fn execute_finalized_block(
                         //  placing a hold on the correct purse.
                         balance_identifier = BalanceIdentifier::Refund;
                         Some(HandleRefundMode::RefundNoFeeCustomPayment {
-                            initiator_addr: Box::new(initiator_addr.clone()),
+                            initiator_addr: Box::new(runtime_origin.initiator_addr()?),
                             limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             cost: artifact_builder.cost_to_use(),
@@ -1271,7 +1326,7 @@ pub fn execute_finalized_block(
                         // logic, which is interpreted by inner logic to use the currently set
                         // refund purse.
                         Some(HandleRefundMode::Refund {
-                            initiator_addr: Box::new(initiator_addr.clone()),
+                            initiator_addr: Box::new(runtime_origin.initiator_addr()?),
                             limit: artifact_builder.limit(),
                             gas_price: current_gas_price,
                             consumed,
@@ -1382,7 +1437,7 @@ pub fn execute_finalized_block(
                     protocol_version,
                     transaction_hash,
                     HandleFeeMode::pay(
-                        Box::new(initiator_addr.clone()),
+                        runtime_origin.fee_initiator(),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
                         fee_amount,
@@ -1399,7 +1454,7 @@ pub fn execute_finalized_block(
                     protocol_version,
                     transaction_hash,
                     HandleFeeMode::pay(
-                        Box::new(initiator_addr.clone()),
+                        runtime_origin.fee_initiator(),
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
                         fee_amount,
@@ -1886,7 +1941,9 @@ where
                 *state_root_hash,
                 protocol_version,
                 transaction_hash,
-                initiator_addr.clone(),
+                initiator_addr
+                    .cloned()
+                    .expect("native speculative execution requires a Casper initiator"),
                 authorization_keys,
                 runtime_args,
             ));

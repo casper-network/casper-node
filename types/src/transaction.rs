@@ -304,12 +304,12 @@ impl Transaction {
         }
     }
 
-    /// Returns the address of the initiator of the transaction.
-    pub fn initiator_addr(&self) -> InitiatorAddr {
+    /// Returns the Casper initiator address, if this transaction has one.
+    pub fn initiator_addr(&self) -> Option<InitiatorAddr> {
         match self {
-            Transaction::Deploy(deploy) => InitiatorAddr::PublicKey(deploy.account().clone()),
-            Transaction::V1(txn) => txn.initiator_addr().clone(),
-            Transaction::Evm(txn) => InitiatorAddr::EvmAddress(txn.from()),
+            Transaction::Deploy(deploy) => Some(InitiatorAddr::PublicKey(deploy.account().clone())),
+            Transaction::V1(txn) => Some(txn.initiator_addr().clone()),
+            Transaction::Evm(_) => None,
         }
     }
 

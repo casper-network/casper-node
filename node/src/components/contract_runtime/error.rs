@@ -8,13 +8,12 @@ use thiserror::Error;
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
     data_access_layer::{
-        forced_undelegate::ForcedUndelegateError, BalanceIdentifierFromInitiatorError,
-        BlockRewardsError, FeeError, StepError,
+        forced_undelegate::ForcedUndelegateError, BlockRewardsError, FeeError, StepError,
     },
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, evm, CLValueError, Digest, EraId, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -177,25 +176,9 @@ pub enum BlockExecutionError {
     /// Invalid transaction variant.
     #[error("Invalid transaction variant")]
     InvalidTransactionVariant,
-    /// EVM initiators are only valid for EVM transaction variants.
-    #[error("EVM initiator address {address:?} is only valid for EVM transactions")]
-    EvmInitiatorForNonEvmTransaction {
-        /// The EVM initiator address found on a non-EVM transaction.
-        address: evm::Address,
-    },
     /// Invalid transaction arguments.
     #[error("Invalid transaction arguments")]
     InvalidTransactionArgs,
     #[error("Data Access Layer conflicts with chainspec setting: {0}")]
     InvalidAESetting(bool),
-}
-
-impl From<BalanceIdentifierFromInitiatorError> for BlockExecutionError {
-    fn from(error: BalanceIdentifierFromInitiatorError) -> Self {
-        match error {
-            BalanceIdentifierFromInitiatorError::EvmAddress(address) => {
-                BlockExecutionError::EvmInitiatorForNonEvmTransaction { address }
-            }
-        }
-    }
 }

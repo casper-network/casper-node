@@ -36,12 +36,43 @@ impl Display for TransactionMetadata {
     }
 }
 
+impl Display for EvmTransactionMetadata {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "transaction-metadata[initiator_addr: EVM address {}]",
+            self.initiator_addr,
+        )
+    }
+}
+
+#[derive(Debug, Clone, DataSize, PartialEq, Eq, Serialize)]
+pub(crate) struct EvmTransactionMetadata {
+    initiator_addr: evm::Address,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+}
+
+impl EvmTransactionMetadata {
+    pub(crate) fn initiator_addr(&self) -> evm::Address {
+        self.initiator_addr
+    }
+
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
+    pub(crate) fn ttl(&self) -> TimeDiff {
+        self.ttl
+    }
+}
+
 #[derive(Debug, Clone, DataSize, Serialize, PartialEq, Eq)]
 /// A versioned wrapper for a transaction header or deploy header.
 pub(crate) enum TransactionHeader {
     Deploy(DeployHeader),
     V1(TransactionMetadata),
-    Evm(TransactionMetadata),
+    Evm(EvmTransactionMetadata),
 }
 
 impl From<DeployHeader> for TransactionHeader {
@@ -63,8 +94,8 @@ impl From<&TransactionV1> for TransactionHeader {
 
 impl From<&evm::Transaction> for TransactionHeader {
     fn from(transaction: &evm::Transaction) -> Self {
-        let meta = TransactionMetadata {
-            initiator_addr: InitiatorAddr::EvmAddress(transaction.from()),
+        let meta = EvmTransactionMetadata {
+            initiator_addr: transaction.from(),
             timestamp: transaction.timestamp(),
             ttl: transaction.ttl(),
         };

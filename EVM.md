@@ -210,14 +210,13 @@ For client-submitted EVM transactions, the acceptor currently validates:
 12. That balance must meet the chain baseline motes requirement.
 
 The acceptor does not require a Casper `AddressableEntity` for every EVM
-address. The sender identity is still
-`InitiatorAddr::EvmAddress(transaction.from())`. If the EVM address is linked to
-`Key::Account(account_hash)`, the Casper account's main purse is used. If it is
-an EVM-native identity, the stored purse is used. If no EVM identity exists yet,
-the acceptor uses the recovered signer public key to check the corresponding
-Casper account balance, falling back to the address's deterministic EVM purse
-when no Casper account exists. The runtime later checks the full EVM maximum
-fee amount.
+address. The EVM sender identity is `transaction.from()`. If the EVM address is
+linked to `Key::Account(account_hash)`, the Casper account's main purse is used.
+If it is an EVM-native identity, the stored purse is used. If no EVM identity
+exists yet, the acceptor uses the recovered signer public key to check the
+corresponding Casper account balance, falling back to the address's
+deterministic EVM purse when no Casper account exists. The runtime later checks
+the full EVM maximum fee amount.
 
 The nonce check is also applied to peer-sourced EVM transactions before storage,
 so a gossiped transaction with a nonce that cannot execute at the current state
@@ -238,10 +237,10 @@ evm_transaction = stored_transaction.as_evm()
 meta_transaction = MetaTransaction::from_transaction(stored_transaction, ...)
 ```
 
-Common metadata such as hash, initiator, authorization keys, size estimate,
-gas limit, and cost is derived directly from `Transaction`. For EVM:
+Common metadata such as hash, authorization keys, size estimate, gas limit, and
+cost is derived directly from `Transaction`. For EVM:
 
-- the initiator is `InitiatorAddr::EvmAddress(transaction.from())`,
+- the initiator is the EVM sender address, `transaction.from()`,
 - the transaction lane is currently the last configured Wasm lane,
 - the gas limit is the Ethereum transaction gas limit,
 - the maximum cost is `gas_limit * effective_gas_price`,

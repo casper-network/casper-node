@@ -15,7 +15,7 @@ use super::Effects;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    evm, Gas, InitiatorAddr, U512,
+    evm, Gas, U512,
 };
 
 /// The result of executing a single EVM transaction.
@@ -25,7 +25,7 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct EvmExecutionResult {
     /// Who initiated this EVM transaction.
-    pub initiator: InitiatorAddr,
+    pub initiator: evm::Address,
     /// The current Casper gas price used for fee accounting.
     pub current_price: u8,
     /// The maximum allowed gas limit for this transaction.
@@ -50,7 +50,7 @@ impl EvmExecutionResult {
         let gas_price = rng.gen_range(1..6);
         let cost = limit.value() * U512::from(gas_price);
         EvmExecutionResult {
-            initiator: InitiatorAddr::random(rng),
+            initiator: evm::Address::new(rng.gen()),
             current_price: gas_price,
             limit,
             cost,
@@ -94,7 +94,7 @@ impl ToBytes for EvmExecutionResult {
 
 impl FromBytes for EvmExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (initiator, remainder) = InitiatorAddr::from_bytes(bytes)?;
+        let (initiator, remainder) = evm::Address::from_bytes(bytes)?;
         let (current_price, remainder) = u8::from_bytes(remainder)?;
         let (limit, remainder) = Gas::from_bytes(remainder)?;
         let (cost, remainder) = U512::from_bytes(remainder)?;

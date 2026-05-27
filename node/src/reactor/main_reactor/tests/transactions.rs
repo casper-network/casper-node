@@ -23,7 +23,7 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, ExecutableDeployItem,
-    ExecutionInfo, InitiatorAddr, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
+    ExecutionInfo, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use once_cell::sync::Lazy;
@@ -1162,10 +1162,7 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         panic!("expected EVM execution result");
     };
 
-    assert_eq!(
-        execution_result.initiator,
-        InitiatorAddr::EvmAddress(sender)
-    );
+    assert_eq!(execution_result.initiator, sender);
     assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
     assert_eq!(
         execution_result.receipt.effective_gas_price,

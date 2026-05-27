@@ -4,8 +4,8 @@ use std::{
 };
 
 use casper_types::{
-    bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, Gas, InitiatorAddr, InvalidTransaction,
-    TimeDiff, Timestamp, TransactionConfig, TransactionHash,
+    bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, Gas, InvalidTransaction, TimeDiff,
+    Timestamp, TransactionConfig, TransactionHash,
 };
 use serde::Serialize;
 
@@ -13,7 +13,6 @@ use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct MetaEvmTransaction {
     transaction: evm::Transaction,
-    initiator_addr: InitiatorAddr,
     lane_id: u8,
     payload_hash: Digest,
 }
@@ -33,7 +32,6 @@ impl MetaEvmTransaction {
         let payload_hash = Digest::hash(transaction.signing_payload()?);
         Ok(MetaEvmTransaction {
             transaction: transaction.clone(),
-            initiator_addr: InitiatorAddr::EvmAddress(transaction.from()),
             lane_id,
             payload_hash,
         })
@@ -57,10 +55,6 @@ impl MetaEvmTransaction {
 
     pub(crate) fn approvals(&self) -> &BTreeSet<Approval> {
         self.transaction.approvals()
-    }
-
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
-        &self.initiator_addr
     }
 
     pub(crate) fn lane_id(&self) -> u8 {

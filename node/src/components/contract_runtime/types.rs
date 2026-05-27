@@ -74,7 +74,8 @@ pub(crate) struct ExecutionArtifactBuilder {
     error_message: Option<String>,
     messages: Messages,
     transfers: Vec<Transfer>,
-    initiator: InitiatorAddr,
+    initiator: Option<InitiatorAddr>,
+    evm_initiator: Option<evm::Address>,
     current_price: u8,
     cost: U512,
     limit: Gas,
@@ -102,6 +103,7 @@ impl ExecutionArtifactBuilder {
             transfers: vec![],
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
+            evm_initiator: transaction.evm_initiator_addr(),
             current_price,
             cost: initial_cost,
             limit,
@@ -127,6 +129,7 @@ impl ExecutionArtifactBuilder {
             transfers: vec![],
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
+            evm_initiator: transaction.evm_initiator_addr(),
             current_price,
             cost: U512::zero(),
             limit: Gas::zero(),
@@ -477,7 +480,7 @@ impl ExecutionArtifactBuilder {
 
     #[allow(unused)]
     pub fn with_initiator_addr(&mut self, initiator_addr: InitiatorAddr) -> &mut Self {
-        self.initiator = initiator_addr;
+        self.initiator = Some(initiator_addr);
         self
     }
 
@@ -490,7 +493,9 @@ impl ExecutionArtifactBuilder {
         let actual_cost = self.cost_to_use();
         let execution_result = if let Some(receipt) = self.evm_receipt {
             let result = EvmExecutionResult {
-                initiator: self.initiator,
+                initiator: self
+                    .evm_initiator
+                    .expect("EVM execution result requires an EVM initiator"),
                 current_price: self.current_price,
                 limit: self.limit,
                 cost: actual_cost,
@@ -504,7 +509,9 @@ impl ExecutionArtifactBuilder {
             let result = ExecutionResultV2 {
                 effects: self.effects,
                 transfers: self.transfers,
-                initiator: self.initiator,
+                initiator: self
+                    .initiator
+                    .expect("Wasm execution result requires a Casper initiator"),
                 refund: self.refund,
                 limit: self.limit,
                 consumed: self.consumed,

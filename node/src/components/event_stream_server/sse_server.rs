@@ -34,6 +34,7 @@ use warp::{
 
 use casper_types::{
     contract_messages::Messages,
+    evm,
     execution::{Effects, ExecutionResult},
     Block, BlockHash, EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp, Transaction, TransactionHash,
@@ -71,7 +72,8 @@ pub enum SseData {
     /// The given transaction has been executed, committed and forms part of the given block.
     TransactionProcessed {
         transaction_hash: Box<TransactionHash>,
-        initiator_addr: Box<InitiatorAddr>,
+        initiator_addr: Option<Box<InitiatorAddr>>,
+        evm_initiator_addr: Option<Box<evm::Address>>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
@@ -131,9 +133,17 @@ impl SseData {
             .take(message_count)
             .collect();
 
+        let (initiator_addr, evm_initiator_addr) = match &txn {
+            Transaction::Deploy(_) | Transaction::V1(_) => {
+                (txn.initiator_addr().map(Box::new), None)
+            }
+            Transaction::Evm(evm_transaction) => (None, Some(Box::new(evm_transaction.from()))),
+        };
+
         SseData::TransactionProcessed {
             transaction_hash: Box::new(txn.hash()),
-            initiator_addr: Box::new(txn.initiator_addr()),
+            initiator_addr,
+            evm_initiator_addr,
             timestamp,
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),

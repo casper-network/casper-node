@@ -128,11 +128,9 @@ impl TransferRequestBuilder {
     /// authorization keys.
     pub fn with_initiator<T: Into<InitiatorAddr>>(mut self, initiator: T) -> Self {
         self.initiator = initiator.into();
-        let _ = self.authorization_keys.insert(
-            self.initiator
-                .account_hash()
-                .expect("test transfer initiator must be a Casper account"),
-        );
+        let _ = self
+            .authorization_keys
+            .insert(self.initiator.account_hash());
         self
     }
 

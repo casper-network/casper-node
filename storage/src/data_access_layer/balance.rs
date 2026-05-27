@@ -1,7 +1,6 @@
 //! Types for balance queries.
 use casper_types::{
     account::AccountHash,
-    evm,
     global_state::TrieMerkleProof,
     system::{
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
@@ -16,7 +15,6 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 use std::{
     collections::{btree_map::Entry, BTreeMap},
-    convert::TryFrom,
     fmt::{Display, Formatter},
 };
 use tracing::error;
@@ -72,38 +70,11 @@ pub enum BalanceIdentifier {
     PenalizedPayment,
 }
 
-/// Error converting a transaction initiator into a balance identifier.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum BalanceIdentifierFromInitiatorError {
-    /// EVM initiators require EVM origin resolution before they can identify a purse.
-    EvmAddress(evm::Address),
-}
-
-impl Display for BalanceIdentifierFromInitiatorError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BalanceIdentifierFromInitiatorError::EvmAddress(address) => {
-                write!(
-                    formatter,
-                    "EVM initiator address {address:?} cannot directly identify a balance"
-                )
-            }
-        }
-    }
-}
-
-impl TryFrom<InitiatorAddr> for BalanceIdentifier {
-    type Error = BalanceIdentifierFromInitiatorError;
-
-    fn try_from(value: InitiatorAddr) -> Result<Self, Self::Error> {
+impl From<InitiatorAddr> for BalanceIdentifier {
+    fn from(value: InitiatorAddr) -> Self {
         match value {
-            InitiatorAddr::PublicKey(public_key) => Ok(BalanceIdentifier::Public(public_key)),
-            InitiatorAddr::AccountHash(account_hash) => {
-                Ok(BalanceIdentifier::Account(account_hash))
-            }
-            InitiatorAddr::EvmAddress(address) => {
-                Err(BalanceIdentifierFromInitiatorError::EvmAddress(address))
-            }
+            InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
+            InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
         }
     }
 }

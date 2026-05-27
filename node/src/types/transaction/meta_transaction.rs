@@ -69,12 +69,12 @@ impl MetaTransaction {
         }
     }
 
-    /// Returns the address of the initiator of the transaction.
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+    /// Returns the Casper initiator address, if this transaction has one.
+    pub(crate) fn initiator_addr(&self) -> Option<&InitiatorAddr> {
         match self {
-            MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr(),
-            MetaTransaction::Evm(evm) => evm.initiator_addr(),
-            MetaTransaction::V1(txn) => txn.initiator_addr(),
+            MetaTransaction::Deploy(meta_deploy) => Some(meta_deploy.initiator_addr()),
+            MetaTransaction::Evm(_) => None,
+            MetaTransaction::V1(txn) => Some(txn.initiator_addr()),
         }
     }
 
@@ -324,11 +324,11 @@ impl MetaTransaction {
     }
 
     pub(crate) fn to_session_input_data(&self) -> SessionInputData<'_> {
-        let initiator_addr = self.initiator_addr();
         let is_standard_payment = self.is_standard_payment();
         match self {
             MetaTransaction::Deploy(meta_deploy) => {
                 let deploy = meta_deploy.deploy();
+                let initiator_addr = meta_deploy.initiator_addr();
                 let data = SessionDataDeploy::new(
                     deploy.hash(),
                     deploy.session(),
@@ -342,6 +342,7 @@ impl MetaTransaction {
                 unreachable!("EVM transactions do not have Casper session input data")
             }
             MetaTransaction::V1(v1) => {
+                let initiator_addr = v1.initiator_addr();
                 let data = SessionDataV1::new(
                     v1.args().as_named().expect("V1 wasm args should be named and validated at the transaction acceptor level"),
                     v1.target(),
@@ -568,10 +569,7 @@ mod tests {
         assert_eq!(meta.timestamp(), evm_transaction.timestamp());
         assert_eq!(meta.ttl(), evm_transaction.ttl());
         assert_eq!(meta.approvals(), evm_transaction.approvals().clone());
-        assert_eq!(
-            meta.initiator_addr(),
-            &InitiatorAddr::EvmAddress(evm_transaction.from())
-        );
+        assert_eq!(meta.initiator_addr(), None);
         assert_eq!(meta.transaction_lane(), EVM_LANE);
         assert_eq!(meta.gas_limit(&chainspec).unwrap(), Gas::new(21_000));
         assert_eq!(meta.gas_price_tolerance().unwrap(), u8::MAX);
