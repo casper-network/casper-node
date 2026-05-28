@@ -3,7 +3,7 @@
 use alloy_eips::eip7702::{
     Authorization as RevmAuthorization, SignedAuthorization as RevmSignedAuthorization,
 };
-use casper_types::{evm, BlockHash, U256 as CasperU256};
+use casper_types::{evm, BlockHash, EvmConfig, EvmTransactionKind, U256 as CasperU256};
 use revm::{
     context::TxEnv,
     primitives::{Address, Bytes, TxKind, B256, U256},
@@ -11,7 +11,7 @@ use revm::{
 
 use crate::{Error, ExecuteKind};
 
-pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Result<TxEnv, Error> {
+pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxEnv, Error> {
     let tx_env = match kind {
         ExecuteKind::Transaction(transaction) => {
             let mut builder = TxEnv::builder()
@@ -23,12 +23,12 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                 .chain_id(transaction.chain_id().or(Some(config.chain_id)));
 
             builder = match transaction.kind() {
-                evm::TransactionKind::Legacy | evm::TransactionKind::Eip2930 => builder.gas_price(
+                EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => builder.gas_price(
                     transaction
                         .gas_price()
                         .unwrap_or_else(|| transaction.max_fee_per_gas()),
                 ),
-                evm::TransactionKind::Eip1559 => {
+                EvmTransactionKind::Eip1559 => {
                     let max_priority_fee_per_gas =
                         Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
                     // Preserve the EIP-1559 fields when translating into
@@ -41,7 +41,7 @@ pub(crate) fn build_tx_env(config: &evm::EvmConfig, kind: &ExecuteKind) -> Resul
                         .max_fee_per_gas(transaction.max_fee_per_gas())
                         .gas_priority_fee(max_priority_fee_per_gas)
                 }
-                evm::TransactionKind::Eip7702 => {
+                EvmTransactionKind::Eip7702 => {
                     let max_priority_fee_per_gas =
                         Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
                     builder

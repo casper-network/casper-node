@@ -4,7 +4,7 @@ use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     TrackingCopy,
 };
-use casper_types::{evm, Key, StoredValue};
+use casper_types::{EvmConfig, EvmSpec, Key, StoredValue};
 use revm::{
     context_interface::result::{EVMError, ExecutionResult as RevmExecutionResult, ResultGas},
     primitives::{hardfork::SpecId, U256},
@@ -23,17 +23,17 @@ use crate::{
 /// commit the resulting effects through the normal Casper storage flow.
 #[derive(Clone, Debug)]
 pub struct EvmExecutor {
-    config: evm::EvmConfig,
+    config: EvmConfig,
 }
 
 impl EvmExecutor {
     /// Creates a new executor from chainspec EVM configuration.
-    pub fn new(config: evm::EvmConfig) -> Self {
+    pub fn new(config: EvmConfig) -> Self {
         Self { config }
     }
 
     /// Returns the immutable EVM configuration used by this executor.
-    pub fn config(&self) -> &evm::EvmConfig {
+    pub fn config(&self) -> &EvmConfig {
         &self.config
     }
 
@@ -122,7 +122,7 @@ impl EvmExecutor {
 }
 
 fn disabled_fee_transfers(
-    config: &evm::EvmConfig,
+    config: &EvmConfig,
     request: &ExecuteRequest,
     result: &RevmExecutionResult,
 ) -> state::DisabledFeeTransfers {
@@ -164,9 +164,9 @@ fn result_gas(result: &RevmExecutionResult) -> &ResultGas {
     }
 }
 
-fn spec_id(spec: evm::EvmSpec) -> SpecId {
+fn spec_id(spec: EvmSpec) -> SpecId {
     match spec {
-        evm::EvmSpec::Prague => SpecId::PRAGUE,
+        EvmSpec::Prague => SpecId::PRAGUE,
     }
 }
 

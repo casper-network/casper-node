@@ -38,8 +38,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT,
     },
     Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntryPointAddr, EntryPointValue, HoldsEpoch, Key, KeyTag, Phase, PublicKey, RuntimeArgs,
-    StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
+    EntryPointAddr, EntryPointValue, EvmAddr, HoldsEpoch, Key, KeyTag, Phase, PublicKey,
+    RuntimeArgs, StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 #[cfg(test)]
@@ -2262,15 +2262,15 @@ pub trait StateProvider: Send + Sync + Sized {
                     Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
                 };
                 tc.borrow_mut().write(
-                    Key::Evm(evm::EvmAddr::Account(address)),
+                    Key::Evm(EvmAddr::Account(address)),
                     StoredValue::CLValue(identity),
                 );
                 tc.borrow_mut().write(
-                    Key::Evm(evm::EvmAddr::Nonce(address)),
+                    Key::Evm(EvmAddr::Nonce(address)),
                     StoredValue::CLValue(nonce),
                 );
                 tc.borrow_mut().write(
-                    Key::Evm(evm::EvmAddr::CodeHash(address)),
+                    Key::Evm(EvmAddr::CodeHash(address)),
                     StoredValue::CLValue(code_hash),
                 );
                 tc.borrow_mut().write(

@@ -16,13 +16,20 @@ mod transaction;
 
 pub use account::{deterministic_purse, StorageAddr, EMPTY_CODE_HASH};
 pub use address::{Address, ADDRESS_LENGTH};
-pub use config::{EvmConfig, EvmSpec};
-pub use evm_addr::EvmAddr;
 pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};
 pub use topic::Topic;
 pub use transaction::{
-    SetCodeAuthorization, Transaction, TransactionError, TransactionHash, TransactionKind,
-    EIP1559_TRANSACTION_TYPE_ID, EIP2930_TRANSACTION_TYPE_ID, EIP4844_TRANSACTION_TYPE_ID,
-    EIP7702_TRANSACTION_TYPE_ID, LEGACY_TRANSACTION_TYPE_ID,
+    SetCodeAuthorization, EIP1559_TRANSACTION_TYPE_ID, EIP2930_TRANSACTION_TYPE_ID,
+    EIP4844_TRANSACTION_TYPE_ID, EIP7702_TRANSACTION_TYPE_ID, LEGACY_TRANSACTION_TYPE_ID,
+};
+
+// Evm-prefixed wrappers should be reached through the crate root
+// (`casper_types::EvmFoo`), not through `casper_types::evm::EvmFoo`.
+// They are re-exported here so the rest of `casper-types` can import them
+// without going through the crate root.
+pub use config::{EvmConfig, EvmSpec};
+pub use evm_addr::EvmAddr;
+pub use transaction::{
+    EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,
 };

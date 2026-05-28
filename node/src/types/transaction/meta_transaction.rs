@@ -6,10 +6,10 @@ use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, Se
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, evm, Approval, Chainspec, Digest,
-    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
-    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    account::AccountHash, bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, EvmTransaction,
+    EvmTransactionError, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
+    InvalidTransaction, Phase, PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
     INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
@@ -468,7 +468,7 @@ impl MetaTransaction {
         }
     }
 
-    pub(crate) fn as_evm(&self) -> Option<&evm::Transaction> {
+    pub(crate) fn as_evm(&self) -> Option<&EvmTransaction> {
         match self {
             MetaTransaction::Evm(evm) => Some(evm.transaction()),
             _ => None,
@@ -600,7 +600,7 @@ mod tests {
         .expect_err("EVM transaction should need a lane");
         assert!(matches!(
             error,
-            InvalidTransaction::Evm(evm::TransactionError::MissingTransactionLane)
+            InvalidTransaction::Evm(EvmTransactionError::MissingTransactionLane)
         ));
     }
 
@@ -614,7 +614,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::Disabled))
+            Err(InvalidTransaction::Evm(EvmTransactionError::Disabled))
         ));
     }
 
@@ -627,9 +627,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(
-                evm::TransactionError::MissingChainId
-            ))
+            Err(InvalidTransaction::Evm(EvmTransactionError::MissingChainId))
         ));
     }
 
@@ -642,7 +640,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::ChainIdMismatch {
+            Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
                 expected: CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
@@ -658,7 +656,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::GasPriceBelowBaseFee {
+            Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
                 gas_price,
                 base_fee
             })) if gas_price == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
@@ -682,7 +680,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::ChainIdMismatch {
+            Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
                 expected: CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
@@ -698,7 +696,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::GasPriceBelowBaseFee {
+            Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
                 gas_price,
                 base_fee
             })) if gas_price == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
@@ -714,7 +712,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::MaxFeePerGasBelowBaseFee {
+            Err(InvalidTransaction::Evm(EvmTransactionError::MaxFeePerGasBelowBaseFee {
                 max_fee_per_gas,
                 base_fee
             })) if max_fee_per_gas == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
@@ -728,7 +726,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
-                evm::TransactionError::NonZeroMaxPriorityFeePerGas {
+                EvmTransactionError::NonZeroMaxPriorityFeePerGas {
                     max_priority_fee_per_gas: 1
                 }
             ))
@@ -755,7 +753,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::ChainIdMismatch {
+            Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
                 expected: CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
@@ -771,7 +769,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::MaxFeePerGasBelowBaseFee {
+            Err(InvalidTransaction::Evm(EvmTransactionError::MaxFeePerGasBelowBaseFee {
                 max_fee_per_gas,
                 base_fee
             })) if max_fee_per_gas == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
@@ -788,7 +786,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
-                evm::TransactionError::NonZeroMaxPriorityFeePerGas {
+                EvmTransactionError::NonZeroMaxPriorityFeePerGas {
                     max_priority_fee_per_gas: 1
                 }
             ))
@@ -805,7 +803,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::GasLimitExceedsBlockGasLimit {
+            Err(InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: actual_gas_limit,
                 block_gas_limit
             })) if actual_gas_limit == gas_limit && block_gas_limit == chainspec.evm_config.block_gas_limit
@@ -822,7 +820,7 @@ mod tests {
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(evm::TransactionError::GasLimitExceedsBlockGasLimit {
+            Err(InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: actual_gas_limit,
                 block_gas_limit
             })) if actual_gas_limit == gas_limit && block_gas_limit == chainspec.evm_config.block_gas_limit
@@ -839,7 +837,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
-                evm::TransactionError::MissingApproval
+                EvmTransactionError::MissingApproval
             ))
         ));
     }
@@ -863,7 +861,7 @@ mod tests {
         chainspec
     }
 
-    fn evm_meta(chainspec: &Chainspec, evm_transaction: evm::Transaction) -> MetaTransaction {
+    fn evm_meta(chainspec: &Chainspec, evm_transaction: EvmTransaction) -> MetaTransaction {
         MetaTransaction::from_transaction(
             &Transaction::Evm(evm_transaction),
             chainspec.core_config.pricing_handling,
@@ -872,8 +870,8 @@ mod tests {
         .expect("EVM transaction metadata should be created")
     }
 
-    fn unsigned_call(chain_id: u64, gas_price: u128, gas_limit: u64) -> evm::Transaction {
-        evm::Transaction::new_unsigned_call(
+    fn unsigned_call(chain_id: u64, gas_price: u128, gas_limit: u64) -> EvmTransaction {
+        EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
             chain_id,
@@ -890,7 +888,7 @@ mod tests {
         chain_id: Option<u64>,
         gas_price: u128,
         gas_limit: u64,
-    ) -> evm::Transaction {
+    ) -> EvmTransaction {
         // Ethereum legacy transactions are the original, untyped transaction
         // envelope. With EIP-155 replay protection they include a chain ID,
         // but they still use a single fixed `gas_price` instead of separate
@@ -911,7 +909,7 @@ mod tests {
         max_fee_per_gas: u128,
         max_priority_fee_per_gas: u128,
         gas_limit: u64,
-    ) -> evm::Transaction {
+    ) -> EvmTransaction {
         // EIP-1559 transactions are typed dynamic-fee transactions. Casper
         // currently accepts this envelope for tooling compatibility, but
         // requires `max_priority_fee_per_gas == 0` because transactions are
@@ -935,7 +933,7 @@ mod tests {
         max_fee_per_gas: u128,
         max_priority_fee_per_gas: u128,
         gas_limit: u64,
-    ) -> evm::Transaction {
+    ) -> EvmTransaction {
         let authorization = AlloyAuthorization {
             chain_id: U256::from(chain_id),
             address: AlloyAddress::from([2u8; 20]),
@@ -957,8 +955,8 @@ mod tests {
         signed_transaction(tx.into_signed(Signature::test_signature()).into())
     }
 
-    fn signed_transaction(envelope: TxEnvelope) -> evm::Transaction {
-        evm::Transaction::from_signed_rlp(
+    fn signed_transaction(envelope: TxEnvelope) -> EvmTransaction {
+        EvmTransaction::from_signed_rlp(
             envelope.encoded_2718(),
             Timestamp::zero(),
             TimeDiff::from_seconds(60),

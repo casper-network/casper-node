@@ -4,22 +4,23 @@ use std::{
 };
 
 use casper_types::{
-    bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, Gas, InvalidTransaction, TimeDiff,
-    Timestamp, TransactionConfig, TransactionHash,
+    bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
+    EvmTransactionKind, Gas, InvalidTransaction, TimeDiff, Timestamp, TransactionConfig,
+    TransactionHash,
 };
 use serde::Serialize;
 
 /// Metadata extracted from a Casper EVM transaction.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct MetaEvmTransaction {
-    transaction: evm::Transaction,
+    transaction: EvmTransaction,
     lane_id: u8,
     payload_hash: Digest,
 }
 
 impl MetaEvmTransaction {
     pub(crate) fn from_evm_transaction(
-        transaction: &evm::Transaction,
+        transaction: &EvmTransaction,
         transaction_config: &TransactionConfig,
     ) -> Result<Self, InvalidTransaction> {
         let lane_id = transaction_config
@@ -28,7 +29,7 @@ impl MetaEvmTransaction {
             .iter()
             .last()
             .map(|lane| lane.id())
-            .ok_or(evm::TransactionError::MissingTransactionLane)?;
+            .ok_or(EvmTransactionError::MissingTransactionLane)?;
         let payload_hash = Digest::hash(transaction.signing_payload()?);
         Ok(MetaEvmTransaction {
             transaction: transaction.clone(),
@@ -37,7 +38,7 @@ impl MetaEvmTransaction {
         })
     }
 
-    pub(crate) fn transaction(&self) -> &evm::Transaction {
+    pub(crate) fn transaction(&self) -> &EvmTransaction {
         &self.transaction
     }
 
@@ -77,18 +78,18 @@ impl MetaEvmTransaction {
         self.payload_hash
     }
 
-    pub(crate) fn verify(&self) -> Result<(), evm::TransactionError> {
+    pub(crate) fn verify(&self) -> Result<(), EvmTransactionError> {
         self.transaction.verify()
     }
 
     pub(crate) fn is_config_compliant(
         &self,
         chainspec: &Chainspec,
-    ) -> Result<(), evm::TransactionError> {
+    ) -> Result<(), EvmTransactionError> {
         let transaction = &self.transaction;
         let evm_config = &chainspec.evm_config;
         if !evm_config.enabled {
-            return Err(evm::TransactionError::Disabled);
+            return Err(EvmTransactionError::Disabled);
         }
 
         if !transaction.is_unsigned_call() {
@@ -98,15 +99,15 @@ impl MetaEvmTransaction {
         let expected = evm_config.chain_id;
         let actual = transaction
             .chain_id()
-            .ok_or(evm::TransactionError::MissingChainId)?;
+            .ok_or(EvmTransactionError::MissingChainId)?;
         if actual != expected {
-            return Err(evm::TransactionError::ChainIdMismatch { expected, actual });
+            return Err(EvmTransactionError::ChainIdMismatch { expected, actual });
         }
 
         let gas_limit = transaction.gas_limit();
         let block_gas_limit = evm_config.block_gas_limit;
         if gas_limit > block_gas_limit {
-            return Err(evm::TransactionError::GasLimitExceedsBlockGasLimit {
+            return Err(EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit,
                 block_gas_limit,
             });
@@ -114,18 +115,18 @@ impl MetaEvmTransaction {
 
         let base_fee = u128::from(evm_config.base_fee);
         match transaction.kind() {
-            evm::TransactionKind::Legacy | evm::TransactionKind::Eip2930 => {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
                 let gas_price = transaction
                     .gas_price()
-                    .ok_or(evm::TransactionError::MissingGasPrice)?;
+                    .ok_or(EvmTransactionError::MissingGasPrice)?;
                 if gas_price < base_fee {
-                    return Err(evm::TransactionError::GasPriceBelowBaseFee {
+                    return Err(EvmTransactionError::GasPriceBelowBaseFee {
                         gas_price,
                         base_fee,
                     });
                 }
             }
-            evm::TransactionKind::Eip1559 | evm::TransactionKind::Eip7702 => {
+            EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
                 // `max_fee_per_gas` is still meaningful on Casper as the user's
                 // dynamic-fee total price cap. It must at least cover the
                 // configured EVM base fee; with the priority fee forced to zero
@@ -134,7 +135,7 @@ impl MetaEvmTransaction {
                 // priority based on gas parameters.
                 let max_fee_per_gas = transaction.max_fee_per_gas();
                 if max_fee_per_gas < base_fee {
-                    return Err(evm::TransactionError::MaxFeePerGasBelowBaseFee {
+                    return Err(EvmTransactionError::MaxFeePerGasBelowBaseFee {
                         max_fee_per_gas,
                         base_fee,
                     });
@@ -147,7 +148,7 @@ impl MetaEvmTransaction {
                     // signal that the node does not honor, so this prototype
                     // only accepts EIP-1559 as a max-fee compatibility
                     // envelope with zero priority fee.
-                    return Err(evm::TransactionError::NonZeroMaxPriorityFeePerGas {
+                    return Err(EvmTransactionError::NonZeroMaxPriorityFeePerGas {
                         max_priority_fee_per_gas,
                     });
                 }

@@ -19,10 +19,10 @@ use casper_storage::data_access_layer::{
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, evm, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, CLType, Chainspec, EntityAddr,
-    EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Key, Package, PackageAddr, PackageHash, PackageIdentifier,
-    StoredValue, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    EntityKind, EntityVersion, EntityVersionKey, EvmAddr, EvmTransactionError,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, PackageAddr, PackageHash,
+    PackageIdentifier, StoredValue, Timestamp, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -245,7 +245,7 @@ impl TransactionAcceptor {
                 effect_builder,
                 *event_metadata,
                 Error::InvalidTransaction(InvalidTransaction::Evm(
-                    evm::TransactionError::MissingApproval,
+                    EvmTransactionError::MissingApproval,
                 )),
             );
         }
@@ -300,7 +300,7 @@ impl TransactionAcceptor {
             // EVM-native purse.
             let query_request = QueryRequest::new(
                 *block_header.state_root_hash(),
-                Key::Evm(evm::EvmAddr::Account(evm_transaction.from())),
+                Key::Evm(EvmAddr::Account(evm_transaction.from())),
                 vec![],
             );
             return effect_builder
@@ -362,7 +362,7 @@ impl TransactionAcceptor {
             ),
             EvmAccountLookup::Invalid(error_message) => {
                 let error = Error::InvalidTransaction(InvalidTransaction::Evm(
-                    evm::TransactionError::Decode(error_message),
+                    EvmTransactionError::Decode(error_message),
                 ));
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
@@ -373,7 +373,7 @@ impl TransactionAcceptor {
                 // linked to a Casper account or must remain EVM-native.
                 let query_request = QueryRequest::new(
                     *block_header.state_root_hash(),
-                    Key::Evm(evm::EvmAddr::Nonce(evm_transaction.from())),
+                    Key::Evm(EvmAddr::Nonce(evm_transaction.from())),
                     vec![],
                 );
                 effect_builder
@@ -408,14 +408,14 @@ impl TransactionAcceptor {
                     effect_builder,
                     *event_metadata,
                     Error::InvalidTransaction(InvalidTransaction::Evm(
-                        evm::TransactionError::Decode(error_message),
+                        EvmTransactionError::Decode(error_message),
                     )),
                 );
             }
         };
         let query_request = QueryRequest::new(
             *block_header.state_root_hash(),
-            Key::Evm(evm::EvmAddr::CodeHash(evm_transaction.from())),
+            Key::Evm(EvmAddr::CodeHash(evm_transaction.from())),
             vec![],
         );
         effect_builder
@@ -450,7 +450,7 @@ impl TransactionAcceptor {
                     effect_builder,
                     *event_metadata,
                     Error::InvalidTransaction(InvalidTransaction::Evm(
-                        evm::TransactionError::Decode(error_message),
+                        EvmTransactionError::Decode(error_message),
                     )),
                 );
             }
@@ -535,7 +535,7 @@ impl TransactionAcceptor {
             .expect("EVM nonce lookup should only be used for EVM transactions");
         let query_request = QueryRequest::new(
             *block_header.state_root_hash(),
-            Key::Evm(evm::EvmAddr::Nonce(evm_transaction.from())),
+            Key::Evm(EvmAddr::Nonce(evm_transaction.from())),
             vec![],
         );
         effect_builder
@@ -564,7 +564,7 @@ impl TransactionAcceptor {
                     effect_builder,
                     *event_metadata,
                     Error::InvalidTransaction(InvalidTransaction::Evm(
-                        evm::TransactionError::Decode(error_message),
+                        EvmTransactionError::Decode(error_message),
                     )),
                 );
             }
@@ -599,7 +599,7 @@ impl TransactionAcceptor {
                 effect_builder,
                 *event_metadata,
                 Error::InvalidTransaction(InvalidTransaction::Evm(
-                    evm::TransactionError::InvalidNonce { expected, actual },
+                    EvmTransactionError::InvalidNonce { expected, actual },
                 )),
             );
         }

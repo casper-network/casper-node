@@ -14,11 +14,9 @@ use alloy_eips::{
 use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256 as AlloyU256};
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    evm::{
-        self, Address, Hash, Transaction, TransactionError, TransactionKind,
-        EIP4844_TRANSACTION_TYPE_ID,
-    },
-    Approval, ApprovalsHash, Digest, PublicKey, SecretKey, TimeDiff, Timestamp,
+    evm::{self, Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
+    Approval, ApprovalsHash, Digest, EvmTransaction, EvmTransactionError, EvmTransactionHash,
+    EvmTransactionKind, PublicKey, SecretKey, TimeDiff, Timestamp,
     Transaction as CasperTransaction, TransactionHash, U256,
 };
 
@@ -30,7 +28,7 @@ fn decodes_legacy_signed_rlp() {
     let signed_transaction = signed_legacy_transaction();
     let transaction = decode(signed_transaction.raw_rlp.clone());
 
-    assert_eq!(transaction.kind(), TransactionKind::Legacy);
+    assert_eq!(transaction.kind(), EvmTransactionKind::Legacy);
     assert_eq!(transaction.from(), signed_transaction.sender);
     assert_eq!(transaction.to(), Some(address(1)));
     assert_eq!(transaction.nonce(), 0);
@@ -53,7 +51,7 @@ fn decodes_eip2930_signed_rlp() {
     let signed_transaction = signed_eip2930_transaction();
     let transaction = decode(signed_transaction.raw_rlp);
 
-    assert_eq!(transaction.kind(), TransactionKind::Eip2930);
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip2930);
     assert_eq!(transaction.from(), signed_transaction.sender);
     assert_eq!(transaction.to(), Some(address(2)));
     assert_eq!(transaction.nonce(), 1);
@@ -72,7 +70,7 @@ fn decodes_eip1559_signed_rlp() {
     let signed_transaction = signed_eip1559_transaction();
     let transaction = decode(signed_transaction.raw_rlp);
 
-    assert_eq!(transaction.kind(), TransactionKind::Eip1559);
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip1559);
     assert_eq!(transaction.from(), signed_transaction.sender);
     assert_eq!(transaction.to(), Some(address(3)));
     assert_eq!(transaction.nonce(), 2);
@@ -92,7 +90,7 @@ fn decodes_eip7702_signed_rlp() {
     let signed_transaction = signed_eip7702_transaction();
     let transaction = decode(signed_transaction.raw_rlp.clone());
 
-    assert_eq!(transaction.kind(), TransactionKind::Eip7702);
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip7702);
     assert_eq!(transaction.from(), signed_transaction.sender);
     assert_eq!(transaction.to(), Some(address(4)));
     assert_eq!(transaction.nonce(), 3);
@@ -135,8 +133,8 @@ fn unsupported_typed_transactions_are_clear_errors() {
     let ttl = TimeDiff::from_seconds(60);
 
     assert_eq!(
-        Transaction::from_signed_rlp(vec![EIP4844_TRANSACTION_TYPE_ID], timestamp, ttl),
-        Err(TransactionError::UnsupportedTransactionType(
+        EvmTransaction::from_signed_rlp(vec![EIP4844_TRANSACTION_TYPE_ID], timestamp, ttl),
+        Err(EvmTransactionError::UnsupportedTransactionType(
             EIP4844_TRANSACTION_TYPE_ID
         ))
     );
@@ -148,24 +146,24 @@ fn non_empty_access_lists_are_rejected() {
     let ttl = TimeDiff::from_seconds(60);
 
     assert_eq!(
-        Transaction::from_signed_rlp(signed_eip2930_with_access_list(), timestamp, ttl),
-        Err(TransactionError::UnsupportedAccessList)
+        EvmTransaction::from_signed_rlp(signed_eip2930_with_access_list(), timestamp, ttl),
+        Err(EvmTransactionError::UnsupportedAccessList)
     );
     assert_eq!(
-        Transaction::from_signed_rlp(signed_eip7702_with_access_list(), timestamp, ttl),
-        Err(TransactionError::UnsupportedAccessList)
+        EvmTransaction::from_signed_rlp(signed_eip7702_with_access_list(), timestamp, ttl),
+        Err(EvmTransactionError::UnsupportedAccessList)
     );
 }
 
 #[test]
 fn empty_eip7702_authorization_lists_are_rejected() {
     assert_eq!(
-        Transaction::from_signed_rlp(
+        EvmTransaction::from_signed_rlp(
             signed_eip7702_with_authorization_list(Vec::new(), AccessList::default()),
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
         ),
-        Err(TransactionError::EmptyAuthorizationList)
+        Err(EvmTransactionError::EmptyAuthorizationList)
     );
 }
 
@@ -251,7 +249,7 @@ fn evm_eip7702_transaction_sign_preserves_authorizations() {
         .expect("signed EIP-7702 transaction should verify");
 
     let decoded = decode(evm_transaction.signed_rlp().unwrap());
-    assert_eq!(decoded.kind(), TransactionKind::Eip7702);
+    assert_eq!(decoded.kind(), EvmTransactionKind::Eip7702);
     assert_eq!(decoded.authorization_list(), authorization_list);
     assert_eq!(decoded.from(), evm_transaction.from());
 }
@@ -268,7 +266,7 @@ fn evm_approval_verification_rejects_bad_approval_sets() {
     let transaction = decode(signed_legacy_transaction().raw_rlp);
     assert_eq!(
         transaction.clone().with_approvals(BTreeSet::new()).verify(),
-        Err(TransactionError::MissingApproval)
+        Err(EvmTransactionError::MissingApproval)
     );
 
     let mut multiple_approvals = transaction.approvals().clone();
@@ -281,7 +279,7 @@ fn evm_approval_verification_rejects_bad_approval_sets() {
             .clone()
             .with_approvals(multiple_approvals)
             .verify(),
-        Err(TransactionError::MultipleApprovals)
+        Err(EvmTransactionError::MultipleApprovals)
     );
 
     let non_secp_approval = Approval::create(
@@ -293,7 +291,7 @@ fn evm_approval_verification_rejects_bad_approval_sets() {
             .clone()
             .with_approvals(BTreeSet::from([non_secp_approval]))
             .verify(),
-        Err(TransactionError::NonSecp256k1Approval)
+        Err(EvmTransactionError::NonSecp256k1Approval)
     );
 }
 
@@ -309,13 +307,13 @@ fn evm_hashes_round_trip_raw_digest_bytes() {
     assert_eq!(deserialized, hash);
 
     let digest = Digest::from_raw(raw);
-    let transaction_hash = evm::TransactionHash::new(digest);
+    let transaction_hash = EvmTransactionHash::new(digest);
     assert_eq!(transaction_hash.inner(), &digest);
     assert_eq!(transaction_hash.value(), raw);
     assert_eq!(Digest::from(transaction_hash), digest);
     bytesrepr_roundtrip(&transaction_hash);
     let serialized = serde_json::to_string(&transaction_hash).unwrap();
-    let deserialized = serde_json::from_str::<evm::TransactionHash>(&serialized).unwrap();
+    let deserialized = serde_json::from_str::<EvmTransactionHash>(&serialized).unwrap();
     assert_eq!(deserialized, transaction_hash);
 }
 
@@ -325,8 +323,8 @@ struct SignedTransaction {
     authorization_list: Vec<AlloySignedAuthorization>,
 }
 
-fn decode(bytes: Vec<u8>) -> Transaction {
-    Transaction::from_signed_rlp(bytes, Timestamp::zero(), TimeDiff::from_seconds(60))
+fn decode(bytes: Vec<u8>) -> EvmTransaction {
+    EvmTransaction::from_signed_rlp(bytes, Timestamp::zero(), TimeDiff::from_seconds(60))
         .expect("transaction should decode")
 }
 

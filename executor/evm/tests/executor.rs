@@ -24,9 +24,10 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
-    evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry, Digest, GenesisAccount,
-    GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
-    StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig, U256 as CasperU256, U512,
+    evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry, Digest, EvmAddr, EvmConfig,
+    EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
+    URef, WasmConfig, U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
 
@@ -85,8 +86,8 @@ fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
     (TrackingCopy::new(reader, 5, false), tempdir)
 }
 
-fn executor(spec: evm::EvmSpec) -> EvmExecutor {
-    EvmExecutor::new(evm::EvmConfig {
+fn executor(spec: EvmSpec) -> EvmExecutor {
+    EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 7,
         spec,
@@ -247,7 +248,7 @@ fn execute_call<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
 fn execute_transaction<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     executor: &EvmExecutor,
     tracking_copy: &mut TrackingCopy<R>,
-    transaction: evm::Transaction,
+    transaction: EvmTransaction,
 ) -> casper_executor_evm::ExecutionOutcome {
     executor
         .execute(
@@ -355,7 +356,7 @@ fn alloy_address_to_evm(address: AlloyAddress) -> evm::Address {
     evm::Address::new(address.into_array())
 }
 
-fn legacy_transaction(chain_id: Option<u64>) -> evm::Transaction {
+fn legacy_transaction(chain_id: Option<u64>) -> EvmTransaction {
     let tx = TxLegacy {
         chain_id,
         nonce: 0,
@@ -367,7 +368,7 @@ fn legacy_transaction(chain_id: Option<u64>) -> evm::Transaction {
     };
     let tx = tx.into_signed(Signature::test_signature().with_parity(true));
     let envelope: TxEnvelope = tx.into();
-    evm::Transaction::from_signed_rlp(
+    EvmTransaction::from_signed_rlp(
         envelope.encoded_2718(),
         Timestamp::zero(),
         casper_types::TimeDiff::from_seconds(60),
@@ -381,7 +382,7 @@ fn eip7702_transaction(
     authorization_nonce: u64,
     transaction_nonce: u64,
     input: Vec<u8>,
-) -> (evm::Transaction, evm::Address) {
+) -> (EvmTransaction, evm::Address) {
     let authorization = signed_authorization(delegate, authorization_nonce);
     let authority = alloy_address_to_evm(
         authorization
@@ -403,7 +404,7 @@ fn eip7702_transaction(
     let signature = secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
         .expect("transaction signing should succeed");
     let envelope: TxEnvelope = tx.into_signed(signature).into();
-    let transaction = evm::Transaction::from_signed_rlp(
+    let transaction = EvmTransaction::from_signed_rlp(
         envelope.encoded_2718(),
         Timestamp::zero(),
         casper_types::TimeDiff::from_seconds(60),
@@ -412,7 +413,7 @@ fn eip7702_transaction(
     (transaction, authority)
 }
 
-fn eip7702_transaction_without_priority_fee(transaction: evm::Transaction) -> evm::Transaction {
+fn eip7702_transaction_without_priority_fee(transaction: EvmTransaction) -> EvmTransaction {
     assert_eq!(transaction.max_priority_fee_per_gas(), Some(0));
     let mut bytes = transaction
         .to_bytes()
@@ -437,7 +438,7 @@ fn eip7702_transaction_without_priority_fee(transaction: evm::Transaction) -> ev
     bytes.splice(offset..offset + some_priority_length, none_priority);
 
     let (transaction, remainder) =
-        evm::Transaction::from_bytes(&bytes).expect("transaction should deserialize");
+        EvmTransaction::from_bytes(&bytes).expect("transaction should deserialize");
     assert!(remainder.is_empty());
     assert_eq!(transaction.max_priority_fee_per_gas(), None);
     transaction
@@ -465,7 +466,7 @@ fn authorization_authority() -> evm::Address {
     )
 }
 
-fn legacy_transaction_without_chain_id() -> evm::Transaction {
+fn legacy_transaction_without_chain_id() -> EvmTransaction {
     legacy_transaction(None)
 }
 
@@ -475,7 +476,7 @@ fn read_storage<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     slot: CasperU256,
 ) -> Option<CasperU256> {
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(
+        .read(&Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(
             address, slot,
         ))))
         .expect("storage read should not fail")
@@ -491,7 +492,7 @@ fn read_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     address: evm::Address,
 ) -> U512 {
     let purse = match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Account(address)))
+        .read(&Key::Evm(EvmAddr::Account(address)))
         .expect("account read should not fail")
     {
         Some(StoredValue::CLValue(value)) => match value.into_t::<Key>().unwrap() {
@@ -526,15 +527,15 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
 ) {
     let main_purse = evm::deterministic_purse(address);
     tracking_copy.write(
-        Key::Evm(evm::EvmAddr::Account(address)),
+        Key::Evm(EvmAddr::Account(address)),
         StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
     );
     tracking_copy.write(
-        Key::Evm(evm::EvmAddr::Nonce(address)),
+        Key::Evm(EvmAddr::Nonce(address)),
         StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
     );
     tracking_copy.write(
-        Key::Evm(evm::EvmAddr::CodeHash(address)),
+        Key::Evm(EvmAddr::CodeHash(address)),
         StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
     );
     tracking_copy.write(
@@ -548,7 +549,7 @@ fn read_evm_nonce<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     address: evm::Address,
 ) -> u64 {
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Nonce(address)))
+        .read(&Key::Evm(EvmAddr::Nonce(address)))
         .expect("nonce read should not fail")
     {
         Some(StoredValue::CLValue(value)) => value.into_t::<u64>().unwrap(),
@@ -562,7 +563,7 @@ fn read_code_hash<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     address: evm::Address,
 ) -> evm::Hash {
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::CodeHash(address)))
+        .read(&Key::Evm(EvmAddr::CodeHash(address)))
         .expect("code hash read should not fail")
     {
         Some(StoredValue::CLValue(value)) => value.into_t::<evm::Hash>().unwrap(),
@@ -576,7 +577,7 @@ fn read_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     code_hash: evm::Hash,
 ) -> Option<Vec<u8>> {
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::ByteCode(code_hash)))
+        .read(&Key::Evm(EvmAddr::ByteCode(code_hash)))
         .expect("bytecode read should not fail")
     {
         Some(StoredValue::ByteCode(byte_code)) => Some(byte_code.bytes().to_vec()),
@@ -593,7 +594,7 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 
 #[test]
 fn blockhash_uses_supplied_provider() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let contract = execute_call(
@@ -641,7 +642,7 @@ fn blockhash_uses_supplied_provider() {
 
 #[test]
 fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, _tempdir) = tracking_copy();
@@ -675,7 +676,7 @@ fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
 
 #[test]
 fn eip7702_missing_priority_fee_defaults_to_zero_for_execution() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, _tempdir) = tracking_copy();
@@ -702,7 +703,7 @@ fn eip7702_missing_priority_fee_defaults_to_zero_for_execution() {
 
 #[test]
 fn eip7702_delegation_persists_when_call_reverts() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, _tempdir) = tracking_copy();
@@ -732,7 +733,7 @@ fn eip7702_delegation_persists_when_call_reverts() {
 
 #[test]
 fn eip7702_stale_authorization_is_skipped() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, _tempdir) = tracking_copy();
@@ -763,7 +764,7 @@ fn eip7702_stale_authorization_is_skipped() {
 
 #[test]
 fn eip7702_zero_address_authorization_clears_delegation() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, _tempdir) = tracking_copy();
@@ -796,7 +797,7 @@ fn eip7702_zero_address_authorization_clears_delegation() {
 
 #[test]
 fn counter_supports_committed_and_discarded_execution() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let counter = deploy(&executor, &mut tracking_copy, from, "Counter");
@@ -832,7 +833,7 @@ fn counter_supports_committed_and_discarded_execution() {
 
 #[test]
 fn erc20_and_native_purse_balances_update() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let spender = evm::Address::new([3; 20]);
@@ -924,7 +925,7 @@ fn erc20_and_native_purse_balances_update() {
 
 #[test]
 fn nonzero_gas_price_does_not_charge_evm_balances() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let sender = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let beneficiary = evm::Address::new([3; 20]);
@@ -967,7 +968,7 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
 
 #[test]
 fn erc721_mint_approve_and_transfer() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let approved = evm::Address::new([3; 20]);
@@ -1022,7 +1023,7 @@ fn erc721_mint_approve_and_transfer() {
 
 #[test]
 fn storage_zeroes_are_pruned() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let contract = deploy(&executor, &mut tracking_copy, from, "StorageDelete");
@@ -1057,7 +1058,7 @@ fn selfdestruct_preserves_account_on_prague() {
     let from = evm::Address::new([1; 20]);
     let beneficiary = evm::Address::new([2; 20]);
 
-    let prague_executor = executor(evm::EvmSpec::Prague);
+    let prague_executor = executor(EvmSpec::Prague);
     let (mut prague_tracking_copy, _prague_tempdir) = tracking_copy();
     let prague_contract = deploy(
         &prague_executor,
@@ -1073,14 +1074,14 @@ fn selfdestruct_preserves_account_on_prague() {
         calldata("destroy(address)", &[address_word(beneficiary)]),
     );
     assert!(prague_tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Account(prague_contract)))
+        .read(&Key::Evm(EvmAddr::Account(prague_contract)))
         .unwrap()
         .is_some());
 }
 
 #[test]
 fn signed_transactions_require_configured_chain_id() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let missing_chain_id = legacy_transaction_without_chain_id();
     let request = ExecuteRequest {
@@ -1092,10 +1093,10 @@ fn signed_transactions_require_configured_chain_id() {
         Err(Error::MissingChainId)
     ));
 
-    let wrong_chain_executor = EvmExecutor::new(evm::EvmConfig {
+    let wrong_chain_executor = EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 8,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     });
@@ -1115,7 +1116,7 @@ fn signed_transactions_require_configured_chain_id() {
 
 #[test]
 fn signed_transaction_sender_uses_linked_casper_account_identity() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
@@ -1134,7 +1135,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
         StoredValue::CLValue(CLValue::from_t(initial_balance).unwrap()),
     );
     tracking_copy.write(
-        Key::Evm(evm::EvmAddr::Account(transaction.from())),
+        Key::Evm(EvmAddr::Account(transaction.from())),
         StoredValue::CLValue(CLValue::from_t(Key::Account(account_hash)).unwrap()),
     );
 
@@ -1153,7 +1154,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
         initial_balance
     );
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Account(transaction.from())))
+        .read(&Key::Evm(EvmAddr::Account(transaction.from())))
         .expect("identity read should not fail")
     {
         Some(StoredValue::CLValue(value)) => {
@@ -1165,7 +1166,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
 
 #[test]
 fn signed_transaction_sender_keeps_evm_native_identity() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
@@ -1197,7 +1198,7 @@ fn signed_transaction_sender_keeps_evm_native_identity() {
         None
     );
     match tracking_copy
-        .read(&Key::Evm(evm::EvmAddr::Account(transaction.from())))
+        .read(&Key::Evm(EvmAddr::Account(transaction.from())))
         .expect("identity read should not fail")
     {
         Some(StoredValue::CLValue(value)) => {
@@ -1212,7 +1213,7 @@ fn signed_transaction_sender_keeps_evm_native_identity() {
 
 #[test]
 fn checked_calls_enforce_transaction_validation() {
-    let executor = executor(evm::EvmSpec::Prague);
+    let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let (mut tracking_copy, _tempdir) = tracking_copy();

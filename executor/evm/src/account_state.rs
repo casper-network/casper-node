@@ -7,7 +7,7 @@
 //! contract runtime and transaction validation.
 
 use casper_storage::{tracking_copy::TrackingCopyError, TrackingCopy};
-use casper_types::{account::AccountHash, evm, CLValue, Key, StoredValue, URef};
+use casper_types::{account::AccountHash, evm, CLValue, EvmAddr, Key, StoredValue, URef};
 
 /// Identity backing an EVM address.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,7 +82,7 @@ where
             // A linked identity is only valid while the target Casper account
             // exists. Treat a dangling bridge as state corruption rather than
             // silently falling back to the deterministic EVM purse.
-            let identity_key = Key::Evm(evm::EvmAddr::Account(address));
+            let identity_key = Key::Evm(EvmAddr::Account(address));
             account_main_purse(tracking_copy, account_hash)?.ok_or(
                 AccountStorageError::MissingAccount {
                     identity_key,
@@ -115,7 +115,7 @@ where
         Error = casper_storage::global_state::error::Error,
     >,
 {
-    let key = Key::Evm(evm::EvmAddr::Account(address));
+    let key = Key::Evm(EvmAddr::Account(address));
     match tracking_copy.read(&key)? {
         Some(StoredValue::CLValue(cl_value)) => {
             let identity_key = cl_value_to_key(key, cl_value)?;
@@ -204,7 +204,7 @@ where
     // This helper only serializes the caller's chosen identity key. Runtime may
     // write `Key::Account`; executor state application writes `Key::URef` only
     // for EVM-native accounts and preserves existing `Key::Account` links.
-    let key = Key::Evm(evm::EvmAddr::Account(address));
+    let key = Key::Evm(EvmAddr::Account(address));
     let cl_value = CLValue::from_t(identity_key).map_err(|error| AccountStorageError::Decode {
         key,
         expected: "Key",
@@ -228,7 +228,7 @@ where
 {
     // Nonce is deliberately independent from the identity pointer so linking an
     // address to a Casper account does not move or rewrite EVM replay state.
-    let key = Key::Evm(evm::EvmAddr::Nonce(address));
+    let key = Key::Evm(EvmAddr::Nonce(address));
     let cl_value = CLValue::from_t(nonce).map_err(|error| AccountStorageError::Decode {
         key,
         expected: "u64",
@@ -253,7 +253,7 @@ where
     // Code hash is deliberately independent from the identity pointer so
     // contracts can remain EVM-native even when EOAs may link to Casper
     // accounts.
-    let key = Key::Evm(evm::EvmAddr::CodeHash(address));
+    let key = Key::Evm(EvmAddr::CodeHash(address));
     let cl_value = CLValue::from_t(code_hash).map_err(|error| AccountStorageError::Decode {
         key,
         expected: "evm::Hash",
@@ -274,7 +274,7 @@ where
         Error = casper_storage::global_state::error::Error,
     >,
 {
-    let key = Key::Evm(evm::EvmAddr::Nonce(address));
+    let key = Key::Evm(EvmAddr::Nonce(address));
     match tracking_copy.read(&key)? {
         Some(StoredValue::CLValue(cl_value)) => {
             cl_value
@@ -306,7 +306,7 @@ where
         Error = casper_storage::global_state::error::Error,
     >,
 {
-    let key = Key::Evm(evm::EvmAddr::CodeHash(address));
+    let key = Key::Evm(EvmAddr::CodeHash(address));
     match tracking_copy.read(&key)? {
         Some(StoredValue::CLValue(cl_value)) => {
             cl_value

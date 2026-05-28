@@ -57,7 +57,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    evm, Digest, Phase, SecretKey, TimeDiff, Timestamp,
+    evm, Digest, EvmTransaction, EvmTransactionHash, Phase, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Chainspec, Gas, Motes, TransactionV1Config};
@@ -150,7 +150,7 @@ pub enum Transaction {
     )]
     V1(TransactionV1),
     /// An EVM transaction.
-    Evm(evm::Transaction),
+    Evm(EvmTransaction),
 }
 
 impl Transaction {
@@ -165,7 +165,7 @@ impl Transaction {
     }
 
     /// EVM variant ctor.
-    pub fn from_evm(evm: evm::Transaction) -> Self {
+    pub fn from_evm(evm: EvmTransaction) -> Self {
         Transaction::Evm(evm)
     }
 
@@ -322,7 +322,7 @@ impl Transaction {
     }
 
     /// Returns the native EVM transaction hash for an EVM transaction.
-    pub fn evm_hash(&self) -> Option<evm::TransactionHash> {
+    pub fn evm_hash(&self) -> Option<EvmTransactionHash> {
         match self {
             Transaction::Evm(txn) => Some(txn.hash()),
             _ => None,
@@ -393,7 +393,7 @@ impl Transaction {
     }
 
     /// Get the wrapped EVM transaction.
-    pub fn as_evm(&self) -> Option<&evm::Transaction> {
+    pub fn as_evm(&self) -> Option<&EvmTransaction> {
         match self {
             Transaction::Evm(evm) => Some(evm),
             _ => None,
@@ -586,7 +586,7 @@ enum TransactionJson {
     #[serde(rename = "Version1")]
     V1(Box<TransactionV1Json>),
     /// An EVM transaction.
-    Evm(evm::Transaction),
+    Evm(EvmTransaction),
 }
 
 #[cfg(any(feature = "std", test))]
@@ -668,8 +668,8 @@ impl From<TransactionV1> for Transaction {
     }
 }
 
-impl From<evm::Transaction> for Transaction {
-    fn from(txn: evm::Transaction) -> Self {
+impl From<EvmTransaction> for Transaction {
+    fn from(txn: EvmTransaction) -> Self {
         Self::Evm(txn)
     }
 }
@@ -721,7 +721,7 @@ impl FromBytes for Transaction {
                 Ok((Transaction::V1(txn), remainder))
             }
             EVM_TAG => {
-                let (txn, remainder) = evm::Transaction::from_bytes(remainder)?;
+                let (txn, remainder) = EvmTransaction::from_bytes(remainder)?;
                 Ok((Transaction::Evm(txn), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

@@ -200,7 +200,7 @@ fn resolve_evm_runtime_origin(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
     protocol_version: ProtocolVersion,
-    transaction: &casper_types::evm::Transaction,
+    transaction: &casper_types::EvmTransaction,
 ) -> Result<RuntimeOrigin, BlockExecutionError> {
     let address = transaction.from();
     // The signer gives us a Casper `AccountHash` preimage from the secp256k1
@@ -223,7 +223,7 @@ fn resolve_evm_runtime_origin(
     // `EvmAddr::Account` is now only an identity pointer. It is either
     // `Key::Account` for a linked Casper account or `Key::URef` for an
     // EVM-native purse identity.
-    let identity_key = Key::Evm(casper_types::evm::EvmAddr::Account(address));
+    let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
     match tracking_copy
         .read(&identity_key)
         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
@@ -357,7 +357,7 @@ where
     // Code hash is the cheap contract/EOA discriminator for an EVM address. A
     // non-empty code hash means the address is not a user-controlled signing
     // identity, so runtime must not create or link a Casper account for it.
-    let key = Key::Evm(casper_types::evm::EvmAddr::CodeHash(address));
+    let key = Key::Evm(casper_types::EvmAddr::CodeHash(address));
     match tracking_copy
         .read(&key)
         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
@@ -444,7 +444,7 @@ where
 {
     // Keep the bridge record minimal: a CLValue containing the identity `Key`.
     // Nonce, code hash, bytecode, and storage live under their own EVM keys.
-    let key = Key::Evm(casper_types::evm::EvmAddr::Account(address));
+    let key = Key::Evm(casper_types::EvmAddr::Account(address));
     let cl_value = CLValue::from_t(identity)
         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
     tracking_copy.write(key, StoredValue::CLValue(cl_value));
@@ -2023,19 +2023,19 @@ fn speculatively_execute_evm<S>(
     chainspec: &Chainspec,
     block_header: BlockHeader,
     block_hashes: BTreeMap<u64, BlockHash>,
-    evm_transaction: &casper_types::evm::Transaction,
+    evm_transaction: &casper_types::EvmTransaction,
 ) -> SpeculativeExecutionResult
 where
     S: StateProvider,
 {
     if !chainspec.evm_config.enabled {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::evm::TransactionError::Disabled,
+            casper_types::EvmTransactionError::Disabled,
         ));
     }
     if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::evm::TransactionError::GasLimitExceedsBlockGasLimit {
+            casper_types::EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: evm_transaction.gas_limit(),
                 block_gas_limit: chainspec.evm_config.block_gas_limit,
             },
@@ -2047,14 +2047,14 @@ where
         Ok(Some(tracking_copy)) => tracking_copy,
         Ok(None) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::evm::TransactionError::Decode(format!(
+                casper_types::EvmTransactionError::Decode(format!(
                     "state root {state_root_hash} not found"
                 )),
             ))
         }
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::evm::TransactionError::Decode(format!(
+                casper_types::EvmTransactionError::Decode(format!(
                     "failed to check out EVM speculative execution state: {error}"
                 )),
             ))
@@ -2097,7 +2097,7 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::evm::TransactionError::Decode(error.to_string()),
+                casper_types::EvmTransactionError::Decode(error.to_string()),
             ))
         }
     };

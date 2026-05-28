@@ -1,6 +1,6 @@
 //! Public execution request types.
 
-use casper_types::{evm, U256};
+use casper_types::{evm, EvmConfig, EvmTransaction, U256};
 
 use crate::tx;
 
@@ -17,7 +17,7 @@ pub struct ExecuteRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecuteKind {
     /// Signed Ethereum transaction decoded by `casper-types`.
-    Transaction(evm::Transaction),
+    Transaction(EvmTransaction),
     /// Unsigned local call request.
     Call(CallRequest),
 }
@@ -78,7 +78,7 @@ pub struct BlockContext {
 }
 
 impl BlockContext {
-    pub(crate) fn to_revm_block(&self, config: &evm::EvmConfig) -> revm::context::BlockEnv {
+    pub(crate) fn to_revm_block(&self, config: &EvmConfig) -> revm::context::BlockEnv {
         revm::context::BlockEnv {
             number: revm::primitives::U256::from(self.number),
             beneficiary: tx::to_revm_address(self.beneficiary),

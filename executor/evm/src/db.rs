@@ -4,7 +4,7 @@ use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     TrackingCopy,
 };
-use casper_types::{evm, CLValue, Key, StoredValue, U512};
+use casper_types::{evm, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
     database_interface::Database,
     primitives::{Address, Bytes, StorageKey, StorageValue, B256, U256},
@@ -73,7 +73,7 @@ where
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
         let code_hash = tx::from_revm_hash(code_hash);
-        let key = Key::Evm(evm::EvmAddr::ByteCode(code_hash));
+        let key = Key::Evm(EvmAddr::ByteCode(code_hash));
         match self.tracking_copy.read(&key)? {
             Some(StoredValue::ByteCode(byte_code)) => {
                 if !byte_code.kind().is_evm() {
@@ -101,7 +101,7 @@ where
     ) -> Result<StorageValue, Self::Error> {
         let address = tx::from_revm_address(address);
         let slot = tx::from_revm_storage_word(index);
-        let key = Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(address, slot)));
+        let key = Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(address, slot)));
         match self.tracking_copy.read(&key)? {
             Some(StoredValue::CLValue(cl_value)) => cl_value
                 .into_t::<casper_types::U256>()

@@ -35,8 +35,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    evm::EvmConfig,
-    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
+    ChainNameDigest, Digest, EraId, EvmConfig, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,

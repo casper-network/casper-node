@@ -4,7 +4,7 @@ use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     KeyPrefix, TrackingCopy,
 };
-use casper_types::{evm, ByteCode, ByteCodeKind, CLValue, Key, StoredValue, U512};
+use casper_types::{evm, ByteCode, ByteCodeKind, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
     primitives::{Address, U256},
     state::{Account, EvmState},
@@ -64,7 +64,7 @@ where
 {
     // Check how to deal with Key::Balance after selfdestruct
     let address = tx::from_revm_address(address);
-    let account_key = Key::Evm(evm::EvmAddr::Account(address));
+    let account_key = Key::Evm(EvmAddr::Account(address));
 
     if account.is_selfdestructed() {
         // Selfdestruct removes EVM metadata and storage, but linked Casper
@@ -80,7 +80,7 @@ where
         let bytes = code.original_byte_slice();
         if !bytes.is_empty() {
             tracking_copy.write(
-                Key::Evm(evm::EvmAddr::ByteCode(tx::from_revm_hash(
+                Key::Evm(EvmAddr::ByteCode(tx::from_revm_hash(
                     account.info.code_hash,
                 ))),
                 StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, bytes.to_vec())),
@@ -103,7 +103,7 @@ where
     write_balance(tracking_copy, main_purse, account.info.balance)?;
 
     for (slot, value) in account.changed_storage_slots() {
-        let key = Key::Evm(evm::EvmAddr::Storage(evm::StorageAddr::new(
+        let key = Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(
             address,
             tx::from_revm_storage_word(*slot),
         )));
@@ -141,8 +141,8 @@ where
         tracking_copy.prune(Key::Balance(main_purse.addr()));
     }
     tracking_copy.prune(account_key);
-    tracking_copy.prune(Key::Evm(evm::EvmAddr::Nonce(address)));
-    tracking_copy.prune(Key::Evm(evm::EvmAddr::CodeHash(address)));
+    tracking_copy.prune(Key::Evm(EvmAddr::Nonce(address)));
+    tracking_copy.prune(Key::Evm(EvmAddr::CodeHash(address)));
     Ok(())
 }
 

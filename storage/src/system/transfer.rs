@@ -6,8 +6,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     evm,
     system::{mint, mint::Error as MintError},
-    AccessRights, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion, RuntimeArgs,
-    RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, CLValueError, EvmAddr, Key, ProtocolVersion,
+    RuntimeArgs, RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{
@@ -368,7 +368,7 @@ impl TransferRuntimeArgsBuilder {
             {
                 let address: evm::Address = self.map_cl_value(cl_value)?;
                 self.reject_evm_contract_target(address, Rc::clone(&tracking_copy))?;
-                let key = Key::Evm(evm::EvmAddr::Account(address));
+                let key = Key::Evm(EvmAddr::Account(address));
                 let maybe_stored_value = tracking_copy.borrow_mut().read(&key)?;
                 return match maybe_stored_value {
                     Some(StoredValue::CLValue(cl_value)) => {
@@ -453,7 +453,7 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let key = Key::Evm(evm::EvmAddr::CodeHash(address));
+        let key = Key::Evm(EvmAddr::CodeHash(address));
         match tracking_copy.borrow_mut().read(&key)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let code_hash = cl_value

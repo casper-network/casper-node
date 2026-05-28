@@ -66,18 +66,17 @@ pub const EIP7702_TRANSACTION_TYPE_ID: u8 = EIP7702_TX_TYPE_ID;
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[cfg_attr(feature = "json-schema", schemars(rename = "EvmTransactionHash"))]
-pub struct TransactionHash(Digest);
+pub struct EvmTransactionHash(Digest);
 
-impl TransactionHash {
+impl EvmTransactionHash {
     /// Creates a transaction hash from a raw digest.
     pub const fn new(hash: Digest) -> Self {
-        TransactionHash(hash)
+        EvmTransactionHash(hash)
     }
 
-    /// Returns a new `TransactionHash` directly initialized with the provided bytes.
+    /// Returns a new `EvmTransactionHash` directly initialized with the provided bytes.
     pub const fn from_raw(raw_digest: [u8; HASH_LENGTH]) -> Self {
-        TransactionHash(Digest::from_raw(raw_digest))
+        EvmTransactionHash(Digest::from_raw(raw_digest))
     }
 
     /// Returns the wrapped inner digest.
@@ -103,23 +102,23 @@ impl TransactionHash {
     /// Returns a random EVM transaction hash.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        TransactionHash(Digest::from(rng.gen::<[u8; HASH_LENGTH]>()))
+        EvmTransactionHash(Digest::from(rng.gen::<[u8; HASH_LENGTH]>()))
     }
 }
 
-impl AsRef<[u8]> for TransactionHash {
+impl AsRef<[u8]> for EvmTransactionHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl Display for TransactionHash {
+impl Display for EvmTransactionHash {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "0x{}", base16::encode_lower(&self.0))
     }
 }
 
-impl ToBytes for TransactionHash {
+impl ToBytes for EvmTransactionHash {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -133,20 +132,20 @@ impl ToBytes for TransactionHash {
     }
 }
 
-impl FromBytes for TransactionHash {
+impl FromBytes for EvmTransactionHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        Digest::from_bytes(bytes).map(|(hash, remainder)| (TransactionHash(hash), remainder))
+        Digest::from_bytes(bytes).map(|(hash, remainder)| (EvmTransactionHash(hash), remainder))
     }
 }
 
-impl From<Digest> for TransactionHash {
+impl From<Digest> for EvmTransactionHash {
     fn from(digest: Digest) -> Self {
-        TransactionHash(digest)
+        EvmTransactionHash(digest)
     }
 }
 
-impl From<TransactionHash> for Digest {
-    fn from(transaction_hash: TransactionHash) -> Self {
+impl From<EvmTransactionHash> for Digest {
+    fn from(transaction_hash: EvmTransactionHash) -> Self {
         transaction_hash.0
     }
 }
@@ -155,7 +154,7 @@ impl From<TransactionHash> for Digest {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum TransactionKind {
+pub enum EvmTransactionKind {
     /// A legacy Ethereum transaction.
     Legacy,
     /// An EIP-2930 access-list transaction.
@@ -166,14 +165,14 @@ pub enum TransactionKind {
     Eip7702,
 }
 
-impl TransactionKind {
+impl EvmTransactionKind {
     /// Returns the Ethereum transaction type ID for this transaction kind.
     pub const fn type_id(self) -> u8 {
         match self {
-            TransactionKind::Legacy => LEGACY_TRANSACTION_TYPE_ID,
-            TransactionKind::Eip2930 => EIP2930_TRANSACTION_TYPE_ID,
-            TransactionKind::Eip1559 => EIP1559_TRANSACTION_TYPE_ID,
-            TransactionKind::Eip7702 => EIP7702_TRANSACTION_TYPE_ID,
+            EvmTransactionKind::Legacy => LEGACY_TRANSACTION_TYPE_ID,
+            EvmTransactionKind::Eip2930 => EIP2930_TRANSACTION_TYPE_ID,
+            EvmTransactionKind::Eip1559 => EIP1559_TRANSACTION_TYPE_ID,
+            EvmTransactionKind::Eip7702 => EIP7702_TRANSACTION_TYPE_ID,
         }
     }
 
@@ -182,18 +181,18 @@ impl TransactionKind {
     }
 }
 
-impl Display for TransactionKind {
+impl Display for EvmTransactionKind {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionKind::Legacy => formatter.write_str("legacy"),
-            TransactionKind::Eip2930 => formatter.write_str("eip2930"),
-            TransactionKind::Eip1559 => formatter.write_str("eip1559"),
-            TransactionKind::Eip7702 => formatter.write_str("eip7702"),
+            EvmTransactionKind::Legacy => formatter.write_str("legacy"),
+            EvmTransactionKind::Eip2930 => formatter.write_str("eip2930"),
+            EvmTransactionKind::Eip1559 => formatter.write_str("eip1559"),
+            EvmTransactionKind::Eip7702 => formatter.write_str("eip7702"),
         }
     }
 }
 
-impl ToBytes for TransactionKind {
+impl ToBytes for EvmTransactionKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         Ok(vec![self.tag()])
     }
@@ -208,14 +207,14 @@ impl ToBytes for TransactionKind {
     }
 }
 
-impl FromBytes for TransactionKind {
+impl FromBytes for EvmTransactionKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let kind = match tag {
-            0 => TransactionKind::Legacy,
-            1 => TransactionKind::Eip2930,
-            2 => TransactionKind::Eip1559,
-            EIP7702_TRANSACTION_TYPE_ID => TransactionKind::Eip7702,
+            0 => EvmTransactionKind::Legacy,
+            1 => EvmTransactionKind::Eip2930,
+            2 => EvmTransactionKind::Eip1559,
+            EIP7702_TRANSACTION_TYPE_ID => EvmTransactionKind::Eip7702,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((kind, remainder))
@@ -319,7 +318,7 @@ impl FromBytes for SetCodeAuthorization {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum TransactionError {
+pub enum EvmTransactionError {
     /// The RLP was malformed or not a supported Ethereum envelope.
     Decode(String),
     /// EVM transactions are disabled in the active chainspec.
@@ -349,14 +348,14 @@ pub enum TransactionError {
     },
     /// The legacy or EIP-2930 gas price is lower than the active block base fee.
     GasPriceBelowBaseFee {
-        /// Transaction gas price.
+        /// EvmTransaction gas price.
         gas_price: u128,
         /// Active block base fee.
         base_fee: u128,
     },
     /// The EIP-1559 maximum fee per gas is lower than the active block base fee.
     MaxFeePerGasBelowBaseFee {
-        /// Transaction maximum fee per gas.
+        /// EvmTransaction maximum fee per gas.
         max_fee_per_gas: u128,
         /// Active block base fee.
         base_fee: u128,
@@ -364,12 +363,12 @@ pub enum TransactionError {
     /// The EIP-1559 maximum priority fee per gas must be zero because Casper
     /// does not prioritize transactions based on transaction gas parameters.
     NonZeroMaxPriorityFeePerGas {
-        /// Transaction maximum priority fee per gas.
+        /// EvmTransaction maximum priority fee per gas.
         max_priority_fee_per_gas: u128,
     },
     /// The transaction gas limit exceeds the configured EVM block gas limit.
     GasLimitExceedsBlockGasLimit {
-        /// Transaction gas limit.
+        /// EvmTransaction gas limit.
         gas_limit: u64,
         /// Configured EVM block gas limit.
         block_gas_limit: u64,
@@ -378,7 +377,7 @@ pub enum TransactionError {
     InvalidNonce {
         /// Expected account nonce.
         expected: u64,
-        /// Transaction nonce.
+        /// EvmTransaction nonce.
         actual: u64,
     },
     /// The transaction does not contain an EVM approval.
@@ -399,40 +398,40 @@ pub enum TransactionError {
     InconsistentEnvelope,
 }
 
-impl Display for TransactionError {
+impl Display for EvmTransactionError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionError::Decode(error) => {
+            EvmTransactionError::Decode(error) => {
                 write!(formatter, "EVM transaction decode error: {error}")
             }
-            TransactionError::Disabled => formatter.write_str("EVM transactions are disabled"),
-            TransactionError::UnsupportedTransactionType(kind) => {
+            EvmTransactionError::Disabled => formatter.write_str("EVM transactions are disabled"),
+            EvmTransactionError::UnsupportedTransactionType(kind) => {
                 write!(formatter, "unsupported EVM transaction type: {kind}")
             }
-            TransactionError::UnsupportedAccessList => {
+            EvmTransactionError::UnsupportedAccessList => {
                 formatter.write_str("unsupported EVM transaction access list")
             }
-            TransactionError::UnexpectedAuthorizationList => {
+            EvmTransactionError::UnexpectedAuthorizationList => {
                 formatter.write_str("unexpected EVM set-code authorization list")
             }
-            TransactionError::EmptyAuthorizationList => {
+            EvmTransactionError::EmptyAuthorizationList => {
                 formatter.write_str("missing EVM set-code authorization list")
             }
-            TransactionError::MissingSetCodeTarget => {
+            EvmTransactionError::MissingSetCodeTarget => {
                 formatter.write_str("missing EVM set-code transaction target")
             }
-            TransactionError::MissingChainId => formatter.write_str("missing EVM chain ID"),
-            TransactionError::MissingGasPrice => formatter.write_str("missing EVM gas price"),
-            TransactionError::MissingTransactionLane => {
+            EvmTransactionError::MissingChainId => formatter.write_str("missing EVM chain ID"),
+            EvmTransactionError::MissingGasPrice => formatter.write_str("missing EVM gas price"),
+            EvmTransactionError::MissingTransactionLane => {
                 formatter.write_str("missing EVM transaction lane")
             }
-            TransactionError::ChainIdMismatch { expected, actual } => {
+            EvmTransactionError::ChainIdMismatch { expected, actual } => {
                 write!(
                     formatter,
                     "EVM chain ID mismatch: expected {expected}, got {actual}"
                 )
             }
-            TransactionError::GasPriceBelowBaseFee {
+            EvmTransactionError::GasPriceBelowBaseFee {
                 gas_price,
                 base_fee,
             } => {
@@ -441,7 +440,7 @@ impl Display for TransactionError {
                     "EVM gas price {gas_price} is below base fee {base_fee}"
                 )
             }
-            TransactionError::MaxFeePerGasBelowBaseFee {
+            EvmTransactionError::MaxFeePerGasBelowBaseFee {
                 max_fee_per_gas,
                 base_fee,
             } => {
@@ -450,7 +449,7 @@ impl Display for TransactionError {
                     "EVM max fee per gas {max_fee_per_gas} is below base fee {base_fee}"
                 )
             }
-            TransactionError::NonZeroMaxPriorityFeePerGas {
+            EvmTransactionError::NonZeroMaxPriorityFeePerGas {
                 max_priority_fee_per_gas,
             } => {
                 write!(
@@ -458,7 +457,7 @@ impl Display for TransactionError {
                     "EVM max priority fee per gas {max_priority_fee_per_gas} must be zero"
                 )
             }
-            TransactionError::GasLimitExceedsBlockGasLimit {
+            EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit,
                 block_gas_limit,
             } => {
@@ -467,30 +466,30 @@ impl Display for TransactionError {
                     "EVM gas limit {gas_limit} exceeds block gas limit {block_gas_limit}"
                 )
             }
-            TransactionError::InvalidNonce { expected, actual } => {
+            EvmTransactionError::InvalidNonce { expected, actual } => {
                 write!(
                     formatter,
                     "EVM transaction nonce {actual} does not match account nonce {expected}"
                 )
             }
-            TransactionError::MissingApproval => formatter.write_str("missing EVM approval"),
-            TransactionError::MultipleApprovals => formatter.write_str("multiple EVM approvals"),
-            TransactionError::NonSecp256k1Approval => {
+            EvmTransactionError::MissingApproval => formatter.write_str("missing EVM approval"),
+            EvmTransactionError::MultipleApprovals => formatter.write_str("multiple EVM approvals"),
+            EvmTransactionError::NonSecp256k1Approval => {
                 formatter.write_str("EVM approval must use secp256k1")
             }
-            TransactionError::InvalidApprovalSignature => {
+            EvmTransactionError::InvalidApprovalSignature => {
                 formatter.write_str("invalid EVM approval signature")
             }
-            TransactionError::SenderMismatch => {
+            EvmTransactionError::SenderMismatch => {
                 formatter.write_str("EVM approval signer does not match transaction sender")
             }
-            TransactionError::HashMismatch => {
+            EvmTransactionError::HashMismatch => {
                 formatter.write_str("EVM transaction hash does not match approval")
             }
-            TransactionError::SenderRecovery(error) => {
+            EvmTransactionError::SenderRecovery(error) => {
                 write!(formatter, "EVM transaction sender recovery error: {error}")
             }
-            TransactionError::InconsistentEnvelope => {
+            EvmTransactionError::InconsistentEnvelope => {
                 formatter.write_str("EVM transaction fields do not match signed envelope")
             }
         }
@@ -498,18 +497,18 @@ impl Display for TransactionError {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for TransactionError {}
+impl std::error::Error for EvmTransactionError {}
 
 /// An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct Transaction {
+pub struct EvmTransaction {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    hash: TransactionHash,
+    hash: EvmTransactionHash,
     from: Address,
-    kind: TransactionKind,
+    kind: EvmTransactionKind,
     to: Option<Address>,
     nonce: u64,
     gas_limit: u64,
@@ -532,12 +531,12 @@ pub struct Transaction {
 
 #[cfg(any(feature = "std", test))]
 #[derive(Serialize)]
-struct TransactionSerHelper<'a> {
+struct EvmTransactionSerHelper<'a> {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    hash: TransactionHash,
+    hash: EvmTransactionHash,
     from: Address,
-    kind: TransactionKind,
+    kind: EvmTransactionKind,
     to: Option<Address>,
     nonce: u64,
     gas_limit: u64,
@@ -553,12 +552,12 @@ struct TransactionSerHelper<'a> {
 
 #[cfg(any(feature = "std", test))]
 #[derive(Deserialize)]
-struct TransactionDeserHelper {
+struct EvmTransactionDeserHelper {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    hash: TransactionHash,
+    hash: EvmTransactionHash,
     from: Address,
-    kind: TransactionKind,
+    kind: EvmTransactionKind,
     to: Option<Address>,
     nonce: u64,
     gas_limit: u64,
@@ -573,9 +572,9 @@ struct TransactionDeserHelper {
 }
 
 #[cfg(any(feature = "std", test))]
-impl Serialize for Transaction {
+impl Serialize for EvmTransaction {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        TransactionSerHelper {
+        EvmTransactionSerHelper {
             timestamp: self.timestamp,
             ttl: self.ttl,
             hash: self.hash,
@@ -598,10 +597,10 @@ impl Serialize for Transaction {
 }
 
 #[cfg(any(feature = "std", test))]
-impl<'de> Deserialize<'de> for Transaction {
+impl<'de> Deserialize<'de> for EvmTransaction {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let helper = TransactionDeserHelper::deserialize(deserializer)?;
-        let transaction = Transaction {
+        let helper = EvmTransactionDeserHelper::deserialize(deserializer)?;
+        let transaction = EvmTransaction {
             timestamp: helper.timestamp,
             ttl: helper.ttl,
             hash: helper.hash,
@@ -624,7 +623,7 @@ impl<'de> Deserialize<'de> for Transaction {
     }
 }
 
-impl Transaction {
+impl EvmTransaction {
     /// Constructs an unsigned EVM call transaction for speculative execution.
     ///
     /// This is intended for read-only `eth_call` style execution through the
@@ -644,12 +643,12 @@ impl Transaction {
         gas_limit: u64,
         gas_price: u128,
     ) -> Self {
-        let mut transaction = Transaction {
+        let mut transaction = EvmTransaction {
             timestamp,
             ttl,
-            hash: TransactionHash::default(),
+            hash: EvmTransactionHash::default(),
             from,
-            kind: TransactionKind::Legacy,
+            kind: EvmTransactionKind::Legacy,
             to,
             nonce: 0,
             gas_limit,
@@ -666,7 +665,7 @@ impl Transaction {
         transaction
     }
 
-    fn unsigned_call_hash(&self) -> TransactionHash {
+    fn unsigned_call_hash(&self) -> EvmTransactionHash {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"casper-evm-call");
         self.timestamp
@@ -696,14 +695,14 @@ impl Transaction {
         self.chain_id
             .write_bytes(&mut bytes)
             .expect("chain ID should serialize");
-        TransactionHash::new(Digest::hash(bytes))
+        EvmTransactionHash::new(Digest::hash(bytes))
     }
 
     /// Returns `true` if this is an unsigned read-only call transaction.
     pub fn is_unsigned_call(&self) -> bool {
         self.approvals.is_empty()
             && self.hash == self.unsigned_call_hash()
-            && self.kind == TransactionKind::Legacy
+            && self.kind == EvmTransactionKind::Legacy
             && self.nonce == 0
             && self.gas_price.is_some()
             && self.max_fee_per_gas == 0
@@ -717,7 +716,7 @@ impl Transaction {
         raw_signed_rlp: Vec<u8>,
         timestamp: Timestamp,
         ttl: TimeDiff,
-    ) -> Result<Self, TransactionError> {
+    ) -> Result<Self, EvmTransactionError> {
         if matches!(raw_signed_rlp.first(), Some(&EIP4844_TRANSACTION_TYPE_ID)) {
             // EIP-4844 is proto-danksharding/blob transaction support. It
             // adds blob-carrying transactions with fields like
@@ -727,16 +726,16 @@ impl Transaction {
             // blob sidecars. Our current transaction type and executor block
             // context only model normal EVM call/create execution, not blob
             // sidecars, blob fee markets, or block/header blob accounting.
-            return Err(TransactionError::UnsupportedTransactionType(
+            return Err(EvmTransactionError::UnsupportedTransactionType(
                 raw_signed_rlp[0],
             ));
         }
 
         let mut encoded = raw_signed_rlp.as_slice();
         let envelope = TxEnvelope::decode_2718(&mut encoded)
-            .map_err(|error| TransactionError::Decode(format!("{error:?}")))?;
+            .map_err(|error| EvmTransactionError::Decode(format!("{error:?}")))?;
         if !encoded.is_empty() {
-            return Err(TransactionError::Decode(
+            return Err(EvmTransactionError::Decode(
                 "trailing bytes after transaction envelope".to_string(),
             ));
         }
@@ -744,19 +743,19 @@ impl Transaction {
             .access_list()
             .is_some_and(|access_list| !access_list.is_empty())
         {
-            return Err(TransactionError::UnsupportedAccessList);
+            return Err(EvmTransactionError::UnsupportedAccessList);
         }
 
         let kind = if envelope.is_legacy() {
-            TransactionKind::Legacy
+            EvmTransactionKind::Legacy
         } else if envelope.is_eip2930() {
-            TransactionKind::Eip2930
+            EvmTransactionKind::Eip2930
         } else if envelope.is_eip1559() {
-            TransactionKind::Eip1559
+            EvmTransactionKind::Eip1559
         } else if envelope.is_eip7702() {
-            TransactionKind::Eip7702
+            EvmTransactionKind::Eip7702
         } else {
-            return Err(TransactionError::UnsupportedTransactionType(
+            return Err(EvmTransactionError::UnsupportedTransactionType(
                 envelope.tx_type() as u8,
             ));
         };
@@ -771,13 +770,13 @@ impl Transaction {
 
         let from = envelope
             .recover_signer()
-            .map_err(|error| TransactionError::SenderRecovery(format!("{error:?}")))?;
+            .map_err(|error| EvmTransactionError::SenderRecovery(format!("{error:?}")))?;
         let authorization_list = match envelope.as_eip7702() {
             Some(transaction) => {
                 if transaction.tx().authorization_list.is_empty() {
                     // Keep raw decode errors precise before constructing a
                     // transaction that `verify` would reject anyway.
-                    return Err(TransactionError::EmptyAuthorizationList);
+                    return Err(EvmTransactionError::EmptyAuthorizationList);
                 }
                 transaction
                     .tx()
@@ -788,7 +787,7 @@ impl Transaction {
             }
             None => Vec::new(),
         };
-        Ok(Transaction {
+        Ok(EvmTransaction {
             timestamp,
             ttl,
             hash: b256_to_transaction_hash(*envelope.tx_hash()),
@@ -809,16 +808,16 @@ impl Transaction {
     }
 
     /// Reconstructs the signed Ethereum envelope and validates sender/hash consistency.
-    pub fn verify(&self) -> Result<(), TransactionError> {
+    pub fn verify(&self) -> Result<(), EvmTransactionError> {
         let signed = self.signed_envelope()?;
         if b256_to_transaction_hash(*signed.tx_hash()) != self.hash {
-            return Err(TransactionError::HashMismatch);
+            return Err(EvmTransactionError::HashMismatch);
         }
         let recovered = signed
             .recover_signer()
-            .map_err(|error| TransactionError::SenderRecovery(format!("{error:?}")))?;
+            .map_err(|error| EvmTransactionError::SenderRecovery(format!("{error:?}")))?;
         if alloy_address_to_address(recovered) != self.from {
-            return Err(TransactionError::SenderMismatch);
+            return Err(EvmTransactionError::SenderMismatch);
         }
         Ok(())
     }
@@ -833,19 +832,19 @@ impl Transaction {
     }
 
     /// Attempts to sign the unsigned Ethereum payload with one secp256k1 approval.
-    pub fn try_sign(&mut self, secret_key: &SecretKey) -> Result<(), TransactionError> {
+    pub fn try_sign(&mut self, secret_key: &SecretKey) -> Result<(), EvmTransactionError> {
         let SecretKey::Secp256k1(signing_key) = secret_key else {
-            return Err(TransactionError::NonSecp256k1Approval);
+            return Err(EvmTransactionError::NonSecp256k1Approval);
         };
         let unsigned = self.unsigned_transaction()?;
         let signature_hash = unsigned.signature_hash();
         let (signature, recovery_id) = signing_key
             .sign_prehash_recoverable(signature_hash.as_slice())
-            .map_err(|_| TransactionError::InvalidApprovalSignature)?;
+            .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let mut signature_bytes = [0u8; Signature::SECP256K1_LENGTH];
         signature_bytes.copy_from_slice(signature.to_bytes().as_slice());
         let signature = Signature::secp256k1(signature_bytes)
-            .map_err(|_| TransactionError::InvalidApprovalSignature)?;
+            .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let signer = PublicKey::from(secret_key);
         let mut approvals = BTreeSet::new();
         approvals.insert(Approval::new(signer, signature));
@@ -863,22 +862,22 @@ impl Transaction {
     }
 
     /// Returns the raw signed Ethereum RLP bytes reconstructed from the approval.
-    pub fn signed_rlp(&self) -> Result<Vec<u8>, TransactionError> {
+    pub fn signed_rlp(&self) -> Result<Vec<u8>, EvmTransactionError> {
         Ok(self.signed_envelope()?.encoded_2718())
     }
 
     /// Returns the raw signed Ethereum RLP bytes reconstructed from the approval.
-    pub fn raw_signed_rlp(&self) -> Result<Vec<u8>, TransactionError> {
+    pub fn raw_signed_rlp(&self) -> Result<Vec<u8>, EvmTransactionError> {
         self.signed_rlp()
     }
 
     /// Returns the Ethereum signing hash of the unsigned payload.
-    pub fn signature_hash(&self) -> Result<Hash, TransactionError> {
+    pub fn signature_hash(&self) -> Result<Hash, EvmTransactionError> {
         Ok(b256_to_hash(self.unsigned_transaction()?.signature_hash()))
     }
 
     /// Returns the bytes Ethereum signs for this unsigned payload.
-    pub fn signing_payload(&self) -> Result<Vec<u8>, TransactionError> {
+    pub fn signing_payload(&self) -> Result<Vec<u8>, EvmTransactionError> {
         Ok(self.unsigned_transaction()?.encoded_for_signing())
     }
 
@@ -888,14 +887,14 @@ impl Transaction {
     }
 
     /// Returns the single public key that signed this EVM transaction.
-    pub fn signer(&self) -> Result<&PublicKey, TransactionError> {
+    pub fn signer(&self) -> Result<&PublicKey, EvmTransactionError> {
         Ok(self.single_approval()?.signer())
     }
 
     /// Returns this transaction with a replacement approval set.
     ///
     /// The stored Ethereum transaction hash is intentionally left unchanged;
-    /// [`Transaction::verify`] rejects replacement approvals that do not
+    /// [`EvmTransaction::verify`] rejects replacement approvals that do not
     /// reconstruct the same signed Ethereum transaction.
     pub fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
         self.approvals = approvals;
@@ -913,7 +912,7 @@ impl Transaction {
     }
 
     /// Returns the Ethereum transaction hash.
-    pub fn hash(&self) -> TransactionHash {
+    pub fn hash(&self) -> EvmTransactionHash {
         self.hash
     }
 
@@ -923,7 +922,7 @@ impl Transaction {
     }
 
     /// Returns the transaction envelope kind.
-    pub fn kind(&self) -> TransactionKind {
+    pub fn kind(&self) -> EvmTransactionKind {
         self.kind
     }
 
@@ -1003,10 +1002,10 @@ impl Transaction {
     /// therefore the block base fee capped by `max_fee_per_gas`.
     pub fn effective_gas_price(&self, base_fee: u64) -> u128 {
         match self.kind {
-            TransactionKind::Legacy | TransactionKind::Eip2930 => {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
                 self.gas_price.unwrap_or(self.max_fee_per_gas)
             }
-            TransactionKind::Eip1559 | TransactionKind::Eip7702 => {
+            EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
                 let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or(0);
                 let priority_fee = self.max_fee_per_gas.saturating_sub(u128::from(base_fee));
                 if priority_fee > max_priority_fee_per_gas {
@@ -1043,36 +1042,38 @@ impl Transaction {
         self.timestamp + self.ttl
     }
 
-    fn signed_envelope(&self) -> Result<TxEnvelope, TransactionError> {
+    fn signed_envelope(&self) -> Result<TxEnvelope, EvmTransactionError> {
         let unsigned = self.unsigned_transaction()?;
         let signature_hash = unsigned.signature_hash();
         let (signature, recovered_from) = self.approval_signature(&signature_hash)?;
         if recovered_from != self.from {
-            return Err(TransactionError::SenderMismatch);
+            return Err(EvmTransactionError::SenderMismatch);
         }
         Ok(unsigned.into_envelope(signature))
     }
 
-    fn validate_authorization_list(&self) -> Result<(), TransactionError> {
+    fn validate_authorization_list(&self) -> Result<(), EvmTransactionError> {
         match self.kind {
-            TransactionKind::Eip7702 => {
+            EvmTransactionKind::Eip7702 => {
                 if self.authorization_list.is_empty() {
-                    return Err(TransactionError::EmptyAuthorizationList);
+                    return Err(EvmTransactionError::EmptyAuthorizationList);
                 }
                 if self.to.is_none() {
-                    return Err(TransactionError::MissingSetCodeTarget);
+                    return Err(EvmTransactionError::MissingSetCodeTarget);
                 }
             }
-            TransactionKind::Legacy | TransactionKind::Eip2930 | TransactionKind::Eip1559 => {
+            EvmTransactionKind::Legacy
+            | EvmTransactionKind::Eip2930
+            | EvmTransactionKind::Eip1559 => {
                 if !self.authorization_list.is_empty() {
-                    return Err(TransactionError::UnexpectedAuthorizationList);
+                    return Err(EvmTransactionError::UnexpectedAuthorizationList);
                 }
             }
         }
         Ok(())
     }
 
-    fn unsigned_transaction(&self) -> Result<TypedTransaction, TransactionError> {
+    fn unsigned_transaction(&self) -> Result<TypedTransaction, EvmTransactionError> {
         self.validate_authorization_list()?;
         let to = match self.to {
             Some(address) => AlloyTxKind::Call(to_alloy_address(address)),
@@ -1081,27 +1082,27 @@ impl Transaction {
         let value = casper_u256_to_alloy(self.value);
         let input = AlloyBytes::from(self.input.clone());
         match self.kind {
-            TransactionKind::Legacy => Ok(TypedTransaction::Legacy(TxLegacy {
+            EvmTransactionKind::Legacy => Ok(TypedTransaction::Legacy(TxLegacy {
                 chain_id: self.chain_id,
                 nonce: self.nonce,
-                gas_price: self.gas_price.ok_or(TransactionError::MissingGasPrice)?,
+                gas_price: self.gas_price.ok_or(EvmTransactionError::MissingGasPrice)?,
                 gas_limit: self.gas_limit,
                 to,
                 value,
                 input,
             })),
-            TransactionKind::Eip2930 => Ok(TypedTransaction::Eip2930(TxEip2930 {
-                chain_id: self.chain_id.ok_or(TransactionError::MissingChainId)?,
+            EvmTransactionKind::Eip2930 => Ok(TypedTransaction::Eip2930(TxEip2930 {
+                chain_id: self.chain_id.ok_or(EvmTransactionError::MissingChainId)?,
                 nonce: self.nonce,
-                gas_price: self.gas_price.ok_or(TransactionError::MissingGasPrice)?,
+                gas_price: self.gas_price.ok_or(EvmTransactionError::MissingGasPrice)?,
                 gas_limit: self.gas_limit,
                 to,
                 value,
                 access_list: AccessList::default(),
                 input,
             })),
-            TransactionKind::Eip1559 => Ok(TypedTransaction::Eip1559(TxEip1559 {
-                chain_id: self.chain_id.ok_or(TransactionError::MissingChainId)?,
+            EvmTransactionKind::Eip1559 => Ok(TypedTransaction::Eip1559(TxEip1559 {
+                chain_id: self.chain_id.ok_or(EvmTransactionError::MissingChainId)?,
                 nonce: self.nonce,
                 gas_limit: self.gas_limit,
                 max_fee_per_gas: self.max_fee_per_gas,
@@ -1111,10 +1112,10 @@ impl Transaction {
                 access_list: AccessList::default(),
                 input,
             })),
-            TransactionKind::Eip7702 => {
+            EvmTransactionKind::Eip7702 => {
                 let address = self.to.expect("EIP-7702 target validated above");
                 Ok(TypedTransaction::Eip7702(TxEip7702 {
-                    chain_id: self.chain_id.ok_or(TransactionError::MissingChainId)?,
+                    chain_id: self.chain_id.ok_or(EvmTransactionError::MissingChainId)?,
                     nonce: self.nonce,
                     gas_limit: self.gas_limit,
                     max_fee_per_gas: self.max_fee_per_gas,
@@ -1136,7 +1137,7 @@ impl Transaction {
     fn approval_signature(
         &self,
         signature_hash: &B256,
-    ) -> Result<(AlloySignature, Address), TransactionError> {
+    ) -> Result<(AlloySignature, Address), EvmTransactionError> {
         let approval = self.single_approval()?;
         let raw_signature = secp256k1_signature_bytes(approval)?;
         let expected_signer = approval.signer();
@@ -1151,20 +1152,22 @@ impl Transaction {
                 ));
             }
         }
-        Err(TransactionError::InvalidApprovalSignature)
+        Err(EvmTransactionError::InvalidApprovalSignature)
     }
 
-    fn single_approval(&self) -> Result<&Approval, TransactionError> {
+    fn single_approval(&self) -> Result<&Approval, EvmTransactionError> {
         let mut approvals = self.approvals.iter();
-        let approval = approvals.next().ok_or(TransactionError::MissingApproval)?;
+        let approval = approvals
+            .next()
+            .ok_or(EvmTransactionError::MissingApproval)?;
         if approvals.next().is_some() {
-            return Err(TransactionError::MultipleApprovals);
+            return Err(EvmTransactionError::MultipleApprovals);
         }
         Ok(approval)
     }
 }
 
-impl Display for Transaction {
+impl Display for EvmTransaction {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
@@ -1175,7 +1178,7 @@ impl Display for Transaction {
     }
 }
 
-impl ToBytes for Transaction {
+impl ToBytes for EvmTransaction {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -1221,13 +1224,13 @@ impl ToBytes for Transaction {
     }
 }
 
-impl FromBytes for Transaction {
+impl FromBytes for EvmTransaction {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (timestamp, remainder) = Timestamp::from_bytes(bytes)?;
         let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (hash, remainder) = TransactionHash::from_bytes(remainder)?;
+        let (hash, remainder) = EvmTransactionHash::from_bytes(remainder)?;
         let (from, remainder) = Address::from_bytes(remainder)?;
-        let (kind, remainder) = TransactionKind::from_bytes(remainder)?;
+        let (kind, remainder) = EvmTransactionKind::from_bytes(remainder)?;
         let (to, remainder) = Option::<Address>::from_bytes(remainder)?;
         let (nonce, remainder) = u64::from_bytes(remainder)?;
         let (gas_limit, remainder) = u64::from_bytes(remainder)?;
@@ -1239,7 +1242,7 @@ impl FromBytes for Transaction {
         let (chain_id, remainder) = Option::<u64>::from_bytes(remainder)?;
         let (authorization_list, remainder) = Vec::<SetCodeAuthorization>::from_bytes(remainder)?;
         let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
-        let transaction = Transaction {
+        let transaction = EvmTransaction {
             timestamp,
             ttl,
             hash,
@@ -1269,44 +1272,44 @@ impl FromBytes for Transaction {
 fn approval_from_alloy_signature(
     signature: &AlloySignature,
     signature_hash: &B256,
-) -> Result<Approval, TransactionError> {
+) -> Result<Approval, EvmTransactionError> {
     let raw_signature = signature.as_rsy();
     let mut signature_bytes = [0u8; Signature::SECP256K1_LENGTH];
     signature_bytes.copy_from_slice(&raw_signature[..Signature::SECP256K1_LENGTH]);
     let recovered_key = recover_verifying_key(signature_hash, &signature_bytes, signature.v())?;
     let signer = public_key_from_verifying_key(&recovered_key)?;
     let signature = Signature::secp256k1(signature_bytes)
-        .map_err(|_| TransactionError::InvalidApprovalSignature)?;
+        .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
     Ok(Approval::new(signer, signature))
 }
 
-fn secp256k1_signature_bytes(approval: &Approval) -> Result<[u8; 64], TransactionError> {
+fn secp256k1_signature_bytes(approval: &Approval) -> Result<[u8; 64], EvmTransactionError> {
     if !matches!(approval.signer(), PublicKey::Secp256k1(_))
         || !matches!(approval.signature(), Signature::Secp256k1(_))
     {
-        return Err(TransactionError::NonSecp256k1Approval);
+        return Err(EvmTransactionError::NonSecp256k1Approval);
     }
     let signature_bytes = Vec::<u8>::from(approval.signature());
     signature_bytes
         .try_into()
-        .map_err(|_| TransactionError::InvalidApprovalSignature)
+        .map_err(|_| EvmTransactionError::InvalidApprovalSignature)
 }
 
 fn recover_verifying_key(
     signature_hash: &B256,
     signature_bytes: &[u8; 64],
     y_parity: bool,
-) -> Result<VerifyingKey, TransactionError> {
+) -> Result<VerifyingKey, EvmTransactionError> {
     let signature = K256Signature::try_from(signature_bytes.as_slice())
-        .map_err(|_| TransactionError::InvalidApprovalSignature)?;
+        .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
     let recovery_id = RecoveryId::new(y_parity, false);
     VerifyingKey::recover_from_prehash(signature_hash.as_slice(), &signature, recovery_id)
-        .map_err(|_| TransactionError::InvalidApprovalSignature)
+        .map_err(|_| EvmTransactionError::InvalidApprovalSignature)
 }
 
-fn public_key_from_verifying_key(key: &VerifyingKey) -> Result<PublicKey, TransactionError> {
+fn public_key_from_verifying_key(key: &VerifyingKey) -> Result<PublicKey, EvmTransactionError> {
     PublicKey::secp256k1_from_bytes(key.to_encoded_point(true).as_ref())
-        .map_err(|_| TransactionError::InvalidApprovalSignature)
+        .map_err(|_| EvmTransactionError::InvalidApprovalSignature)
 }
 
 fn evm_address_from_verifying_key(key: &VerifyingKey) -> Address {
@@ -1332,8 +1335,8 @@ fn b256_to_hash(hash: B256) -> Hash {
     Hash::new(hash.0)
 }
 
-fn b256_to_transaction_hash(hash: B256) -> TransactionHash {
-    TransactionHash::from_raw(hash.0)
+fn b256_to_transaction_hash(hash: B256) -> EvmTransactionHash {
+    EvmTransactionHash::from_raw(hash.0)
 }
 
 fn alloy_u256_to_casper(value: AlloyU256) -> U256 {
@@ -1361,7 +1364,7 @@ mod tests {
 
         let serialized = serde_json::to_string(&transaction).expect("transaction should serialize");
         assert!(serialized.contains("authorization_list"));
-        let deserialized: Transaction =
+        let deserialized: EvmTransaction =
             serde_json::from_str(&serialized).expect("transaction should deserialize");
 
         assert_eq!(deserialized, transaction);
@@ -1379,8 +1382,8 @@ mod tests {
             .push(set_code_authorization());
         let serialized = serde_json::to_string(&transaction).expect("transaction should serialize");
 
-        let error =
-            serde_json::from_str::<Transaction>(&serialized).expect_err("transaction should fail");
+        let error = serde_json::from_str::<EvmTransaction>(&serialized)
+            .expect_err("transaction should fail");
 
         assert!(error
             .to_string()
@@ -1389,7 +1392,7 @@ mod tests {
 
     #[test]
     fn unsigned_call_transaction_bytesrepr_roundtrips_without_approvals() {
-        let transaction = Transaction::new_unsigned_call(
+        let transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
             7,
@@ -1405,14 +1408,14 @@ mod tests {
         assert!(transaction.is_unsigned_call());
         assert!(matches!(
             transaction.verify(),
-            Err(TransactionError::MissingApproval)
+            Err(EvmTransactionError::MissingApproval)
         ));
         bytesrepr::test_serialization_roundtrip(&transaction);
     }
 
     #[test]
     fn non_marker_unsigned_transaction_bytesrepr_is_rejected() {
-        let mut transaction = Transaction::new_unsigned_call(
+        let mut transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
             7,
@@ -1427,7 +1430,7 @@ mod tests {
 
         assert!(transaction.approvals().is_empty());
         assert!(!transaction.is_unsigned_call());
-        assert!(Transaction::from_bytes(
+        assert!(EvmTransaction::from_bytes(
             &transaction
                 .to_bytes()
                 .expect("transaction should serialize")
@@ -1435,7 +1438,7 @@ mod tests {
         .is_err());
     }
 
-    fn signed_legacy_transaction() -> Transaction {
+    fn signed_legacy_transaction() -> EvmTransaction {
         let tx = TxLegacy {
             chain_id: Some(7),
             nonce: 3,
@@ -1450,7 +1453,7 @@ mod tests {
                 .expect("transaction signing should succeed");
         let envelope: TxEnvelope = tx.into_signed(transaction_signature).into();
 
-        Transaction::from_signed_rlp(
+        EvmTransaction::from_signed_rlp(
             envelope.encoded_2718(),
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
@@ -1458,7 +1461,7 @@ mod tests {
         .expect("transaction should decode")
     }
 
-    fn signed_eip7702_transaction() -> Transaction {
+    fn signed_eip7702_transaction() -> EvmTransaction {
         let authorization = AlloyAuthorization {
             chain_id: AlloyU256::from(7),
             address: AlloyAddress::from([9; 20]),
@@ -1486,7 +1489,7 @@ mod tests {
                 .expect("transaction signing should succeed");
         let envelope: TxEnvelope = tx.into_signed(transaction_signature).into();
 
-        Transaction::from_signed_rlp(
+        EvmTransaction::from_signed_rlp(
             envelope.encoded_2718(),
             Timestamp::zero(),
             TimeDiff::from_seconds(60),

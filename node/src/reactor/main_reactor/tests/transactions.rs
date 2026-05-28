@@ -37,6 +37,7 @@ use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     evm,
     execution::ExecutionResultV1,
+    EvmAddr, EvmConfig, EvmSpec, EvmTransaction,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -882,7 +883,7 @@ fn evm_log_emitting_init_code() -> Vec<u8> {
     init_code
 }
 
-fn signed_evm_deploy_transaction(chain_id: u64) -> evm::Transaction {
+fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
     let transaction = TxLegacy {
         chain_id: Some(chain_id),
         nonce: 0,
@@ -900,7 +901,7 @@ fn signed_evm_value_transfer_transaction(
     recipient: evm::Address,
     gas_limit: u64,
     value: u64,
-) -> evm::Transaction {
+) -> EvmTransaction {
     let transaction = TxLegacy {
         chain_id: Some(chain_id),
         nonce: 0,
@@ -913,7 +914,7 @@ fn signed_evm_value_transfer_transaction(
     signed_evm_legacy_transaction(transaction)
 }
 
-fn signed_evm_legacy_transaction(transaction: TxLegacy) -> evm::Transaction {
+fn signed_evm_legacy_transaction(transaction: TxLegacy) -> EvmTransaction {
     let signing_key =
         SigningKey::from_slice(&[0x11; 32]).expect("test EVM private key should be valid");
     let (signature, recovery_id) = signing_key
@@ -921,7 +922,7 @@ fn signed_evm_legacy_transaction(transaction: TxLegacy) -> evm::Transaction {
         .expect("test EVM transaction signing should succeed");
     let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
     let envelope = TxEnvelope::from(signed);
-    evm::Transaction::from_signed_rlp(
+    EvmTransaction::from_signed_rlp(
         envelope.encoded_2718(),
         Timestamp::now(),
         TimeDiff::from_seconds(60),
@@ -933,15 +934,15 @@ fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U
     let main_purse = evm::deterministic_purse(address);
     let values_to_write = vec![
         (
-            Key::Evm(evm::EvmAddr::Account(address)),
+            Key::Evm(EvmAddr::Account(address)),
             StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
         ),
         (
-            Key::Evm(evm::EvmAddr::Nonce(address)),
+            Key::Evm(EvmAddr::Nonce(address)),
             StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
         ),
         (
-            Key::Evm(evm::EvmAddr::CodeHash(address)),
+            Key::Evm(EvmAddr::CodeHash(address)),
             StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
         ),
         (
@@ -1003,7 +1004,7 @@ fn evm_identity_at(fixture: &mut TestFixture, block_height: u64, address: evm::A
     match query_global_state(
         fixture,
         state_root_hash,
-        Key::Evm(evm::EvmAddr::Account(address)),
+        Key::Evm(EvmAddr::Account(address)),
     ) {
         Some(value) => match *value {
             StoredValue::CLValue(cl_value) => cl_value
@@ -1031,7 +1032,7 @@ fn evm_code_hash_at(
     match query_global_state(
         fixture,
         state_root_hash,
-        Key::Evm(evm::EvmAddr::CodeHash(address)),
+        Key::Evm(EvmAddr::CodeHash(address)),
     ) {
         Some(value) => match *value {
             StoredValue::CLValue(cl_value) => cl_value
@@ -1098,19 +1099,16 @@ fn evm_account_at(
         }
         value => panic!("unexpected EVM identity key: {value:?}"),
     };
-    let nonce = match query_global_state(
-        fixture,
-        state_root_hash,
-        Key::Evm(evm::EvmAddr::Nonce(address)),
-    ) {
-        Some(value) => match *value {
-            StoredValue::CLValue(cl_value) => {
-                cl_value.into_t::<u64>().expect("nonce should decode")
-            }
-            value => panic!("expected EVM nonce, got {value:?}"),
-        },
-        None => 0,
-    };
+    let nonce =
+        match query_global_state(fixture, state_root_hash, Key::Evm(EvmAddr::Nonce(address))) {
+            Some(value) => match *value {
+                StoredValue::CLValue(cl_value) => {
+                    cl_value.into_t::<u64>().expect("nonce should decode")
+                }
+                value => panic!("expected EVM nonce, got {value:?}"),
+            },
+            None => 0,
+        };
     EvmAccountView { nonce, main_purse }
 }
 
@@ -1122,10 +1120,10 @@ fn alloy_address_to_evm_address(address: AlloyAddress) -> evm::Address {
 
 #[tokio::test]
 async fn should_execute_evm_transaction_and_store_receipt() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };
@@ -1198,10 +1196,10 @@ async fn should_execute_evm_transaction_and_store_receipt() {
 
 #[tokio::test]
 async fn should_apply_casper_refund_handling_to_evm_transaction() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };
@@ -1251,10 +1249,10 @@ async fn should_apply_casper_refund_handling_to_evm_transaction() {
 
 #[tokio::test]
 async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };
@@ -1310,17 +1308,17 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
     assert!(query_global_state(
         &mut test.fixture,
         *block_header.state_root_hash(),
-        Key::Evm(evm::EvmAddr::Account(recipient))
+        Key::Evm(EvmAddr::Account(recipient))
     )
     .is_none());
 }
 
 #[tokio::test]
 async fn should_not_seed_evm_accounts_at_genesis() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };
@@ -1360,17 +1358,17 @@ async fn should_not_seed_evm_accounts_at_genesis() {
     assert!(query_global_state(
         &mut test.fixture,
         *block_header.state_root_hash(),
-        Key::Evm(evm::EvmAddr::Account(alice_evm_address)),
+        Key::Evm(EvmAddr::Account(alice_evm_address)),
     )
     .is_none());
 }
 
 #[tokio::test]
 async fn should_transfer_to_evm_address_with_native_transfer() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };
@@ -1439,10 +1437,10 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
 
 #[tokio::test]
 async fn should_reject_native_transfer_to_evm_contract_address() {
-    let evm_config = evm::EvmConfig {
+    let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: evm::EvmSpec::Prague,
+        spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
     };

@@ -1,4 +1,4 @@
-use crate::{evm, InvalidDeploy};
+use crate::{EvmTransactionError, InvalidDeploy};
 use core::fmt::{Display, Formatter};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -21,7 +21,7 @@ pub enum InvalidTransaction {
     /// V1 transactions.
     V1(InvalidTransactionV1),
     /// EVM transactions.
-    Evm(evm::TransactionError),
+    Evm(EvmTransactionError),
 }
 
 impl From<InvalidDeploy> for InvalidTransaction {
@@ -36,8 +36,8 @@ impl From<InvalidTransactionV1> for InvalidTransaction {
     }
 }
 
-impl From<evm::TransactionError> for InvalidTransaction {
-    fn from(value: evm::TransactionError) -> Self {
+impl From<EvmTransactionError> for InvalidTransaction {
+    fn from(value: EvmTransactionError) -> Self {
         Self::Evm(value)
     }
 }

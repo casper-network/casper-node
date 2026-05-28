@@ -1,6 +1,6 @@
 use core::{convert::TryFrom, fmt};
 
-use casper_types::{evm, InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
+use casper_types::{EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -403,7 +403,7 @@ impl From<InvalidTransaction> for ErrorCode {
         match value {
             InvalidTransaction::Deploy(invalid_deploy) => ErrorCode::from(invalid_deploy),
             InvalidTransaction::V1(invalid_transaction) => ErrorCode::from(invalid_transaction),
-            InvalidTransaction::Evm(evm::TransactionError::InvalidNonce { .. }) => {
+            InvalidTransaction::Evm(EvmTransactionError::InvalidNonce { .. }) => {
                 ErrorCode::InvalidTransactionEvmInvalidNonce
             }
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
@@ -590,7 +590,9 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::ErrorCode;
-    use casper_types::{evm, InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
+    use casper_types::{
+        EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
+    };
     use strum::IntoEnumIterator;
 
     #[test]
@@ -629,7 +631,7 @@ mod tests {
 
     #[test]
     fn evm_invalid_nonce_has_specific_error_code() {
-        let error = InvalidTransaction::Evm(evm::TransactionError::InvalidNonce {
+        let error = InvalidTransaction::Evm(EvmTransactionError::InvalidNonce {
             expected: 0,
             actual: 1,
         });

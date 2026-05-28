@@ -14,7 +14,7 @@ use super::{DeployHash, TransactionV1Hash};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    evm, Digest,
+    Digest, EvmTransactionHash,
 };
 
 const DEPLOY_TAG: u8 = 0;
@@ -34,7 +34,7 @@ pub enum TransactionHash {
     #[serde(rename = "Version1")]
     V1(TransactionV1Hash),
     /// An EVM transaction hash.
-    Evm(evm::TransactionHash),
+    Evm(EvmTransactionHash),
 }
 
 impl TransactionHash {
@@ -60,7 +60,7 @@ impl TransactionHash {
         match rng.gen_range(0..3) {
             0 => TransactionHash::from(DeployHash::random(rng)),
             1 => TransactionHash::from(TransactionV1Hash::random(rng)),
-            2 => TransactionHash::from(evm::TransactionHash::random(rng)),
+            2 => TransactionHash::from(EvmTransactionHash::random(rng)),
             _ => panic!(),
         }
     }
@@ -96,14 +96,14 @@ impl From<&TransactionV1Hash> for TransactionHash {
     }
 }
 
-impl From<evm::TransactionHash> for TransactionHash {
-    fn from(hash: evm::TransactionHash) -> Self {
+impl From<EvmTransactionHash> for TransactionHash {
+    fn from(hash: EvmTransactionHash) -> Self {
         Self::Evm(hash)
     }
 }
 
-impl From<&evm::TransactionHash> for TransactionHash {
-    fn from(hash: &evm::TransactionHash) -> Self {
+impl From<&EvmTransactionHash> for TransactionHash {
+    fn from(hash: &EvmTransactionHash) -> Self {
         Self::from(*hash)
     }
 }
@@ -181,7 +181,7 @@ impl FromBytes for TransactionHash {
                 Ok((TransactionHash::V1(hash), remainder))
             }
             EVM_TAG => {
-                let (hash, remainder) = evm::TransactionHash::from_bytes(remainder)?;
+                let (hash, remainder) = EvmTransactionHash::from_bytes(remainder)?;
                 Ok((TransactionHash::Evm(hash), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

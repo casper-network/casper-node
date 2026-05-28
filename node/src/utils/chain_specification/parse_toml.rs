@@ -32,8 +32,8 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    bytesrepr::Bytes, evm::EvmConfig, file_utils, AccountsConfig, ActivationPoint, Chainspec,
-    ChainspecRawBytes, CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
+    bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
+    CoreConfig, EvmConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
     NetworkConfig, ProtocolConfig, ProtocolVersion, StorageCosts, SystemConfig, TransactionConfig,
     VacancyConfig, WasmConfig,
 };

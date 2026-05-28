@@ -53,11 +53,11 @@ use crate::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr,
     CLType, CLValue, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess,
-    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, Group, InitiatorAddr,
-    Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs,
-    SemVer, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1, URef,
-    U128, U256, U512,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, EvmAddr, Group,
+    InitiatorAddr, Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion,
+    PublicKey, RuntimeArgs, SemVer, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionScheduling, TransactionTarget,
+    TransactionV1, URef, U128, U256, U512,
 };
 use proptest::{
     array, bits, bool,
@@ -319,18 +319,18 @@ pub fn u256_arb() -> impl Strategy<Value = U256> {
     collection::vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
 }
 
-pub fn evm_addr_arb() -> impl Strategy<Value = evm::EvmAddr> {
+pub fn evm_addr_arb() -> impl Strategy<Value = EvmAddr> {
     prop_oneof![
         prop::array::uniform20(any::<u8>())
-            .prop_map(|bytes| evm::EvmAddr::Account(evm::Address::new(bytes))),
-        u8_slice_32().prop_map(|bytes| evm::EvmAddr::ByteCode(evm::Hash::new(bytes))),
+            .prop_map(|bytes| EvmAddr::Account(evm::Address::new(bytes))),
+        u8_slice_32().prop_map(|bytes| EvmAddr::ByteCode(evm::Hash::new(bytes))),
         (prop::array::uniform20(any::<u8>()), u256_arb()).prop_map(|(address, slot)| {
-            evm::EvmAddr::Storage(evm::StorageAddr::new(evm::Address::new(address), slot))
+            EvmAddr::Storage(evm::StorageAddr::new(evm::Address::new(address), slot))
         }),
         prop::array::uniform20(any::<u8>())
-            .prop_map(|bytes| evm::EvmAddr::Nonce(evm::Address::new(bytes))),
+            .prop_map(|bytes| EvmAddr::Nonce(evm::Address::new(bytes))),
         prop::array::uniform20(any::<u8>())
-            .prop_map(|bytes| evm::EvmAddr::CodeHash(evm::Address::new(bytes))),
+            .prop_map(|bytes| EvmAddr::CodeHash(evm::Address::new(bytes))),
     ]
 }
 

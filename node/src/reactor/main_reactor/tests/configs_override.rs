@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use num_rational::Ratio;
 
 use casper_types::{
-    evm::EvmConfig, ConsensusProtocolName, FeeHandling, HoldBalanceHandling, PricingHandling,
-    PublicKey, RefundHandling, TimeDiff, TransactionV1Config,
+    ConsensusProtocolName, EvmConfig, FeeHandling, HoldBalanceHandling, PricingHandling, PublicKey,
+    RefundHandling, TimeDiff, TransactionV1Config,
 };
 
 use crate::types::SyncHandling;

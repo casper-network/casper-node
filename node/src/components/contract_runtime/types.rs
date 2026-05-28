@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{contract_runtime::StateResultError, types::TransactionHeader};
-use casper_types::{evm, InitiatorAddr, Transfer};
+use casper_types::{evm, EvmTransactionError, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
 
@@ -621,7 +621,7 @@ impl SpeculativeExecutionResult {
                 InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
             ),
             Transaction::Evm(_) => SpeculativeExecutionResult::InvalidTransaction(
-                InvalidTransaction::Evm(evm::TransactionError::Decode(
+                InvalidTransaction::Evm(EvmTransactionError::Decode(
                     "EVM transactions are not routed through contract runtime".to_string(),
                 )),
             ),

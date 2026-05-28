@@ -44,11 +44,12 @@ use casper_types::{
     evm,
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, Groups,
-    HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Key, PackageAddr,
-    PricingHandling, PricingMode, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionConfig,
-    TransactionRuntimeParams, TransactionV1, URef, DEFAULT_BASELINE_MOTES_AMOUNT,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, EvmTransaction,
+    EvmTransactionError, Groups, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
+    Key, PackageAddr, PricingHandling, PricingMode, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionArgs,
+    TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
+    DEFAULT_BASELINE_MOTES_AMOUNT,
 };
 
 use super::*;
@@ -998,7 +999,7 @@ impl TestScenario {
     }
 }
 
-fn signed_evm_legacy_transaction(nonce: u64) -> evm::Transaction {
+fn signed_evm_legacy_transaction(nonce: u64) -> EvmTransaction {
     let recipient = evm::Address::new([1; evm::ADDRESS_LENGTH]);
     let transaction = TxLegacy {
         chain_id: Some(EVM_TEST_CHAIN_ID),
@@ -1016,7 +1017,7 @@ fn signed_evm_legacy_transaction(nonce: u64) -> evm::Transaction {
         .expect("test EVM transaction signing should succeed");
     let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
     let envelope = TxEnvelope::from(signed);
-    evm::Transaction::from_signed_rlp(
+    EvmTransaction::from_signed_rlp(
         envelope.encoded_2718(),
         Timestamp::now(),
         TimeDiff::from_seconds(300),
@@ -1095,7 +1096,7 @@ impl reactor::Reactor for Reactor {
                     request: query_request,
                     responder,
                 } => {
-                    let query_result = if let Key::Evm(evm::EvmAddr::Account(address)) =
+                    let query_result = if let Key::Evm(EvmAddr::Account(address)) =
                         query_request.key()
                     {
                         if matches!(
@@ -1181,7 +1182,7 @@ impl reactor::Reactor for Reactor {
                                 self.test_scenario
                             ),
                         }
-                    } else if let Key::Evm(evm::EvmAddr::Nonce(_)) = query_request.key() {
+                    } else if let Key::Evm(EvmAddr::Nonce(_)) = query_request.key() {
                         let nonce = if matches!(
                             self.test_scenario,
                             TestScenario::FromClientEvmMissingIdentityWithCodeHash
@@ -1194,7 +1195,7 @@ impl reactor::Reactor for Reactor {
                             value: Box::new(StoredValue::CLValue(CLValue::from_t(nonce).unwrap())),
                             proofs: vec![],
                         }
-                    } else if let Key::Evm(evm::EvmAddr::CodeHash(_)) = query_request.key() {
+                    } else if let Key::Evm(EvmAddr::CodeHash(_)) = query_request.key() {
                         let code_hash = if matches!(
                             self.test_scenario,
                             TestScenario::FromClientEvmMissingIdentityWithCodeHash
@@ -1955,7 +1956,7 @@ async fn should_reject_evm_transaction_with_invalid_nonce_from_peer() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
-            evm::TransactionError::InvalidNonce {
+            EvmTransactionError::InvalidNonce {
                 expected: 0,
                 actual: 1
             }
@@ -2069,7 +2070,7 @@ async fn should_reject_evm_transaction_with_invalid_nonce_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
-            evm::TransactionError::InvalidNonce {
+            EvmTransactionError::InvalidNonce {
                 expected: 0,
                 actual: 1
             }

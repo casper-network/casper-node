@@ -1,5 +1,6 @@
 use casper_types::{
-    evm, DeployHeader, InitiatorAddr, TimeDiff, Timestamp, Transaction, TransactionV1,
+    evm, DeployHeader, EvmTransaction, InitiatorAddr, TimeDiff, Timestamp, Transaction,
+    TransactionV1,
 };
 use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
@@ -92,8 +93,8 @@ impl From<&TransactionV1> for TransactionHeader {
     }
 }
 
-impl From<&evm::Transaction> for TransactionHeader {
-    fn from(transaction: &evm::Transaction) -> Self {
+impl From<&EvmTransaction> for TransactionHeader {
+    fn from(transaction: &EvmTransaction) -> Self {
         let meta = EvmTransactionMetadata {
             initiator_addr: transaction.from(),
             timestamp: transaction.timestamp(),
