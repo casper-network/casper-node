@@ -114,7 +114,7 @@ impl EvmExecutor {
         // revm skips the upfront fee debit but still applies the
         // post-execution gas reimbursement and beneficiary reward.
         let disabled_fee_transfers =
-            disabled_fee_transfers(&self.config, spec, &request, &result_and_state.result);
+            disabled_fee_transfers(&self.config, &request, &result_and_state.result);
         state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
         state::apply(tracking_copy, state)?;
         Ok(outcome)
@@ -123,7 +123,6 @@ impl EvmExecutor {
 
 fn disabled_fee_transfers(
     config: &evm::EvmConfig,
-    spec: SpecId,
     request: &ExecuteRequest,
     result: &RevmExecutionResult,
 ) -> state::DisabledFeeTransfers {
@@ -146,15 +145,7 @@ fn disabled_fee_transfers(
         .saturating_sub(gas.total_gas_spent())
         .saturating_add(gas.inner_refunded());
     let caller_reimbursement = U256::from(effective_gas_price) * U256::from(reimbursed_gas);
-    // Revm still computes Ethereum fee transfers internally before we remove
-    // them for Casper-owned fee accounting. For node-accepted EIP-1559
-    // transactions the priority fee is zero by policy, but this stays generic
-    // for executor callers and pre-London specs.
-    let coinbase_gas_price = if spec.is_enabled_in(SpecId::LONDON) {
-        effective_gas_price.saturating_sub(base_fee)
-    } else {
-        effective_gas_price
-    };
+    let coinbase_gas_price = effective_gas_price.saturating_sub(base_fee);
     let beneficiary_reward = U256::from(coinbase_gas_price) * U256::from(gas.tx_gas_used());
 
     state::DisabledFeeTransfers {
@@ -175,26 +166,7 @@ fn result_gas(result: &RevmExecutionResult) -> &ResultGas {
 
 fn spec_id(spec: evm::EvmSpec) -> SpecId {
     match spec {
-        evm::EvmSpec::Frontier => SpecId::FRONTIER,
-        evm::EvmSpec::FrontierThawing => SpecId::FRONTIER_THAWING,
-        evm::EvmSpec::Homestead => SpecId::HOMESTEAD,
-        evm::EvmSpec::DaoFork => SpecId::DAO_FORK,
-        evm::EvmSpec::Tangerine => SpecId::TANGERINE,
-        evm::EvmSpec::SpuriousDragon => SpecId::SPURIOUS_DRAGON,
-        evm::EvmSpec::Byzantium => SpecId::BYZANTIUM,
-        evm::EvmSpec::Constantinople => SpecId::CONSTANTINOPLE,
-        evm::EvmSpec::Petersburg => SpecId::PETERSBURG,
-        evm::EvmSpec::Istanbul => SpecId::ISTANBUL,
-        evm::EvmSpec::MuirGlacier => SpecId::MUIR_GLACIER,
-        evm::EvmSpec::Berlin => SpecId::BERLIN,
-        evm::EvmSpec::London => SpecId::LONDON,
-        evm::EvmSpec::ArrowGlacier => SpecId::ARROW_GLACIER,
-        evm::EvmSpec::GrayGlacier => SpecId::GRAY_GLACIER,
-        evm::EvmSpec::Merge => SpecId::MERGE,
-        evm::EvmSpec::Shanghai => SpecId::SHANGHAI,
-        evm::EvmSpec::Cancun => SpecId::CANCUN,
         evm::EvmSpec::Prague => SpecId::PRAGUE,
-        evm::EvmSpec::Osaka => SpecId::OSAKA,
     }
 }
 

@@ -1053,55 +1053,9 @@ fn storage_zeroes_are_pruned() {
 }
 
 #[test]
-fn selfdestruct_cleanup_follows_selected_fork() {
+fn selfdestruct_preserves_account_on_prague() {
     let from = evm::Address::new([1; 20]);
     let beneficiary = evm::Address::new([2; 20]);
-
-    let shanghai_executor = executor(evm::EvmSpec::Shanghai);
-    let (mut shanghai_tracking_copy, _shanghai_tempdir) = tracking_copy();
-    let shanghai_contract = deploy(
-        &shanghai_executor,
-        &mut shanghai_tracking_copy,
-        from,
-        "SelfDestruct",
-    );
-    assert_eq!(
-        read_storage(
-            &mut shanghai_tracking_copy,
-            shanghai_contract,
-            CasperU256::zero()
-        ),
-        Some(storage_word(7))
-    );
-    execute_call(
-        &shanghai_executor,
-        &mut shanghai_tracking_copy,
-        from,
-        Some(shanghai_contract),
-        calldata("destroy(address)", &[address_word(beneficiary)]),
-    );
-    assert_eq!(
-        shanghai_tracking_copy
-            .read(&Key::Evm(evm::EvmAddr::Account(shanghai_contract)))
-            .unwrap(),
-        None
-    );
-    assert_eq!(
-        shanghai_tracking_copy
-            .read(&Key::Balance(
-                evm::deterministic_purse(shanghai_contract).addr()
-            ))
-            .unwrap(),
-        None
-    );
-    assert_eq!(
-        read_storage(
-            &mut shanghai_tracking_copy,
-            shanghai_contract,
-            CasperU256::zero()
-        ),
-        None
-    );
 
     let prague_executor = executor(evm::EvmSpec::Prague);
     let (mut prague_tracking_copy, _prague_tempdir) = tracking_copy();

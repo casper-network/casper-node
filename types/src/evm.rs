@@ -8,7 +8,6 @@
 mod account;
 mod address;
 mod config;
-mod eth_u256;
 mod evm_addr;
 mod hash;
 mod receipt;
@@ -18,7 +17,6 @@ mod transaction;
 pub use account::{deterministic_purse, StorageAddr, EMPTY_CODE_HASH};
 pub use address::{Address, ADDRESS_LENGTH};
 pub use config::{EvmConfig, EvmSpec};
-pub use eth_u256::EthU256;
 pub use evm_addr::EvmAddr;
 pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};

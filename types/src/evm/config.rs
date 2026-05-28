@@ -16,72 +16,15 @@ use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EvmSpec {
-    /// Frontier.
-    Frontier,
-    /// Frontier thawing.
-    FrontierThawing,
-    /// Homestead.
-    Homestead,
-    /// DAO fork.
-    DaoFork,
-    /// Tangerine Whistle.
-    Tangerine,
-    /// Spurious Dragon.
-    SpuriousDragon,
-    /// Byzantium.
-    Byzantium,
-    /// Constantinople.
-    Constantinople,
-    /// Petersburg.
-    Petersburg,
-    /// Istanbul.
-    Istanbul,
-    /// Muir Glacier.
-    MuirGlacier,
-    /// Berlin.
-    Berlin,
-    /// London.
-    London,
-    /// Arrow Glacier.
-    ArrowGlacier,
-    /// Gray Glacier.
-    GrayGlacier,
-    /// Paris, also known as the merge.
-    Merge,
-    /// Shanghai.
-    Shanghai,
-    /// Cancun.
-    Cancun,
     /// Prague.
     #[default]
     Prague,
-    /// Osaka.
-    Osaka,
 }
 
 impl EvmSpec {
     fn tag(self) -> u8 {
         match self {
-            EvmSpec::Frontier => 0,
-            EvmSpec::FrontierThawing => 1,
-            EvmSpec::Homestead => 2,
-            EvmSpec::DaoFork => 3,
-            EvmSpec::Tangerine => 4,
-            EvmSpec::SpuriousDragon => 5,
-            EvmSpec::Byzantium => 6,
-            EvmSpec::Constantinople => 7,
-            EvmSpec::Petersburg => 8,
-            EvmSpec::Istanbul => 9,
-            EvmSpec::MuirGlacier => 10,
-            EvmSpec::Berlin => 11,
-            EvmSpec::London => 12,
-            EvmSpec::ArrowGlacier => 13,
-            EvmSpec::GrayGlacier => 14,
-            EvmSpec::Merge => 15,
-            EvmSpec::Shanghai => 16,
-            EvmSpec::Cancun => 17,
-            EvmSpec::Prague => 18,
-            EvmSpec::Osaka => 19,
+            EvmSpec::Prague => 0,
         }
     }
 }
@@ -105,26 +48,7 @@ impl FromBytes for EvmSpec {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let spec = match tag {
-            0 => EvmSpec::Frontier,
-            1 => EvmSpec::FrontierThawing,
-            2 => EvmSpec::Homestead,
-            3 => EvmSpec::DaoFork,
-            4 => EvmSpec::Tangerine,
-            5 => EvmSpec::SpuriousDragon,
-            6 => EvmSpec::Byzantium,
-            7 => EvmSpec::Constantinople,
-            8 => EvmSpec::Petersburg,
-            9 => EvmSpec::Istanbul,
-            10 => EvmSpec::MuirGlacier,
-            11 => EvmSpec::Berlin,
-            12 => EvmSpec::London,
-            13 => EvmSpec::ArrowGlacier,
-            14 => EvmSpec::GrayGlacier,
-            15 => EvmSpec::Merge,
-            16 => EvmSpec::Shanghai,
-            17 => EvmSpec::Cancun,
-            18 => EvmSpec::Prague,
-            19 => EvmSpec::Osaka,
+            0 => EvmSpec::Prague,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((spec, remainder))

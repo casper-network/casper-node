@@ -425,9 +425,9 @@ pub enum ByteCodeKind {
     /// Prague-compatible EVM bytecode.
     ///
     /// This variant records bytecode that is valid for the Prague EVM rules.
-    /// When support for a future bytecode-affecting EVM spec such as Osaka is
-    /// officially added, introduce a new `Evm<Spec>` variant instead of
-    /// changing the meaning of this one.
+    /// When support for a future bytecode-affecting EVM spec is added,
+    /// introduce a new `Evm<Spec>` variant instead of changing the meaning
+    /// of this one.
     EvmPrague = 3,
 }
 

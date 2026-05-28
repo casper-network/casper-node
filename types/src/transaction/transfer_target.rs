@@ -22,10 +22,11 @@ impl TransferTarget {
     /// Returns a random `TransferTarget`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..4) {
             0 => TransferTarget::PublicKey(PublicKey::random(rng)),
             1 => TransferTarget::AccountHash(rng.gen()),
-            2 => TransferTarget::URef(rng.gen()),
+            2 => TransferTarget::EvmAddress(evm::Address::new(rng.gen())),
+            3 => TransferTarget::URef(rng.gen()),
             _ => unreachable!(),
         }
     }
