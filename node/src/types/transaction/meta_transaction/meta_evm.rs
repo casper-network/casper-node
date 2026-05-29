@@ -4,7 +4,7 @@ use std::{
 };
 
 use casper_types::{
-    bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
+    bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
     EvmTransactionKind, Gas, InvalidTransaction, TimeDiff, Timestamp, TransactionConfig,
     TransactionHash,
 };

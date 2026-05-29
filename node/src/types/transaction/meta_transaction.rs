@@ -6,10 +6,10 @@ use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, Se
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, evm, Approval, Chainspec, Digest, EvmTransaction,
-    EvmTransactionError, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
-    InvalidTransaction, Phase, PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction,
-    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
+    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
+    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
+    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
     INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
@@ -547,7 +547,7 @@ mod tests {
     use alloy_consensus::{SignableTransaction, TxEip1559, TxEip7702, TxEnvelope, TxLegacy};
     use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
     use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
-    use casper_types::TransactionLaneDefinition;
+    use casper_types::{evm, EvmTransactionError, TransactionLaneDefinition};
 
     const CHAIN_ID: u64 = 7;
     const BASE_FEE: u64 = 1_000_000;

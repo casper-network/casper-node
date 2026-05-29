@@ -14,7 +14,7 @@ use alloy_eips::{
 use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256 as AlloyU256};
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    evm::{self, Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
+    evm::{Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
     Approval, ApprovalsHash, Digest, EvmTransaction, EvmTransactionError, EvmTransactionHash,
     EvmTransactionKind, PublicKey, SecretKey, TimeDiff, Timestamp,
     Transaction as CasperTransaction, TransactionHash, U256,
