@@ -122,21 +122,31 @@ The current `eth_sendRawTransaction` flow is:
    EVM transaction data.
 6. It extracts the unsigned Ethereum payload fields.
 7. It recovers the secp256k1 public key and EVM address.
-8. It converts the Ethereum signature into one Casper `Approval`:
+8. It converts the Ethereum signature into one `EvmApproval`:
    - `Approval.signer` is the recovered secp256k1 public key.
-   - `Approval.signature` is the 64-byte secp256k1 signature.
+   - `Approval.signature` is the 64-byte secp256k1 `(r, s)` signature.
+   - `EvmApproval.y_parity` is the Ethereum recovery parity carried by the
+     signed payload as legacy `v` or typed-transaction `yParity`.
 9. It stores the Ethereum signed transaction hash.
 10. Sidecar wraps the value as `Transaction::Evm` and submits it to node over
    the existing binary-port transaction submission path.
 
 Node does not receive the raw RLP blob for `eth_sendRawTransaction`. Node
-receives a typed `Transaction::Evm` whose approval set contains the Ethereum
-signature.
+receives a typed `Transaction::Evm` whose EVM approval contains the Ethereum
+signature and recovery parity.
 
 ## Approval Handling
 
-`Transaction::Evm` uses the same approval container and approval identity
-mechanics as other transaction variants:
+`Transaction::Evm` stores one `EvmApproval`, a wrapper around the normal Casper
+`Approval` plus Ethereum `y_parity`. The wrapper is needed because
+`Signature::Secp256k1` is only the canonical 64-byte ECDSA signature, `r || s`;
+it does not contain Ethereum's recovery parity. Without storing that parity,
+the node has to infer it by trying recovery IDs when reconstructing the signed
+Ethereum envelope.
+
+For transaction identity and block approval accounting, `Transaction::Evm`
+still exposes the wrapped Casper approval through the same approval mechanics
+as other transaction variants:
 
 - `Transaction::approvals()` returns the EVM approval set.
 - `Transaction::compute_approvals_hash()` computes the hash of that approval
@@ -153,15 +163,15 @@ approvals verify Casper signatures over Casper transaction hashes.
 `Transaction::Evm::verify()` reconstructs the signed Ethereum envelope using
 the stored payload and approval, then checks:
 
-- There is exactly one approval.
+- There is exactly one EVM approval.
 - The approval uses secp256k1.
-- One of the valid secp256k1 recovery IDs recovers the approval signer.
+- The stored `y_parity` and `(r, s)` signature recover the approval signer.
 - The recovered EVM address matches the stored `from`.
 - The reconstructed Ethereum signed transaction hash matches the stored EVM
   hash.
 
 This avoids double signing. The Ethereum signature becomes the single Casper
-approval for the `Transaction::Evm` value.
+approval inside the `Transaction::Evm` approval wrapper.
 
 The generic `Transaction::sign` API also has an EVM implementation. For
 `Transaction::Evm`, it requires a secp256k1 secret key, signs the Ethereum

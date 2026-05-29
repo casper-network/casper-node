@@ -1,12 +1,9 @@
-use std::{
-    collections::BTreeSet,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use casper_types::{
     bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
-    EvmTransactionKind, Gas, InvalidTransaction, TimeDiff, Timestamp, TransactionConfig,
-    TransactionHash,
+    EvmTransactionKind, Gas, InitiatorAddr, InvalidTransaction, TimeDiff, Timestamp,
+    TransactionConfig, TransactionHash,
 };
 use serde::Serialize;
 
@@ -54,8 +51,12 @@ impl MetaEvmTransaction {
         self.transaction.ttl()
     }
 
-    pub(crate) fn approvals(&self) -> &BTreeSet<Approval> {
-        self.transaction.approvals()
+    pub(crate) fn approval(&self) -> Option<&Approval> {
+        self.transaction.approval()
+    }
+
+    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+        self.transaction.initiator_addr()
     }
 
     pub(crate) fn lane_id(&self) -> u8 {

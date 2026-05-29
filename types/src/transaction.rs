@@ -10,7 +10,7 @@ mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
-mod serialization;
+pub(crate) mod serialization;
 mod transaction_entry_point;
 mod transaction_hash;
 mod transaction_id;
@@ -229,7 +229,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().clone(),
             Transaction::V1(v1) => v1.approvals().clone(),
-            Transaction::Evm(txn) => txn.approvals().clone(),
+            Transaction::Evm(txn) => txn.approval().cloned().into_iter().collect(),
         }
     }
 
@@ -238,7 +238,7 @@ impl Transaction {
         let approvals_hash = match self {
             Transaction::Deploy(deploy) => deploy.compute_approvals_hash()?,
             Transaction::V1(txn) => txn.compute_approvals_hash()?,
-            Transaction::Evm(txn) => ApprovalsHash::compute(txn.approvals())?,
+            Transaction::Evm(txn) => txn.compute_approvals_hash()?,
         };
         Ok(approvals_hash)
     }
@@ -294,22 +294,21 @@ impl Transaction {
                 TransactionId::new(TransactionHash::V1(txn_hash), approvals_hash)
             }
             Transaction::Evm(txn) => {
-                let approvals_hash =
-                    ApprovalsHash::compute(txn.approvals()).unwrap_or_else(|error| {
-                        error!(%error, "failed to serialize EVM approvals");
-                        ApprovalsHash::from(Digest::default())
-                    });
+                let approvals_hash = txn.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize EVM approvals");
+                    ApprovalsHash::from(Digest::default())
+                });
                 TransactionId::new(TransactionHash::Evm(txn.hash()), approvals_hash)
             }
         }
     }
 
-    /// Returns the Casper initiator address, if this transaction has one.
-    pub fn initiator_addr(&self) -> Option<InitiatorAddr> {
+    /// Returns the Casper initiator address.
+    pub fn initiator_addr(&self) -> InitiatorAddr {
         match self {
-            Transaction::Deploy(deploy) => Some(InitiatorAddr::PublicKey(deploy.account().clone())),
-            Transaction::V1(txn) => Some(txn.initiator_addr().clone()),
-            Transaction::Evm(_) => None,
+            Transaction::Deploy(deploy) => InitiatorAddr::PublicKey(deploy.account().clone()),
+            Transaction::V1(txn) => txn.initiator_addr().clone(),
+            Transaction::Evm(txn) => txn.initiator_addr().clone(),
         }
     }
 
@@ -361,8 +360,8 @@ impl Transaction {
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             Transaction::Evm(txn) => txn
-                .approvals()
-                .iter()
+                .approval()
+                .into_iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
         }
@@ -414,8 +413,8 @@ impl Transaction {
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             Transaction::Evm(txn) => txn
-                .approvals()
-                .iter()
+                .approval()
+                .into_iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
         }

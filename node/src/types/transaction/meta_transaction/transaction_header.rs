@@ -1,6 +1,5 @@
 use casper_types::{
-    evm, DeployHeader, EvmTransaction, InitiatorAddr, TimeDiff, Timestamp, Transaction,
-    TransactionV1,
+    DeployHeader, EvmTransaction, InitiatorAddr, TimeDiff, Timestamp, Transaction, TransactionV1,
 };
 use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
@@ -41,7 +40,7 @@ impl Display for EvmTransactionMetadata {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "transaction-metadata[initiator_addr: EVM address {}]",
+            "transaction-metadata[initiator_addr: {}]",
             self.initiator_addr,
         )
     }
@@ -49,14 +48,14 @@ impl Display for EvmTransactionMetadata {
 
 #[derive(Debug, Clone, DataSize, PartialEq, Eq, Serialize)]
 pub(crate) struct EvmTransactionMetadata {
-    initiator_addr: evm::Address,
+    initiator_addr: InitiatorAddr,
     timestamp: Timestamp,
     ttl: TimeDiff,
 }
 
 impl EvmTransactionMetadata {
-    pub(crate) fn initiator_addr(&self) -> evm::Address {
-        self.initiator_addr
+    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+        &self.initiator_addr
     }
 
     pub(crate) fn timestamp(&self) -> Timestamp {
@@ -96,7 +95,7 @@ impl From<&TransactionV1> for TransactionHeader {
 impl From<&EvmTransaction> for TransactionHeader {
     fn from(transaction: &EvmTransaction) -> Self {
         let meta = EvmTransactionMetadata {
-            initiator_addr: transaction.from(),
+            initiator_addr: transaction.initiator_addr().clone(),
             timestamp: transaction.timestamp(),
             ttl: transaction.ttl(),
         };

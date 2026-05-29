@@ -101,9 +101,7 @@ impl WasmV2Request {
         transaction: &MetaTransaction,
     ) -> Result<Self, InvalidRequest> {
         let transaction_hash = transaction.hash();
-        let initiator_addr = transaction
-            .initiator_addr()
-            .expect("Wasm v2 transaction requires a Casper initiator");
+        let initiator_addr = transaction.initiator_addr();
 
         let gas_limit: u64 = gas_limit
             .value()

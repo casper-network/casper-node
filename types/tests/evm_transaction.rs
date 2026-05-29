@@ -15,8 +15,8 @@ use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256 as
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     evm::{Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
-    Approval, ApprovalsHash, Digest, EvmTransaction, EvmTransactionError, EvmTransactionHash,
-    EvmTransactionKind, PublicKey, SecretKey, TimeDiff, Timestamp,
+    Approval, ApprovalsHash, Digest, EvmApproval, EvmTransaction, EvmTransactionError,
+    EvmTransactionHash, EvmTransactionKind, PublicKey, SecretKey, TimeDiff, Timestamp,
     Transaction as CasperTransaction, TransactionHash, U256,
 };
 
@@ -39,7 +39,7 @@ fn decodes_legacy_signed_rlp() {
     transaction
         .verify()
         .expect("legacy transaction should verify");
-    assert_eq!(transaction.approvals().len(), 1);
+    assert!(transaction.approval().is_some());
     assert_eq!(
         transaction.signed_rlp().unwrap(),
         signed_transaction.raw_rlp
@@ -63,6 +63,7 @@ fn decodes_eip2930_signed_rlp() {
     transaction
         .verify()
         .expect("EIP-2930 transaction should verify");
+    bytesrepr_roundtrip(&transaction);
 }
 
 #[test]
@@ -83,6 +84,7 @@ fn decodes_eip1559_signed_rlp() {
     transaction
         .verify()
         .expect("EIP-1559 transaction should verify");
+    bytesrepr_roundtrip(&transaction);
 }
 
 #[test]
@@ -171,9 +173,14 @@ fn empty_eip7702_authorization_lists_are_rejected() {
 fn approval_backed_transaction_identity_uses_evm_approval() {
     let evm_transaction = decode(signed_eip1559_transaction().raw_rlp);
     let transaction = CasperTransaction::from(evm_transaction.clone());
-    let approvals_hash = ApprovalsHash::compute(evm_transaction.approvals()).unwrap();
+    let evm_approvals = BTreeSet::from([evm_transaction.approval().unwrap().clone()]);
+    let approvals_hash = evm_transaction.compute_approvals_hash().unwrap();
 
-    assert_eq!(transaction.approvals(), evm_transaction.approvals().clone());
+    assert_eq!(transaction.approvals(), evm_approvals);
+    assert_eq!(
+        ApprovalsHash::compute(&evm_approvals).unwrap(),
+        approvals_hash
+    );
     assert_eq!(
         transaction.compute_approvals_hash().unwrap(),
         approvals_hash
@@ -189,6 +196,7 @@ fn approval_backed_transaction_identity_uses_evm_approval() {
 fn evm_approvals_are_not_replaced_by_finalized_approvals() {
     let evm_transaction = decode(signed_eip1559_transaction().raw_rlp);
     let transaction = CasperTransaction::from(evm_transaction.clone());
+    let evm_approvals = BTreeSet::from([evm_transaction.approval().unwrap().clone()]);
     let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let replacement_approval =
         Approval::create(&TransactionHash::from(evm_transaction.hash()), &secret_key);
@@ -197,7 +205,7 @@ fn evm_approvals_are_not_replaced_by_finalized_approvals() {
         transaction
             .with_approvals(BTreeSet::from([replacement_approval]))
             .approvals(),
-        evm_transaction.approvals().clone()
+        evm_approvals
     );
 }
 
@@ -213,9 +221,8 @@ fn evm_transaction_sign_replaces_approval_and_recomputes_identity() {
     let CasperTransaction::Evm(evm_transaction) = transaction else {
         panic!("expected EVM transaction");
     };
-    assert_eq!(evm_transaction.approvals().len(), 1);
     assert_eq!(
-        evm_transaction.approvals().iter().next().unwrap().signer(),
+        evm_transaction.approval().unwrap().signer(),
         &expected_signer
     );
     assert_ne!(TransactionHash::from(evm_transaction.hash()), old_hash);
@@ -226,7 +233,7 @@ fn evm_transaction_sign_replaces_approval_and_recomputes_identity() {
     let decoded = decode(evm_transaction.signed_rlp().unwrap());
     assert_eq!(decoded.hash(), evm_transaction.hash());
     assert_eq!(decoded.from(), evm_transaction.from());
-    assert_eq!(decoded.approvals(), evm_transaction.approvals());
+    assert_eq!(decoded.approval(), evm_transaction.approval());
 }
 
 #[test]
@@ -263,23 +270,11 @@ fn evm_transaction_sign_rejects_non_secp256k1_keys() {
 
 #[test]
 fn evm_approval_verification_rejects_bad_approval_sets() {
-    let transaction = decode(signed_legacy_transaction().raw_rlp);
+    let signed_transaction = signed_legacy_transaction();
+    let transaction = decode(signed_transaction.raw_rlp);
     assert_eq!(
-        transaction.clone().with_approvals(BTreeSet::new()).verify(),
+        transaction.clone().with_evm_approval(None).verify(),
         Err(EvmTransactionError::MissingApproval)
-    );
-
-    let mut multiple_approvals = transaction.approvals().clone();
-    multiple_approvals.insert(Approval::create(
-        &TransactionHash::from(transaction.hash()),
-        &secp_secret_key([1; SecretKey::SECP256K1_LENGTH]),
-    ));
-    assert_eq!(
-        transaction
-            .clone()
-            .with_approvals(multiple_approvals)
-            .verify(),
-        Err(EvmTransactionError::MultipleApprovals)
     );
 
     let non_secp_approval = Approval::create(
@@ -289,9 +284,24 @@ fn evm_approval_verification_rejects_bad_approval_sets() {
     assert_eq!(
         transaction
             .clone()
-            .with_approvals(BTreeSet::from([non_secp_approval]))
+            .with_evm_approval(Some(EvmApproval::new(non_secp_approval, false)))
             .verify(),
         Err(EvmTransactionError::NonSecp256k1Approval)
+    );
+
+    let wrong_y_parity = EvmApproval::new(
+        transaction
+            .approval()
+            .expect("signed transaction should have an approval")
+            .clone(),
+        !signed_transaction.signature_y_parity,
+    );
+    assert_eq!(
+        transaction
+            .clone()
+            .with_evm_approval(Some(wrong_y_parity))
+            .verify(),
+        Err(EvmTransactionError::InvalidApprovalSignature)
     );
 }
 
@@ -320,6 +330,7 @@ fn evm_hashes_round_trip_raw_digest_bytes() {
 struct SignedTransaction {
     raw_rlp: Vec<u8>,
     sender: Address,
+    signature_y_parity: bool,
     authorization_list: Vec<AlloySignedAuthorization>,
 }
 
@@ -447,9 +458,11 @@ fn signed_transaction(envelope: TxEnvelope) -> SignedTransaction {
             .recover_signer()
             .expect("signed transaction should recover sender"),
     );
+    let signature_y_parity = envelope.signature().v();
     SignedTransaction {
         raw_rlp: envelope.encoded_2718(),
         sender,
+        signature_y_parity,
         authorization_list: envelope
             .as_eip7702()
             .map(|transaction| transaction.tx().authorization_list.clone())

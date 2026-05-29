@@ -64,17 +64,17 @@ impl MetaTransaction {
     pub(crate) fn approvals(&self) -> BTreeSet<Approval> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().approvals().clone(),
-            MetaTransaction::Evm(evm) => evm.approvals().clone(),
+            MetaTransaction::Evm(evm) => evm.approval().cloned().into_iter().collect(),
             MetaTransaction::V1(v1) => v1.approvals().clone(),
         }
     }
 
-    /// Returns the Casper initiator address, if this transaction has one.
-    pub(crate) fn initiator_addr(&self) -> Option<&InitiatorAddr> {
+    /// Returns the Casper initiator address.
+    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
         match self {
-            MetaTransaction::Deploy(meta_deploy) => Some(meta_deploy.initiator_addr()),
-            MetaTransaction::Evm(_) => None,
-            MetaTransaction::V1(txn) => Some(txn.initiator_addr()),
+            MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr(),
+            MetaTransaction::Evm(evm) => evm.initiator_addr(),
+            MetaTransaction::V1(txn) => txn.initiator_addr(),
         }
     }
 
@@ -88,8 +88,8 @@ impl MetaTransaction {
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             MetaTransaction::Evm(evm) => evm
-                .approvals()
-                .iter()
+                .approval()
+                .into_iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             MetaTransaction::V1(txn) => txn
@@ -169,8 +169,8 @@ impl MetaTransaction {
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             MetaTransaction::Evm(evm) => evm
-                .approvals()
-                .iter()
+                .approval()
+                .into_iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
             MetaTransaction::V1(transaction_v1) => transaction_v1
@@ -547,7 +547,7 @@ mod tests {
     use alloy_consensus::{SignableTransaction, TxEip1559, TxEip7702, TxEnvelope, TxLegacy};
     use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
     use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
-    use casper_types::{evm, EvmTransactionError, TransactionLaneDefinition};
+    use casper_types::{evm, EvmTransactionError, InitiatorAddr, TransactionLaneDefinition};
 
     const CHAIN_ID: u64 = 7;
     const BASE_FEE: u64 = 1_000_000;
@@ -568,8 +568,11 @@ mod tests {
         assert_eq!(meta.hash(), transaction.hash());
         assert_eq!(meta.timestamp(), evm_transaction.timestamp());
         assert_eq!(meta.ttl(), evm_transaction.ttl());
-        assert_eq!(meta.approvals(), evm_transaction.approvals().clone());
-        assert_eq!(meta.initiator_addr(), None);
+        assert_eq!(
+            meta.approvals(),
+            evm_transaction.approval().cloned().into_iter().collect()
+        );
+        assert_eq!(meta.initiator_addr(), evm_transaction.initiator_addr());
         assert_eq!(meta.transaction_lane(), EVM_LANE);
         assert_eq!(meta.gas_limit(&chainspec).unwrap(), Gas::new(21_000));
         assert_eq!(meta.gas_price_tolerance().unwrap(), u8::MAX);
@@ -581,6 +584,27 @@ mod tests {
         assert!(meta.seed().is_none());
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("valid EVM transaction should be config compliant");
+    }
+
+    #[test]
+    fn evm_transaction_header_keeps_initiator_addr() {
+        let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000);
+        let expected_signer = evm_transaction
+            .signer()
+            .expect("signed EVM transaction should have an approval signer")
+            .clone();
+        let expected_initiator_addr = InitiatorAddr::AccountHash(expected_signer.to_account_hash());
+
+        assert_eq!(
+            Transaction::Evm(evm_transaction.clone()).initiator_addr(),
+            expected_initiator_addr
+        );
+
+        let header = TransactionHeader::from(&evm_transaction);
+        let TransactionHeader::Evm(metadata) = header else {
+            panic!("expected EVM transaction header");
+        };
+        assert_eq!(metadata.initiator_addr(), &expected_initiator_addr);
     }
 
     #[test]
@@ -830,9 +854,8 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_invalid_approval() {
         let chainspec = chainspec();
-        let approvals = BTreeSet::new();
         let evm_transaction =
-            legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000).with_approvals(approvals);
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000).with_evm_approval(None);
         let meta = evm_meta(&chainspec, evm_transaction);
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -874,6 +897,7 @@ mod tests {
         EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
+            test_initiator_addr(),
             chain_id,
             evm::Address::new([1u8; 20]),
             Some(evm::Address::new([2u8; 20])),
@@ -882,6 +906,10 @@ mod tests {
             gas_limit,
             gas_price,
         )
+    }
+
+    fn test_initiator_addr() -> InitiatorAddr {
+        InitiatorAddr::AccountHash(AccountHash::new([8; 32]))
     }
 
     fn legacy_transaction(

@@ -166,8 +166,8 @@ pub use digest::{
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use evm::{
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError, EvmTransactionHash,
-    EvmTransactionKind,
+    EvmAddr, EvmApproval, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError,
+    EvmTransactionHash, EvmTransactionKind,
 };
 pub use gas::Gas;
 #[cfg(feature = "json-schema")]

@@ -313,10 +313,7 @@ impl TransactionAcceptor {
         }
 
         if event_metadata.source.is_client() {
-            let initiator_addr = event_metadata
-                .transaction
-                .initiator_addr()
-                .expect("non-EVM transaction initiator must be a Casper account");
+            let initiator_addr = event_metadata.transaction.initiator_addr();
             let account_hash = initiator_addr.account_hash();
             let entity_addr = EntityAddr::Account(account_hash.value());
             effect_builder
@@ -642,10 +639,7 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         match maybe_entity {
             None => {
-                let initiator_addr = event_metadata
-                    .transaction
-                    .initiator_addr()
-                    .expect("missing entity check requires a Casper initiator");
+                let initiator_addr = event_metadata.transaction.initiator_addr();
                 let error = Error::parameter_failure(
                     &block_header,
                     ParameterFailure::NoSuchAddressableEntity { initiator_addr },
@@ -698,10 +692,7 @@ impl TransactionAcceptor {
         }
         match maybe_balance {
             None => {
-                let initiator_addr = event_metadata
-                    .transaction
-                    .initiator_addr()
-                    .expect("balance check requires a Casper initiator");
+                let initiator_addr = event_metadata.transaction.initiator_addr();
                 let error = Error::parameter_failure(
                     &block_header,
                     ParameterFailure::UnknownBalance { initiator_addr },
@@ -712,10 +703,7 @@ impl TransactionAcceptor {
                 let has_minimum_balance =
                     balance >= self.chainspec.core_config.baseline_motes_amount_u512();
                 if !has_minimum_balance {
-                    let initiator_addr = event_metadata
-                        .transaction
-                        .initiator_addr()
-                        .expect("balance check requires a Casper initiator");
+                    let initiator_addr = event_metadata.transaction.initiator_addr();
                     let error = Error::parameter_failure(
                         &block_header,
                         ParameterFailure::InsufficientBalance { initiator_addr },

@@ -74,7 +74,7 @@ pub(crate) struct ExecutionArtifactBuilder {
     error_message: Option<String>,
     messages: Messages,
     transfers: Vec<Transfer>,
-    initiator: Option<InitiatorAddr>,
+    initiator: InitiatorAddr,
     evm_initiator: Option<evm::Address>,
     current_price: u8,
     cost: U512,
@@ -480,7 +480,7 @@ impl ExecutionArtifactBuilder {
 
     #[allow(unused)]
     pub fn with_initiator_addr(&mut self, initiator_addr: InitiatorAddr) -> &mut Self {
-        self.initiator = Some(initiator_addr);
+        self.initiator = initiator_addr;
         self
     }
 
@@ -509,9 +509,7 @@ impl ExecutionArtifactBuilder {
             let result = ExecutionResultV2 {
                 effects: self.effects,
                 transfers: self.transfers,
-                initiator: self
-                    .initiator
-                    .expect("Wasm execution result requires a Casper initiator"),
+                initiator: self.initiator,
                 refund: self.refund,
                 limit: self.limit,
                 consumed: self.consumed,

@@ -723,9 +723,7 @@ pub fn execute_finalized_block(
                 evm_transaction,
             )?
         } else {
-            let initiator_addr = stored_transaction
-                .initiator_addr()
-                .ok_or(BlockExecutionError::InvalidTransactionVariant)?;
+            let initiator_addr = stored_transaction.initiator_addr();
             RuntimeOrigin::from_initiator_addr(initiator_addr)
         };
         let payer_balance_identifier = runtime_origin.payer_balance_identifier();
@@ -1941,9 +1939,7 @@ where
                 *state_root_hash,
                 protocol_version,
                 transaction_hash,
-                initiator_addr
-                    .cloned()
-                    .expect("native speculative execution requires a Casper initiator"),
+                initiator_addr.clone(),
                 authorization_keys,
                 runtime_args,
             ));

@@ -31,5 +31,5 @@ pub use transaction::{
 pub use config::{EvmConfig, EvmSpec};
 pub use evm_addr::EvmAddr;
 pub use transaction::{
-    EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,
+    EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,
 };

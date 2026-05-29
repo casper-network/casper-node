@@ -1,5 +1,4 @@
 use alloc::{
-    collections::BTreeSet,
     format,
     string::{String, ToString},
     vec::Vec,
@@ -39,11 +38,45 @@ use super::{Address, EvmConfig, Hash, HASH_LENGTH};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Approval, AsymmetricType, Digest, PublicKey, SecretKey, Signature, TimeDiff, Timestamp, U256,
-    U512,
+    transaction::serialization::{
+        CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder,
+    },
+    Approval, ApprovalsHash, AsymmetricType, Digest, InitiatorAddr, PublicKey, SecretKey,
+    Signature, TimeDiff, Timestamp, U256, U512,
 };
 
 const TRANSACTION_KIND_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
+const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 16;
+
+const TIMESTAMP_FIELD_INDEX: u16 = 0;
+const TTL_FIELD_INDEX: u16 = 1;
+const KIND_FIELD_INDEX: u16 = 2;
+
+// Field indices after KIND_FIELD_INDEX are interpreted within the selected
+// EVM transaction kind. Keeping kind-specific payloads separate lets future
+// transaction types add fields without changing the layout of older kinds.
+const HASH_FIELD_INDEX: u16 = 3;
+const FROM_FIELD_INDEX: u16 = 4;
+const TO_FIELD_INDEX: u16 = 5;
+const NONCE_FIELD_INDEX: u16 = 6;
+const GAS_LIMIT_FIELD_INDEX: u16 = 7;
+
+const LEGACY_GAS_PRICE_FIELD_INDEX: u16 = 8;
+const LEGACY_VALUE_FIELD_INDEX: u16 = 9;
+const LEGACY_INPUT_FIELD_INDEX: u16 = 10;
+const LEGACY_CHAIN_ID_FIELD_INDEX: u16 = 11;
+const LEGACY_APPROVAL_FIELD_INDEX: u16 = 12;
+
+const DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX: u16 = 8;
+const DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX: u16 = 9;
+const DYNAMIC_VALUE_FIELD_INDEX: u16 = 10;
+const DYNAMIC_INPUT_FIELD_INDEX: u16 = 11;
+const DYNAMIC_CHAIN_ID_FIELD_INDEX: u16 = 12;
+const DYNAMIC_APPROVAL_FIELD_INDEX: u16 = 13;
+
+const EIP7702_AUTHORIZATION_LIST_FIELD_INDEX: u16 = 13;
+const EIP7702_APPROVAL_FIELD_INDEX: u16 = 14;
+const INITIATOR_ADDR_FIELD_INDEX: u16 = 15;
 
 /// Ethereum transaction type ID for legacy transactions.
 pub const LEGACY_TRANSACTION_TYPE_ID: u8 = 0;
@@ -221,6 +254,75 @@ impl FromBytes for EvmTransactionKind {
     }
 }
 
+/// A Casper approval plus the Ethereum recovery parity for the same signature.
+///
+/// Casper [`Signature::Secp256k1`] stores the canonical 64-byte ECDSA
+/// signature, `r || s`. Ethereum signed transactions carry one extra bit,
+/// historically encoded as `v` and in typed transactions as `yParity`, so the
+/// sender can be recovered from the transaction payload. `EvmApproval` keeps
+/// that Ethereum recovery parity next to the normal Casper approval, allowing
+/// the signed Ethereum envelope and transaction hash to be reconstructed
+/// without guessing which recovery ID was present in the original payload.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct EvmApproval {
+    approval: Approval,
+    y_parity: bool,
+}
+
+impl EvmApproval {
+    /// Creates a new EVM approval from a Casper approval and Ethereum recovery parity.
+    pub fn new(approval: Approval, y_parity: bool) -> Self {
+        EvmApproval { approval, y_parity }
+    }
+
+    /// Returns the Casper approval carrying the signer public key and `(r, s)` signature.
+    pub fn approval(&self) -> &Approval {
+        &self.approval
+    }
+
+    /// Returns the Ethereum signature recovery parity.
+    pub fn y_parity(&self) -> bool {
+        self.y_parity
+    }
+
+    /// Returns the public key of the EVM approval's signer.
+    pub fn signer(&self) -> &PublicKey {
+        self.approval.signer()
+    }
+
+    /// Returns the secp256k1 signature stored in the wrapped Casper approval.
+    pub fn signature(&self) -> &Signature {
+        self.approval.signature()
+    }
+}
+
+impl ToBytes for EvmApproval {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.approval.serialized_length() + self.y_parity.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.approval.write_bytes(writer)?;
+        self.y_parity.write_bytes(writer)
+    }
+}
+
+impl FromBytes for EvmApproval {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (approval, remainder) = Approval::from_bytes(bytes)?;
+        let (y_parity, remainder) = bool::from_bytes(remainder)?;
+        Ok((EvmApproval { approval, y_parity }, remainder))
+    }
+}
+
 /// A signed EIP-7702 authorization-list item.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -382,8 +484,6 @@ pub enum EvmTransactionError {
     },
     /// The transaction does not contain an EVM approval.
     MissingApproval,
-    /// The transaction contains more than one approval.
-    MultipleApprovals,
     /// The approval is not a secp256k1 signature and public key.
     NonSecp256k1Approval,
     /// The approval signature could not be recovered against the stored payload.
@@ -473,7 +573,6 @@ impl Display for EvmTransactionError {
                 )
             }
             EvmTransactionError::MissingApproval => formatter.write_str("missing EVM approval"),
-            EvmTransactionError::MultipleApprovals => formatter.write_str("multiple EVM approvals"),
             EvmTransactionError::NonSecp256k1Approval => {
                 formatter.write_str("EVM approval must use secp256k1")
             }
@@ -499,13 +598,14 @@ impl Display for EvmTransactionError {
 #[cfg(feature = "std")]
 impl std::error::Error for EvmTransactionError {}
 
-/// An unsigned Ethereum transaction payload plus one Ethereum-style Casper approval.
+/// An unsigned Ethereum transaction payload plus one Ethereum-style approval.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EvmTransaction {
     timestamp: Timestamp,
     ttl: TimeDiff,
+    initiator_addr: InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -526,7 +626,7 @@ pub struct EvmTransaction {
     input: Vec<u8>,
     chain_id: Option<u64>,
     authorization_list: Vec<SetCodeAuthorization>,
-    approvals: BTreeSet<Approval>,
+    approval: Option<EvmApproval>,
 }
 
 #[cfg(any(feature = "std", test))]
@@ -534,6 +634,7 @@ pub struct EvmTransaction {
 struct EvmTransactionSerHelper<'a> {
     timestamp: Timestamp,
     ttl: TimeDiff,
+    initiator_addr: &'a InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -547,7 +648,7 @@ struct EvmTransactionSerHelper<'a> {
     input: &'a Vec<u8>,
     chain_id: Option<u64>,
     authorization_list: &'a Vec<SetCodeAuthorization>,
-    approvals: &'a BTreeSet<Approval>,
+    approval: &'a Option<EvmApproval>,
 }
 
 #[cfg(any(feature = "std", test))]
@@ -555,6 +656,7 @@ struct EvmTransactionSerHelper<'a> {
 struct EvmTransactionDeserHelper {
     timestamp: Timestamp,
     ttl: TimeDiff,
+    initiator_addr: InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -568,7 +670,7 @@ struct EvmTransactionDeserHelper {
     input: Vec<u8>,
     chain_id: Option<u64>,
     authorization_list: Vec<SetCodeAuthorization>,
-    approvals: BTreeSet<Approval>,
+    approval: Option<EvmApproval>,
 }
 
 #[cfg(any(feature = "std", test))]
@@ -577,6 +679,7 @@ impl Serialize for EvmTransaction {
         EvmTransactionSerHelper {
             timestamp: self.timestamp,
             ttl: self.ttl,
+            initiator_addr: &self.initiator_addr,
             hash: self.hash,
             from: self.from,
             kind: self.kind,
@@ -590,7 +693,7 @@ impl Serialize for EvmTransaction {
             input: &self.input,
             chain_id: self.chain_id,
             authorization_list: &self.authorization_list,
-            approvals: &self.approvals,
+            approval: &self.approval,
         }
         .serialize(serializer)
     }
@@ -603,6 +706,7 @@ impl<'de> Deserialize<'de> for EvmTransaction {
         let transaction = EvmTransaction {
             timestamp: helper.timestamp,
             ttl: helper.ttl,
+            initiator_addr: helper.initiator_addr,
             hash: helper.hash,
             from: helper.from,
             kind: helper.kind,
@@ -616,7 +720,7 @@ impl<'de> Deserialize<'de> for EvmTransaction {
             input: helper.input,
             chain_id: helper.chain_id,
             authorization_list: helper.authorization_list,
-            approvals: helper.approvals,
+            approval: helper.approval,
         };
         transaction.verify().map_err(de::Error::custom)?;
         Ok(transaction)
@@ -635,6 +739,7 @@ impl EvmTransaction {
     pub fn new_unsigned_call(
         timestamp: Timestamp,
         ttl: TimeDiff,
+        initiator_addr: InitiatorAddr,
         chain_id: u64,
         from: Address,
         to: Option<Address>,
@@ -646,6 +751,7 @@ impl EvmTransaction {
         let mut transaction = EvmTransaction {
             timestamp,
             ttl,
+            initiator_addr,
             hash: EvmTransactionHash::default(),
             from,
             kind: EvmTransactionKind::Legacy,
@@ -659,7 +765,7 @@ impl EvmTransaction {
             input,
             chain_id: Some(chain_id),
             authorization_list: Vec::new(),
-            approvals: BTreeSet::new(),
+            approval: None,
         };
         transaction.hash = transaction.unsigned_call_hash();
         transaction
@@ -674,6 +780,9 @@ impl EvmTransaction {
         self.ttl
             .write_bytes(&mut bytes)
             .expect("ttl should serialize");
+        self.initiator_addr
+            .write_bytes(&mut bytes)
+            .expect("initiator address should serialize");
         self.from
             .write_bytes(&mut bytes)
             .expect("from address should serialize");
@@ -698,9 +807,59 @@ impl EvmTransaction {
         EvmTransactionHash::new(Digest::hash(bytes))
     }
 
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        let input_length = Bytes::from(self.input.clone()).serialized_length();
+        let mut field_lengths = vec![
+            self.timestamp.serialized_length(),
+            self.ttl.serialized_length(),
+            self.kind.serialized_length(),
+            self.hash.serialized_length(),
+            self.from.serialized_length(),
+            self.to.serialized_length(),
+            self.nonce.serialized_length(),
+            self.gas_limit.serialized_length(),
+        ];
+        match self.kind {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+                field_lengths.extend([
+                    self.gas_price.serialized_length(),
+                    self.value.serialized_length(),
+                    input_length,
+                    self.chain_id.serialized_length(),
+                    self.approval.serialized_length(),
+                    self.initiator_addr.serialized_length(),
+                ]);
+            }
+            EvmTransactionKind::Eip1559 => {
+                field_lengths.extend([
+                    self.max_fee_per_gas.serialized_length(),
+                    self.max_priority_fee_per_gas.serialized_length(),
+                    self.value.serialized_length(),
+                    input_length,
+                    self.chain_id.serialized_length(),
+                    self.approval.serialized_length(),
+                    self.initiator_addr.serialized_length(),
+                ]);
+            }
+            EvmTransactionKind::Eip7702 => {
+                field_lengths.extend([
+                    self.max_fee_per_gas.serialized_length(),
+                    self.max_priority_fee_per_gas.serialized_length(),
+                    self.value.serialized_length(),
+                    input_length,
+                    self.chain_id.serialized_length(),
+                    self.authorization_list.serialized_length(),
+                    self.approval.serialized_length(),
+                    self.initiator_addr.serialized_length(),
+                ]);
+            }
+        }
+        field_lengths
+    }
+
     /// Returns `true` if this is an unsigned read-only call transaction.
     pub fn is_unsigned_call(&self) -> bool {
-        self.approvals.is_empty()
+        self.approval.is_none()
             && self.hash == self.unsigned_call_hash()
             && self.kind == EvmTransactionKind::Legacy
             && self.nonce == 0
@@ -764,9 +923,8 @@ impl EvmTransaction {
             AlloyTxKind::Create => None,
         };
         let signature_hash = envelope.signature_hash();
-        let approval = approval_from_alloy_signature(envelope.signature(), &signature_hash)?;
-        let mut approvals = BTreeSet::new();
-        approvals.insert(approval);
+        let approval = evm_approval_from_alloy_signature(envelope.signature(), &signature_hash)?;
+        let initiator_addr = InitiatorAddr::AccountHash(approval.signer().to_account_hash());
 
         let from = envelope
             .recover_signer()
@@ -790,6 +948,7 @@ impl EvmTransaction {
         Ok(EvmTransaction {
             timestamp,
             ttl,
+            initiator_addr,
             hash: b256_to_transaction_hash(*envelope.tx_hash()),
             from: alloy_address_to_address(from),
             kind,
@@ -803,7 +962,7 @@ impl EvmTransaction {
             input: envelope.input().to_vec(),
             chain_id: envelope.chain_id(),
             authorization_list,
-            approvals,
+            approval: Some(approval),
         })
     }
 
@@ -846,16 +1005,16 @@ impl EvmTransaction {
         let signature = Signature::secp256k1(signature_bytes)
             .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let signer = PublicKey::from(secret_key);
-        let mut approvals = BTreeSet::new();
-        approvals.insert(Approval::new(signer, signature));
+        let initiator_addr = InitiatorAddr::AccountHash(signer.to_account_hash());
+        let y_parity = recovery_id.is_y_odd();
+        let approval = EvmApproval::new(Approval::new(signer, signature), y_parity);
 
-        let recovered_key =
-            recover_verifying_key(&signature_hash, &signature_bytes, recovery_id.is_y_odd())?;
-        let alloy_signature =
-            AlloySignature::from_bytes_and_parity(&signature_bytes, recovery_id.is_y_odd());
+        let recovered_key = recover_verifying_key(&signature_hash, &signature_bytes, y_parity)?;
+        let alloy_signature = AlloySignature::from_bytes_and_parity(&signature_bytes, y_parity);
         let signed = unsigned.into_envelope(alloy_signature);
 
-        self.approvals = approvals;
+        self.approval = Some(approval);
+        self.initiator_addr = initiator_addr;
         self.from = evm_address_from_verifying_key(&recovered_key);
         self.hash = b256_to_transaction_hash(*signed.tx_hash());
         self.verify()
@@ -881,23 +1040,38 @@ impl EvmTransaction {
         Ok(self.unsigned_transaction()?.encoded_for_signing())
     }
 
-    /// Returns the approvals attached to this transaction.
-    pub fn approvals(&self) -> &BTreeSet<Approval> {
-        &self.approvals
+    /// Returns the approval attached to this transaction, if any.
+    pub fn approval(&self) -> Option<&Approval> {
+        self.approval.as_ref().map(EvmApproval::approval)
+    }
+
+    /// Returns the computed approvals hash identifying this EVM transaction's approval.
+    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
+        let approvals = self.approval().cloned().into_iter().collect();
+        ApprovalsHash::compute(&approvals)
     }
 
     /// Returns the single public key that signed this EVM transaction.
     pub fn signer(&self) -> Result<&PublicKey, EvmTransactionError> {
-        Ok(self.single_approval()?.signer())
+        Ok(self
+            .approval
+            .as_ref()
+            .ok_or(EvmTransactionError::MissingApproval)?
+            .signer())
     }
 
-    /// Returns this transaction with a replacement approval set.
+    /// Returns the Casper initiator address attached to this EVM transaction.
+    pub fn initiator_addr(&self) -> &InitiatorAddr {
+        &self.initiator_addr
+    }
+
+    /// Returns this transaction with a replacement EVM approval.
     ///
     /// The stored Ethereum transaction hash is intentionally left unchanged;
-    /// [`EvmTransaction::verify`] rejects replacement approvals that do not
+    /// [`EvmTransaction::verify`] rejects a replacement approval that does not
     /// reconstruct the same signed Ethereum transaction.
-    pub fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
-        self.approvals = approvals;
+    pub fn with_evm_approval(mut self, approval: Option<EvmApproval>) -> Self {
+        self.approval = approval;
         self
     }
 
@@ -1138,32 +1312,27 @@ impl EvmTransaction {
         &self,
         signature_hash: &B256,
     ) -> Result<(AlloySignature, Address), EvmTransactionError> {
-        let approval = self.single_approval()?;
+        let approval = self
+            .approval
+            .as_ref()
+            .ok_or(EvmTransactionError::MissingApproval)?;
         let raw_signature = secp256k1_signature_bytes(approval)?;
         let expected_signer = approval.signer();
-        for y_parity in [false, true] {
-            let alloy_signature = AlloySignature::from_bytes_and_parity(&raw_signature, y_parity);
-            let recovered_key = recover_verifying_key(signature_hash, &raw_signature, y_parity)?;
-            let recovered_public_key = public_key_from_verifying_key(&recovered_key)?;
-            if &recovered_public_key == expected_signer {
-                return Ok((
-                    alloy_signature,
-                    evm_address_from_verifying_key(&recovered_key),
-                ));
-            }
+        let y_parity = approval.y_parity();
+        let alloy_signature = AlloySignature::from_bytes_and_parity(&raw_signature, y_parity);
+        let recovered_key = recover_verifying_key(signature_hash, &raw_signature, y_parity)?;
+        let recovered_public_key = public_key_from_verifying_key(&recovered_key)?;
+        if &recovered_public_key != expected_signer {
+            return Err(EvmTransactionError::InvalidApprovalSignature);
         }
-        Err(EvmTransactionError::InvalidApprovalSignature)
-    }
-
-    fn single_approval(&self) -> Result<&Approval, EvmTransactionError> {
-        let mut approvals = self.approvals.iter();
-        let approval = approvals
-            .next()
-            .ok_or(EvmTransactionError::MissingApproval)?;
-        if approvals.next().is_some() {
-            return Err(EvmTransactionError::MultipleApprovals);
+        let expected_initiator_addr = InitiatorAddr::AccountHash(expected_signer.to_account_hash());
+        if self.initiator_addr != expected_initiator_addr {
+            return Err(EvmTransactionError::InvalidApprovalSignature);
         }
-        Ok(approval)
+        Ok((
+            alloy_signature,
+            evm_address_from_verifying_key(&recovered_key),
+        ))
     }
 }
 
@@ -1180,86 +1349,265 @@ impl Display for EvmTransaction {
 
 impl ToBytes for EvmTransaction {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        let builder = CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+            .add_field(TIMESTAMP_FIELD_INDEX, &self.timestamp)?
+            .add_field(TTL_FIELD_INDEX, &self.ttl)?
+            .add_field(KIND_FIELD_INDEX, &self.kind)?
+            .add_field(HASH_FIELD_INDEX, &self.hash)?
+            .add_field(FROM_FIELD_INDEX, &self.from)?
+            .add_field(TO_FIELD_INDEX, &self.to)?
+            .add_field(NONCE_FIELD_INDEX, &self.nonce)?
+            .add_field(GAS_LIMIT_FIELD_INDEX, &self.gas_limit)?;
+
+        match self.kind {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+                let input = Bytes::from(self.input.clone());
+                builder
+                    .add_field(LEGACY_GAS_PRICE_FIELD_INDEX, &self.gas_price)?
+                    .add_field(LEGACY_VALUE_FIELD_INDEX, &self.value)?
+                    .add_field(LEGACY_INPUT_FIELD_INDEX, &input)?
+                    .add_field(LEGACY_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
+                    .add_field(LEGACY_APPROVAL_FIELD_INDEX, &self.approval)?
+                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
+                    .binary_payload_bytes()
+            }
+            EvmTransactionKind::Eip1559 => {
+                let input = Bytes::from(self.input.clone());
+                builder
+                    .add_field(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX, &self.max_fee_per_gas)?
+                    .add_field(
+                        DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX,
+                        &self.max_priority_fee_per_gas,
+                    )?
+                    .add_field(DYNAMIC_VALUE_FIELD_INDEX, &self.value)?
+                    .add_field(DYNAMIC_INPUT_FIELD_INDEX, &input)?
+                    .add_field(DYNAMIC_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
+                    .add_field(DYNAMIC_APPROVAL_FIELD_INDEX, &self.approval)?
+                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
+                    .binary_payload_bytes()
+            }
+            EvmTransactionKind::Eip7702 => {
+                let input = Bytes::from(self.input.clone());
+                builder
+                    .add_field(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX, &self.max_fee_per_gas)?
+                    .add_field(
+                        DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX,
+                        &self.max_priority_fee_per_gas,
+                    )?
+                    .add_field(DYNAMIC_VALUE_FIELD_INDEX, &self.value)?
+                    .add_field(DYNAMIC_INPUT_FIELD_INDEX, &input)?
+                    .add_field(DYNAMIC_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
+                    .add_field(
+                        EIP7702_AUTHORIZATION_LIST_FIELD_INDEX,
+                        &self.authorization_list,
+                    )?
+                    .add_field(EIP7702_APPROVAL_FIELD_INDEX, &self.approval)?
+                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
+                    .binary_payload_bytes()
+            }
+        }
     }
 
     fn serialized_length(&self) -> usize {
-        self.timestamp.serialized_length()
-            + self.ttl.serialized_length()
-            + self.hash.serialized_length()
-            + self.from.serialized_length()
-            + self.kind.serialized_length()
-            + self.to.serialized_length()
-            + self.nonce.serialized_length()
-            + self.gas_limit.serialized_length()
-            + self.gas_price.serialized_length()
-            + self.max_fee_per_gas.serialized_length()
-            + self.max_priority_fee_per_gas.serialized_length()
-            + self.value.serialized_length()
-            + Bytes::from(self.input.clone()).serialized_length()
-            + self.chain_id.serialized_length()
-            + self.authorization_list.serialized_length()
-            + self.approvals.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.timestamp.write_bytes(writer)?;
-        self.ttl.write_bytes(writer)?;
-        self.hash.write_bytes(writer)?;
-        self.from.write_bytes(writer)?;
-        self.kind.write_bytes(writer)?;
-        self.to.write_bytes(writer)?;
-        self.nonce.write_bytes(writer)?;
-        self.gas_limit.write_bytes(writer)?;
-        self.gas_price.write_bytes(writer)?;
-        self.max_fee_per_gas.write_bytes(writer)?;
-        self.max_priority_fee_per_gas.write_bytes(writer)?;
-        self.value.write_bytes(writer)?;
-        Bytes::from(self.input.clone()).write_bytes(writer)?;
-        self.chain_id.write_bytes(writer)?;
-        self.authorization_list.write_bytes(writer)?;
-        self.approvals.write_bytes(writer)
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
     }
 }
 
 impl FromBytes for EvmTransaction {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (timestamp, remainder) = Timestamp::from_bytes(bytes)?;
-        let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (hash, remainder) = EvmTransactionHash::from_bytes(remainder)?;
-        let (from, remainder) = Address::from_bytes(remainder)?;
-        let (kind, remainder) = EvmTransactionKind::from_bytes(remainder)?;
-        let (to, remainder) = Option::<Address>::from_bytes(remainder)?;
-        let (nonce, remainder) = u64::from_bytes(remainder)?;
-        let (gas_limit, remainder) = u64::from_bytes(remainder)?;
-        let (gas_price, remainder) = Option::<u128>::from_bytes(remainder)?;
-        let (max_fee_per_gas, remainder) = u128::from_bytes(remainder)?;
-        let (max_priority_fee_per_gas, remainder) = Option::<u128>::from_bytes(remainder)?;
-        let (value, remainder) = U256::from_bytes(remainder)?;
-        let (input, remainder) = Bytes::from_bytes(remainder)?;
-        let (chain_id, remainder) = Option::<u64>::from_bytes(remainder)?;
-        let (authorization_list, remainder) = Vec::<SetCodeAuthorization>::from_bytes(remainder)?;
-        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
-        let transaction = EvmTransaction {
-            timestamp,
-            ttl,
-            hash,
-            from,
-            kind,
-            to,
-            nonce,
-            gas_limit,
-            gas_price,
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-            value,
-            input: input.into(),
-            chain_id,
-            authorization_list,
-            approvals,
+        Self::from_calltable_bytes(bytes)
+    }
+}
+
+impl EvmTransaction {
+    fn from_calltable_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (binary_payload, remainder) =
+            CalltableSerializationEnvelope::from_bytes(EVM_TRANSACTION_MAX_CURRENT_FIELDS, bytes)?;
+        let window = binary_payload
+            .start_consuming()?
+            .ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(TIMESTAMP_FIELD_INDEX)?;
+        let (timestamp, window) = window.deserialize_and_maybe_next::<Timestamp>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(TTL_FIELD_INDEX)?;
+        let (ttl, window) = window.deserialize_and_maybe_next::<TimeDiff>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(KIND_FIELD_INDEX)?;
+        let (kind, window) = window.deserialize_and_maybe_next::<EvmTransactionKind>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(HASH_FIELD_INDEX)?;
+        let (hash, window) = window.deserialize_and_maybe_next::<EvmTransactionHash>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(FROM_FIELD_INDEX)?;
+        let (from, window) = window.deserialize_and_maybe_next::<Address>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(TO_FIELD_INDEX)?;
+        let (to, window) = window.deserialize_and_maybe_next::<Option<Address>>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(NONCE_FIELD_INDEX)?;
+        let (nonce, window) = window.deserialize_and_maybe_next::<u64>()?;
+        let window = window.ok_or(bytesrepr::Error::Formatting)?;
+        window.verify_index(GAS_LIMIT_FIELD_INDEX)?;
+        let (gas_limit, window) = window.deserialize_and_maybe_next::<u64>()?;
+
+        let transaction = match kind {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_GAS_PRICE_FIELD_INDEX)?;
+                let (gas_price, window) = window.deserialize_and_maybe_next::<Option<u128>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_VALUE_FIELD_INDEX)?;
+                let (value, window) = window.deserialize_and_maybe_next::<U256>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_INPUT_FIELD_INDEX)?;
+                let (input, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_CHAIN_ID_FIELD_INDEX)?;
+                let (chain_id, window) = window.deserialize_and_maybe_next::<Option<u64>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_APPROVAL_FIELD_INDEX)?;
+                let (approval, window) =
+                    window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
+                let (initiator_addr, window) =
+                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
+                if window.is_some() {
+                    return Err(bytesrepr::Error::Formatting);
+                }
+                let max_fee_per_gas = if approval.is_none() {
+                    0
+                } else {
+                    gas_price.unwrap_or_default()
+                };
+                EvmTransaction {
+                    timestamp,
+                    ttl,
+                    initiator_addr,
+                    hash,
+                    from,
+                    kind,
+                    to,
+                    nonce,
+                    gas_limit,
+                    gas_price,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas: None,
+                    value,
+                    input: input.into(),
+                    chain_id,
+                    authorization_list: Vec::new(),
+                    approval,
+                }
+            }
+            EvmTransactionKind::Eip1559 => {
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX)?;
+                let (max_fee_per_gas, window) = window.deserialize_and_maybe_next::<u128>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX)?;
+                let (max_priority_fee_per_gas, window) =
+                    window.deserialize_and_maybe_next::<Option<u128>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_VALUE_FIELD_INDEX)?;
+                let (value, window) = window.deserialize_and_maybe_next::<U256>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_INPUT_FIELD_INDEX)?;
+                let (input, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_CHAIN_ID_FIELD_INDEX)?;
+                let (chain_id, window) = window.deserialize_and_maybe_next::<Option<u64>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_APPROVAL_FIELD_INDEX)?;
+                let (approval, window) =
+                    window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
+                let (initiator_addr, window) =
+                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
+                if window.is_some() {
+                    return Err(bytesrepr::Error::Formatting);
+                }
+                EvmTransaction {
+                    timestamp,
+                    ttl,
+                    initiator_addr,
+                    hash,
+                    from,
+                    kind,
+                    to,
+                    nonce,
+                    gas_limit,
+                    gas_price: None,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
+                    value,
+                    input: input.into(),
+                    chain_id,
+                    authorization_list: Vec::new(),
+                    approval,
+                }
+            }
+            EvmTransactionKind::Eip7702 => {
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX)?;
+                let (max_fee_per_gas, window) = window.deserialize_and_maybe_next::<u128>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX)?;
+                let (max_priority_fee_per_gas, window) =
+                    window.deserialize_and_maybe_next::<Option<u128>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_VALUE_FIELD_INDEX)?;
+                let (value, window) = window.deserialize_and_maybe_next::<U256>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_INPUT_FIELD_INDEX)?;
+                let (input, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(DYNAMIC_CHAIN_ID_FIELD_INDEX)?;
+                let (chain_id, window) = window.deserialize_and_maybe_next::<Option<u64>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(EIP7702_AUTHORIZATION_LIST_FIELD_INDEX)?;
+                let (authorization_list, window) =
+                    window.deserialize_and_maybe_next::<Vec<SetCodeAuthorization>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(EIP7702_APPROVAL_FIELD_INDEX)?;
+                let (approval, window) =
+                    window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
+                let (initiator_addr, window) =
+                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
+                if window.is_some() {
+                    return Err(bytesrepr::Error::Formatting);
+                }
+                EvmTransaction {
+                    timestamp,
+                    ttl,
+                    initiator_addr,
+                    hash,
+                    from,
+                    kind,
+                    to,
+                    nonce,
+                    gas_limit,
+                    gas_price: None,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
+                    value,
+                    input: input.into(),
+                    chain_id,
+                    authorization_list,
+                    approval,
+                }
+            }
         };
+        Self::finish_from_bytes(transaction, remainder)
+    }
+
+    fn finish_from_bytes(
+        transaction: EvmTransaction,
+        remainder: &[u8],
+    ) -> Result<(Self, &[u8]), bytesrepr::Error> {
         if !transaction.is_unsigned_call() {
             transaction
                 .verify()
@@ -1269,21 +1617,23 @@ impl FromBytes for EvmTransaction {
     }
 }
 
-fn approval_from_alloy_signature(
+fn evm_approval_from_alloy_signature(
     signature: &AlloySignature,
     signature_hash: &B256,
-) -> Result<Approval, EvmTransactionError> {
+) -> Result<EvmApproval, EvmTransactionError> {
+    let y_parity = signature.v();
     let raw_signature = signature.as_rsy();
     let mut signature_bytes = [0u8; Signature::SECP256K1_LENGTH];
     signature_bytes.copy_from_slice(&raw_signature[..Signature::SECP256K1_LENGTH]);
-    let recovered_key = recover_verifying_key(signature_hash, &signature_bytes, signature.v())?;
+    let recovered_key = recover_verifying_key(signature_hash, &signature_bytes, y_parity)?;
     let signer = public_key_from_verifying_key(&recovered_key)?;
     let signature = Signature::secp256k1(signature_bytes)
         .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
-    Ok(Approval::new(signer, signature))
+    let approval = Approval::new(signer, signature);
+    Ok(EvmApproval::new(approval, y_parity))
 }
 
-fn secp256k1_signature_bytes(approval: &Approval) -> Result<[u8; 64], EvmTransactionError> {
+fn secp256k1_signature_bytes(approval: &EvmApproval) -> Result<[u8; 64], EvmTransactionError> {
     if !matches!(approval.signer(), PublicKey::Secp256k1(_))
         || !matches!(approval.signature(), Signature::Secp256k1(_))
     {
@@ -1395,6 +1745,7 @@ mod tests {
         let transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
+            test_initiator_addr(),
             7,
             Address::new([1; crate::evm::ADDRESS_LENGTH]),
             Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
@@ -1404,7 +1755,7 @@ mod tests {
             1,
         );
 
-        assert!(transaction.approvals().is_empty());
+        assert!(transaction.approval().is_none());
         assert!(transaction.is_unsigned_call());
         assert!(matches!(
             transaction.verify(),
@@ -1414,10 +1765,24 @@ mod tests {
     }
 
     #[test]
+    fn signed_legacy_transaction_bytesrepr_roundtrips() {
+        let transaction = signed_legacy_transaction();
+
+        assert_eq!(
+            transaction.max_fee_per_gas(),
+            transaction
+                .gas_price()
+                .expect("legacy gas price should exist")
+        );
+        bytesrepr::test_serialization_roundtrip(&transaction);
+    }
+
+    #[test]
     fn non_marker_unsigned_transaction_bytesrepr_is_rejected() {
         let mut transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
+            test_initiator_addr(),
             7,
             Address::new([1; crate::evm::ADDRESS_LENGTH]),
             Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
@@ -1428,7 +1793,7 @@ mod tests {
         );
         transaction.gas_price = Some(2);
 
-        assert!(transaction.approvals().is_empty());
+        assert!(transaction.approval().is_none());
         assert!(!transaction.is_unsigned_call());
         assert!(EvmTransaction::from_bytes(
             &transaction
@@ -1459,6 +1824,10 @@ mod tests {
             TimeDiff::from_seconds(60),
         )
         .expect("transaction should decode")
+    }
+
+    fn test_initiator_addr() -> InitiatorAddr {
+        InitiatorAddr::AccountHash(crate::account::AccountHash::new([9; 32]))
     }
 
     fn signed_eip7702_transaction() -> EvmTransaction {
