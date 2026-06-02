@@ -5477,6 +5477,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ret-journal-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ret-uref"
 version = "0.1.0"
 dependencies = [

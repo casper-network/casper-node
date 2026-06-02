@@ -603,6 +603,15 @@ where
         ));
     }
 
+    /// Registers a contract return
+    pub fn ret(&mut self, key: Key, value: RetValue) {
+        let normalized_key = key.normalize();
+        self.effects.push(TransformV2::new(
+            normalized_key,
+            TransformKindV2::Ret(value),
+        ));
+    }
+
     /// Ok(None) represents missing key to which we want to "add" some value.
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
