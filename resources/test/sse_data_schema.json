@@ -3717,6 +3717,39 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Registers an entry point called. If the hash addr is none that means that the call was made to session bytes.",
+          "type": "object",
+          "required": [
+            "EntryPointCalled"
+          ],
+          "properties": {
+            "EntryPointCalled": {
+              "type": "array",
+              "items": [
+                {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  },
+                  "maxItems": 32,
+                  "minItems": 32
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -5035,6 +5068,12 @@
     "RetValue": {
       "description": "Type disambiguating between the formatting of the returned data.",
       "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        },
         {
           "description": "The returned data is CLValue.",
           "type": "object",

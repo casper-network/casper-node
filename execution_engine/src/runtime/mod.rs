@@ -692,13 +692,13 @@ where
                 self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
 
                 // Emit Ret transform to the execution journal
-                if let Some(cl_value) = &self.host_buffer {
-                    let key = self.context.get_context_key();
-                    self.context
-                        .state()
-                        .borrow_mut()
-                        .ret(key, RetValue::CLValue(cl_value.clone()));
-                }
+                let ret_val = if let Some(cl_value) = &self.host_buffer {
+                    RetValue::CLValue(cl_value.clone())
+                } else {
+                    RetValue::Unit
+                };
+                let key = self.context.get_context_key();
+                self.context.state().borrow_mut().ret(key, ret_val);
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),
@@ -1426,6 +1426,11 @@ where
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            None,
+            DEFAULT_ENTRY_POINT_NAME.to_string(),
+        );
         #[cfg(feature = "test-support")]
         let max_stack_height = wasm_config.v1().max_stack_height();
         let module = preprocess(*wasm_config, module_bytes)?;
@@ -1454,6 +1459,10 @@ where
             // returned the unit type `()` as per Rust functions which don't specify a
             // return value.
             Ok(_) => {
+                self.context
+                    .state()
+                    .borrow_mut()
+                    .ret(self.context.get_context_key(), RetValue::Unit);
                 return Ok(self.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
@@ -1864,6 +1873,12 @@ where
             }
         };
 
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            Some(entity_addr.value()),
+            entry_point_name.to_string(),
+        );
+
         if let EntityKind::Account(_) = footprint.entity_kind() {
             return Err(ExecError::InvalidContext);
         }
@@ -2158,6 +2173,8 @@ where
                 }
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
+                let key = self.context.get_context_key();
+                self.context.state().borrow_mut().ret(key, RetValue::Unit);
                 Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
             }
             Err(error) => {

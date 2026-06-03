@@ -1,0 +1,16 @@
+[package]
+name = "do-nothing-stored-caller-stored"
+version = "0.1.0"
+authors = ["Jakub Zajkowski <jakub@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "do_nothing_stored_caller_stored"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

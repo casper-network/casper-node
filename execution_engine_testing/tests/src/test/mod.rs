@@ -6,6 +6,7 @@ mod contract_context;
 mod contract_messages;
 mod counter_factory;
 mod deploy;
+mod entry_point_called;
 mod explorer;
 mod get_balance;
 mod groups;

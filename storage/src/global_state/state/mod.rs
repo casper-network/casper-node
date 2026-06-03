@@ -2791,6 +2791,10 @@ where
                 // Ret transforms are not committed to global state.
                 continue;
             }
+            (_, TransformKindV2::EntryPointCalled(_, _)) => {
+                // EntryPointCalled transforms are not committed to global state.
+                continue;
+            }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {
                 TransformInstruction::store(new_value)
             }

@@ -612,6 +612,20 @@ where
         ));
     }
 
+    /// Registers a contract entry point call
+    pub fn entry_point_called(
+        &mut self,
+        key: Key,
+        key_value: Option<HashAddr>,
+        entrypoint_name: String,
+    ) {
+        let normalized_key = key.normalize();
+        self.effects.push(TransformV2::new(
+            normalized_key,
+            TransformKindV2::EntryPointCalled(key_value, entrypoint_name),
+        ));
+    }
+
     /// Ok(None) represents missing key to which we want to "add" some value.
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
