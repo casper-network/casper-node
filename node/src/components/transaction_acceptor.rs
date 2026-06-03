@@ -223,11 +223,6 @@ impl TransactionAcceptor {
                 maybe_entity: result.into_option(),
                 block_header,
             })
-        // if event_metadata.source.is_client() {
-        //
-        // } else {
-        //     self.verify_payment(effect_builder, event_metadata, block_header)
-        // }
     }
 
     fn handle_get_entity_result<REv: ReactorEventT>(
@@ -281,15 +276,6 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
         maybe_balance: Option<U512>,
     ) -> Effects<Event> {
-        // if !event_metadata.source.is_client() {
-        //     // This would only happen due to programmer error and should crash the node. Balance
-        //     // checks for transactions received from a peer will cause the network to stall.
-        //     return fatal!(
-        //         effect_builder,
-        //         "Balance checks for transactions received from peers should never occur."
-        //     )
-        //     .ignore();
-        // }
         match maybe_balance {
             None => {
                 let initiator_addr = event_metadata.transaction.initiator_addr();
