@@ -2152,6 +2152,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "do-nothing-revert-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "do-nothing-stored"
 version = "0.1.0"
 dependencies = [
@@ -2161,6 +2169,14 @@ dependencies = [
 
 [[package]]
 name = "do-nothing-stored-caller"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "do-nothing-stored-caller-stored"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -7298,6 +7314,29 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-counter"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+]
+
+[[package]]
+name = "vm2-counter-caller"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "vm2-counter",
+]
+
+[[package]]
+name = "vm2-do-nothing-session"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
 ]
 
 [[package]]

@@ -50,6 +50,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions, NamedKeys, ProtocolVersionMajor,
     },
+    execution::RetValue,
     system::{
         self,
         auction::{self, DelegatorKind, EraInfo, MINIMUM_DELEGATION_RATE_KEY},
@@ -690,15 +691,6 @@ where
                 // Set the result field in the runtime and return the proper element of the `Error`
                 // enum indicating that the reason for exiting the module was a call to ret.
                 self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
-
-                // Emit Ret transform to the execution journal
-                let ret_val = if let Some(cl_value) = &self.host_buffer {
-                    RetValue::CLValue(cl_value.clone())
-                } else {
-                    RetValue::Unit
-                };
-                let key = self.context.get_context_key();
-                self.context.state().borrow_mut().ret(key, ret_val);
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),
@@ -1476,9 +1468,18 @@ where
             // in the Runtime result field.
             let downcasted_error = host_error.downcast_ref::<ExecError>();
             return match downcasted_error {
-                Some(ExecError::Ret(ref _ret_urefs)) => self
-                    .take_host_buffer()
-                    .ok_or(ExecError::ExpectedReturnValue),
+                Some(ExecError::Ret(ref _ret_urefs)) => {
+                    let host_buffer = self.take_host_buffer();
+                    let ret_val = match &host_buffer {
+                        Some(cl) => RetValue::CLValue(cl.clone()),
+                        None => RetValue::Unit,
+                    };
+                    self.context
+                        .state()
+                        .borrow_mut()
+                        .ret(self.context.get_context_key(), ret_val);
+                    host_buffer.ok_or(ExecError::ExpectedReturnValue)
+                }
                 Some(error) => Err(error.clone()),
                 None => Err(ExecError::Interpreter(host_error.to_string())),
             };
@@ -2208,9 +2209,16 @@ where
                             }
                             // Stored contracts are expected to always call a `ret` function,
                             // otherwise it's an error.
-                            runtime
-                                .take_host_buffer()
-                                .ok_or(ExecError::ExpectedReturnValue)
+                            let host_buffer = runtime.take_host_buffer();
+                            let ret_val = match &host_buffer {
+                                Some(cl) => RetValue::CLValue(cl.clone()),
+                                None => RetValue::Unit,
+                            };
+                            self.context
+                                .state()
+                                .borrow_mut()
+                                .ret(self.context.get_context_key(), ret_val);
+                            host_buffer.ok_or(ExecError::ExpectedReturnValue)
                         }
                         Some(error) => Err(error.clone()),
                         None => Err(ExecError::Interpreter(host_error.to_string())),

@@ -1,4 +1,4 @@
-use alloc::{string::ToString, vec::Vec};
+use alloc::{string::{String, ToString}, vec::Vec};
 use core::{any, convert::TryFrom};
 
 #[cfg(feature = "datasize")]
@@ -16,7 +16,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     execution::ret_value::RetValue,
-    CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+    CLType, CLTyped, CLValue, HashAddr, Key, StoredValue, StoredValueTypeMismatch, U128, U256,
+    U512,
 };
 
 /// Taxonomy of Transform.

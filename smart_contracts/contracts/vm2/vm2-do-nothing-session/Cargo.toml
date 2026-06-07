@@ -8,5 +8,4 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-contract-sdk = { path = "../../../vm2/sdk" }
-casper-contract-sdk-contrib = { path = "../../../vm2/sdk_contrib" }
+casper-contract-sdk = { path = "../../../sdk" }

@@ -8,16 +8,33 @@ use casper_types::{
 };
 
 const ENTRY_FUNCTION_NAME: &str = "call_stored";
+const CHAIN_CALL_ENTRY_FUNCTION_NAME: &str = "chain_call";
 const HASH_KEY_NAME: &str = "do_nothing_stored_caller_stored_hash";
 const PACKAGE_HASH_KEY_NAME: &str = "do_nothing_caller_stored_package_hash";
 const ACCESS_KEY_NAME: &str = "do_nothing_stored_access";
 const CONTRACT_VERSION: &str = "contract_version";
 const ARG_CONTRACT_ADDR: &str = "contract_addr";
+const ARG_OUTER_ADDR: &str = "outer_addr";
+const ARG_INNER_ADDR: &str = "inner_addr";
 
 #[no_mangle]
 pub extern "C" fn call_stored() {
     let contract_hash: [u8; 32] = runtime::get_named_arg(ARG_CONTRACT_ADDR);
     runtime::call_contract(contract_hash.into(), "delegate", runtime_args! {})
+}
+
+/// Calls outer.call_stored(inner_addr), chaining 3 levels: self -> outer.call_stored -> inner.delegate
+#[no_mangle]
+pub extern "C" fn chain_call() {
+    let outer_addr: [u8; 32] = runtime::get_named_arg(ARG_OUTER_ADDR);
+    let inner_addr: [u8; 32] = runtime::get_named_arg(ARG_INNER_ADDR);
+    runtime::call_contract(
+        outer_addr.into(),
+        "call_stored",
+        runtime_args! {
+            ARG_CONTRACT_ADDR => inner_addr
+        },
+    )
 }
 
 #[no_mangle]
@@ -33,6 +50,15 @@ pub extern "C" fn call() {
             EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
+        let chain_call_entry_point = EntityEntryPoint::new(
+            CHAIN_CALL_ENTRY_FUNCTION_NAME,
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
+        );
+        entry_points.add_entry_point(chain_call_entry_point);
         entry_points
     };
 

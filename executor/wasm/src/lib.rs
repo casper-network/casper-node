@@ -36,10 +36,12 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
+    bytesrepr,
+    execution::RetValue,
+    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
+    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
+    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue,
+    TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -532,8 +534,6 @@ impl ExecutorV2 {
 
         let vm = Arc::clone(&self.compiled_wasm_engine);
 
-        let mut initial_tracking_copy = tracking_copy.fork2();
-
         // Derive callee key from the execution target.
         let (callee_key, entry_point_name, contract_addr) = match &execution_kind {
             ExecutionKind::Stored {
@@ -541,8 +541,8 @@ impl ExecutorV2 {
                 entry_point,
                 ..
             } => {
-                let key = Key::SmartContract(*smart_contract_addr);
-                (key, entry_point.clone(), Some(*smart_contract_package_addr))
+                let key = Key::Hash(*smart_contract_addr);
+                (key, entry_point.clone(), Some(*smart_contract_addr))
             }
             ExecutionKind::SessionBytes(_wasm_bytes) => (
                 Key::Account(initiator),
@@ -551,6 +551,8 @@ impl ExecutorV2 {
             ),
         };
         tracking_copy.entry_point_called(caller_key, contract_addr, entry_point_name);
+
+        let mut initial_tracking_copy = tracking_copy.fork2();
         let context = Context {
             initiator,
             config: self.config.wasm_config,

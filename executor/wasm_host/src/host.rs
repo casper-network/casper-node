@@ -30,6 +30,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
+    execution::{RetValue, TransformKindV2},
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
@@ -550,18 +551,28 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     )?;
 
     let flags = ReturnFlags::from_bits_retain(flags);
+    let is_revert = flags.contains(ReturnFlags::REVERT);
     let data = if data_ptr == 0 {
+        if !is_revert {
+            let key = caller.context().caller;
+            caller
+                .context_mut()
+                .tracking_copy
+                .ret(key, RetValue::Unit);
+        }
         None
     } else {
         let data = caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
             .map(Bytes::from)?;
-        let key = caller.context().callee;
-        let bytes = casper_types::bytesrepr::Bytes::from(data.to_vec());
-        caller
-            .context_mut()
-            .tracking_copy
-            .ret(key, RetValue::Bytes(bytes));
+        if !is_revert {
+            let key = caller.context().caller;
+            let bytes = casper_types::bytesrepr::Bytes::from(data.to_vec());
+            caller
+                .context_mut()
+                .tracking_copy
+                .ret(key, RetValue::Bytes(bytes));
+        }
         Some(data)
     };
 
@@ -936,7 +947,32 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             }
 
             let host_result = match host_error {
-                Some(host_error) => Err(host_error),
+                Some(host_error) => {
+                    // Even on failure, propagate journal entries (EC and Ret) so that
+                    // failed nested calls appear in the execution journal.
+                    for transform in effects.transforms() {
+                        match transform.kind() {
+                            TransformKindV2::EntryPointCalled(addr, ep_name) => {
+                                caller
+                                    .context_mut()
+                                    .tracking_copy
+                                    .entry_point_called(
+                                        transform.key().clone(),
+                                        *addr,
+                                        ep_name.clone(),
+                                    );
+                            }
+                            TransformKindV2::Ret(ret_value) => {
+                                caller
+                                    .context_mut()
+                                    .tracking_copy
+                                    .ret(transform.key().clone(), ret_value.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(host_error)
+                }
                 None => {
                     caller
                         .context_mut()
