@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use wasmer::{wasmparser::Operator, ModuleMiddleware};
+use wasmer::{sys::ModuleMiddleware, wasmparser::Operator};
 use wasmer_middlewares::Metering;
 
 /// Calculated based on the benchmark results and fitted for approx ~1000 CSPR of computation and
@@ -626,6 +626,7 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::ArrayAtomicRmwXchg { .. }
         | Operator::ArrayAtomicRmwCmpxchg { .. }
         | Operator::RefI31Shared => todo!("{operator:?}"),
+        _ => 1,
     }
 }
 

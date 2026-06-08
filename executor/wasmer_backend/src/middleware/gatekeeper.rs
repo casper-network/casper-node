@@ -1,4 +1,7 @@
-use wasmer::{wasmparser::Operator, FunctionMiddleware, MiddlewareError, ModuleMiddleware};
+use wasmer::{
+    sys::{FunctionMiddleware, MiddlewareError, MiddlewareReaderState, ModuleMiddleware},
+    wasmparser::Operator,
+};
 
 const MIDDLEWARE_NAME: &str = "Gatekeeper";
 const FLOATING_POINTS_NOT_ALLOWED: &str = "Floating point opcodes are not allowed";
@@ -259,7 +262,7 @@ impl ModuleMiddleware for Gatekeeper {
     fn generate_function_middleware(
         &self,
         _local_function_index: wasmer::LocalFunctionIndex,
-    ) -> Box<dyn wasmer::FunctionMiddleware> {
+    ) -> Box<dyn FunctionMiddleware> {
         Box::new(FunctionGatekeeper::new(self.config))
     }
 }
@@ -278,7 +281,7 @@ impl FunctionGatekeeper {
     fn ensure_floating_point_allowed(
         &self,
         operator: &wasmer::wasmparser::Operator<'_>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+    ) -> Result<(), MiddlewareError> {
         if !self.config.allow_floating_points && is_floating_point(operator) {
             return Err(MiddlewareError::new(
                 MIDDLEWARE_NAME,
@@ -291,8 +294,8 @@ impl FunctionGatekeeper {
     fn validated_push_operator<'b, 'a: 'b>(
         &self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         // This is a late check as we first check if given extension is allowed and then check if
         // floating point opcodes are allowed. This is because different Wasm extensions do
         // contain floating point opcodes and this approach makes all the gatekeeping more robust.
@@ -305,8 +308,8 @@ impl FunctionGatekeeper {
     fn bulk_memory<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.bulk_memory {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -318,8 +321,8 @@ impl FunctionGatekeeper {
     fn exceptions<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.exceptions {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -331,8 +334,8 @@ impl FunctionGatekeeper {
     fn function_references<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.function_references {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -344,8 +347,8 @@ impl FunctionGatekeeper {
     fn gc<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.gc {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -358,8 +361,8 @@ impl FunctionGatekeeper {
     fn legacy_exceptions<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.legacy_exceptions {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -371,8 +374,8 @@ impl FunctionGatekeeper {
     fn memory_control<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.memory_control {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -384,8 +387,8 @@ impl FunctionGatekeeper {
     fn mvp<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.mvp {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -397,8 +400,8 @@ impl FunctionGatekeeper {
     fn reference_types<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.reference_types {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -410,8 +413,8 @@ impl FunctionGatekeeper {
     fn relaxed_simd<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.relaxed_simd {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -423,8 +426,8 @@ impl FunctionGatekeeper {
     fn saturating_float_to_int<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.saturating_float_to_int {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -437,8 +440,8 @@ impl FunctionGatekeeper {
     fn shared_everything_threads<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.shared_everything_threads {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -450,8 +453,8 @@ impl FunctionGatekeeper {
     fn sign_extension<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.sign_extension {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -463,8 +466,8 @@ impl FunctionGatekeeper {
     fn simd<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.simd {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -477,8 +480,8 @@ impl FunctionGatekeeper {
     fn stack_switching<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.stack_switching {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -490,8 +493,8 @@ impl FunctionGatekeeper {
     fn tail_call<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.tail_call {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -502,8 +505,8 @@ impl FunctionGatekeeper {
     fn threads<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.threads {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -516,8 +519,8 @@ impl FunctionGatekeeper {
     fn wide_arithmetic<'b, 'a: 'b>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'b>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'b>,
+    ) -> Result<(), MiddlewareError> {
         if self.config.wide_arithmetic {
             self.validated_push_operator(operator, state)?;
             Ok(())
@@ -531,8 +534,8 @@ impl FunctionMiddleware for FunctionGatekeeper {
     fn feed<'a>(
         &mut self,
         operator: wasmer::wasmparser::Operator<'a>,
-        state: &mut wasmer::MiddlewareReaderState<'a>,
-    ) -> Result<(), wasmer::MiddlewareError> {
+        state: &mut MiddlewareReaderState<'a>,
+    ) -> Result<(), MiddlewareError> {
         macro_rules! match_op {
             ($op:ident { $($payload:tt)* }) => {
                 $op { .. }
@@ -543,12 +546,13 @@ impl FunctionMiddleware for FunctionGatekeeper {
         }
 
         macro_rules! gatekeep {
-          ($( @$proposal:ident $op:ident $({ $($payload:tt)* })? => $visit:ident)*) => {{
+          ($( @$proposal:ident $op:ident $({ $($payload:tt)* })? => $visit:ident ($($ann:tt)*))*) => {{
                 use wasmer::wasmparser::Operator::*;
                 match operator {
                     $(
                         match_op!($op $({ $($payload)* })?) => self.$proposal(operator, state),
                     )*
+                    _ => Ok(state.push_operator(operator)),
                 }
             }}
         }
@@ -561,7 +565,7 @@ impl FunctionMiddleware for FunctionGatekeeper {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use wasmer::{sys::EngineBuilder, CompilerConfig, Module, Singlepass, Store, WasmError};
+    use wasmer::{sys::{CompilerConfig, EngineBuilder, Singlepass}, Module, Store, WasmError};
 
     #[test]
     fn mvp_opcodes_allowed() {
