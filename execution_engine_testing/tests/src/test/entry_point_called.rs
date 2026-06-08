@@ -298,10 +298,11 @@ fn vm1_nested_call_should_produce_entry_point_calls_and_rets() {
         Key::Hash(caller_hash),
         TransformKindV2::EntryPointCalled(Some(contract_hash), "delegate".to_string()),
     );
-    let delegate_ret =
-        TransformV2::new(Key::Hash(contract_hash), TransformKindV2::Ret(RetValue::Unit));
-    let caller_ret =
-        TransformV2::new(Key::Hash(caller_hash), TransformKindV2::Ret(RetValue::Unit));
+    let delegate_ret = TransformV2::new(
+        Key::Hash(contract_hash),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let caller_ret = TransformV2::new(Key::Hash(caller_hash), TransformKindV2::Ret(RetValue::Unit));
     assert_eq!(
         ep_calls_and_rets,
         vec![caller_called, delegate_called, delegate_ret, caller_ret]
@@ -458,10 +459,8 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         TransformKindV2::EntryPointCalled(Some(leaf_hash), "delegate".to_string()),
     );
     let leaf_ret = TransformV2::new(Key::Hash(leaf_hash), TransformKindV2::Ret(RetValue::Unit));
-    let middle_ret =
-        TransformV2::new(Key::Hash(middle_hash), TransformKindV2::Ret(RetValue::Unit));
-    let outer_ret =
-        TransformV2::new(Key::Hash(outer_hash), TransformKindV2::Ret(RetValue::Unit));
+    let middle_ret = TransformV2::new(Key::Hash(middle_hash), TransformKindV2::Ret(RetValue::Unit));
+    let outer_ret = TransformV2::new(Key::Hash(outer_hash), TransformKindV2::Ret(RetValue::Unit));
     assert_eq!(
         ep_calls_and_rets,
         vec![
