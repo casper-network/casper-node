@@ -565,7 +565,10 @@ impl FunctionMiddleware for FunctionGatekeeper {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use wasmer::{sys::{CompilerConfig, EngineBuilder, Singlepass}, Module, Store, WasmError};
+    use wasmer::{
+        sys::{CompilerConfig, EngineBuilder, Singlepass},
+        Module, Store, WasmError,
+    };
 
     #[test]
     fn mvp_opcodes_allowed() {

@@ -20,10 +20,9 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, Engine, Function, FunctionEnv, FunctionEnvMut, Instance, Memory,
-    MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
+    sys::CompilerConfig, AsStoreMut, AsStoreRef, Engine, Function, FunctionEnv, FunctionEnvMut,
+    Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
 };
-use wasmer::sys::CompilerConfig;
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
 
