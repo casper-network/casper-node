@@ -159,7 +159,7 @@ impl MetaTransaction {
     }
 
     /// The session args.
-    pub(crate) fn session_args(&self) -> Cow<TransactionArgs> {
+    pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => Cow::Owned(TransactionArgs::Named(
                 meta_deploy.deploy().session().args().clone(),
@@ -283,7 +283,7 @@ impl MetaTransaction {
         }
     }
 
-    pub(crate) fn to_session_input_data(&self) -> SessionInputData {
+    pub(crate) fn to_session_input_data(&self) -> SessionInputData<'_> {
         let initiator_addr = self.initiator_addr();
         let is_standard_payment = self.is_standard_payment();
         match self {
@@ -316,7 +316,7 @@ impl MetaTransaction {
     }
 
     /// Returns the `SessionInputData` for a payment code if present.
-    pub(crate) fn to_payment_input_data(&self) -> SessionInputData {
+    pub(crate) fn to_payment_input_data(&self) -> SessionInputData<'_> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => {
                 let initiator_addr = meta_deploy.initiator_addr();

@@ -193,7 +193,7 @@ impl<C: Context> RoundSuccessMeter<C> {
             && self.current_round_len * 2 <= self.max_round_len
         {
             self.current_round_len * 2
-        } else if current_round_index % self.config.acceleration_parameter == 0
+        } else if current_round_index.is_multiple_of(self.config.acceleration_parameter)
             && self.current_round_len > self.min_round_len
             // we will only accelerate if we collected data about enough rounds
             && self.rounds.len() as u64 == self.config.num_rounds_to_consider

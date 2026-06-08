@@ -98,7 +98,7 @@ impl CalltableSerializationEnvelope {
         size
     }
 
-    pub fn start_consuming(&self) -> Result<Option<CalltableFieldsIterator>, Error> {
+    pub fn start_consuming(&self) -> Result<Option<CalltableFieldsIterator<'_>>, Error> {
         if self.fields.is_empty() {
             return Ok(None);
         }
@@ -156,12 +156,12 @@ impl CalltableFieldsIterator<'_> {
 
     pub fn deserialize_and_maybe_next<T: FromBytes>(
         &self,
-    ) -> Result<(T, Option<CalltableFieldsIterator>), Error> {
+    ) -> Result<(T, Option<CalltableFieldsIterator<'_>>), Error> {
         let (t, maybe_window) = self.step()?;
         Ok((t, maybe_window))
     }
 
-    fn step<T: FromBytes>(&self) -> Result<(T, Option<CalltableFieldsIterator>), Error> {
+    fn step<T: FromBytes>(&self) -> Result<(T, Option<CalltableFieldsIterator<'_>>), Error> {
         let (t, remainder) = T::from_bytes(self.bytes)?;
         let parent_fields = &self.parent.fields;
         let parent_fields_len = parent_fields.len();

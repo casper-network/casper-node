@@ -215,6 +215,7 @@ mod tests {
         *,
     };
 
+    #[allow(clippy::result_large_err)]
     #[test]
     fn finality_detector() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
@@ -253,6 +254,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     #[test]
     fn equivocators() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);

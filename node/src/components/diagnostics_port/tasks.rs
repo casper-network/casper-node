@@ -436,14 +436,13 @@ impl Session {
                 info!("sending json");
                 let buf = serde_json::to_string_pretty(response).map_err(|err| {
                     warn!(%err, "error outputting JSON string");
-                    io::Error::new(io::ErrorKind::Other, err)
+                    io::Error::other(err)
                 })?;
                 writer.write_all(buf.as_bytes()).await?;
                 writer.write_all(b"\n").await?;
             }
             OutputFormat::Bincode => {
-                let buf = bincode::serialize(response)
-                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                let buf = bincode::serialize(response).map_err(io::Error::other)?;
                 writer.write_all(&buf).await?;
             }
         }

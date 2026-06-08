@@ -166,6 +166,7 @@ impl BalanceHoldRequest {
 /// Possible balance hold errors.
 #[derive(Error, Debug, Clone)]
 #[non_exhaustive]
+#[allow(clippy::large_enum_variant)]
 pub enum BalanceHoldError {
     /// Tracking copy error.
     TrackingCopy(TrackingCopyError),
@@ -219,6 +220,7 @@ impl Display for BalanceHoldError {
 
 /// Result enum that represents all possible outcomes of a balance hold request.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum BalanceHoldResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,

@@ -441,7 +441,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Returns an iterator over descendants of the trie.
-    pub fn iter_children(&self) -> DescendantsIterator {
+    pub fn iter_children(&self) -> DescendantsIterator<'_> {
         match self {
             Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
             Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
@@ -503,7 +503,7 @@ pub(crate) enum LazilyDeserializedTrie {
 }
 
 impl LazilyDeserializedTrie {
-    pub(crate) fn iter_children(&self) -> DescendantsIterator {
+    pub(crate) fn iter_children(&self) -> DescendantsIterator<'_> {
         match self {
             LazilyDeserializedTrie::Leaf(_) => {
                 // Leaf bytes does not have any children

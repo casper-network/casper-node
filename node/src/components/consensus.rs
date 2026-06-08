@@ -55,7 +55,6 @@ use crate::{
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
-use traits::Context;
 
 pub use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
@@ -96,15 +95,6 @@ mod relaxed {
     }
 }
 pub(crate) use relaxed::{ConsensusMessage, ConsensusMessageDiscriminants};
-
-/// A request to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]
-pub(crate) enum EraRequest<C>
-where
-    C: Context,
-{
-    Zug(protocols::zug::SyncRequest<C>),
-}
 
 /// A protocol request message, to be handled by the instance in the specified era.
 #[derive(DataSize, Clone, Serialize, Deserialize)]
@@ -354,7 +344,7 @@ mod specimen_support {
     use super::{
         protocols::{highway, zug},
         ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,
-        EraRequest, SerializedMessage,
+        SerializedMessage,
     };
 
     impl LargestSpecimen for ConsensusMessage {
@@ -404,12 +394,6 @@ mod specimen_support {
                 era_id: LargestSpecimen::largest_specimen(estimator, cache),
                 payload: zug_sync_request,
             }
-        }
-    }
-
-    impl LargestSpecimen for EraRequest<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator, cache))
         }
     }
 }

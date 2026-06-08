@@ -155,6 +155,7 @@ pub struct Storage {
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum HighestOrphanedBlockResult {
     MissingHighestSequence,
     Orphan(BlockHeader),

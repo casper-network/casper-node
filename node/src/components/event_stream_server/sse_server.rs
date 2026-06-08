@@ -288,6 +288,7 @@ fn map_server_sent_event(
 ///
 /// If `query` is not empty, returns a 422 response if `query` doesn't have exactly one entry,
 /// "starts_from" mapped to a value representing an event ID.
+#[allow(clippy::result_large_err)]
 fn parse_query(query: &HashMap<String, String>) -> Result<Option<Id>, Response> {
     if query.is_empty() {
         return Ok(None);
