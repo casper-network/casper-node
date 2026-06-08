@@ -2868,7 +2868,7 @@ async fn should_accept_expired_transaction_v1_from_peer() {
 }
 
 #[tokio::test]
-async fn should_panic_when_balance_checking_for_deploy_sent_by_peer() {
+async fn should_not_panic_when_balance_checking_for_deploy_sent_by_peer() {
     let test_scenario = TestScenario::BalanceCheckForDeploySentByPeer;
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(result.is_ok())
