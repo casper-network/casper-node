@@ -625,8 +625,18 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::ArrayAtomicRmwXor { .. }
         | Operator::ArrayAtomicRmwXchg { .. }
         | Operator::ArrayAtomicRmwCmpxchg { .. }
+        | Operator::ContNew { .. }
+        | Operator::ContBind { .. }
+        | Operator::Suspend { .. }
+        | Operator::Resume { .. }
+        | Operator::ResumeThrow { .. }
+        | Operator::Switch { .. }
+        | Operator::I64Add128
+        | Operator::I64Sub128
+        | Operator::I64MulWideS
+        | Operator::I64MulWideU
         | Operator::RefI31Shared => todo!("{operator:?}"),
-        _ => 1,
+        _ => todo!("{operator:?}") // We need to add a wildcart here since Operator uses #[non_exhaustive]
     }
 }
 
