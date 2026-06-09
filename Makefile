@@ -26,7 +26,8 @@ build-contract-rs/%:
 	cd smart_contracts/contracts && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 build-vm2-contract-rs/%:
-	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) run -p cargo-casper --bin cargo-casper -- build-schema --package $*
+	CMAKE_POLICY_VERSION_MINIMUM=3.5 $(CARGO) build -p cargo-casper --bin cargo-casper
+	RUSTFLAGS=$(RUSTC_FLAGS) $(CURDIR)/target/debug/cargo-casper build-schema --package $*
 	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 .PHONY: build-vm2-contracts-rs
