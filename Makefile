@@ -190,6 +190,7 @@ setup-rs:
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
+	$(RUSTUP) component add rust-src --toolchain $(PINNED_NIGHTLY)
 	$(CARGO) install cargo-audit
 
 .PHONY: setup
