@@ -48,6 +48,7 @@ pub use core_config::{
     DEFAULT_MINIMUM_BID_AMOUNT,
 };
 #[cfg(any(feature = "std", test))]
+#[allow(unused_imports)]
 pub use core_config::{
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };

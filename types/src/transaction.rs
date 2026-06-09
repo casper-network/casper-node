@@ -87,6 +87,7 @@ pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
 #[cfg(feature = "json-schema")]
 pub(crate) use transaction_v1::arg_handling;
 #[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[allow(unused_imports)]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
     InvalidTransactionV1, TransactionArgs, TransactionV1, TransactionV1DecodeFromJsonError,
