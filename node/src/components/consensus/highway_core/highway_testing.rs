@@ -651,7 +651,7 @@ where
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
     /// that allows for manipulating internal state of the test state.
-    fn mutable_handle(&mut self) -> MutableHandle<DS> {
+    fn mutable_handle(&mut self) -> MutableHandle<'_, DS> {
         MutableHandle(self)
     }
 }
@@ -1154,7 +1154,7 @@ mod test_harness {
                 // validators). Validator produces two units per round. It may
                 // produce just one before lambda message is finalized. Add one in case it's just
                 // one round (one consensus value) – 1 message. 1/2=0 but 3/2=1 b/c of the rounding.
-                let rounds_participated_in = (units_count as u8 + 1) / 2;
+                let rounds_participated_in = (units_count as u8).div_ceil(2);
 
                 assert_eq!(
                     rounds_participated_in, cv_count,

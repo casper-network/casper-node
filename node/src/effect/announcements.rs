@@ -164,6 +164,19 @@ impl Display for UnexecutedBlockAnnouncement {
     }
 }
 
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct NonExecutableBlockAnnouncement(pub(crate) u64);
+
+impl Display for NonExecutableBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "announcement for a block that couldn't be executed at height {}",
+            self.0,
+        )
+    }
+}
+
 /// Queue dump format with handler.
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {
@@ -186,6 +199,7 @@ impl QueueDumpFormat {
 }
 
 /// A `TransactionAcceptor` announcement.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize)]
 pub(crate) enum TransactionAcceptorAnnouncement {
     /// A transaction which wasn't previously stored on this node has been accepted and stored.

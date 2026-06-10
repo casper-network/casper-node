@@ -59,10 +59,10 @@ pub(crate) fn calculate_lane_id_of_biggest_wasm(
     wasm_lanes
         .iter()
         .max_by(|left, right| {
-            left.max_transaction_length
-                .cmp(&right.max_transaction_length)
+            left.max_transaction_length()
+                .cmp(&right.max_transaction_length())
         })
-        .map(|definition| definition.id)
+        .map(|definition| definition.id())
 }
 #[cfg(test)]
 mod tests {
@@ -77,69 +77,21 @@ mod tests {
     #[test]
     fn calculate_lane_id_of_biggest_wasm_should_return_biggest() {
         let wasms = vec![
-            TransactionLaneDefinition {
-                id: 0,
-                max_transaction_length: 1,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
-            TransactionLaneDefinition {
-                id: 1,
-                max_transaction_length: 10,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
+            TransactionLaneDefinition::new(0, 1, 2, 3, 4),
+            TransactionLaneDefinition::new(1, 10, 2, 3, 4),
         ];
         assert_eq!(calculate_lane_id_of_biggest_wasm(&wasms), Some(1));
         let wasms = vec![
-            TransactionLaneDefinition {
-                id: 0,
-                max_transaction_length: 1,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
-            TransactionLaneDefinition {
-                id: 1,
-                max_transaction_length: 10,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
-            TransactionLaneDefinition {
-                id: 2,
-                max_transaction_length: 7,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
+            TransactionLaneDefinition::new(0, 1, 2, 3, 4),
+            TransactionLaneDefinition::new(1, 10, 2, 3, 4),
+            TransactionLaneDefinition::new(2, 7, 2, 3, 4),
         ];
         assert_eq!(calculate_lane_id_of_biggest_wasm(&wasms), Some(1));
 
         let wasms = vec![
-            TransactionLaneDefinition {
-                id: 0,
-                max_transaction_length: 1,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
-            TransactionLaneDefinition {
-                id: 1,
-                max_transaction_length: 10,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
-            TransactionLaneDefinition {
-                id: 2,
-                max_transaction_length: 70,
-                max_transaction_args_length: 2,
-                max_transaction_gas_limit: 3,
-                max_transaction_count: 4,
-            },
+            TransactionLaneDefinition::new(0, 1, 2, 3, 4),
+            TransactionLaneDefinition::new(1, 10, 2, 3, 4),
+            TransactionLaneDefinition::new(2, 70, 2, 3, 4),
         ];
         assert_eq!(calculate_lane_id_of_biggest_wasm(&wasms), Some(2));
     }

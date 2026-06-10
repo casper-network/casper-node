@@ -70,6 +70,10 @@ impl MainReactor {
             // controlled shutdown for protocol upgrade.
             return KeepUpInstruction::ShutdownForUpgrade;
         }
+        if self.force_catchup {
+            self.force_catchup = false;
+            return KeepUpInstruction::CatchUp;
+        }
 
         // if there is instruction, return to start working on it
         // else fall thru with the current best available id for block syncing
@@ -256,7 +260,7 @@ impl MainReactor {
                 }
             }
             SyncInstruction::BlockSync { block_hash } => {
-                debug!("KeepUp: BlockSync: {:?}", block_hash);
+                info!("KeepUp: BlockSync: {:?}", block_hash);
                 if self
                     .block_synchronizer
                     .register_block_by_hash(block_hash, false)

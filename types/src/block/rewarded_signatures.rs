@@ -326,7 +326,7 @@ fn chunks_8(bits: impl Iterator<Item = u8>) -> impl Iterator<Item = impl Iterato
 impl SingleBlockRewardedSignatures {
     /// Returns random data.
     pub fn random(rng: &mut crate::testing::TestRng, n_validators: usize) -> Self {
-        let mut bytes = vec![0; (n_validators + 7) / 8];
+        let mut bytes = vec![0; n_validators.div_ceil(8)];
 
         rand::RngCore::fill_bytes(rng, bytes.as_mut());
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, slice::from_ref, sync::Arc};
 
 use either::Either;
 use tokio::time::{self};
@@ -147,7 +147,7 @@ async fn run_equivocator_network() {
 
     assert_eq!(
         switch_blocks.equivocators(next_era_id),
-        [alice_public_key.clone()]
+        from_ref(&alice_public_key)
     );
     let next_era_bids = era_bids.get(&next_era_id).expect("should have offset era");
 
@@ -200,11 +200,11 @@ async fn run_equivocator_network() {
     // Bob is inactive.
     assert_eq!(
         switch_blocks.inactive_validators(1),
-        [bob_public_key.clone()]
+        from_ref(&bob_public_key)
     );
     assert_eq!(
         switch_blocks.inactive_validators(2),
-        [bob_public_key.clone()]
+        from_ref(&bob_public_key)
     );
 
     for (era, bids) in era_bids {

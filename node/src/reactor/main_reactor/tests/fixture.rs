@@ -23,23 +23,28 @@ use casper_types::{
     system::auction::{DelegationRate, DelegatorKind},
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockBody,
-    BlockHash, BlockV2, CLValue, Chainspec, ChainspecRawBytes, EraId, Key, Motes, NextUpgrade,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemHashRegistry, TimeDiff, Timestamp,
-    Transaction, TransactionHash, ValidatorConfig, U512,
+    BlockHash, BlockV2, CLValue, Chainspec, ChainspecRawBytes, EraEnd, EraId, Key, Motes,
+    NextUpgrade, ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemHashRegistry, TimeDiff,
+    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
     components::{gossiper, network, storage},
     effect::EffectExt,
-    reactor::main_reactor::{
-        tests::{
-            configs_override::{ConfigsOverride, NodeConfigOverride},
-            initial_stakes::InitialStakes,
-            Nodes, ERA_TWO,
+    reactor::{
+        main_reactor::{
+            tests::{
+                configs_override::{ConfigsOverride, NodeConfigOverride},
+                initial_stakes::InitialStakes,
+                Nodes, ERA_TWO,
+            },
+            Config, MainReactor, ReactorState,
         },
-        Config, MainReactor, ReactorState,
+        Runner,
     },
-    testing::{self, filter_reactor::FilterReactor, network::TestingNetwork},
+    testing::{
+        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
+    },
     types::NodeId,
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -49,7 +54,7 @@ pub(crate) struct NodeContext {
     pub id: NodeId,
     pub secret_key: Arc<SecretKey>,
     pub config: Config,
-    pub storage_dir: TempDir,
+    pub storage_dir: Arc<TempDir>,
 }
 
 pub(crate) struct TestFixture {
@@ -373,7 +378,7 @@ impl TestFixture {
         maybe_trusted_hash: Option<BlockHash>,
         storage_multiplier: u8,
         node_config_override: NodeConfigOverride,
-    ) -> (Config, TempDir) {
+    ) -> (Config, Arc<TempDir>) {
         // Set the network configuration.
         let network_cfg = match self.node_contexts.first() {
             Some(first_node) => {
@@ -399,9 +404,13 @@ impl TestFixture {
         };
         let NodeConfigOverride {
             sync_handling_override,
+            idle_tolerance,
         } = node_config_override;
         if let Some(sync_handling) = sync_handling_override {
             cfg.node.sync_handling = sync_handling;
+        }
+        if let Some(idle) = idle_tolerance {
+            cfg.node.idle_tolerance = idle
         }
 
         // Additionally set up storage in a temporary directory.
@@ -419,7 +428,7 @@ impl TestFixture {
         cfg.contract_runtime.max_global_state_size =
             Some(1024 * 1024 * storage_multiplier as usize);
 
-        (cfg, temp_dir)
+        (cfg, Arc::new(temp_dir))
     }
 
     /// Adds a node to the network.
@@ -431,7 +440,7 @@ impl TestFixture {
         &mut self,
         secret_key: Arc<SecretKey>,
         config: Config,
-        storage_dir: TempDir,
+        storage_dir: Arc<TempDir>,
     ) -> NodeId {
         let (id, _) = self
             .network
@@ -452,6 +461,14 @@ impl TestFixture {
         self.node_contexts.push(node_context);
         info!("added node {} with id {}", self.node_contexts.len() - 1, id);
         id
+    }
+
+    pub(crate) async fn add_node_from_context_idx(&mut self, idx: usize) -> NodeId {
+        let node_context = self.node_contexts.get(idx).unwrap();
+        let secret_key = node_context.secret_key.clone();
+        let config = node_context.config.clone();
+        let storage_dir = node_context.storage_dir.clone();
+        self.add_node(secret_key, config, storage_dir).await
     }
 
     #[track_caller]
@@ -888,6 +905,60 @@ impl TestFixture {
         }
     }
 
+    pub(crate) fn delete_block_utilization_score_by_block_hash_in_node(
+        &mut self,
+        node_public_key: &PublicKey,
+        block_hash: BlockHash,
+    ) {
+        let (_, runner) = self
+            .network
+            .nodes_mut()
+            .iter_mut()
+            .find(|(_, runner)| runner.main_reactor().consensus.public_key() == node_public_key)
+            .expect("should have runner");
+
+        runner
+            .main_reactor_as_mut()
+            .storage
+            .delete_block_utilization_score_by_block_hash(block_hash)
+    }
+
+    pub(crate) async fn check_gas_price_for_nodes(
+        &mut self,
+        expected_gas_price: u8,
+        within: Duration,
+    ) {
+        self.try_run_until(
+            move |nodes| {
+                nodes.values().all(|runner| {
+                    let era_end = runner
+                        .main_reactor()
+                        .storage()
+                        .read_highest_switch_block_headers(1)
+                        .unwrap()
+                        .last()
+                        .expect("must have block header")
+                        .clone_era_end()
+                        .expect("must have era end for switch block");
+
+                    if let EraEnd::V2(era_end) = era_end {
+                        era_end.next_era_gas_price() == expected_gas_price
+                    } else {
+                        false
+                    }
+                })
+            },
+            within,
+        )
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should have same gas price across all nodes within {} seconds",
+                within.as_secs_f64(),
+            )
+        })
+    }
+
     /// Returns the execution results from storage.
     /// Panics on error.
     #[track_caller]
@@ -913,6 +984,18 @@ impl TestFixture {
     #[inline(always)]
     pub(crate) fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
         &mut self.network
+    }
+
+    /// Removes a node from the network.
+    pub(crate) fn remove_node_by_idx(
+        &mut self,
+        idx: usize,
+    ) -> Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
+        let node_id = {
+            let context = self.node_contexts.get(idx).unwrap();
+            context.id
+        };
+        self.network_mut().remove_node(&node_id).unwrap()
     }
 
     pub(crate) fn run_until_stopped(

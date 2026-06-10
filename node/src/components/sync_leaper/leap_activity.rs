@@ -187,11 +187,7 @@ mod tests {
         I: IntoIterator<Item = NodeId>,
     {
         let expected_peers: BTreeSet<_> = expected_peers.into_iter().collect();
-        let actual_peers: BTreeSet<_> = leap_activity
-            .peers()
-            .iter()
-            .map(|(node_id, _)| *node_id)
-            .collect();
+        let actual_peers: BTreeSet<_> = leap_activity.peers().keys().copied().collect();
         assert_eq!(expected_peers, actual_peers);
     }
 

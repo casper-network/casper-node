@@ -56,7 +56,7 @@ pub(crate) enum Event {
         #[serde(skip_serializing)]
         result: ExecutionResultsChecksumResult,
     },
-    DeployFetched {
+    TransactionFetched {
         block_hash: BlockHash,
         result: Either<FetchResult<LegacyDeploy>, FetchResult<Transaction>>,
     },
@@ -74,7 +74,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
+            Event::Request(BlockSynchronizerRequest::NeedNext) => {
                 write!(f, "block synchronizer need next request")
             }
             Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states)) => {
@@ -142,7 +142,7 @@ impl Display for Event {
                 Ok(None) => write!(f, "got no exec results checksum"),
                 Err(error) => write!(f, "failed to get exec results checksum: {}", error),
             },
-            Event::DeployFetched {
+            Event::TransactionFetched {
                 block_hash: _,
                 result,
             } => match result {

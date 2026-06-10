@@ -27,7 +27,7 @@ use itertools::Either;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
-use std::error::Error as StdError;
+use std::{borrow::Borrow, error::Error as StdError};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -418,18 +418,21 @@ impl Block {
 
     /// Returns the utilization of the block against a given chainspec.
     #[cfg(feature = "std")]
-    pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
+    pub fn block_utilization(
+        &self,
+        transaction_config_input: impl Borrow<TransactionConfig>,
+    ) -> u64 {
+        let transaction_config = transaction_config_input.borrow();
         match self {
             Block::V1(_) => {
                 // We shouldnt be tracking this for legacy blocks
                 0
             }
             Block::V2(block_v2) => {
-                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config.clone());
                 let per_block_capacity = transaction_config
                     .transaction_v1_config
                     .get_max_block_count();
-
+                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config);
                 if has_hit_slot_limt {
                     100u64
                 } else {
@@ -442,7 +445,11 @@ impl Block {
 
     /// Returns true if the block has reached capacity in any of its transaction limit.
     #[cfg(feature = "std")]
-    pub fn has_hit_slot_capacity(&self, transaction_config: TransactionConfig) -> bool {
+    pub fn has_hit_slot_capacity(
+        &self,
+        transaction_config_input: impl Borrow<TransactionConfig>,
+    ) -> bool {
+        let transaction_config = transaction_config_input.borrow();
         match self {
             Block::V1(_) => false,
             Block::V2(block_v2) => {

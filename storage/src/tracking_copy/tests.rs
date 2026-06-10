@@ -1,4 +1,9 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::BTreeSet,
+    iter::FromIterator,
+    slice::from_ref,
+    sync::{Arc, RwLock},
+};
 
 use assert_matches::assert_matches;
 
@@ -19,7 +24,8 @@ use casper_types::{
 };
 
 use super::{
-    meter::count_meter::Count, GenericTrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
+    meter::count_meter::Count, CacheEntry, GenericTrackingCopyCache, TrackingCopyError,
+    TrackingCopyQueryResult,
 };
 use crate::{
     global_state::state::{self, StateProvider, StateReader},
@@ -455,7 +461,7 @@ fn should_traverse_all_paths() {
     }
 
     let expected_contract = unpack(
-        tc.query(account_key, &[contract_alias.clone()]),
+        tc.query(account_key, from_ref(&contract_alias)),
         "contract should exist".to_string(),
     );
     assert_eq!(
@@ -477,7 +483,7 @@ fn should_traverse_all_paths() {
     );
 
     let expected_account = unpack(
-        tc.query(contract_key, &[account_alias.clone()]),
+        tc.query(contract_key, from_ref(&account_alias)),
         "account should exist".to_string(),
     );
     assert_eq!(expected_account, stored_account, "unexpected stored value");
@@ -502,7 +508,7 @@ fn should_traverse_all_paths() {
     assert_eq!(expected_value, misc_stored_value, "unexpected stored value");
 
     let expected_account_misc = unpack(
-        tc.query(account_key, &[misc_alias.clone()]),
+        tc.query(account_key, from_ref(&misc_alias)),
         "misc value should exist via account".to_string(),
     );
     assert_eq!(
@@ -691,9 +697,9 @@ fn cache_reads_invalidation() {
     tc_cache.insert_read(k1, v1);
     tc_cache.insert_read(k2, v2.clone());
     tc_cache.insert_read(k3, v3.clone());
-    assert!(tc_cache.get(&k1).is_none()); // first entry should be invalidated
-    assert_eq!(tc_cache.get(&k2), Some(&v2)); // k2 and k3 should be there
-    assert_eq!(tc_cache.get(&k3), Some(&v3));
+    assert_eq!(tc_cache.get(&k1), CacheEntry::NotFound); // first entry should be invalidated
+    assert_eq!(tc_cache.get(&k2), CacheEntry::Exists(&v2)); // k2 and k3 should be there
+    assert_eq!(tc_cache.get(&k3), CacheEntry::Exists(&v3));
 }
 
 #[test]
@@ -715,9 +721,9 @@ fn cache_writes_not_invalidated() {
     tc_cache.insert_read(k2, v2.clone());
     tc_cache.insert_read(k3, v3.clone());
     // Writes are not subject to cache invalidation
-    assert_eq!(tc_cache.get(&k1), Some(&v1));
-    assert_eq!(tc_cache.get(&k2), Some(&v2)); // k2 and k3 should be there
-    assert_eq!(tc_cache.get(&k3), Some(&v3));
+    assert_eq!(tc_cache.get(&k1), CacheEntry::Exists(&v1));
+    assert_eq!(tc_cache.get(&k2), CacheEntry::Exists(&v2)); // k2 and k3 should be there
+    assert_eq!(tc_cache.get(&k3), CacheEntry::Exists(&v3));
 }
 
 #[test]
@@ -1195,5 +1201,59 @@ fn add_should_work() {
     tc.apply_changes(effects, cache, Messages::new());
     assert!(
         matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
+    );
+}
+
+#[test]
+fn tracking_copy_get_should_not_return_value_if_pruned() {
+    let mut pairs = Vec::new();
+    let key = Key::URef(URef::default());
+    let initial_value = CLValue::from_t(1_i32).unwrap();
+    pairs.push((key, StoredValue::CLValue(initial_value)));
+
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let mut tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_ENABLE_ENTITY);
+
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+    );
+    tc.prune(key);
+    assert!(matches!(tc.get(&key), Ok(None)));
+
+    let secondary_value = CLValue::from_t(2_i32).unwrap();
+    tc.write(key, StoredValue::CLValue(secondary_value));
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
+    );
+}
+
+#[test]
+fn tracking_copy_keys_with_prefix_should_include_pruning_of_uncommited_keys() {
+    let mut pairs = Vec::new();
+    let key = Key::Hash([1; 32]);
+    let initial_value = CLValue::from_t(1_i32).unwrap();
+    pairs.push((key, StoredValue::CLValue(initial_value)));
+
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let mut tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_ENABLE_ENTITY);
+
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+    );
+
+    let key_2 = Key::Hash([2; 32]);
+    let secondary_value = CLValue::from_t(2_i32).unwrap();
+    tc.write(key_2, StoredValue::CLValue(secondary_value));
+    assert_eq!(
+        tc.get_by_byte_prefix(&[KeyTag::Hash as u8]).unwrap(),
+        BTreeSet::from_iter(vec![key, key_2])
+    );
+
+    tc.prune(key_2);
+    assert_eq!(
+        tc.get_by_byte_prefix(&[KeyTag::Hash as u8]).unwrap(),
+        BTreeSet::from_iter(vec![key])
     );
 }

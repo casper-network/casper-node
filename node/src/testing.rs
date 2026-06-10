@@ -307,13 +307,13 @@ impl<REv: 'static> ComponentHarness<REv> {
                     continue;
                 }
                 match ev.try_into_control().unwrap() {
-                    ControlAnnouncement::ShutdownDueToUserRequest { .. } => {
+                    ControlAnnouncement::ShutdownDueToUserRequest => {
                         panic!("a control announcement requesting a shutdown due to user request was received")
                     }
-                    ControlAnnouncement::ShutdownForUpgrade { .. } => {
+                    ControlAnnouncement::ShutdownForUpgrade => {
                         panic!("a control announcement requesting a shutdown for upgrade was received")
                     }
-                    ControlAnnouncement::ShutdownAfterCatchingUp { .. } => {
+                    ControlAnnouncement::ShutdownAfterCatchingUp => {
                         panic!("a control announcement requesting a shutdown after catching up was received")
                     }
                     fatal @ ControlAnnouncement::FatalError { .. } => {

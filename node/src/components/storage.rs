@@ -50,7 +50,7 @@ use casper_storage::block_store::{
 };
 
 use std::{
-    borrow::Cow,
+    borrow::{Borrow, Cow},
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
@@ -155,6 +155,7 @@ pub struct Storage {
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum HighestOrphanedBlockResult {
     MissingHighestSequence,
     Orphan(BlockHeader),
@@ -343,6 +344,9 @@ impl Storage {
                     // Truncate the sequences in case we removed blocks via a hard reset.
                     if let Some(header) = DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)? {
                         sequences.truncate(header.height());
+                    } else {
+                        // No tip left, the database is empty
+                        sequences.clear();
                     }
 
                     component.completed_blocks = sequences;
@@ -384,7 +388,82 @@ impl Storage {
             }
         }
         component.persist_completed_blocks()?;
+        component.warm_up_utilization_tracker()?;
         Ok(component)
+    }
+
+    /// Assume:
+    /// * E1 is the newest era that the node is aware of (has complete blocks for it).
+    /// * the highest completed_blocks sequence is [h_1, h_2]
+    ///
+    /// The node might be coming back from a crash or joining while E1 is still running.
+    /// So effectively the node will have complete blocks that are relevant to E1 on disk.
+    /// Because the node might be a validator in E1 we need to figure out what the
+    /// utilization tracking for those stored blocks is.
+    /// Without this data we will not be able to produce a switch block at the end of E1.
+    /// If any of h_n in [h_1,h_2] is from a previous era (E0) - we will stop warming up for that
+    /// previous era - the node should never be interested in reexecuting any other block that was
+    /// marked complete. if there is an "older" disjoint sequence [h_1`, h_2`] that also has a
+    /// height h_n which is in E1 - we won't warm up on that sequence. We are only interested in the
+    /// latest consecutive block range of blocks that are in E1
+    fn warm_up_utilization_tracker(&mut self) -> Result<(), FatalStorageError> {
+        let mut initial_era = None;
+        if let Some(sequence) = self.completed_blocks.highest_sequence() {
+            let high = sequence.high();
+            let low = sequence.low();
+            let mut data_to_insert = vec![];
+            {
+                let txn_ro = self.block_store.checkout_ro()?;
+                for block_height in (low..=high).rev() {
+                    let block: Block = txn_ro
+                        .read(block_height)?
+                        .ok_or(FatalStorageError::BlockNotFound(block_height))?;
+                    let block_hash = *block.hash();
+                    let era_id = block.era_id();
+                    if let Some(initial_era) = initial_era {
+                        if initial_era != era_id {
+                            //We traversed back to a block that is in a previous era
+                            // We have no business in tracking utilization for previous era
+                            // since the node will never be executing blocks from previous eras.
+                            break;
+                        }
+                    } else {
+                        initial_era.replace(era_id);
+                    }
+                    let transaction_hashes: Vec<TransactionHash> =
+                        block.all_transaction_hashes().collect();
+                    let execution_results = Self::fetch_results_for_transactions(
+                        &txn_ro,
+                        &block_hash,
+                        transaction_hashes,
+                    )?
+                    .ok_or(FatalStorageError::MissingExecutionResults(block_height))?;
+                    if execution_results.is_empty() {
+                        data_to_insert.push((era_id, block_height, 0));
+                    } else {
+                        let mut map = HashMap::new();
+                        for (hash, execution_result) in execution_results {
+                            map.insert(hash, execution_result);
+                        }
+                        let utilization = Self::calculate_block_utilization(
+                            &self.transaction_config,
+                            &block,
+                            &map,
+                        );
+                        data_to_insert.push((era_id, block_height, utilization));
+                    }
+                }
+            }
+            for (era_id, block_height, utilization) in data_to_insert {
+                Self::insert_into_utilization_tracker(
+                    &mut self.utilization_tracker,
+                    era_id,
+                    block_height,
+                    utilization,
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Returns the path to the storage folder.
@@ -763,9 +842,24 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
+                let block_hash = *block_hash;
                 let mut rw_txn = self.block_store.checkout_rw()?;
+                let maybe_block: Option<Block> = rw_txn.read(block_hash)?;
+                if let Some(block) = maybe_block {
+                    let utilization = Self::calculate_block_utilization(
+                        &self.transaction_config,
+                        &block,
+                        &execution_results,
+                    );
+                    Self::insert_into_utilization_tracker(
+                        &mut self.utilization_tracker,
+                        era_id,
+                        block_height,
+                        utilization,
+                    );
+                }
                 let _ = rw_txn.write(&BlockExecutionResults {
-                    block_info: BlockHashHeightAndEra::new(*block_hash, block_height, era_id),
+                    block_info: BlockHashHeightAndEra::new(block_hash, block_height, era_id),
                     exec_results: execution_results,
                 })?;
                 rw_txn.commit()?;
@@ -963,10 +1057,8 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
-                let transaction_config = self.transaction_config.clone();
                 responder
                     .respond(self.put_executed_block(
-                        transaction_config,
                         &block,
                         &approvals_hashes,
                         execution_results,
@@ -1002,17 +1094,14 @@ impl Storage {
                     Some(db_raw) => responder.respond(Some(db_raw)).ignore(),
                 }
             }
-            StorageRequest::GetBlockUtilizationScore {
+            StorageRequest::GetEraUtilizationScore {
                 era_id,
                 block_height,
                 switch_block_utilization,
                 responder,
             } => {
-                let utilization = self.get_block_utilization_score(
-                    era_id,
-                    block_height,
-                    switch_block_utilization,
-                );
+                let utilization =
+                    self.get_era_utilization_score(era_id, block_height, switch_block_utilization);
 
                 responder.respond(utilization).ignore()
             }
@@ -1058,79 +1147,18 @@ impl Storage {
 
     pub(crate) fn put_executed_block(
         &mut self,
-        transaction_config: TransactionConfig,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
         let era_id = block.era_id();
-        let block_utilization_score = block.block_utilization(transaction_config.clone());
-        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config.clone());
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
+        let utilization =
+            Self::calculate_block_utilization(&self.transaction_config, block, &execution_results);
+
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
-
-        let utilization = if has_hit_slot_limit {
-            debug!("Block is at slot capacity, using slot utilization score");
-            block_utilization_score
-        } else if execution_results.is_empty() {
-            0u64
-        } else {
-            let total_gas_utilization = {
-                let total_gas_limit: U512 = execution_results
-                    .values()
-                    .map(|results| match results {
-                        ExecutionResult::V1(v1_result) => match v1_result {
-                            ExecutionResultV1::Failure { cost, .. } => *cost,
-                            ExecutionResultV1::Success { cost, .. } => *cost,
-                        },
-                        ExecutionResult::V2(v2_result) => v2_result.limit.value(),
-                    })
-                    .sum();
-
-                let consumed: u64 = total_gas_limit.as_u64();
-                let block_gas_limit = transaction_config.block_gas_limit;
-
-                Ratio::new(consumed * 100u64, block_gas_limit).to_integer()
-            };
-            debug!("Gas utilization at {total_gas_utilization}");
-
-            let total_size_utilization = {
-                let size_used: u64 = execution_results
-                    .values()
-                    .map(|results| {
-                        if let ExecutionResult::V2(result) = results {
-                            result.size_estimate
-                        } else {
-                            0u64
-                        }
-                    })
-                    .sum();
-
-                let block_size_limit = transaction_config.max_block_size as u64;
-                Ratio::new(size_used * 100, block_size_limit).to_integer()
-            };
-
-            debug!("Storage utilization at {total_size_utilization}");
-
-            let scores = [
-                block_utilization_score,
-                total_size_utilization,
-                total_gas_utilization,
-            ];
-
-            match scores.iter().max() {
-                Some(max_utlization) => *max_utlization,
-                None => {
-                    // This should never happen as we just created the scores vector to find the
-                    // max value
-                    warn!("Unable to determine max utilization, marking 0 utilization");
-                    0u64
-                }
-            }
-        };
-
         debug!("Utilization for block is {utilization}");
 
         let _ = txn.write(&BlockExecutionResults {
@@ -1139,16 +1167,12 @@ impl Storage {
         })?;
         txn.commit()?;
 
-        match self.utilization_tracker.get_mut(&era_id) {
-            Some(block_score) => {
-                block_score.insert(block.height(), utilization);
-            }
-            None => {
-                let mut block_score = BTreeMap::new();
-                block_score.insert(block.height(), utilization);
-                self.utilization_tracker.insert(era_id, block_score);
-            }
-        }
+        Self::insert_into_utilization_tracker(
+            &mut self.utilization_tracker,
+            era_id,
+            block.height(),
+            utilization,
+        );
 
         Ok(true)
     }
@@ -1977,23 +2001,7 @@ impl Storage {
                 .collect(),
             BlockBody::V2(v2) => v2.all_transactions().copied().collect(),
         };
-        let mut execution_results = vec![];
-        for transaction_hash in transaction_hashes {
-            match txn.read(transaction_hash)? {
-                None => {
-                    debug!(
-                        %block_hash,
-                        %transaction_hash,
-                        "retrieved block but execution result for given transaction is absent"
-                    );
-                    return Ok(None);
-                }
-                Some(execution_result) => {
-                    execution_results.push((transaction_hash, execution_result));
-                }
-            }
-        }
-        Ok(Some(execution_results))
+        Self::fetch_results_for_transactions(txn, block_hash, transaction_hashes)
     }
 
     #[allow(clippy::type_complexity)]
@@ -2033,36 +2041,177 @@ impl Storage {
         Ok(Some(ret))
     }
 
-    fn get_block_utilization_score(
+    fn get_era_utilization_score(
         &mut self,
         era_id: EraId,
-        block_height: u64,
-        block_utilization: u64,
-    ) -> Option<(u64, u64)> {
+        era_switch_block_height: u64,
+        era_switch_block_utilization: u64,
+    ) -> Option<(u64, u64, u64)> {
         let ret = match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
-                utilization.entry(block_height).or_insert(block_utilization);
+                utilization
+                    .entry(era_switch_block_height)
+                    .or_insert(era_switch_block_utilization);
 
-                let transaction_count = utilization.values().sum();
+                let era_utilization = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
+                let total_blocks_for_era = match era_id.predecessor() {
+                    Some(previous_era) => {
+                        let txn = match self.block_store.checkout_ro() {
+                            Ok(txn) => txn,
+                            Err(_) => return None,
+                        };
+                        let previous_switch_block_height =
+                            match txn.get_switch_block_height(previous_era) {
+                                Ok(Some(height)) => height,
+                                Ok(None) | Err(_) => return None,
+                            };
+                        // Determine expected number of blocks from the block_height
+                        // minus the height of the previous switch block
+                        // sw-e1 -> b1 b2 b3 b4 sw-e2
+                        // 11       12 13 14 15 16
+                        // answer: 5 (16-11)
+                        era_switch_block_height.saturating_sub(previous_switch_block_height)
+                    }
+                    // Genesis case
+                    None => era_switch_block_height,
+                };
 
-                Some((transaction_count, block_count))
+                Some((era_utilization, block_count, total_blocks_for_era))
             }
             None => {
                 let mut utilization = BTreeMap::new();
-                utilization.insert(block_height, block_utilization);
+                utilization.insert(era_switch_block_height, era_switch_block_utilization);
 
                 self.utilization_tracker.insert(era_id, utilization);
 
                 let block_count = 1u64;
-                Some((block_utilization, block_count))
+                let total_blocks_for_era = block_count;
+                Some((
+                    era_switch_block_utilization,
+                    block_count,
+                    total_blocks_for_era,
+                ))
             }
         };
 
         self.utilization_tracker
-            .retain(|key_era_id, _| key_era_id.value() + 2 >= era_id.value());
+            .retain(|key_era_id, _| key_era_id.value() >= era_id.value());
 
         ret
+    }
+
+    fn calculate_block_utilization(
+        transaction_config_input: impl Borrow<TransactionConfig>,
+        block: &Block,
+        execution_results: &HashMap<TransactionHash, ExecutionResult>,
+    ) -> u64 {
+        let transaction_config = transaction_config_input.borrow();
+        let block_utilization_score = block.block_utilization(transaction_config);
+        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config);
+
+        let utilization = if has_hit_slot_limit {
+            debug!("Block is at slot capacity, using slot utilization score");
+            block_utilization_score
+        } else if execution_results.is_empty() {
+            0u64
+        } else {
+            let total_gas_utilization = {
+                let total_gas_limit: U512 = execution_results
+                    .values()
+                    .map(|results| match results {
+                        ExecutionResult::V1(v1_result) => match v1_result {
+                            ExecutionResultV1::Failure { cost, .. } => *cost,
+                            ExecutionResultV1::Success { cost, .. } => *cost,
+                        },
+                        ExecutionResult::V2(v2_result) => v2_result.limit.value(),
+                    })
+                    .sum();
+
+                let consumed: u64 = total_gas_limit.as_u64();
+                let block_gas_limit = transaction_config.block_gas_limit;
+
+                Ratio::new(consumed * 100u64, block_gas_limit).to_integer()
+            };
+            debug!("Gas utilization at {total_gas_utilization}");
+
+            let total_size_utilization = {
+                let size_used: u64 = execution_results
+                    .values()
+                    .map(|results| {
+                        if let ExecutionResult::V2(result) = results {
+                            result.size_estimate
+                        } else {
+                            0u64
+                        }
+                    })
+                    .sum();
+
+                let block_size_limit = transaction_config.max_block_size as u64;
+                Ratio::new(size_used * 100, block_size_limit).to_integer()
+            };
+
+            debug!("Storage utilization at {total_size_utilization}");
+
+            let scores = [
+                block_utilization_score,
+                total_size_utilization,
+                total_gas_utilization,
+            ];
+
+            match scores.iter().max() {
+                Some(max_utilization) => *max_utilization,
+                None => {
+                    // This should never happen as we just created the scores vector to find the
+                    // max value
+                    warn!("Unable to determine max utilization, marking 0 utilization");
+                    0u64
+                }
+            }
+        };
+        utilization
+    }
+
+    fn fetch_results_for_transactions(
+        txn: &(impl DataReader<BlockHash, Block> + DataReader<TransactionHash, ExecutionResult>),
+        block_hash: &BlockHash,
+        transaction_hashes: Vec<TransactionHash>,
+    ) -> Result<Option<Vec<(TransactionHash, ExecutionResult)>>, FatalStorageError> {
+        let mut execution_results = vec![];
+        for transaction_hash in transaction_hashes {
+            match txn.read(transaction_hash)? {
+                None => {
+                    debug!(
+                        %block_hash,
+                        %transaction_hash,
+                        "retrieved block but execution result for given transaction is absent"
+                    );
+                    return Ok(None);
+                }
+                Some(execution_result) => {
+                    execution_results.push((transaction_hash, execution_result));
+                }
+            }
+        }
+        Ok(Some(execution_results))
+    }
+
+    fn insert_into_utilization_tracker(
+        utilization_tracker: &mut BTreeMap<EraId, BTreeMap<u64, u64>>,
+        era_id: EraId,
+        block_height: u64,
+        utilization: u64,
+    ) {
+        match utilization_tracker.get_mut(&era_id) {
+            Some(block_score) => {
+                block_score.insert(block_height, utilization);
+            }
+            None => {
+                let mut block_score = BTreeMap::new();
+                block_score.insert(block_height, utilization);
+                utilization_tracker.insert(era_id, block_score);
+            }
+        }
     }
 }
 
@@ -2368,5 +2517,24 @@ impl Storage {
             block_height: block_hash_and_height.block_height,
             execution_result,
         })
+    }
+
+    pub(crate) fn delete_block_utilization_score_by_block_hash(&mut self, block_hash: BlockHash) {
+        let txn = self.block_store.checkout_ro().expect("mut get read only");
+        let block_header: BlockHeader = txn
+            .read(block_hash)
+            .expect("should read")
+            .expect("must have header");
+
+        let era = block_header.era_id();
+        let height = block_header.height();
+
+        let era_score = self
+            .utilization_tracker
+            .get_mut(&era)
+            .expect("must have era tracker");
+        era_score
+            .remove(&height)
+            .expect("must have previous entry for this height");
     }
 }

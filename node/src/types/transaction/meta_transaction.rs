@@ -94,6 +94,13 @@ impl MetaTransaction {
         }
     }
 
+    pub(crate) fn is_wasm(&self) -> bool {
+        match self {
+            MetaTransaction::Deploy(meta_deploy) => !meta_deploy.deploy().is_transfer(),
+            MetaTransaction::V1(v1_txn) => *v1_txn.target() != TransactionTarget::Native,
+        }
+    }
+
     /// Should this transaction use standard payment processing?
     pub(crate) fn is_standard_payment(&self) -> bool {
         match self {
@@ -152,7 +159,7 @@ impl MetaTransaction {
     }
 
     /// The session args.
-    pub(crate) fn session_args(&self) -> Cow<TransactionArgs> {
+    pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => Cow::Owned(TransactionArgs::Named(
                 meta_deploy.deploy().session().args().clone(),
@@ -276,7 +283,7 @@ impl MetaTransaction {
         }
     }
 
-    pub(crate) fn to_session_input_data(&self) -> SessionInputData {
+    pub(crate) fn to_session_input_data(&self) -> SessionInputData<'_> {
         let initiator_addr = self.initiator_addr();
         let is_standard_payment = self.is_standard_payment();
         match self {
@@ -309,7 +316,7 @@ impl MetaTransaction {
     }
 
     /// Returns the `SessionInputData` for a payment code if present.
-    pub(crate) fn to_payment_input_data(&self) -> SessionInputData {
+    pub(crate) fn to_payment_input_data(&self) -> SessionInputData<'_> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => {
                 let initiator_addr = meta_deploy.initiator_addr();
@@ -475,20 +482,8 @@ mod proptests {
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
             let mut transaction_config = TransactionConfig::default();
             transaction_config.transaction_v1_config.set_wasm_lanes(vec![
-                TransactionLaneDefinition {
-                    id: 3,
-                    max_transaction_length: u64::MAX/2,
-                    max_transaction_args_length: 10000,
-                    max_transaction_gas_limit: u64::MAX/2,
-                    max_transaction_count: 10,
-                },
-                TransactionLaneDefinition {
-                    id: 4,
-                    max_transaction_length: u64::MAX,
-                    max_transaction_args_length: 10000,
-                    max_transaction_gas_limit: u64::MAX,
-                    max_transaction_count: 10,
-                },
+                TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
+                TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
             let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);

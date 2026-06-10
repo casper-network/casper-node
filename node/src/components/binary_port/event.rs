@@ -8,6 +8,7 @@ use tokio::net::TcpStream;
 
 use crate::effect::Responder;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum Event {
     Initialize,

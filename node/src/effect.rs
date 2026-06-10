@@ -153,6 +153,7 @@ use crate::{
         transaction_acceptor,
     },
     contract_runtime::ExecutionPreState,
+    effect::announcements::NonExecutableBlockAnnouncement,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -720,6 +721,22 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets up to `count` fully-connected network validators in random order.
+    pub async fn get_fully_connected_validators(self, count: usize, era_id: EraId) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::FullyConnectedValidators {
+                count,
+                era_id,
+                responder,
+            },
+            QueueKind::NetworkInfo,
+        )
+        .await
+    }
+
     /// Announces which transactions have expired.
     pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
@@ -840,7 +857,6 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-        is_speculative: bool,
     ) -> Result<(), transaction_acceptor::Error>
     where
         REv: From<AcceptTransactionRequest>,
@@ -848,7 +864,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
-                is_speculative,
                 responder,
             },
             QueueKind::Api,
@@ -1077,17 +1092,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_block_utilization(
+    pub(crate) async fn get_era_utilization(
         self,
         era_id: EraId,
         block_height: u64,
         transaction_count: u64,
-    ) -> Option<(u64, u64)>
+    ) -> Option<(u64, u64, u64)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockUtilizationScore {
+            |responder| StorageRequest::GetEraUtilizationScore {
                 era_id,
                 block_height,
                 switch_block_utilization: transaction_count,
@@ -1405,6 +1420,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// This is currently used for reporting purposes (node status). It should not be used
+    /// for load bearing determinations, as the reactor state can change between asking for it
+    /// and being notified about it due to event processing latency.
     pub(crate) async fn get_reactor_state(self) -> ReactorState
     where
         REv: From<ReactorInfoRequest>,
@@ -1880,13 +1898,27 @@ impl<REv> EffectBuilder<REv> {
 
     /// Announces that a finalized block has been created, but it was not
     /// executed.
-    pub(crate) async fn announce_unexecuted_block(self, block_height: u64)
+    pub(crate) async fn announce_not_enqueuing_old_executable_block(self, block_height: u64)
     where
         REv: From<UnexecutedBlockAnnouncement>,
     {
         self.event_queue
             .schedule(
                 UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
+            .await;
+    }
+
+    /// Announces that a finalized block has been created, but it was not
+    /// executed due to subjective node state.
+    pub(crate) async fn announce_not_executing_block(self, block_height: u64)
+    where
+        REv: From<NonExecutableBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                NonExecutableBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
             .await;

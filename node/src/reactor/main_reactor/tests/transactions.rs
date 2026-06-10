@@ -47,7 +47,7 @@ pub(crate) static CHARLIE_PUBLIC_KEY: Lazy<PublicKey> =
 // The amount of gas it takes to execute the generated do_nothing.wasm.
 // Passing this around as a constant is brittle and should be replaced
 // with a more sustainable solution in the future.
-const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 117720_u64;
+const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 116445_u64;
 pub(crate) const MIN_GAS_PRICE: u8 = 1;
 const CHAIN_NAME: &str = "single-transaction-test-net";
 
@@ -5551,10 +5551,10 @@ async fn run_sizing_scenario(sizing_scenario: SizingScenario) {
     let largest_lane = wasm_lanes
         .iter()
         .max_by(|left, right| {
-            left.max_transaction_length
-                .cmp(&right.max_transaction_length)
+            left.max_transaction_length()
+                .cmp(&right.max_transaction_length())
         })
-        .map(|definition| definition.id)
+        .map(|definition| definition.id())
         .expect("must have lane id for largest lane");
 
     let (payment_2, session_2) = match sizing_scenario {
@@ -5706,17 +5706,17 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
         .clone();
 
     wasm_lanes.sort_by(|a, b| {
-        a.max_transaction_gas_limit
-            .cmp(&b.max_transaction_gas_limit)
+        a.max_transaction_gas_limit()
+            .cmp(&b.max_transaction_gas_limit())
     });
 
     let (smallest_lane_id, smallest_gas_limt, smallest_size_limit_for_deploy) = wasm_lanes
         .first()
         .map(|lane_def| {
             (
-                lane_def.id,
-                lane_def.max_transaction_gas_limit,
-                lane_def.max_transaction_length,
+                lane_def.id(),
+                lane_def.max_transaction_gas_limit(),
+                lane_def.max_transaction_length(),
             )
         })
         .expect("must have at least one lane");
@@ -5764,7 +5764,7 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
 
     let (largest_lane_id, largest_gas_limt) = wasm_lanes
         .last()
-        .map(|lane_def| (lane_def.id, lane_def.max_transaction_gas_limit))
+        .map(|lane_def| (lane_def.id(), lane_def.max_transaction_gas_limit()))
         .expect("must have at least one lane");
 
     assert_ne!(largest_lane_id, smallest_lane_id);

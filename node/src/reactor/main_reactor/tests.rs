@@ -6,6 +6,7 @@ mod fixture;
 mod gas_price;
 mod initial_stakes;
 mod network_general;
+mod rejoining_node;
 mod rewards;
 mod switch_blocks;
 mod transaction_scenario;
@@ -55,6 +56,10 @@ type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
 impl Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
     fn main_reactor(&self) -> &MainReactor {
         self.reactor().inner().inner()
+    }
+
+    fn main_reactor_as_mut(&mut self) -> &mut MainReactor {
+        self.reactor.inner_mut().inner_mut()
     }
 }
 

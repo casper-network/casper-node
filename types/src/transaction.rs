@@ -87,6 +87,7 @@ pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
 #[cfg(feature = "json-schema")]
 pub(crate) use transaction_v1::arg_handling;
 #[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[allow(unused_imports)]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
     InvalidTransactionV1, TransactionArgs, TransactionV1, TransactionV1DecodeFromJsonError,
@@ -501,10 +502,10 @@ impl<'de> Deserialize<'de> for Transaction {
 #[serde(deny_unknown_fields)]
 enum TransactionJson {
     /// A deploy.
-    Deploy(Deploy),
+    Deploy(Box<Deploy>),
     /// A version 1 transaction.
     #[serde(rename = "Version1")]
-    V1(TransactionV1Json),
+    V1(Box<TransactionV1Json>),
 }
 
 #[cfg(any(feature = "std", test))]
@@ -519,9 +520,9 @@ impl TryFrom<TransactionJson> for Transaction {
     type Error = TransactionJsonError;
     fn try_from(transaction: TransactionJson) -> Result<Self, Self::Error> {
         match transaction {
-            TransactionJson::Deploy(deploy) => Ok(Transaction::Deploy(deploy)),
+            TransactionJson::Deploy(deploy) => Ok(Transaction::Deploy(*deploy)),
             TransactionJson::V1(v1) => {
-                TransactionV1::try_from(v1)
+                TransactionV1::try_from(*v1)
                     .map(Transaction::V1)
                     .map_err(|error| {
                         TransactionJsonError::FailedToMap(format!(
@@ -539,9 +540,9 @@ impl TryFrom<Transaction> for TransactionJson {
     type Error = TransactionJsonError;
     fn try_from(transaction: Transaction) -> Result<Self, Self::Error> {
         match transaction {
-            Transaction::Deploy(deploy) => Ok(TransactionJson::Deploy(deploy)),
+            Transaction::Deploy(deploy) => Ok(TransactionJson::Deploy(Box::new(deploy))),
             Transaction::V1(v1) => TransactionV1Json::try_from(v1)
-                .map(TransactionJson::V1)
+                .map(|t| TransactionJson::V1(Box::new(t)))
                 .map_err(|error| {
                     TransactionJsonError::FailedToMap(format!(
                         "Failed to map Transaction::V1 to TransactionJson::V1, err: {}",

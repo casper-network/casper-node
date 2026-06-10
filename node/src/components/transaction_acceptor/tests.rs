@@ -954,8 +954,8 @@ impl TestScenario {
                     | TestScenario::InvalidArgumentsKind
                     | TestScenario::WasmTransactionWithTooBigPayment
                     | TestScenario::WasmDeployWithTooBigPayment
-                    | TestScenario::RedelegateExceedingMaximumDelegation { .. }
-                    | TestScenario::DelegateExceedingMaximumDelegation { .. }
+                    | TestScenario::RedelegateExceedingMaximumDelegation
+                    | TestScenario::DelegateExceedingMaximumDelegation
                     | TestScenario::VmCasperV2ByPackageHash => false,
             TestScenario::V1ByPackage(hash_or_name, _, _, scenario, ..) => {
                 match hash_or_name {
@@ -1592,8 +1592,8 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::InvalidArgumentsKind
             | TestScenario::WasmTransactionWithTooBigPayment
             | TestScenario::WasmDeployWithTooBigPayment
-            | TestScenario::RedelegateExceedingMaximumDelegation { .. }
-            | TestScenario::DelegateExceedingMaximumDelegation { .. }
+            | TestScenario::RedelegateExceedingMaximumDelegation
+            | TestScenario::DelegateExceedingMaximumDelegation
             | TestScenario::VmCasperV2ByPackageHash => {
                 matches!(
                     event,

@@ -19,16 +19,18 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use casper_types::{
     account::AccountHash,
-    bytesrepr::Bytes,
+    bytesrepr::{Bytes, ToBytes},
     crypto::{sign, PublicKey, Signature},
     AccessRights, Approval, ApprovalsHash, AsymmetricType, Block, BlockHash, BlockHeader,
     BlockHeaderV1, BlockHeaderV2, BlockHeaderWithSignatures, BlockSignatures, BlockSignaturesV2,
     BlockV2, ChainNameDigest, ChunkWithProof, Deploy, DeployHash, DeployId, Digest, EraEndV1,
     EraEndV2, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
-    FinalitySignatureV2, PackageHash, ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey,
-    SemVer, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, TransactionRuntimeParams, TransactionV1, TransactionV1Hash, URef,
-    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, KEY_HASH_LENGTH, MINT_LANE_ID, U512,
+    FinalitySignatureV2, InitiatorAddr, PackageHash, PricingMode, ProtocolVersion,
+    RewardedSignatures, RuntimeArgs, SecretKey, SemVer, SingleBlockRewardedSignatures, TimeDiff,
+    Timestamp, Transaction, TransactionArgs, TransactionEntryPoint, TransactionHash, TransactionId,
+    TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
+    TransactionV1Hash, TransactionV1Payload, URef, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
+    KEY_HASH_LENGTH, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -38,8 +40,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        transaction::transaction_v1_builder::TransactionV1Builder, BlockExecutionResultsOrChunk,
-        BlockPayload, FinalizedBlock, InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
+        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
@@ -47,6 +49,7 @@ use casper_storage::block_store::types::ApprovalsHashes;
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
 const LARGE_WASM_LANE_ID: u8 = 3;
+const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 
 /// A cache used for memoization, typically on a single estimator.
 #[derive(Debug, Default)]
@@ -885,18 +888,19 @@ impl LargestSpecimen for BlockPayload {
 
 impl LargestSpecimen for RewardedSignatures {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        RewardedSignatures::new(
-            std::iter::repeat(LargestSpecimen::largest_specimen(estimator, cache))
-                .take(estimator.parameter("signature_rewards_max_delay")),
-        )
+        RewardedSignatures::new(std::iter::repeat_n(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            estimator.parameter("signature_rewards_max_delay"),
+        ))
     }
 }
 
 impl LargestSpecimen for SingleBlockRewardedSignatures {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, _cache: &mut Cache) -> Self {
-        SingleBlockRewardedSignatures::pack(
-            std::iter::repeat(1).take(estimator.parameter("validator_count")),
-        )
+        SingleBlockRewardedSignatures::pack(std::iter::repeat_n(
+            1,
+            estimator.parameter("validator_count"),
+        ))
     }
 }
 
@@ -1013,21 +1017,41 @@ impl LargestSpecimen for TransactionV1 {
         // See comment in `impl LargestSpecimen for ExecutableDeployItem` below for rationale here.
         let max_size_with_margin =
             estimator.parameter::<i32>("max_transaction_size").max(0) as usize + 10 * 4;
-        TransactionV1Builder::new_session(
-            true,
-            Bytes::from(vec_of_largest_specimen(
+        let target = TransactionTarget::Session {
+            is_install_upgrade: true,
+            module_bytes: Bytes::from(vec_of_largest_specimen(
                 estimator,
                 max_size_with_margin,
                 cache,
             )),
-            TransactionRuntimeParams::VmCasperV1,
+            runtime: TransactionRuntimeParams::VmCasperV1,
+        };
+        let args = TransactionArgs::Named(RuntimeArgs::new());
+        let entry_point = TransactionEntryPoint::Call;
+        let scheduling = TransactionScheduling::Standard;
+        let mut fields: BTreeMap<u16, Bytes> = BTreeMap::new();
+        fields.insert(0, args.to_bytes().unwrap().into());
+        fields.insert(1, target.to_bytes().unwrap().into());
+        fields.insert(2, entry_point.to_bytes().unwrap().into());
+        fields.insert(3, scheduling.to_bytes().unwrap().into());
+
+        let payload = TransactionV1Payload::new(
+            "abc".to_string(),
+            Timestamp::MAX,
+            TimeDiff::ZERO,
+            PricingMode::PaymentLimited {
+                payment_amount: 45,
+                gas_price_tolerance: 1,
+                standard_payment: true,
+            },
+            InitiatorAddr::AccountHash(AccountHash::new(TRANSACTION_HASH_BYTES)),
+            fields,
+        );
+        TransactionV1::new(
+            TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES),
+            payload,
+            BTreeSet::new(),
         )
-        .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
-        .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))
-        .with_ttl(LargestSpecimen::largest_specimen(estimator, cache))
-        .with_chain_name(largest_chain_name(estimator))
-        .build()
-        .unwrap()
     }
 }
 
@@ -1222,9 +1246,7 @@ fn largest_chain_name<E: SizeEstimator>(estimator: &E) -> String {
 
 /// Returns a string with `len`s characters of the largest possible size.
 fn string_max_characters(max_char: usize) -> String {
-    std::iter::repeat(HIGHEST_UNICODE_CODEPOINT)
-        .take(max_char)
-        .collect()
+    std::iter::repeat_n(HIGHEST_UNICODE_CODEPOINT, max_char).collect()
 }
 
 /// Returns the max rounds per era with the specimen parameters.

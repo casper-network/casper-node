@@ -1,3 +1,4 @@
+use casper_types::Timestamp;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
@@ -34,13 +35,34 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> ValidateInstruction {
+        if self.force_catchup {
+            self.force_catchup = false;
+            return ValidateInstruction::CatchUp;
+        }
         let last_progress = self.consensus.last_progress();
         if last_progress > self.last_progress {
             self.last_progress = last_progress;
         }
 
+        let execution_pre_state = self.contract_runtime.execution_pre_state();
+        let next_consensus_height = self.consensus.next_executed_height();
+        if next_consensus_height != 0
+            && next_consensus_height != execution_pre_state.next_block_height()
+        {
+            warn!(
+                "Validate: misalignment of expected block height between consensus and contract runtime"
+            );
+            return ValidateInstruction::CatchUp;
+        }
+
         let queue_depth = self.contract_runtime.queue_depth();
         if queue_depth > 0 {
+            let idleness = Timestamp::now().saturating_diff(last_progress);
+            if idleness > self.idle_tolerance {
+                warn!("Validate: idleness tolerance reached with backed up queue, switching to catch up");
+                return ValidateInstruction::CatchUp;
+            }
+
             warn!("Validate: should_validate queue_depth {}", queue_depth);
             return ValidateInstruction::CheckLater(
                 "allow time for contract runtime execution to occur".to_string(),

@@ -122,14 +122,14 @@ impl MetaTransactionV1 {
                 runtime: stored_runtime,
                 ..
             } => {
-                matches!(stored_runtime, TransactionRuntimeParams::VmCasperV1 { .. })
+                matches!(stored_runtime, TransactionRuntimeParams::VmCasperV1)
                     && (!self.is_native_mint() && !self.is_native_auction())
             }
             TransactionTarget::Session {
                 runtime: session_runtime,
                 ..
             } => {
-                matches!(session_runtime, TransactionRuntimeParams::VmCasperV1 { .. })
+                matches!(session_runtime, TransactionRuntimeParams::VmCasperV1)
                     && (!self.is_native_mint() && !self.is_native_auction())
             }
         }
@@ -959,20 +959,8 @@ mod tests {
         .unwrap();
         let mut config = TransactionV1Config::default();
         config.set_wasm_lanes(vec![
-            TransactionLaneDefinition {
-                id: 3,
-                max_transaction_length: 200,
-                max_transaction_args_length: 100,
-                max_transaction_gas_limit: 100,
-                max_transaction_count: 10,
-            },
-            TransactionLaneDefinition {
-                id: 4,
-                max_transaction_length: 500,
-                max_transaction_args_length: 100,
-                max_transaction_gas_limit: 10000,
-                max_transaction_count: 10,
-            },
+            TransactionLaneDefinition::new(3, 200, 100, 100, 10),
+            TransactionLaneDefinition::new(4, 500, 100, 10000, 10),
         ]);
 
         let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config);
@@ -1012,27 +1000,9 @@ mod tests {
     fn build_v1_config() -> TransactionV1Config {
         let mut config = TransactionV1Config::default();
         config.set_wasm_lanes(vec![
-            TransactionLaneDefinition {
-                id: 3,
-                max_transaction_length: 10000,
-                max_transaction_args_length: 100,
-                max_transaction_gas_limit: 100,
-                max_transaction_count: 10,
-            },
-            TransactionLaneDefinition {
-                id: 4,
-                max_transaction_length: 10001,
-                max_transaction_args_length: 100,
-                max_transaction_gas_limit: 10000,
-                max_transaction_count: 10,
-            },
-            TransactionLaneDefinition {
-                id: 5,
-                max_transaction_length: 10002,
-                max_transaction_args_length: 100,
-                max_transaction_gas_limit: 1000,
-                max_transaction_count: 10,
-            },
+            TransactionLaneDefinition::new(3, 10000, 100, 100, 10),
+            TransactionLaneDefinition::new(4, 10001, 100, 10000, 10),
+            TransactionLaneDefinition::new(5, 10002, 100, 1000, 10),
         ]);
         config
     }

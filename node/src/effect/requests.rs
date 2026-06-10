@@ -209,6 +209,14 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
     },
+    /// Get up to `count` fully-connected validators in random order.
+    FullyConnectedValidators {
+        count: usize,
+        /// era_id in which the filtered peer needs to be a validator.
+        era_id: EraId,
+        /// Responder to be called with the peers.
+        responder: Responder<Vec<NodeId>>,
+    },
     /// Get detailed insights into the nodes networking.
     Insight {
         responder: Responder<NetworkInsights>,
@@ -226,6 +234,17 @@ impl Display for NetworkInfoRequest {
                 responder: _,
             } => {
                 write!(formatter, "get up to {} fully connected peers", count)
+            }
+            NetworkInfoRequest::FullyConnectedValidators {
+                count,
+                era_id,
+                responder: _,
+            } => {
+                write!(
+                    formatter,
+                    "get up to {} fully connected validators in era {}",
+                    count, era_id
+                )
             }
             NetworkInfoRequest::Insight { responder: _ } => {
                 formatter.write_str("get networking insights")
@@ -495,8 +514,8 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
-    /// Retrieve the block utilization score.
-    GetBlockUtilizationScore {
+    /// Retrieve the era utilization score.
+    GetEraUtilizationScore {
         /// The era id.
         era_id: EraId,
         /// The block height of the switch block
@@ -504,7 +523,7 @@ pub(crate) enum StorageRequest {
         /// The utilization within the switch block.
         switch_block_utilization: u64,
         /// Responder, responded once the utilization for the era has been determined.
-        responder: Responder<Option<(u64, u64)>>,
+        responder: Responder<Option<(u64, u64, u64)>>,
     },
 }
 
@@ -658,7 +677,7 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get raw data {}::{:?}", record_id, key)
             }
-            StorageRequest::GetBlockUtilizationScore { era_id, .. } => {
+            StorageRequest::GetEraUtilizationScore { era_id, .. } => {
                 write!(formatter, "get utilization score for era {}", era_id)
             }
         }
@@ -1210,17 +1229,11 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
-    pub(crate) is_speculative: bool,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
 impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "accept transaction {} is_speculative: {}",
-            self.transaction.hash(),
-            self.is_speculative
-        )
+        write!(f, "accept transaction {}", self.transaction.hash(),)
     }
 }

@@ -96,6 +96,17 @@ impl TrackingCopyQueryResult {
     }
 }
 
+/// Result of a cache lookup in a tracking copy.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CacheEntry<'a> {
+    /// This key was explicitly pruned in the tracking copy.
+    Pruned,
+    /// The cache has no local knowledge of this key.
+    NotFound,
+    /// The cache contains a locally visible value for this key.
+    Exists(&'a StoredValue),
+}
+
 /// Struct containing state relating to a given query.
 struct Query {
     /// The key from where the search starts.
@@ -233,22 +244,27 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
 
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_prune(&mut self, key: Key) {
+        let kb = KeyWithByteRepr::new(key);
+        self.muts_cached.remove(&kb);
         self.prunes_cached.insert(key);
     }
 
     /// Gets value from `key` in the cache.
-    pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
+    pub fn get<'a>(&'a mut self, key: &Key) -> CacheEntry<'a> {
         if self.prunes_cached.contains(key) {
             // the item is marked for pruning and therefore
             // is no longer accessible.
-            return None;
+            return CacheEntry::Pruned;
         }
         let kb = KeyWithByteRepr::new(*key);
         if let Some(value) = self.muts_cached.get(&kb) {
-            return Some(value);
+            return CacheEntry::Exists(value);
         };
 
-        self.reads_cached.get_refresh(key).map(|v| &*v)
+        match self.reads_cached.get_refresh(key).map(|v| &*v) {
+            Some(value) => CacheEntry::Exists(value),
+            None => CacheEntry::NotFound,
+        }
     }
 
     /// Get cached items by prefix.
@@ -480,8 +496,10 @@ where
 
     /// Get record by key.
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
-        if let Some(value) = self.cache.get(key) {
-            return Ok(Some(value.to_owned()));
+        match self.cache.get(key) {
+            CacheEntry::Exists(value) => return Ok(Some(value.to_owned())),
+            CacheEntry::Pruned => return Ok(None),
+            CacheEntry::NotFound => {}
         }
         match self.reader.read(key) {
             Ok(ret) => {

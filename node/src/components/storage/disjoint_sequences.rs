@@ -217,6 +217,10 @@ impl DisjointSequences {
             true
         })
     }
+
+    pub(super) fn clear(&mut self) {
+        self.sequences.clear();
+    }
 }
 #[cfg(test)]
 impl DisjointSequences {

@@ -322,7 +322,7 @@ impl StdError for InvalidDeploy {
         match self {
             InvalidDeploy::InvalidApproval { error, .. } => Some(error),
             InvalidDeploy::InvalidChainName { .. }
-            | InvalidDeploy::DependenciesNoLongerSupported { .. }
+            | InvalidDeploy::DependenciesNoLongerSupported
             | InvalidDeploy::ExcessiveSize(_)
             | InvalidDeploy::ExcessiveTimeToLive { .. }
             | InvalidDeploy::TimestampInFuture { .. }

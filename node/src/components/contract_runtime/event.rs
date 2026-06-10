@@ -11,6 +11,7 @@ use crate::effect::{
     requests::ContractRuntimeRequest,
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
     #[from]

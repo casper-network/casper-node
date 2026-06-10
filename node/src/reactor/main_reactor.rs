@@ -51,8 +51,7 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         transaction_acceptor::{self, TransactionAcceptor},
-        transaction_buffer,
-        transaction_buffer::TransactionBuffer,
+        transaction_buffer::{self, TransactionBuffer},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
@@ -61,8 +60,9 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
-            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            NonExecutableBlockAnnouncement, PeerBehaviorAnnouncement,
+            TransactionAcceptorAnnouncement, TransactionBufferAnnouncement,
+            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{
@@ -203,6 +203,8 @@ pub(crate) struct MainReactor {
 
     finality_signature_creation: bool,
     prevent_validator_shutdown: bool,
+
+    force_catchup: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -308,7 +310,12 @@ impl reactor::Reactor for MainReactor {
                     Effects::new()
                 }
             }
-
+            MainEvent::NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement(
+                _block_height,
+            )) => {
+                self.force_catchup = true;
+                Effects::new()
+            }
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
                 MainEvent::UpgradeWatcher,
@@ -726,14 +733,9 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                is_speculative,
                 responder,
             }) => {
-                let source = if is_speculative {
-                    Source::SpeculativeExec
-                } else {
-                    Source::Client
-                };
+                let source = Source::Client;
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source,
@@ -789,12 +791,6 @@ impl reactor::Reactor for MainReactor {
                                 )),
                             ),
                         ));
-                    }
-                    Source::SpeculativeExec => {
-                        error!(
-                            %transaction,
-                            "transaction acceptor should not announce speculative exec transactions"
-                        );
                     }
                 }
 
@@ -1290,6 +1286,7 @@ impl reactor::Reactor for MainReactor {
             node_startup_instant,
             finality_signature_creation: true,
             prevent_validator_shutdown,
+            force_catchup: false,
         };
         info!("MainReactor: instantiated");
 
