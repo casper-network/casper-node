@@ -74,7 +74,7 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(BlockSynchronizerRequest::NeedNext { .. }) => {
+            Event::Request(BlockSynchronizerRequest::NeedNext) => {
                 write!(f, "block synchronizer need next request")
             }
             Event::Request(BlockSynchronizerRequest::SyncGlobalStates(global_states)) => {

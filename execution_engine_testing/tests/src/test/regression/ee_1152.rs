@@ -134,7 +134,7 @@ fn should_run_ee_1152_regression_test() {
 
     let (era_id, _) = era_validators
         .into_iter()
-        .last()
+        .next_back()
         .expect("should have last element");
     assert!(era_id > INITIAL_ERA_ID, "{}", era_id);
 

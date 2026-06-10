@@ -40,7 +40,7 @@ impl Config {
         let value = self
             .max_global_state_size
             .unwrap_or(DEFAULT_MAX_GLOBAL_STATE_SIZE);
-        if value % *OS_PAGE_SIZE != 0 {
+        if !value.is_multiple_of(*OS_PAGE_SIZE) {
             warn!(
                 "maximum global state database size {} is not multiple of system page size {}",
                 value, *OS_PAGE_SIZE

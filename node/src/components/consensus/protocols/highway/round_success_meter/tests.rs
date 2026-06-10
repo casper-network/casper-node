@@ -73,7 +73,7 @@ fn new_length_speed_up() {
             round_success_meter.current_round_id,
             round_success_meter.current_round_len,
         );
-        if current_round_index % ACCELERATION_PARAMETER == 0 {
+        if current_round_index.is_multiple_of(ACCELERATION_PARAMETER) {
             break;
         };
         round_success_meter.current_round_id += TimeDiff::from_millis(1);
@@ -100,7 +100,7 @@ fn new_length_can_not_speed_up_because_min_round_len() {
             round_success_meter.current_round_id,
             round_success_meter.current_round_len,
         );
-        if current_round_index % ACCELERATION_PARAMETER == 0 {
+        if current_round_index.is_multiple_of(ACCELERATION_PARAMETER) {
             break;
         };
         round_success_meter.current_round_id += TimeDiff::from_millis(1);

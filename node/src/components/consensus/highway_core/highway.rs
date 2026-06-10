@@ -301,6 +301,7 @@ impl<C: Context> Highway<C> {
     }
 
     /// Does initial validation. Returns an error if the vertex is invalid.
+    #[allow(clippy::result_large_err)]
     pub(crate) fn pre_validate_vertex(
         &self,
         vertex: Vertex<C>,
@@ -340,6 +341,7 @@ impl<C: Context> Highway<C> {
     /// Does full validation. Returns an error if the vertex is invalid.
     ///
     /// All dependencies must be added to the state before this validation step.
+    #[allow(clippy::result_large_err)]
     pub(crate) fn validate_vertex(
         &self,
         pvv: PreValidatedVertex<C>,
@@ -897,6 +899,7 @@ pub(crate) mod tests {
         assert!(highway.add_valid_vertex(vv, now).is_empty());
     }
 
+    #[allow(clippy::result_large_err)]
     #[test]
     fn missing_dependency() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);

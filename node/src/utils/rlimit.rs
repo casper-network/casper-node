@@ -107,10 +107,10 @@ where
                 kind: PhantomData,
             }),
             // This should never happen, so we notify the user.
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("expected return value of -1 or 0, but got {}", outcome),
-            )),
+            _ => Err(io::Error::other(format!(
+                "expected return value of -1 or 0, but got {}",
+                outcome
+            ))),
         }
     }
 
@@ -122,10 +122,10 @@ where
             -1 => Err(io::Error::last_os_error()),
             0 => Ok(()),
             // This should never happen, so we notify the user.
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("expected return value of -1 or 0, but got {}", outcome),
-            )),
+            _ => Err(io::Error::other(format!(
+                "expected return value of -1 or 0, but got {}",
+                outcome
+            ))),
         }
     }
 }

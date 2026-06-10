@@ -20,7 +20,7 @@ use middleware::{
 };
 use regex::Regex;
 use wasmer::{
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut,
+    sys::CompilerConfig, AsStoreMut, AsStoreRef, Engine, Function, FunctionEnv, FunctionEnvMut,
     Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
@@ -63,6 +63,9 @@ fn from_wasmer_trap_code(value: wasmer_types::TrapCode) -> TrapCode {
         wasmer_types::TrapCode::UnreachableCodeReached => TrapCode::UnreachableCodeReached,
         wasmer_types::TrapCode::UnalignedAtomic => {
             todo!("Atomic memory extension is not supported")
+        }
+        wasmer_types::TrapCode::UncaughtException => {
+            unreachable!("Wasm exceptions extension is not supported")
         }
     }
 }

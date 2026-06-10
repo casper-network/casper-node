@@ -888,18 +888,19 @@ impl LargestSpecimen for BlockPayload {
 
 impl LargestSpecimen for RewardedSignatures {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        RewardedSignatures::new(
-            std::iter::repeat(LargestSpecimen::largest_specimen(estimator, cache))
-                .take(estimator.parameter("signature_rewards_max_delay")),
-        )
+        RewardedSignatures::new(std::iter::repeat_n(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            estimator.parameter("signature_rewards_max_delay"),
+        ))
     }
 }
 
 impl LargestSpecimen for SingleBlockRewardedSignatures {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, _cache: &mut Cache) -> Self {
-        SingleBlockRewardedSignatures::pack(
-            std::iter::repeat(1).take(estimator.parameter("validator_count")),
-        )
+        SingleBlockRewardedSignatures::pack(std::iter::repeat_n(
+            1,
+            estimator.parameter("validator_count"),
+        ))
     }
 }
 
@@ -1245,9 +1246,7 @@ fn largest_chain_name<E: SizeEstimator>(estimator: &E) -> String {
 
 /// Returns a string with `len`s characters of the largest possible size.
 fn string_max_characters(max_char: usize) -> String {
-    std::iter::repeat(HIGHEST_UNICODE_CODEPOINT)
-        .take(max_char)
-        .collect()
+    std::iter::repeat_n(HIGHEST_UNICODE_CODEPOINT, max_char).collect()
 }
 
 /// Returns the max rounds per era with the specimen parameters.

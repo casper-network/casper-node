@@ -552,7 +552,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::UnexpectedEntryPoint { .. } => {
                 ErrorCode::InvalidTransactionUnexpectedEntryPoint
             }
-            InvalidTransactionV1::CouldNotSerializeTransaction { .. } => {
+            InvalidTransactionV1::CouldNotSerializeTransaction => {
                 ErrorCode::TransactionHasMalformedBinaryRepresentation
             }
             InvalidTransactionV1::InsufficientAmount { .. } => {

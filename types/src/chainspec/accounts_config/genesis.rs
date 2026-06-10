@@ -281,7 +281,7 @@ impl GenesisAccount {
     /// some amount of delegated stake.
     pub fn staked_amount(&self) -> Motes {
         match self {
-            GenesisAccount::System { .. }
+            GenesisAccount::System
             | GenesisAccount::Account {
                 validator: None, ..
             } => Motes::zero(),
@@ -327,7 +327,7 @@ impl GenesisAccount {
 
     /// Is this a virtual system account.
     pub fn is_system_account(&self) -> bool {
-        matches!(self, GenesisAccount::System { .. })
+        matches!(self, GenesisAccount::System)
     }
 
     /// Is this a validator account.
@@ -336,7 +336,7 @@ impl GenesisAccount {
             GenesisAccount::Account {
                 validator: Some(_), ..
             } => true,
-            GenesisAccount::System { .. }
+            GenesisAccount::System
             | GenesisAccount::Account {
                 validator: None, ..
             }

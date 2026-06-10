@@ -199,6 +199,7 @@ impl QueueDumpFormat {
 }
 
 /// A `TransactionAcceptor` announcement.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize)]
 pub(crate) enum TransactionAcceptorAnnouncement {
     /// A transaction which wasn't previously stored on this node has been accepted and stored.

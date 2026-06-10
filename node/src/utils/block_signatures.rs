@@ -30,10 +30,7 @@ where
     let mut signature_weight: U512 = U512::zero();
     let mut minimum_weight: Option<U512> = None;
 
-    let total_weight: U512 = trusted_validator_weights
-        .iter()
-        .map(|(_, weight)| *weight)
-        .sum();
+    let total_weight: U512 = trusted_validator_weights.values().copied().sum();
 
     match maybe_block_signatures {
         Some(block_signatures) => {

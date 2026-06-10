@@ -8,6 +8,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The category of a [`Transaction`].
+#[deprecated(
+    note = "DeployCategory is scheduled for removal in the next casper-types major version"
+)]
 #[derive(
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
@@ -19,6 +22,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
+#[allow(dead_code)]
 pub enum DeployCategory {
     /// Standard transaction (the default).
     #[default]
@@ -27,6 +31,7 @@ pub enum DeployCategory {
     Transfer = 1,
 }
 
+#[allow(deprecated)]
 impl fmt::Display for DeployCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -36,6 +41,7 @@ impl fmt::Display for DeployCategory {
     }
 }
 
+#[allow(deprecated)]
 impl From<Deploy> for DeployCategory {
     fn from(value: Deploy) -> Self {
         if value.is_transfer() {

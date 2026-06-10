@@ -331,7 +331,7 @@ impl ValidatorMatrix {
         None
     }
 
-    fn read_inner(&self) -> RwLockReadGuard<BTreeMap<EraId, EraValidatorWeights>> {
+    fn read_inner(&self) -> RwLockReadGuard<'_, BTreeMap<EraId, EraValidatorWeights>> {
         self.inner.read().unwrap()
     }
 

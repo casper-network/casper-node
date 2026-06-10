@@ -20,7 +20,7 @@ pub trait Chunkable {
     /// would require instantiating a `Vec<u8>` locally (see [`casper_types::bytesrepr::ToBytes`])
     /// but can't be returned as reference. Alternative encoding would be to consume `Self` and
     /// return `Vec<u8>` but that may do it unnecessarily if `Self` would be to used again.
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error>;
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error>;
 
     /// Serializes the `self` using the [`Chunkable`] implementation for that type
     /// and returns a [`Digest`] of the serialized bytes.
@@ -33,7 +33,7 @@ pub trait Chunkable {
 impl Chunkable for Vec<u8> {
     type Error = Infallible;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Borrowed(self))
     }
 }
@@ -41,7 +41,7 @@ impl Chunkable for Vec<u8> {
 impl Chunkable for Bytes {
     type Error = Infallible;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Borrowed(self.inner_bytes()))
     }
 }
@@ -49,7 +49,7 @@ impl Chunkable for Bytes {
 impl Chunkable for HashingTrieRaw {
     type Error = Infallible;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Borrowed(self.inner().inner().inner_bytes()))
     }
 }
@@ -57,7 +57,7 @@ impl Chunkable for HashingTrieRaw {
 impl Chunkable for &Vec<ExecutionResult> {
     type Error = bytesrepr::Error;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Owned((*self).to_bytes()?))
     }
 }
@@ -65,7 +65,7 @@ impl Chunkable for &Vec<ExecutionResult> {
 impl Chunkable for Vec<ExecutionResult> {
     type Error = bytesrepr::Error;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Owned(self.to_bytes()?))
     }
 }
@@ -73,7 +73,7 @@ impl Chunkable for Vec<ExecutionResult> {
 impl Chunkable for Vec<&ExecutionResultV1> {
     type Error = bytesrepr::Error;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Owned(self.to_bytes()?))
     }
 }
@@ -81,7 +81,7 @@ impl Chunkable for Vec<&ExecutionResultV1> {
 impl Chunkable for Vec<&ExecutionResultV2> {
     type Error = bytesrepr::Error;
 
-    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+    fn as_bytes(&self) -> Result<Cow<'_, Vec<u8>>, Self::Error> {
         Ok(Cow::Owned(self.to_bytes()?))
     }
 }
