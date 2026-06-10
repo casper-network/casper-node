@@ -555,10 +555,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     let data = if data_ptr == 0 {
         if !is_revert {
             let key = caller.context().caller;
-            caller
-                .context_mut()
-                .tracking_copy
-                .ret(key, RetValue::Unit);
+            caller.context_mut().tracking_copy.ret(key, RetValue::Unit);
         }
         None
     } else {
@@ -953,20 +950,17 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     for transform in effects.transforms() {
                         match transform.kind() {
                             TransformKindV2::EntryPointCalled(addr, ep_name) => {
-                                caller
-                                    .context_mut()
-                                    .tracking_copy
-                                    .entry_point_called(
-                                        transform.key().clone(),
-                                        *addr,
-                                        ep_name.clone(),
-                                    );
+                                caller.context_mut().tracking_copy.entry_point_called(
+                                    *transform.key(),
+                                    *addr,
+                                    ep_name.clone(),
+                                );
                             }
                             TransformKindV2::Ret(ret_value) => {
                                 caller
                                     .context_mut()
                                     .tracking_copy
-                                    .ret(transform.key().clone(), ret_value.clone());
+                                    .ret(*transform.key(), ret_value.clone());
                             }
                             _ => {}
                         }

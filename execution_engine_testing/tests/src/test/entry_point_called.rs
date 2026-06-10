@@ -370,7 +370,8 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         .into_entity_hash_addr()
         .expect("should have hash addr");
 
-    // 2. Install do_nothing_stored_caller_stored (middle, has "call_stored" and "chain_call" entries)
+    // 2. Install do_nothing_stored_caller_stored (middle, has "call_stored" and "chain_call"
+    //    entries)
     let install_middle_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         &format!("{}.wasm", DO_NOTHING_STORED_CALLER_CONTRACT_NAME),
@@ -394,10 +395,10 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         .into_entity_hash_addr()
         .expect("should have hash addr");
 
-    // 3. Install another instance of do_nothing_stored_caller_stored (outer, has "chain_call" entry)
-    //    We reuse the same wasm but it gets a new hash.
-    //    We need a different key name to distinguish the two instances.
-    //    The second install will overwrite DO_NOTHING_STORED_CALLER_HASH_KEY_NAME with the new hash.
+    // 3. Install another instance of do_nothing_stored_caller_stored (outer, has "chain_call"
+    //    entry) We reuse the same wasm but it gets a new hash. We need a different key name to
+    //    distinguish the two instances. The second install will overwrite
+    //    DO_NOTHING_STORED_CALLER_HASH_KEY_NAME with the new hash.
     let install_outer_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         &format!("{}.wasm", DO_NOTHING_STORED_CALLER_CONTRACT_NAME),
@@ -421,8 +422,8 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         .into_entity_hash_addr()
         .expect("should have hash addr");
 
-    // 4. Call outer.chain_call(middle_hash, leaf_hash)
-    //    This chains: account -> outer.chain_call -> middle.call_stored -> leaf.delegate
+    // 4. Call outer.chain_call(middle_hash, leaf_hash) This chains: account -> outer.chain_call ->
+    //    middle.call_stored -> leaf.delegate
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         AddressableEntityHash::new(outer_hash),
@@ -458,14 +459,8 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         Key::Hash(middle_hash),
         TransformKindV2::EntryPointCalled(Some(leaf_hash), "delegate".to_string()),
     );
-    let leaf_ret = TransformV2::new(
-        Key::Hash(middle_hash),
-        TransformKindV2::Ret(RetValue::Unit),
-    );
-    let middle_ret = TransformV2::new(
-        Key::Hash(outer_hash),
-        TransformKindV2::Ret(RetValue::Unit),
-    );
+    let leaf_ret = TransformV2::new(Key::Hash(middle_hash), TransformKindV2::Ret(RetValue::Unit));
+    let middle_ret = TransformV2::new(Key::Hash(outer_hash), TransformKindV2::Ret(RetValue::Unit));
     let outer_ret = TransformV2::new(
         Key::Account(*DEFAULT_ACCOUNT_ADDR),
         TransformKindV2::Ret(RetValue::Unit),

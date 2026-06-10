@@ -33,10 +33,12 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::{Message, Messages},
     contracts::NamedKeys,
-    execution::{Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2},
+    execution::{
+        Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
+    },
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, HashAddr,
-    Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
+    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest,
+    HashAddr, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};

@@ -23,7 +23,8 @@ pub extern "C" fn call_stored() {
     runtime::call_contract(contract_hash.into(), "delegate", runtime_args! {})
 }
 
-/// Calls outer.call_stored(inner_addr), chaining 3 levels: self -> outer.call_stored -> inner.delegate
+/// Calls outer.call_stored(inner_addr), chaining 3 levels: self -> outer.call_stored ->
+/// inner.delegate
 #[no_mangle]
 pub extern "C" fn chain_call() {
     let outer_addr: [u8; 32] = runtime::get_named_arg(ARG_OUTER_ADDR);

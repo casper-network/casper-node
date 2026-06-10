@@ -1093,12 +1093,7 @@ fn casper_return_writes_to_execution_journal() {
 
     let ret_transforms: Vec<&TransformV2> = transforms
         .iter()
-        .filter(|transform| {
-            matches!(
-                transform.kind(),
-                TransformKindV2::Ret(_)
-            )
-        })
+        .filter(|transform| matches!(transform.kind(), TransformKindV2::Ret(_)))
         .collect();
     assert_eq!(ret_transforms.len(), 1);
     let ret_transform = ret_transforms
@@ -1533,12 +1528,30 @@ fn v2_three_levels_of_contract_calls_produce_journal() {
     // 3 EC + 3 Ret = 6 transforms total
     assert_eq!(ep_calls_and_rets.len(), 6);
     // Verify all 6 are correctly paired (EC followed by matching Ret)
-    assert!(matches!(ep_calls_and_rets[0].kind(), TransformKindV2::EntryPointCalled(_, _)));
-    assert!(matches!(ep_calls_and_rets[1].kind(), TransformKindV2::EntryPointCalled(_, _)));
-    assert!(matches!(ep_calls_and_rets[2].kind(), TransformKindV2::Ret(_)));
-    assert!(matches!(ep_calls_and_rets[3].kind(), TransformKindV2::EntryPointCalled(_, _)));
-    assert!(matches!(ep_calls_and_rets[4].kind(), TransformKindV2::Ret(_)));
-    assert!(matches!(ep_calls_and_rets[5].kind(), TransformKindV2::Ret(_)));
+    assert!(matches!(
+        ep_calls_and_rets[0].kind(),
+        TransformKindV2::EntryPointCalled(_, _)
+    ));
+    assert!(matches!(
+        ep_calls_and_rets[1].kind(),
+        TransformKindV2::EntryPointCalled(_, _)
+    ));
+    assert!(matches!(
+        ep_calls_and_rets[2].kind(),
+        TransformKindV2::Ret(_)
+    ));
+    assert!(matches!(
+        ep_calls_and_rets[3].kind(),
+        TransformKindV2::EntryPointCalled(_, _)
+    ));
+    assert!(matches!(
+        ep_calls_and_rets[4].kind(),
+        TransformKindV2::Ret(_)
+    ));
+    assert!(matches!(
+        ep_calls_and_rets[5].kind(),
+        TransformKindV2::Ret(_)
+    ));
 }
 
 /// Test: When a stored contract fails (bad input → deserialization panic → trap),
