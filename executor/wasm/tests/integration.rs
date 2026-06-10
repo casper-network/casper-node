@@ -1113,8 +1113,8 @@ fn casper_return_writes_to_execution_journal() {
     }
     assert_eq!(
         ret_transform.key(),
-        &Key::Account(*DEFAULT_ACCOUNT_HASH),
-        "Ret transform should be under the caller (account) key"
+        &Key::Hash(contract_address.into()),
+        "Ret transform should be under the callee (contract) key"
     );
 }
 
@@ -1193,7 +1193,7 @@ fn calling_upgrade_contract_should_produce_ret_and_call_result() {
         TransformKindV2::Ret(RetValue::Unit),
     );
     let ret_2 = TransformV2::new(
-        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        Key::Hash(*create_result.smart_contract_addr()),
         TransformKindV2::Ret(RetValue::Unit),
     );
     assert_eq!(
@@ -1243,7 +1243,7 @@ fn calling_constructor_method_should_produce_ret_and_call_result() {
         ),
     );
     let ret = TransformV2::new(
-        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        Key::Hash(*create_result.smart_contract_addr()),
         TransformKindV2::Ret(RetValue::Unit),
     );
     assert_eq!(ep_calls_and_rets, vec![constructor_called, ret]);
@@ -1356,7 +1356,7 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
         ),
     );
     let increment_return = TransformV2::new(
-        Key::Hash(*caller_create_result.smart_contract_addr()),
+        Key::Hash(*counter_create_result.smart_contract_addr()),
         TransformKindV2::Ret(RetValue::Unit),
     );
     let get_call = TransformV2::new(
@@ -1367,12 +1367,12 @@ fn contract_calling_different_contract_should_produce_ret_and_call_result() {
         ),
     );
     let get_return = TransformV2::new(
-        Key::Hash(*caller_create_result.smart_contract_addr()),
+        Key::Hash(*counter_create_result.smart_contract_addr()),
         TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
     );
 
     let inc_and_get_return = TransformV2::new(
-        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        Key::Hash(*caller_create_result.smart_contract_addr()),
         TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
     );
 
@@ -1439,7 +1439,7 @@ fn calling_session_should_produce_entry_point_called_and_ret() {
 /// The counter-caller contract calls counter's `increment` then `get`, so the journal
 /// shows 3 EC-Ret pairs across 2 depths of stored-contract nesting.
 #[test]
-fn v2_three_levels_of_contract_calls_produce_journal() {
+fn vm2_three_levels_of_contract_calls_produce_journal() {
     let mut executor = make_executor();
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
@@ -1525,39 +1525,57 @@ fn v2_three_levels_of_contract_calls_produce_journal() {
         execute_request,
     );
     let ep_calls_and_rets = get_ep_calls_and_rets(result.effects().transforms());
-    // 3 EC + 3 Ret = 6 transforms total
-    assert_eq!(ep_calls_and_rets.len(), 6);
-    // Verify all 6 are correctly paired (EC followed by matching Ret)
-    assert!(matches!(
-        ep_calls_and_rets[0].kind(),
-        TransformKindV2::EntryPointCalled(_, _)
-    ));
-    assert!(matches!(
-        ep_calls_and_rets[1].kind(),
-        TransformKindV2::EntryPointCalled(_, _)
-    ));
-    assert!(matches!(
-        ep_calls_and_rets[2].kind(),
-        TransformKindV2::Ret(_)
-    ));
-    assert!(matches!(
-        ep_calls_and_rets[3].kind(),
-        TransformKindV2::EntryPointCalled(_, _)
-    ));
-    assert!(matches!(
-        ep_calls_and_rets[4].kind(),
-        TransformKindV2::Ret(_)
-    ));
-    assert!(matches!(
-        ep_calls_and_rets[5].kind(),
-        TransformKindV2::Ret(_)
-    ));
+    let b = 1_u32.to_le_bytes();
+    let inc_and_get_call = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*caller_create_result.smart_contract_addr()),
+            "inc_and_get".to_string(),
+        ),
+    );
+    let increment_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "increment".to_string(),
+        ),
+    );
+    let increment_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let get_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "get".to_string(),
+        ),
+    );
+    let get_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+    let inc_and_get_return = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+    assert_eq!(
+        ep_calls_and_rets,
+        vec![
+            inc_and_get_call,
+            increment_call,
+            increment_return,
+            get_call,
+            get_return,
+            inc_and_get_return,
+        ]
+    );
 }
 
 /// Test: When a stored contract fails (bad input → deserialization panic → trap),
 /// its EntryPointCalled appears in the journal but no Ret is recorded.
 #[test]
-fn v2_failed_call_shows_entry_point_called_without_ret() {
+fn vm2_failed_call_shows_entry_point_called_without_ret() {
     let mut executor = make_executor();
     let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
@@ -1622,18 +1640,14 @@ fn v2_failed_call_shows_entry_point_called_without_ret() {
 
     // EntryPointCalled is present — the call was attempted
     let ep_calls_and_rets = get_ep_calls_and_rets(result.effects().transforms());
-    assert_eq!(
-        ep_calls_and_rets.len(),
-        1,
-        "Expected exactly one EntryPointCalled with no corresponding Ret"
-    );
-    assert!(
-        matches!(
-            ep_calls_and_rets[0].kind(),
-            TransformKindV2::EntryPointCalled(_, ep) if ep == "inc_and_get"
+    let expected_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*caller_create_result.smart_contract_addr()),
+            "inc_and_get".to_string(),
         ),
-        "Expected EntryPointCalled for inc_and_get"
     );
+    assert_eq!(ep_calls_and_rets, vec![expected_ec]);
 }
 
 fn get_ep_calls_and_rets(transforms: &[TransformV2]) -> Vec<TransformV2> {

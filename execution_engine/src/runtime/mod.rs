@@ -2174,8 +2174,10 @@ where
                 }
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
-                let key = self.context.get_context_key();
-                self.context.state().borrow_mut().ret(key, RetValue::Unit);
+                self.context
+                    .state()
+                    .borrow_mut()
+                    .ret(runtime.context.get_context_key(), RetValue::Unit);
                 Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
             }
             Err(error) => {
@@ -2217,7 +2219,7 @@ where
                             self.context
                                 .state()
                                 .borrow_mut()
-                                .ret(self.context.get_context_key(), ret_val);
+                                .ret(runtime.context.get_context_key(), ret_val);
                             host_buffer.ok_or(ExecError::ExpectedReturnValue)
                         }
                         Some(error) => Err(error.clone()),

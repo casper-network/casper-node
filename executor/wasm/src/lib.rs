@@ -594,7 +594,7 @@ impl ExecutorV2 {
 
         match vm_result {
             Ok(()) => {
-                final_tracking_copy.ret(caller_key, RetValue::Unit);
+                final_tracking_copy.ret(callee_key, RetValue::Unit);
                 Ok(ExecuteResult {
                     host_error: None,
                     output: None,
