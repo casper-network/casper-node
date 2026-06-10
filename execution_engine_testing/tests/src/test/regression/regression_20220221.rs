@@ -108,7 +108,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     let (era_id, trusted_era_validators) = era_validators
         .into_iter()
-        .last()
+        .next_back()
         .expect("should have last element");
     assert!(era_id > INITIAL_ERA_ID, "{}", era_id);
 

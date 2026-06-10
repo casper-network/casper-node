@@ -551,6 +551,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
     /// Avoids multiple validation of the same vertex.
+    #[allow(clippy::result_large_err)]
     fn pre_validate_vertex(
         &mut self,
         v: Vertex<C>,

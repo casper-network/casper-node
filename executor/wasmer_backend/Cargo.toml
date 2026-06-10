@@ -19,12 +19,12 @@ casper-types = { version = "7.0.0", path = "../../types" }
 regex = "1.11"
 # Added rustls-webpki dependency to fix audit issue
 rustls-webpki = "0.103.13"
-wasmer = { version = "5.0.4", default-features = false, features = [
+wasmer = { version = "6.1.0", default-features = false, features = [
     "singlepass",
 ] }
-wasmer-compiler-singlepass = "5.0.4"
-wasmer-middlewares = "5.0.4"
-wasmer-types = "5.0.4"
+wasmer-compiler-singlepass = "6.1.0"
+wasmer-middlewares = "6.1.0"
+wasmer-types = "6.1.0"
 tracing = "0.1.41"
 
 [dev-dependencies]

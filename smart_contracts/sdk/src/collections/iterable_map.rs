@@ -267,7 +267,7 @@ where
     ///
     /// Traverses entries in reverse-insertion order.
     /// Each item is a tuple of the hashed key and the value.
-    pub fn iter(&self) -> IterableMapIter<K, V> {
+    pub fn iter(&self) -> IterableMapIter<'_, K, V> {
         IterableMapIter {
             prefix: &self.prefix,
             current: self.tail_key_hash,

@@ -1,5 +1,6 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 #![allow(clippy::arithmetic_side_effects)] // Overflows in tests would panic anyway.
+#![allow(clippy::result_large_err)]
 
 use std::{
     collections::{hash_map::DefaultHasher, BTreeSet},

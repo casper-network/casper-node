@@ -619,10 +619,12 @@ impl JsonSchema for ContractPackageHash {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(Default)]
 pub enum ContractPackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,
     /// The package is unlocked and can be versioned.
+    #[default]
     Unlocked,
 }
 
@@ -634,12 +636,6 @@ impl ContractPackageStatus {
         } else {
             ContractPackageStatus::Unlocked
         }
-    }
-}
-
-impl Default for ContractPackageStatus {
-    fn default() -> Self {
-        Self::Unlocked
     }
 }
 

@@ -211,6 +211,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     #[test]
     fn tallies() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);

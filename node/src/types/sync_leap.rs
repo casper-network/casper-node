@@ -2183,7 +2183,7 @@ mod tests {
             }
         }
 
-        pub(crate) fn iter(&mut self) -> TestBlockIterator {
+        pub(crate) fn iter(&mut self) -> TestBlockIterator<'_> {
             let block_height = self.block.height();
 
             const DEFAULT_VALIDATOR_WEIGHT: u64 = 100;

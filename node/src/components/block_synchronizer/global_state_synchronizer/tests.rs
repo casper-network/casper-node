@@ -13,6 +13,7 @@ use crate::{
 };
 
 /// Event for the mock reactor.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 enum ReactorEvent {
     TrieAccumulatorRequest(TrieAccumulatorRequest),

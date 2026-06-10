@@ -81,6 +81,7 @@ impl ApprovalInfo {
 ///
 /// Tracks whether there are transactions still missing and who is interested in the final
 /// result.
+#[allow(clippy::large_enum_variant)]
 #[derive(DataSize, Debug)]
 pub(super) enum BlockValidationState {
     /// The validity is not yet decided.

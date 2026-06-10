@@ -3,22 +3,22 @@
 The Faucet is a contract that is designed to allow users to create a new account or to allow existing users to fund their account easily.
 
 ## Install Session
+
 The install session is responsible for creating the faucet's stored contract package and setting up a few named keys in the account used to perform the install. The installer performs the following actions.
 
 1. Takes the `id` parameter and uses it to keep track of the faucet being set up. As an example, if the operator installing the faucet passes `1337` as the `id` named argument to the installer session, it will create a named key called `faucet_1337` for the account used to call the install session.
 1. Calls the stored faucet's `init` entry point to initialize a new purse that will be used to fund the faucet. This purse is stored under the named keys of the account used to install the faucet. The `init` entrypoint also initializes the faucet's state and writes to its named keys.
 1. Funds the faucet's purse with the amount of motes declared in the `amount` runtime argument.
 
-
 ## Set Variables
 
 > NOTE: Before the faucet can be called, the `set_variables` entrypoint must be called.
 >
-This is a list of the required runtime arguments for calling `set_variables`
-* `available_amount: U512` - The total amount available for distribution each interval.
-* `distributions_per_interval: u64` - The maximum number of distributions to be made each interval.
-* `time_interval: u64` - The amount of time in milliseconds that must pass before the available amount is replenished.
+> This is a list of the required runtime arguments for calling `set_variables`
 
+- `available_amount: U512` - The total amount available for distribution each interval.
+- `distributions_per_interval: u64` - The maximum number of distributions to be made each interval.
+- `time_interval: u64` - The amount of time in milliseconds that must pass before the available amount is replenished.
 
 You can adjust the faucet's distribution rate by modifying the variables. If the faucet has distributed a total of `available_amount` in one `time_interval`, then no more token will be available to distribute until `last_distribution_at + time_interval < blocktime`. However, the installer of this contract is not rate limited and may continue to distribute funds from the faucet freely.
 
@@ -34,8 +34,8 @@ If you try to invoke the contract before these variables are set, then you'll ge
 ### Costs by Entry Point
 
 | feature                  | cost              |
-|--------------------------|-------------------|
-| faucet install           | `1492_30_872_143` |
-| faucet set variables     | `79_455_975`      |
-| faucet call by installer | `265_26_265_33`   |
-| faucet call by user      | `2_558_318_531`   |
+| ------------------------ | ----------------- |
+| faucet install           | `112_723_697_942` |
+| faucet set variables     | `79_796_780`      |
+| faucet call by installer | `2_652_960_368`   |
+| faucet call by user      | `2_558_834_176`   |

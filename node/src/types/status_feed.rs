@@ -1,58 +1,15 @@
-use std::{
-    collections::BTreeMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::Duration,
-};
+use std::{collections::BTreeMap, time::Duration};
 
-use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_binary_port::ConsensusStatus;
 use casper_types::{
-    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
-    NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId, NextUpgrade,
+    Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
-use crate::{
-    components::rest_server::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    reactor::main_reactor::ReactorState,
-    types::NodeId,
-};
-
-static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
-    let next_upgrade = NextUpgrade::new(
-        ActivationPoint::EraId(EraId::from(42)),
-        ProtocolVersion::from_parts(2, 0, 1),
-    );
-    ChainspecInfo {
-        name: String::from("casper-example"),
-        next_upgrade: Some(next_upgrade),
-    }
-});
-
-static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
-    let node_id = NodeId::doc_example();
-    let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
-    let mut peers = BTreeMap::new();
-    peers.insert(*node_id, socket_addr.to_string());
-    let status_feed = StatusFeed {
-        last_added_block: Some(Block::example().clone()),
-        peers,
-        chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: Some(PublicKey::example().clone()),
-        round_length: Some(TimeDiff::from_millis(1 << 16)),
-        version: crate::VERSION_STRING.as_str(),
-        node_uptime: Duration::from_secs(13),
-        reactor_state: ReactorState::Initialize,
-        last_progress: Timestamp::from(0),
-        available_block_range: AvailableBlockRange::RANGE_0_0,
-        block_sync: BlockSynchronizerStatus::example().clone(),
-        starting_state_root_hash: Digest::default(),
-        latest_switch_block_hash: Some(BlockHash::default()),
-    };
-    GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
-});
+use crate::{reactor::main_reactor::ReactorState, types::NodeId};
 
 /// Summary information from the chainspec.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,12 +17,6 @@ pub struct ChainspecInfo {
     /// Name of the network.
     name: String,
     next_upgrade: Option<NextUpgrade>,
-}
-
-impl DocExample for ChainspecInfo {
-    fn doc_example() -> &'static Self {
-        &CHAINSPEC_INFO
-    }
 }
 
 impl ChainspecInfo {
@@ -240,11 +191,5 @@ impl GetStatusResult {
             #[cfg(test)]
             build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
         }
-    }
-}
-
-impl DocExample for GetStatusResult {
-    fn doc_example() -> &'static Self {
-        &GET_STATUS_RESULT
     }
 }

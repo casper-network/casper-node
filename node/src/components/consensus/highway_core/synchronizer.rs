@@ -204,7 +204,7 @@ impl<C: Context + 'static> Synchronizer<C> {
             vertices_awaiting_deps: BTreeMap::new(),
             vertices_to_be_added_later: BTreeMap::new(),
             vertices_no_deps: Default::default(),
-            oldest_seen_panorama: iter::repeat(None).take(validator_len).collect(),
+            oldest_seen_panorama: iter::repeat_n(None, validator_len).collect(),
             instance_id,
             requests_sent: BTreeMap::new(),
             current_era: true,

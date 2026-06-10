@@ -19,7 +19,6 @@
 //!     example: curl -X GET 'http://IP:8888/metrics'
 
 mod config;
-mod docs;
 mod event;
 mod filters;
 mod http_server;
@@ -58,8 +57,6 @@ use crate::{
     NodeRng,
 };
 pub use config::Config;
-pub use docs::DocExample;
-pub(crate) use docs::DOCS_EXAMPLE_PROTOCOL_VERSION;
 pub(crate) use event::Event;
 pub(crate) use info::{GetChainspecResult, GetValidatorChangesResult};
 

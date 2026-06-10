@@ -1,3 +1,4 @@
+#[allow(deprecated)]
 pub mod deploy_category;
 mod deploy_hash;
 mod deploy_header;

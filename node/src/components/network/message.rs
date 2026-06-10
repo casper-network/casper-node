@@ -440,7 +440,6 @@ pub struct EstimatorWeights {
 }
 
 mod specimen_support {
-    use std::iter;
 
     use serde::Serialize;
 
@@ -461,9 +460,11 @@ mod specimen_support {
                 estimator,
                 |variant| match variant {
                     MessageDiscriminants::Handshake => Message::Handshake {
-                        network_name: iter::repeat(HIGHEST_UNICODE_CODEPOINT)
-                            .take(largest_network_name)
-                            .collect(),
+                        network_name: std::iter::repeat_n(
+                            HIGHEST_UNICODE_CODEPOINT,
+                            largest_network_name,
+                        )
+                        .collect(),
                         public_addr: LargestSpecimen::largest_specimen(estimator, cache),
                         protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
                         consensus_certificate: LargestSpecimen::largest_specimen(estimator, cache),
