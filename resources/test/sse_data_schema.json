@@ -5069,12 +5069,6 @@
       "description": "Type disambiguating between the formatting of the returned data.",
       "oneOf": [
         {
-          "type": "string",
-          "enum": [
-            "Unit"
-          ]
-        },
-        {
           "description": "The returned data is CLValue.",
           "type": "object",
           "required": [
@@ -5099,6 +5093,13 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "There was no returned data.",
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
         }
       ]
     },

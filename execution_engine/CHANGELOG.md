@@ -13,23 +13,28 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 
-- Calling wasm adds additional execution journal entries. For each session execution there will be a corresponding pair of TransformKindV2::EntryPointCalled and TransformKindV2::Ret written:
+- Calling wasm adds additional execution journal entries. For each wasm execution there will be
+  a `TransformKindV2::EntryPointCalled` and a corresponding `TransformKindV2::Ret` written.
+  `EntryPointCalled` is keyed under the **caller** and `Ret` is keyed under the **callee**
+  (these are the same key only for session bytes, where caller and callee are both the
+  initiating account).
    - For session bytes:
-      - the key under which both transforms will be stored is the Key::Account that initiated the transaction.
-      - The `Option<HashAddr>` of `EntryPointCalled` will be `None`
-      - The `String` of `EntryPointCalled` will be `"call"` (the default function name we expect of session wasm)
-      - The `Ret` will either be `RetValue::Unit` or `RetValue::CLValue` depending on wether or not the code called `casper_return`.
-   - If a session call calls a stored contracts entrypoint:
-      - the key under which both transforms will be stored is the Key::Account that initiated the transaction.
-      - The `Option<HashAddr>` of `EntryPointCalled` will be `Some(<called_contract_hash>)`
-      - The `String` of `EntryPointCalled` will be the name of the called entrypoint
-      - The `Ret` will either be `RetValue::Unit` or `RetValue::CLValue` depending on wether or not the code called `casper_return`.
-   - If a stored contract calls another stored contract:
-      - the key under which both transforms will be stored is the key of the contract which is executing the call.
-      - The `Option<HashAddr>` of `EntryPointCalled` will be `Some(<called_contract_hash>)`
-      - The `String` of `EntryPointCalled` will be the name of the called entrypoint
-      - The `Ret` will either be `RetValue::Unit` or `RetValue::CLValue` depending on wether or not the code called `casper_return`.
-    - the above also applies to `payment` bytecode if supplied
+      - `EntryPointCalled` key: `Key::Account` of the transaction initiator
+      - `EntryPointCalled` `Option<HashAddr>`: `None`
+      - `EntryPointCalled` `String`: `"call"` (the default entry-point name for session wasm)
+      - `Ret` key: `Key::Account` of the transaction initiator (same as `EntryPointCalled`)
+      - `Ret` value: `RetValue::Unit` if the code returned normally; `RetValue::CLValue` (VM1)
+        or `RetValue::Bytes` (VM2) if the code called `casper_ret`/`casper_return` with data.
+   - If a caller invokes a stored contract's entry point:
+      - `EntryPointCalled` key: `Key::Account` of the transaction initiator (for a top-level
+        call) or `Key::Hash` of the calling contract (for a nested call)
+      - `EntryPointCalled` `Option<HashAddr>`: `Some(<called_contract_hash>)`
+      - `EntryPointCalled` `String`: name of the called entry point
+      - `Ret` key: `Key::Hash` of the **called** contract (different from `EntryPointCalled` key)
+      - `Ret` value: `RetValue::Unit` if the contract returned normally; `RetValue::CLValue`
+        (VM1) or `RetValue::Bytes` (VM2) if the contract called `casper_ret`/`casper_return`
+        with data.
+   - The above also applies to `payment` bytecode if supplied.
     
 
 ## 9.0.0

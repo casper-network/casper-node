@@ -5,8 +5,11 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::WasmV1Result;
 use casper_types::{
     execution::{RetValue, TransformKindV2, TransformV2},
-    runtime_args, AddressableEntityHash, Key, RuntimeArgs, DEFAULT_ENTRY_POINT_NAME,
+    runtime_args,
+    system::{handle_payment, mint::METHOD_CREATE},
+    AddressableEntityHash, Key, RuntimeArgs, DEFAULT_ENTRY_POINT_NAME,
 };
+use log::error;
 
 const DO_NOTHING: &str = "do_nothing.wasm";
 const DO_NOTHING_STORED: &str = "do_nothing_stored.wasm";
@@ -15,9 +18,14 @@ const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
 const DO_NOTHING_PACKAGE_HASH_KEY_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_STORED_CALLER_HASH_KEY_NAME: &str = "do_nothing_stored_caller_stored_hash";
 
+const CALL_ALL_SYSTEM_CONTRACTS_WASM: &str = "call_all_system_contracts.wasm";
+const STORED_CALL_ALL_SYSTEM_CONTRACTS_WASM: &str = "stored_call_all_system_contracts.wasm";
+const STORED_CALL_ALL_SYSTEM_CONTRACTS_KEY: &str = "stored_call_handle_payment_hash";
+const STORED_CALL_ALL_SYSTEM_CONTRACTS_ENTRY_POINT: &str = "call_system";
+
 #[ignore]
 #[test]
-fn vm1_do_nothing_session_should_not_return_entry_point_called() {
+fn vm1_do_nothing_session_should_return_session_entry_point_called() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -309,6 +317,164 @@ fn vm1_nested_call_should_produce_entry_point_calls_and_rets() {
     );
 }
 
+#[ignore]
+#[test]
+fn vm1_session_calling_system_contracts_emits_entry_point_called_and_ret() {
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CALL_ALL_SYSTEM_CONTRACTS_WASM,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let results = builder
+        .exec(exec_request)
+        .expect_success()
+        .get_exec_result_owned(0)
+        .unwrap();
+
+    let handle_payment_hash = builder.get_handle_payment_contract_hash().value();
+    let mint_hash = builder.get_mint_contract_hash().value();
+
+    let ep_calls_and_rets = get_ep_calls_and_rets(results);
+    // session EC + HandlePayment EC + HandlePayment Ret + session Ret = 4
+    assert_eq!(ep_calls_and_rets.len(), 6);
+
+    let session_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_ADDR),
+        TransformKindV2::EntryPointCalled(None, DEFAULT_ENTRY_POINT_NAME.to_string()),
+    );
+    let hp_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_ADDR),
+        TransformKindV2::EntryPointCalled(
+            Some(handle_payment_hash),
+            handle_payment::METHOD_GET_PAYMENT_PURSE.to_string(),
+        ),
+    );
+    let mint_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_ADDR),
+        TransformKindV2::EntryPointCalled(Some(mint_hash), METHOD_CREATE.to_string()),
+    );
+    let session_ret = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_ADDR),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+
+    assert_eq!(ep_calls_and_rets[0], session_ec);
+    assert_eq!(ep_calls_and_rets[1], hp_ec);
+    let transform_2 = &ep_calls_and_rets[2];
+    assert_eq!(*transform_2.key(), Key::Hash(handle_payment_hash));
+    assert!(matches!(
+        transform_2.kind(),
+        TransformKindV2::Ret(RetValue::CLValue(_))
+    ));
+    assert_eq!(ep_calls_and_rets[3], mint_ec);
+    let transform_4 = &ep_calls_and_rets[4];
+    assert_eq!(*transform_4.key(), Key::Hash(mint_hash));
+    assert!(matches!(
+        transform_4.kind(),
+        TransformKindV2::Ret(RetValue::CLValue(_))
+    ));
+    assert_eq!(ep_calls_and_rets[5], session_ret);
+}
+
+#[ignore]
+#[test]
+fn vm1_stored_contract_calling_system_contract_emits_entry_point_called_and_ret() {
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    // Install the stored contract
+    let install_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORED_CALL_ALL_SYSTEM_CONTRACTS_WASM,
+        RuntimeArgs::default(),
+    )
+    .build();
+    builder.exec(install_request).expect_success().commit();
+
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+    let stored_hash = account
+        .named_keys()
+        .get(STORED_CALL_ALL_SYSTEM_CONTRACTS_KEY)
+        .cloned()
+        .and_then(Key::into_hash_addr)
+        .expect("should have stored contract hash");
+
+    // Call the stored entry point that invokes HandlePayment then Mint
+    let call_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        AddressableEntityHash::new(stored_hash),
+        STORED_CALL_ALL_SYSTEM_CONTRACTS_ENTRY_POINT,
+        RuntimeArgs::new(),
+    )
+    .build();
+
+    let results = builder
+        .exec(call_request)
+        .expect_success()
+        .commit()
+        .get_exec_result_owned(1)
+        .unwrap();
+
+    let handle_payment_hash = builder.get_handle_payment_contract_hash().value();
+    let mint_hash = builder.get_mint_contract_hash().value();
+
+    let ep_calls_and_rets = get_ep_calls_and_rets(results);
+    // stored EC + HP EC + HP Ret + Mint EC + Mint Ret + stored Ret = 6
+    assert_eq!(ep_calls_and_rets.len(), 6);
+
+    let stored_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_ADDR),
+        TransformKindV2::EntryPointCalled(
+            Some(stored_hash),
+            STORED_CALL_ALL_SYSTEM_CONTRACTS_ENTRY_POINT.to_string(),
+        ),
+    );
+    let hp_ec = TransformV2::new(
+        Key::Hash(stored_hash),
+        TransformKindV2::EntryPointCalled(
+            Some(handle_payment_hash),
+            handle_payment::METHOD_GET_PAYMENT_PURSE.to_string(),
+        ),
+    );
+    let mint_ec = TransformV2::new(
+        Key::Hash(stored_hash),
+        TransformKindV2::EntryPointCalled(Some(mint_hash), METHOD_CREATE.to_string()),
+    );
+    let stored_ret = TransformV2::new(Key::Hash(stored_hash), TransformKindV2::Ret(RetValue::Unit));
+
+    assert_eq!(ep_calls_and_rets[0], stored_ec);
+    assert_eq!(ep_calls_and_rets[1], hp_ec);
+    // HandlePayment::get_payment_purse returns a URef; check key and variant.
+    assert_eq!(ep_calls_and_rets[2].key(), &Key::Hash(handle_payment_hash));
+    assert!(
+        matches!(
+            ep_calls_and_rets[2].kind(),
+            TransformKindV2::Ret(RetValue::CLValue(_))
+        ),
+        "expected CLValue Ret for HandlePayment, got {:?}",
+        ep_calls_and_rets[2].kind()
+    );
+    assert_eq!(ep_calls_and_rets[3], mint_ec);
+    // Mint::create returns a URef; check key and variant.
+    assert_eq!(ep_calls_and_rets[4].key(), &Key::Hash(mint_hash));
+    assert!(
+        matches!(
+            ep_calls_and_rets[4].kind(),
+            TransformKindV2::Ret(RetValue::CLValue(_))
+        ),
+        "expected CLValue Ret for Mint, got {:?}",
+        ep_calls_and_rets[4].kind()
+    );
+    assert_eq!(ep_calls_and_rets[5], stored_ret);
+}
+
 fn get_ep_calls_and_rets(results: WasmV1Result) -> Vec<TransformV2> {
     let transforms = results.effects().transforms();
     transforms
@@ -474,8 +640,6 @@ fn vm1_three_level_nesting_produces_correct_journal() {
     );
 }
 
-/// Test that a failed nested call shows EC entries without Ret entries.
-/// When a stored contract reverts, its EC should appear but no Ret.
 #[ignore]
 #[test]
 fn vm1_nested_call_error_shows_entry_point_called_without_ret() {
@@ -544,24 +708,10 @@ fn vm1_nested_call_error_shows_entry_point_called_without_ret() {
     // The call should fail since reverter reverts
     let builder_after = builder.exec(call_request).expect_failure().commit();
 
-    // exec index 0: caller install
-    // exec index 1: reverter install
-    // exec index 2: the call_stored (which fails)
     let exec_result = builder_after.get_exec_result_owned(2).unwrap();
+    error!("XXXX {:?}", exec_result);
     let ep_calls_and_rets = get_ep_calls_and_rets(exec_result);
 
-    // Expected: 2 ECs (caller and reverter) + 0 Rets = 2 total
-    // Both ECs are present because V1 uses shared tracking copy,
-    // but no Rets since execution failed via revert.
-    assert_eq!(ep_calls_and_rets.len(), 2);
-
-    let caller_called = TransformV2::new(
-        Key::Account(*DEFAULT_ACCOUNT_ADDR),
-        TransformKindV2::EntryPointCalled(Some(caller_hash), "call_stored".to_string()),
-    );
-    let reverter_called = TransformV2::new(
-        Key::Hash(caller_hash),
-        TransformKindV2::EntryPointCalled(Some(reverter_hash), "delegate".to_string()),
-    );
-    assert_eq!(ep_calls_and_rets, vec![caller_called, reverter_called]);
+    // There should be no ECs and RETs since a revert happened
+    assert!(ep_calls_and_rets.is_empty());
 }

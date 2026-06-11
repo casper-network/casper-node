@@ -2,6 +2,8 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,7 @@ pub enum RetValue {
     CLValue(CLValue),
     /// The returned data is serialized bytes.
     Bytes(Bytes),
+    /// There was no returned data.
     Unit,
 }
 
@@ -69,6 +72,18 @@ impl FromBytes for RetValue {
             }
             tag if tag == RetValueTag::Unit as u8 => Ok((RetValue::Unit, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl RetValue {
+    /// Generates a random `RetValue`.
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        match rng.gen_range(0..3u8) {
+            0 => RetValue::Unit,
+            1 => RetValue::CLValue(CLValue::from_t(rng.gen::<u64>()).unwrap()),
+            _ => RetValue::Bytes(Bytes::from(rng.gen::<u64>().to_le_bytes().to_vec())),
         }
     }
 }

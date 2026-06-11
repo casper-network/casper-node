@@ -228,7 +228,7 @@ impl TransformKindV2 {
     /// Returns a random `TransformKind`.
     #[cfg(any(feature = "testing", test))]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        match rng.gen_range(0..10) {
+        match rng.gen_range(0..12) {
             0 => TransformKindV2::Identity,
             1 => TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
             2 => TransformKindV2::AddInt32(rng.gen()),
@@ -247,6 +247,11 @@ impl TransformKindV2 {
                 bytesrepr::Error::EarlyEndOfStream,
             )),
             9 => TransformKindV2::Prune(rng.gen::<Key>()),
+            10 => TransformKindV2::Ret(RetValue::random(rng)),
+            11 => {
+                let addr: Option<HashAddr> = if rng.gen() { Some(rng.gen()) } else { None };
+                TransformKindV2::EntryPointCalled(addr, rng.gen::<u64>().to_string())
+            }
             _ => unreachable!(),
         }
     }
@@ -919,7 +924,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        for _ in 0..11 {
+        for _ in 0..36 {
             let execution_result = TransformKindV2::random(rng);
             bytesrepr::test_serialization_roundtrip(&execution_result);
         }

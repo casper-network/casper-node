@@ -60,12 +60,12 @@ use casper_types::{
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
-    EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
-    HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
-    PackageStatus, Phase, PublicKey, RewardsHandling, RuntimeArgs, RuntimeFootprint, StoredValue,
-    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    U512,
+    ByteCodeKind, CLType, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm,
+    EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess,
+    Group, Groups, HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package,
+    PackageHash, PackageStatus, Phase, PublicKey, RewardsHandling, RuntimeArgs, RuntimeFootprint,
+    StoredValue, Transfer, TransferResult, TransferV2, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1418,11 +1418,6 @@ where
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
-        self.context.state().borrow_mut().entry_point_called(
-            self.context.get_context_key(),
-            None,
-            DEFAULT_ENTRY_POINT_NAME.to_string(),
-        );
         #[cfg(feature = "test-support")]
         let max_stack_height = wasm_config.v1().max_stack_height();
         let module = preprocess(*wasm_config, module_bytes)?;
@@ -1442,6 +1437,11 @@ where
             AccessRights::WRITE,
         )?);
 
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            None,
+            DEFAULT_ENTRY_POINT_NAME.to_string(),
+        );
         let result = instance.invoke_export(DEFAULT_ENTRY_POINT_NAME, &[], self);
 
         let error = match result {
@@ -1874,12 +1874,6 @@ where
             }
         };
 
-        self.context.state().borrow_mut().entry_point_called(
-            self.context.get_context_key(),
-            Some(entity_addr.value()),
-            entry_point_name.to_string(),
-        );
-
         if let EntityKind::Account(_) = footprint.entity_kind() {
             return Err(ExecError::InvalidContext);
         }
@@ -2067,35 +2061,73 @@ where
             stack
         };
 
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            Some(entity_addr.value()),
+            entry_point_name.to_string(),
+        );
+
         if let EntityKind::System(system_contract_type) = footprint.entity_kind() {
             let entry_point_name = entry_point.name();
 
             match system_contract_type {
                 SystemEntityType::Mint => {
-                    return self.call_host_mint(
-                        entry_point_name,
-                        &runtime_args,
-                        access_rights,
-                        stack,
-                    );
+                    let result =
+                        self.call_host_mint(entry_point_name, &runtime_args, access_rights, stack);
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
                 SystemEntityType::HandlePayment => {
-                    return self.call_host_handle_payment(
+                    let result = self.call_host_handle_payment(
                         entry_point_name,
                         &runtime_args,
                         access_rights,
                         stack,
                     );
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
                 SystemEntityType::Auction => {
-                    return self.call_host_auction(
+                    let result = self.call_host_auction(
                         entry_point_name,
                         &runtime_args,
                         access_rights,
                         stack,
                     );
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
-                // Not callable
+                // Not callable via this path
                 SystemEntityType::StandardPayment => {}
             }
         }
