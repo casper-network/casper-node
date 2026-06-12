@@ -3,11 +3,13 @@ use crate::{
     testing::LARGE_WASM_LANE_ID,
     types::{transaction::calculate_transaction_lane_for_transaction, MetaTransaction},
 };
-use casper_storage::data_access_layer::{
-    AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
-    BalanceIdentifierPurseResult, ProofHandling, QueryRequest, QueryResult,
+use casper_storage::{
+    data_access_layer::{
+        AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
+        BalanceIdentifierPurseResult, ProofHandling, QueryRequest, QueryResult,
+    },
+    global_state::state::CommitProvider,
 };
-use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeyAddr,
