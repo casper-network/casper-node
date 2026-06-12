@@ -743,7 +743,7 @@ mod tests {
         // [18, 18, 18, ..., 9]
 
         for i in 1..1000 {
-            let bytes = iter::repeat_n(CL_TYPE_TAG_TUPLE1, i)
+            let bytes = std::iter::repeat_n(CL_TYPE_TAG_TUPLE1, i)
                 .chain(iter::once(CL_TYPE_TAG_UNIT))
                 .collect();
             match bytesrepr::deserialize(bytes) {
@@ -760,8 +760,8 @@ mod tests {
         // [0, 0, 0, 0, 18, 18, 18, ..., 18, 9]
 
         for i in 1..1000 {
-            let bytes = iter::repeat_n(0, 4)
-                .chain(iter::repeat_n(CL_TYPE_TAG_TUPLE1, i))
+            let bytes = std::iter::repeat_n(0, 4)
+                .chain(std::iter::repeat_n(CL_TYPE_TAG_TUPLE1, i))
                 .chain(iter::once(CL_TYPE_TAG_UNIT))
                 .collect();
             match bytesrepr::deserialize::<CLValue>(bytes) {

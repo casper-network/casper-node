@@ -61,7 +61,7 @@ pub(crate) static CHARLIE_PUBLIC_KEY: Lazy<PublicKey> =
 // The amount of gas it takes to execute the generated do_nothing.wasm.
 // Passing this around as a constant is brittle and should be replaced
 // with a more sustainable solution in the future.
-const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 117720_u64;
+const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 116445_u64;
 pub(crate) const MIN_GAS_PRICE: u8 = 1;
 const CHAIN_NAME: &str = "single-transaction-test-net";
 

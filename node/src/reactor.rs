@@ -569,7 +569,10 @@ where
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Update metrics like memory usage and event queue sizes.
-        if self.current_event_id % self.event_metrics_threshold == 0 {
+        if self
+            .current_event_id
+            .is_multiple_of(self.event_metrics_threshold)
+        {
             // We update metrics on the first very event as well to get a good baseline.
             if self.last_metrics.elapsed() >= self.event_metrics_min_delay {
                 self.reactor.update_metrics(event_queue);

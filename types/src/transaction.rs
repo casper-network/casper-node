@@ -66,6 +66,7 @@ pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
 #[cfg(any(feature = "std", test))]
 pub use deploy::calculate_lane_id_for_deploy;
+#[allow(deprecated)]
 pub use deploy::{
     Deploy, DeployCategory, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
@@ -88,6 +89,7 @@ pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
 #[cfg(feature = "json-schema")]
 pub(crate) use transaction_v1::arg_handling;
 #[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[allow(unused_imports)]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
     InvalidTransactionV1, TransactionArgs, TransactionV1, TransactionV1DecodeFromJsonError,

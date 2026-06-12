@@ -25,7 +25,6 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
-    marker::PhantomData,
     path::Path,
     str,
     time::{SystemTime, UNIX_EPOCH},
@@ -179,17 +178,6 @@ impl Distribution<KeyFingerprint> for Standard {
     }
 }
 
-/// Cryptographic signature.
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[allow(dead_code)]
-struct Signature(Vec<u8>);
-
-impl Debug for Signature {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Signature({:10})", HexFmt(&self.0))
-    }
-}
-
 /// TLS certificate.
 ///
 /// Thin wrapper around `X509` enabling things like Serde serialization and fingerprint caching.
@@ -289,18 +277,6 @@ pub(crate) enum LoadSecretKeyError {
 pub(crate) fn load_secret_key<P: AsRef<Path>>(src: P) -> Result<PKey<Private>, LoadSecretKeyError> {
     let pem = read_file(src.as_ref()).map_err(LoadSecretKeyError::ReadFile)?;
     PKey::private_key_from_pem(&pem).map_err(LoadSecretKeyError::PrivateKeyFromPem)
-}
-
-/// A signed value.
-///
-/// Combines a value `V` with a `Signature` and a signature scheme. The signature scheme involves
-/// serializing the value to bytes and signing the result.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[allow(dead_code)]
-pub struct Signed<V> {
-    data: Vec<u8>,
-    signature: Signature,
-    _phantom: PhantomData<V>,
 }
 
 /// Generates a self-signed (key, certificate) pair suitable for TLS and signing.
@@ -802,25 +778,6 @@ impl Display for CertFingerprint {
 impl Display for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:10}", HexFmt(self.0.bytes()))
-    }
-}
-
-impl Display for Signature {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", HexFmt(&self.0[..]))
-    }
-}
-
-impl<T> Display for Signed<T>
-where
-    T: Display + for<'de> Deserialize<'de>,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // Decode the data here, even if it is expensive.
-        match bincode::deserialize::<T>(self.data.as_slice()) {
-            Ok(item) => write!(f, "signed[{}]<{} bytes>", self.signature, item),
-            Err(_err) => write!(f, "signed[{}]<CORRUPT>", self.signature),
-        }
     }
 }
 

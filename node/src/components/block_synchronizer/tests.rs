@@ -40,6 +40,7 @@ const SHOULD_FETCH_EXECUTION_STATE: bool = true;
 const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 0);
 
 /// Event for the mock reactor.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, From)]
 enum MockReactorEvent {
     MarkBlockCompletedRequest(#[allow(dead_code)] MarkBlockCompletedRequest),
@@ -169,8 +170,7 @@ impl TestEnv {
         TestEnv {
             block: TestBlockBuilder::new().build(rng).into(),
             validator_keys,
-            peers: iter::repeat(())
-                .take(num_peers)
+            peers: iter::repeat_n((), num_peers)
                 .map(|_| NodeId::from(rng.gen::<KeyFingerprint>()))
                 .collect(),
         }

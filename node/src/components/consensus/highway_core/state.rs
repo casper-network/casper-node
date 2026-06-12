@@ -220,9 +220,7 @@ impl<C: Context> State<C> {
             can_propose[idx] = false;
         }
         let leader_sequence = LeaderSequence::new(params.seed(), &weights, can_propose);
-        let pings = iter::repeat(params.start_timestamp())
-            .take(weights.len())
-            .collect();
+        let pings = iter::repeat_n(params.start_timestamp(), weights.len()).collect();
         State {
             params,
             weights,

@@ -2,7 +2,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -10,7 +9,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
-use crate::{components::rest_server::DocExample, tls::KeyFingerprint};
+use crate::tls::KeyFingerprint;
 
 /// The network identifier for a node.
 ///
@@ -71,16 +70,6 @@ impl<'de> Deserialize<'de> for NodeId {
             let NodeIdAsBytes::Tls(key_fingerprint) = NodeIdAsBytes::deserialize(deserializer)?;
             Ok(NodeId(key_fingerprint))
         }
-    }
-}
-
-#[allow(dead_code)]
-static NODE_ID: Lazy<NodeId> =
-    Lazy::new(|| NodeId(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
-
-impl DocExample for NodeId {
-    fn doc_example() -> &'static Self {
-        &NODE_ID
     }
 }
 

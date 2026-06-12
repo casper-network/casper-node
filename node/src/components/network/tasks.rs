@@ -710,10 +710,7 @@ where
                                 //       never do. If this happens, there is a bug in the code;
                                 //       we exit with an error and close the connection.
                                 .map_err(|_| {
-                                    io::Error::new(
-                                        io::ErrorKind::Other,
-                                        "demand limiter semaphore closed unexpectedly",
-                                    )
+                                    io::Error::other("demand limiter semaphore closed unexpectedly")
                                 })?;
 
                             Metrics::record_trie_request_start(&context.net_metrics);

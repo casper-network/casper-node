@@ -84,6 +84,7 @@ pub(crate) enum EvmCodeHashLookup {
 }
 
 /// `TransactionAcceptor` events.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
     /// The initiating event to accept a new `Transaction`.

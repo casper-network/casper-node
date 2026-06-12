@@ -1,3 +1,4 @@
+#[allow(deprecated)]
 pub mod deploy_category;
 mod deploy_hash;
 mod deploy_header;
@@ -5,6 +6,7 @@ mod deploy_id;
 mod error;
 mod executable_deploy_item;
 
+#[allow(deprecated)]
 pub use deploy_category::DeployCategory;
 
 use alloc::{collections::BTreeSet, vec::Vec};

@@ -639,7 +639,7 @@ where
 
     /// Returns a `MutableHandle` on the `ZugTestHarness` object
     /// that allows for manipulating internal state of the test state.
-    fn mutable_handle(&mut self) -> MutableHandle<DS> {
+    fn mutable_handle(&mut self) -> MutableHandle<'_, DS> {
         MutableHandle(self)
     }
 }

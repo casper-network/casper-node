@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn from_valid_hex_should_succeed() {
         for char in "abcdefABCDEF0123456789".chars() {
-            let input: String = iter::repeat_n(char, 64).collect();
+            let input: String = std::iter::repeat_n(char, 64).collect();
             assert!(Digest::from_hex(input).is_ok());
         }
     }
@@ -480,7 +480,9 @@ mod tests {
     #[test]
     fn from_hex_invalid_char_should_fail() {
         for char in "g %-".chars() {
-            let input: String = iter::repeat_n('f', 63).chain(iter::once(char)).collect();
+            let input: String = std::iter::repeat_n('f', 63)
+                .chain(iter::once(char))
+                .collect();
             assert!(Digest::from_hex(input).is_err());
         }
     }

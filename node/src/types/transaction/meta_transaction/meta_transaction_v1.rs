@@ -122,14 +122,14 @@ impl MetaTransactionV1 {
                 runtime: stored_runtime,
                 ..
             } => {
-                matches!(stored_runtime, TransactionRuntimeParams::VmCasperV1 { .. })
+                matches!(stored_runtime, TransactionRuntimeParams::VmCasperV1)
                     && (!self.is_native_mint() && !self.is_native_auction())
             }
             TransactionTarget::Session {
                 runtime: session_runtime,
                 ..
             } => {
-                matches!(session_runtime, TransactionRuntimeParams::VmCasperV1 { .. })
+                matches!(session_runtime, TransactionRuntimeParams::VmCasperV1)
                     && (!self.is_native_mint() && !self.is_native_auction())
             }
         }

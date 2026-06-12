@@ -1,5 +1,3 @@
-use std::iter;
-
 use rand::Rng;
 
 use crate::{testing::TestRng, Block, EraEndV1};
@@ -102,7 +100,7 @@ impl TestBlockV1Builder {
 
     /// Associates a number of random deploys with the created block.
     pub fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
-        self.deploys = iter::repeat_n((), count)
+        self.deploys = std::iter::repeat_n((), count)
             .map(|_| Deploy::random(rng))
             .collect();
         self

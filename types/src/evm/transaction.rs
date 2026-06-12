@@ -1001,7 +1001,7 @@ impl EvmTransaction {
             .sign_prehash_recoverable(signature_hash.as_slice())
             .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let mut signature_bytes = [0u8; Signature::SECP256K1_LENGTH];
-        signature_bytes.copy_from_slice(signature.to_bytes().as_slice());
+        signature_bytes.copy_from_slice(&signature.to_bytes());
         let signature = Signature::secp256k1(signature_bytes)
             .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let signer = PublicKey::from(secret_key);

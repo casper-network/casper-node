@@ -1539,14 +1539,6 @@ fn should_provide_transfers_after_emptied() {
     assert_eq!(Some(vec![transfer]), maybe_transfers);
 }
 
-/// Example state used in storage.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[allow(dead_code)]
-struct StateData {
-    a: Vec<u32>,
-    b: i32,
-}
-
 /* TODO: we can't write the legacy db anymore so this test needs to be refactored.
 #[test]
 fn test_legacy_interface() {

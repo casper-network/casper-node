@@ -198,6 +198,7 @@ pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(feature = "std", test))]
 pub use transaction::{calculate_lane_id_for_deploy, calculate_transaction_lane, GasLimited};
+#[allow(deprecated)]
 pub use transaction::{
     AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployCategory,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
