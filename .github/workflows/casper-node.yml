@@ -38,6 +38,18 @@ jobs:
         run: |
           sudo apt-get -y install wabt
 
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
       - name: setup
         run: make setup
 
@@ -75,6 +87,18 @@ jobs:
         run: |
           sudo apt-get -y install wabt
 
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
       - name: setup
         run: make setup
 
@@ -96,6 +120,18 @@ jobs:
       - name: setup ubuntu
         run: |
           sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
 
       - name: setup
         run: make setup

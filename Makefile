@@ -1,6 +1,7 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
+CARGO_AUDIT = $(or $(shell which cargo-audit), $(HOME)/.cargo/bin/cargo-audit)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
@@ -189,7 +190,8 @@ setup-rs:
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
-	$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
+	$(CARGO_AUDIT) --version 2>/dev/null | grep -q ' $(CARGO_AUDIT_VERSION)$$' || \
+		$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
 
 .PHONY: setup
 setup: setup-rs
