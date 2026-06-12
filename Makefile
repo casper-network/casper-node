@@ -72,11 +72,11 @@ test-rs-no-default-features:
 test: test-rs-no-default-features test-rs
 
 .PHONY: test-contracts-rs
-test-contracts-rs: build-contracts-rs
+test-contracts-rs: resources/local/chainspec.toml build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-timings
-test-contracts-timings: build-contracts-rs
+test-contracts-timings: resources/local/chainspec.toml build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts
