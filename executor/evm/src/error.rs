@@ -98,7 +98,7 @@ impl From<AccountStorageError> for DbError {
                 expected,
                 found,
             } => DbError::TypeMismatch {
-                key: Box::new(key),
+                key,
                 expected,
                 found,
             },
@@ -107,7 +107,7 @@ impl From<AccountStorageError> for DbError {
                 expected,
                 error,
             } => DbError::ValueDecode {
-                key: Box::new(key),
+                key,
                 expected,
                 error,
             },
@@ -115,7 +115,7 @@ impl From<AccountStorageError> for DbError {
                 identity_key,
                 account_key,
             } => DbError::TypeMismatch {
-                key: Box::new(identity_key),
+                key: identity_key,
                 expected: "existing linked account",
                 found: format!("missing {account_key}"),
             },

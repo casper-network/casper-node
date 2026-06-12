@@ -255,7 +255,7 @@ fn execute_transaction<R: StateReader<Key, StoredValue, Error = GlobalStateError
             tracking_copy,
             ExecuteRequest {
                 block: block(),
-                kind: ExecuteKind::Transaction(transaction),
+                kind: ExecuteKind::Transaction(Box::new(transaction)),
             },
         )
         .expect("EVM transaction execution should succeed")
@@ -1086,7 +1086,7 @@ fn signed_transactions_require_configured_chain_id() {
     let missing_chain_id = legacy_transaction_without_chain_id();
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(missing_chain_id),
+        kind: ExecuteKind::Transaction(Box::new(missing_chain_id)),
     };
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
@@ -1103,7 +1103,7 @@ fn signed_transactions_require_configured_chain_id() {
     let transaction = legacy_transaction(Some(7));
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(transaction),
+        kind: ExecuteKind::Transaction(Box::new(transaction)),
     };
     assert!(matches!(
         wrong_chain_executor.execute(&mut tracking_copy, request),
@@ -1141,7 +1141,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
 
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(transaction.clone()),
+        kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
     let outcome = executor
         .execute(&mut tracking_copy, request)
@@ -1179,7 +1179,7 @@ fn signed_transaction_sender_keeps_evm_native_identity() {
 
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(transaction.clone()),
+        kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
     let outcome = executor
         .execute(&mut tracking_copy, request)

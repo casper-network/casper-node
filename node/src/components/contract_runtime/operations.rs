@@ -1093,7 +1093,7 @@ pub fn execute_finalized_block(
                     };
                     let request = EvmExecuteRequest {
                         block: block_context,
-                        kind: EvmExecuteKind::Transaction(evm_transaction.clone()),
+                        kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
                     };
                     let mut tracking_copy = scratch_state
                         .tracking_copy(state_root_hash)?
@@ -2078,7 +2078,7 @@ where
             validation: EvmCallValidation::UncheckedSimulation,
         })
     } else {
-        EvmExecuteKind::Transaction(evm_transaction.clone())
+        EvmExecuteKind::Transaction(Box::new(evm_transaction.clone()))
     };
     let execute_request = EvmExecuteRequest {
         block: block_context,

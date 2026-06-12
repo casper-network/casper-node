@@ -40,18 +40,46 @@ pub(crate) enum AccountStorageError {
     TrackingCopy(#[from] TrackingCopyError),
     #[error("unexpected stored value for {key}: expected {expected}, found {found}")]
     TypeMismatch {
-        key: Key,
+        key: Box<Key>,
         expected: &'static str,
         found: String,
     },
     #[error("failed to decode {expected} at {key}: {error}")]
     Decode {
-        key: Key,
+        key: Box<Key>,
         expected: &'static str,
         error: String,
     },
     #[error("identity for {identity_key} points to missing account {account_key}")]
-    MissingAccount { identity_key: Key, account_key: Key },
+    MissingAccount {
+        identity_key: Box<Key>,
+        account_key: Box<Key>,
+    },
+}
+
+impl AccountStorageError {
+    fn type_mismatch(key: Key, expected: &'static str, found: String) -> Self {
+        Self::TypeMismatch {
+            key: Box::new(key),
+            expected,
+            found,
+        }
+    }
+
+    fn decode(key: Key, expected: &'static str, error: String) -> Self {
+        Self::Decode {
+            key: Box::new(key),
+            expected,
+            error,
+        }
+    }
+
+    fn missing_account(identity_key: Key, account_key: Key) -> Self {
+        Self::MissingAccount {
+            identity_key: Box::new(identity_key),
+            account_key: Box::new(account_key),
+        }
+    }
 }
 
 pub(crate) fn read_account_metadata<R>(
@@ -84,10 +112,7 @@ where
             // silently falling back to the deterministic EVM purse.
             let identity_key = Key::Evm(EvmAddr::Account(address));
             account_main_purse(tracking_copy, account_hash)?.ok_or(
-                AccountStorageError::MissingAccount {
-                    identity_key,
-                    account_key: Key::Account(account_hash),
-                },
+                AccountStorageError::missing_account(identity_key, Key::Account(account_hash)),
             )?
         }
         Some(AccountIdentity::Purse(main_purse)) => main_purse,
@@ -124,18 +149,18 @@ where
                 // hash or a purse. Nonce/code/storage are not stored here.
                 Key::Account(account_hash) => Ok(Some(AccountIdentity::Account(account_hash))),
                 Key::URef(uref) => Ok(Some(AccountIdentity::Purse(uref))),
-                other => Err(AccountStorageError::TypeMismatch {
+                other => Err(AccountStorageError::type_mismatch(
                     key,
-                    expected: "CLValue(Key::Account) or CLValue(Key::URef)",
-                    found: other.type_string(),
-                }),
+                    "CLValue(Key::Account) or CLValue(Key::URef)",
+                    other.type_string(),
+                )),
             }
         }
-        Some(stored_value) => Err(AccountStorageError::TypeMismatch {
+        Some(stored_value) => Err(AccountStorageError::type_mismatch(
             key,
-            expected: "StoredValue::CLValue(Key)",
-            found: stored_value.type_name(),
-        }),
+            "StoredValue::CLValue(Key)",
+            stored_value.type_name(),
+        )),
         None => Ok(None),
     }
 }
@@ -160,31 +185,31 @@ where
         Some(StoredValue::CLValue(cl_value)) => {
             let key = cl_value_to_key(account_key, cl_value)?;
             let Key::AddressableEntity(entity_addr) = key else {
-                return Err(AccountStorageError::TypeMismatch {
-                    key: account_key,
-                    expected: "CLValue(Key::AddressableEntity)",
-                    found: key.type_string(),
-                });
+                return Err(AccountStorageError::type_mismatch(
+                    account_key,
+                    "CLValue(Key::AddressableEntity)",
+                    key.type_string(),
+                ));
             };
             let entity_key = Key::AddressableEntity(entity_addr);
             match tracking_copy.read(&entity_key)? {
                 Some(StoredValue::AddressableEntity(entity)) => Ok(Some(entity.main_purse())),
-                Some(stored_value) => Err(AccountStorageError::TypeMismatch {
-                    key: entity_key,
-                    expected: "StoredValue::AddressableEntity",
-                    found: stored_value.type_name(),
-                }),
-                None => Err(AccountStorageError::MissingAccount {
-                    identity_key: account_key,
-                    account_key: entity_key,
-                }),
+                Some(stored_value) => Err(AccountStorageError::type_mismatch(
+                    entity_key,
+                    "StoredValue::AddressableEntity",
+                    stored_value.type_name(),
+                )),
+                None => Err(AccountStorageError::missing_account(
+                    account_key,
+                    entity_key,
+                )),
             }
         }
-        Some(stored_value) => Err(AccountStorageError::TypeMismatch {
-            key: account_key,
-            expected: "StoredValue::Account or StoredValue::CLValue(Key::AddressableEntity)",
-            found: stored_value.type_name(),
-        }),
+        Some(stored_value) => Err(AccountStorageError::type_mismatch(
+            account_key,
+            "StoredValue::Account or StoredValue::CLValue(Key::AddressableEntity)",
+            stored_value.type_name(),
+        )),
         None => Ok(None),
     }
 }
@@ -205,11 +230,8 @@ where
     // write `Key::Account`; executor state application writes `Key::URef` only
     // for EVM-native accounts and preserves existing `Key::Account` links.
     let key = Key::Evm(EvmAddr::Account(address));
-    let cl_value = CLValue::from_t(identity_key).map_err(|error| AccountStorageError::Decode {
-        key,
-        expected: "Key",
-        error: error.to_string(),
-    })?;
+    let cl_value = CLValue::from_t(identity_key)
+        .map_err(|error| AccountStorageError::decode(key, "Key", error.to_string()))?;
     tracking_copy.write(key, StoredValue::CLValue(cl_value));
     Ok(())
 }
@@ -229,11 +251,8 @@ where
     // Nonce is deliberately independent from the identity pointer so linking an
     // address to a Casper account does not move or rewrite EVM replay state.
     let key = Key::Evm(EvmAddr::Nonce(address));
-    let cl_value = CLValue::from_t(nonce).map_err(|error| AccountStorageError::Decode {
-        key,
-        expected: "u64",
-        error: error.to_string(),
-    })?;
+    let cl_value = CLValue::from_t(nonce)
+        .map_err(|error| AccountStorageError::decode(key, "u64", error.to_string()))?;
     tracking_copy.write(key, StoredValue::CLValue(cl_value));
     Ok(())
 }
@@ -254,11 +273,8 @@ where
     // contracts can remain EVM-native even when EOAs may link to Casper
     // accounts.
     let key = Key::Evm(EvmAddr::CodeHash(address));
-    let cl_value = CLValue::from_t(code_hash).map_err(|error| AccountStorageError::Decode {
-        key,
-        expected: "evm::Hash",
-        error: error.to_string(),
-    })?;
+    let cl_value = CLValue::from_t(code_hash)
+        .map_err(|error| AccountStorageError::decode(key, "evm::Hash", error.to_string()))?;
     tracking_copy.write(key, StoredValue::CLValue(cl_value));
     Ok(())
 }
@@ -276,21 +292,15 @@ where
 {
     let key = Key::Evm(EvmAddr::Nonce(address));
     match tracking_copy.read(&key)? {
-        Some(StoredValue::CLValue(cl_value)) => {
-            cl_value
-                .into_t::<u64>()
-                .map(Some)
-                .map_err(|error| AccountStorageError::Decode {
-                    key,
-                    expected: "u64",
-                    error: error.to_string(),
-                })
-        }
-        Some(stored_value) => Err(AccountStorageError::TypeMismatch {
+        Some(StoredValue::CLValue(cl_value)) => cl_value
+            .into_t::<u64>()
+            .map(Some)
+            .map_err(|error| AccountStorageError::decode(key, "u64", error.to_string())),
+        Some(stored_value) => Err(AccountStorageError::type_mismatch(
             key,
-            expected: "StoredValue::CLValue(u64)",
-            found: stored_value.type_name(),
-        }),
+            "StoredValue::CLValue(u64)",
+            stored_value.type_name(),
+        )),
         None => Ok(None),
     }
 }
@@ -308,21 +318,15 @@ where
 {
     let key = Key::Evm(EvmAddr::CodeHash(address));
     match tracking_copy.read(&key)? {
-        Some(StoredValue::CLValue(cl_value)) => {
-            cl_value
-                .into_t::<evm::Hash>()
-                .map(Some)
-                .map_err(|error| AccountStorageError::Decode {
-                    key,
-                    expected: "evm::Hash",
-                    error: error.to_string(),
-                })
-        }
-        Some(stored_value) => Err(AccountStorageError::TypeMismatch {
+        Some(StoredValue::CLValue(cl_value)) => cl_value
+            .into_t::<evm::Hash>()
+            .map(Some)
+            .map_err(|error| AccountStorageError::decode(key, "evm::Hash", error.to_string())),
+        Some(stored_value) => Err(AccountStorageError::type_mismatch(
             key,
-            expected: "StoredValue::CLValue(evm::Hash)",
-            found: stored_value.type_name(),
-        }),
+            "StoredValue::CLValue(evm::Hash)",
+            stored_value.type_name(),
+        )),
         None => Ok(None),
     }
 }
@@ -330,9 +334,5 @@ where
 fn cl_value_to_key(key: Key, cl_value: CLValue) -> Result<Key, AccountStorageError> {
     cl_value
         .into_t::<Key>()
-        .map_err(|error| AccountStorageError::Decode {
-            key,
-            expected: "Key",
-            error: error.to_string(),
-        })
+        .map_err(|error| AccountStorageError::decode(key, "Key", error.to_string()))
 }

@@ -557,7 +557,7 @@ mod tests {
     fn evm_from_transaction_exposes_metadata() {
         let chainspec = chainspec();
         let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000);
-        let transaction = Transaction::Evm(evm_transaction.clone());
+        let transaction = Transaction::from_evm(evm_transaction.clone());
         let meta = MetaTransaction::from_transaction(
             &transaction,
             chainspec.core_config.pricing_handling,
@@ -596,7 +596,7 @@ mod tests {
         let expected_initiator_addr = InitiatorAddr::AccountHash(expected_signer.to_account_hash());
 
         assert_eq!(
-            Transaction::Evm(evm_transaction.clone()).initiator_addr(),
+            Transaction::from_evm(evm_transaction.clone()).initiator_addr(),
             expected_initiator_addr
         );
 
@@ -615,7 +615,7 @@ mod tests {
             .transaction_v1_config
             .set_wasm_lanes(vec![]);
         let transaction =
-            Transaction::Evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000));
+            Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000));
         let error = MetaTransaction::from_transaction(
             &transaction,
             chainspec.core_config.pricing_handling,
@@ -886,7 +886,7 @@ mod tests {
 
     fn evm_meta(chainspec: &Chainspec, evm_transaction: EvmTransaction) -> MetaTransaction {
         MetaTransaction::from_transaction(
-            &Transaction::Evm(evm_transaction),
+            &Transaction::from_evm(evm_transaction),
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
         )

@@ -108,7 +108,7 @@ impl From<&Transaction> for TransactionHeader {
         match transaction {
             Transaction::Deploy(deploy) => deploy.header().clone().into(),
             Transaction::V1(v1) => v1.into(),
-            Transaction::Evm(evm) => evm.into(),
+            Transaction::Evm(evm) => evm.as_ref().into(),
         }
     }
 }

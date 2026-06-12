@@ -17,7 +17,7 @@ pub struct ExecuteRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecuteKind {
     /// Signed Ethereum transaction decoded by `casper-types`.
-    Transaction(EvmTransaction),
+    Transaction(Box<EvmTransaction>),
     /// Unsigned local call request.
     Call(CallRequest),
 }

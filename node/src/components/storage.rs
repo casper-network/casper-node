@@ -2051,9 +2051,11 @@ impl Storage {
                 Some(Transaction::V1(transaction_v1)) => {
                     ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
                 }
-                Some(Transaction::Evm(transaction)) => {
-                    ret.push((transaction_hash, (&transaction).into(), execution_result))
-                }
+                Some(Transaction::Evm(transaction)) => ret.push((
+                    transaction_hash,
+                    transaction.as_ref().into(),
+                    execution_result,
+                )),
             };
         }
         Ok(Some(ret))

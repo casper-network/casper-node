@@ -23,6 +23,7 @@ mod transfer_target;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use alloc::{
+    boxed::Box,
     collections::BTreeSet,
     string::{String, ToString},
     vec::Vec,
@@ -152,7 +153,7 @@ pub enum Transaction {
     )]
     V1(TransactionV1),
     /// An EVM transaction.
-    Evm(EvmTransaction),
+    Evm(Box<EvmTransaction>),
 }
 
 impl Transaction {
@@ -168,7 +169,7 @@ impl Transaction {
 
     /// EVM variant ctor.
     pub fn from_evm(evm: EvmTransaction) -> Self {
-        Transaction::Evm(evm)
+        Transaction::Evm(Box::new(evm))
     }
 
     /// Returns the `TransactionHash` identifying this transaction.
@@ -176,7 +177,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
-            Transaction::Evm(txn) => TransactionHash::from(txn.hash()),
+            Transaction::Evm(txn) => TransactionHash::from(txn.as_ref().hash()),
         }
     }
 
@@ -300,7 +301,7 @@ impl Transaction {
                     error!(%error, "failed to serialize EVM approvals");
                     ApprovalsHash::from(Digest::default())
                 });
-                TransactionId::new(TransactionHash::Evm(txn.hash()), approvals_hash)
+                TransactionId::new(TransactionHash::Evm(txn.as_ref().hash()), approvals_hash)
             }
         }
     }
@@ -325,7 +326,7 @@ impl Transaction {
     /// Returns the native EVM transaction hash for an EVM transaction.
     pub fn evm_hash(&self) -> Option<EvmTransactionHash> {
         match self {
-            Transaction::Evm(txn) => Some(txn.hash()),
+            Transaction::Evm(txn) => Some(txn.as_ref().hash()),
             _ => None,
         }
     }
@@ -396,7 +397,7 @@ impl Transaction {
     /// Get the wrapped EVM transaction.
     pub fn as_evm(&self) -> Option<&EvmTransaction> {
         match self {
-            Transaction::Evm(evm) => Some(evm),
+            Transaction::Evm(evm) => Some(evm.as_ref()),
             _ => None,
         }
     }
@@ -587,7 +588,7 @@ enum TransactionJson {
     #[serde(rename = "Version1")]
     V1(Box<TransactionV1Json>),
     /// An EVM transaction.
-    Evm(EvmTransaction),
+    Evm(Box<EvmTransaction>),
 }
 
 #[cfg(any(feature = "std", test))]
@@ -671,7 +672,7 @@ impl From<TransactionV1> for Transaction {
 
 impl From<EvmTransaction> for Transaction {
     fn from(txn: EvmTransaction) -> Self {
-        Self::Evm(txn)
+        Self::from_evm(txn)
     }
 }
 
@@ -723,7 +724,7 @@ impl FromBytes for Transaction {
             }
             EVM_TAG => {
                 let (txn, remainder) = EvmTransaction::from_bytes(remainder)?;
-                Ok((Transaction::Evm(txn), remainder))
+                Ok((Transaction::from_evm(txn), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
