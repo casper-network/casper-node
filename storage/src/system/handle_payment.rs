@@ -9,7 +9,7 @@ pub mod storage_provider;
 
 use casper_types::{
     system::handle_payment::{Error, REFUND_PURSE_KEY},
-    AccessRights, PublicKey, URef, U512,
+    AccessRights, Phase, PublicKey, URef, U512,
 };
 use num_rational::Ratio;
 use tracing::error;
@@ -23,6 +23,16 @@ use crate::system::handle_payment::{
 pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&mut self) -> Result<URef, Error> {
+        // Restrict to payment / finalize-payment / system contexts. Session code that resolves
+        // the payment purse can transfer into it; finalization only accounts for the expected
+        // payment amount, so stray deposits become a persistent nonzero balance in the shared
+        // system payment purse - hostile state for later custom-payment paths.
+        match self.get_phase() {
+            Phase::Payment | Phase::FinalizePayment | Phase::System => {}
+            Phase::Session => {
+                return Err(Error::GetPaymentPurseCalledOutsidePayment);
+            }
+        }
         let purse = internal::get_payment_purse(self)?;
         // Limit the access rights so only balance query and deposit are allowed.
         Ok(URef::new(purse.addr(), AccessRights::READ_ADD))
@@ -33,7 +43,13 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         // make sure the passed uref is actually a purse...
         // if it has a balance it is a purse and if not it isn't
         let _balance = self.available_balance(purse)?;
-        internal::set_refund(self, purse)
+        // Refund finalization only needs deposit authority; the original URef may be writeable
+        // (it commonly resolves to the initiator main purse for the default refund target).
+        // Strip access rights down to `ADD` so the refund-purse named-key write the handle
+        // payment contract emits does not expose a writeable main-purse capability through
+        // public execution effects.
+        let refund_purse = URef::new(purse.addr(), AccessRights::ADD);
+        internal::set_refund(self, refund_purse)
     }
 
     /// Get refund purse.

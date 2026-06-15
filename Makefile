@@ -1,9 +1,11 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
+CARGO_AUDIT = $(or $(shell which cargo-audit), $(HOME)/.cargo/bin/cargo-audit)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
+CARGO_AUDIT_VERSION := 0.22.1
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
@@ -18,6 +20,7 @@ ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]* -mindepth 1 -m
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
+CARGO_TEST_PROFILE_ENV ?=
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 
@@ -60,21 +63,21 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml build-contracts-rs
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
-	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test
 test: test-rs-no-default-features test-rs
 
 .PHONY: test-contracts-rs
-test-contracts-rs: build-contracts-rs
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
+test-contracts-rs: resources/local/chainspec.toml build-contracts-rs
+	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-timings
-test-contracts-timings: build-contracts-rs
+test-contracts-timings: resources/local/chainspec.toml build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts
@@ -131,7 +134,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2024-0437 --ignore RUSTSEC-2025-0022 --ignore RUSTSEC-2025-0055 --ignore RUSTSEC-2026-0001 --ignore RUSTSEC-2026-0007 --ignore RUSTSEC-2026-0049 --ignore RUSTSEC-2026-0068 --ignore RUSTSEC-2026-0067
+	$(CARGO) audit --ignore RUSTSEC-2024-0437 --ignore RUSTSEC-2025-0022 --ignore RUSTSEC-2025-0055 --ignore RUSTSEC-2026-0001 --ignore RUSTSEC-2026-0007 --ignore RUSTSEC-2026-0049 --ignore RUSTSEC-2026-0068 --ignore RUSTSEC-2026-0067 --ignore RUSTSEC-2026-0098 --ignore RUSTSEC-2026-0099 --ignore RUSTSEC-2026-0104
 
 .PHONY: audit
 audit: audit-rs
@@ -188,7 +191,8 @@ setup-rs:
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
-	$(CARGO) install cargo-audit
+	$(CARGO_AUDIT) --version 2>/dev/null | grep -q ' $(CARGO_AUDIT_VERSION)$$' || \
+		$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
 
 .PHONY: setup
 setup: setup-rs

@@ -506,7 +506,15 @@ where
             .await
         }
         GlobalStateEntityQualifier::ItemsByPrefix { key_prefix } => {
-            handle_get_items_by_prefix(state_identifier, key_prefix, effect_builder).await
+            if !config.allow_request_get_all_values {
+                debug!(
+                    ?key_prefix,
+                    "received an items-by-prefix request while the all-values feature is disabled",
+                );
+                BinaryResponse::new_error(ErrorCode::FunctionDisabled)
+            } else {
+                handle_get_items_by_prefix(state_identifier, key_prefix, effect_builder).await
+            }
         }
     }
 }

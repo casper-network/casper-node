@@ -4152,3 +4152,96 @@ fn should_correctly_find_unbond_purse_after_change_in_public_key() {
     let unbonding_delay = builder.get_unbonding_delay();
     builder.advance_eras_by(unbonding_delay + 1);
 }
+
+/// Regression for audit-confirmed-123: with sustain rewards enabled, a rewards map containing
+/// only `PublicKey::System` must not mint a sustain share (and must not move total supply),
+/// since the per-validator processing filters out `PublicKey::System`.
+#[ignore]
+#[test]
+fn system_key_rewards_must_not_mint_sustain_share() {
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+
+    let validator_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => DelegationRate::from(0u8),
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    let mut default_request = LOCAL_GENESIS_REQUEST.clone();
+    default_request.push_genesis_account(GenesisAccount::SustainAccount {
+        public_key: DEFAULT_SUSTAIN_PUBLIC_KEY.clone(),
+    });
+    default_request.push_rewards_ratio(Ratio::new(1, 4));
+    builder.run_genesis(default_request);
+
+    for request in [validator_fund_request, validator_add_bid_request] {
+        builder.exec(request).commit().expect_success();
+    }
+
+    for _ in 0..=builder.get_auction_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
+    }
+
+    let sustain_purse = builder
+        .get_account(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
+        .expect("must have sustain account as part of genesis setup")
+        .main_purse();
+
+    let supply_before = builder.total_supply(DEFAULT_PROTOCOL_VERSION, None);
+    let sustain_balance_before = builder.get_purse_balance(sustain_purse);
+
+    let mut block_rewards = BTreeMap::new();
+    block_rewards.insert(PublicKey::System, vec![U512::from(1_000_000u64)]);
+
+    let result = builder.distribute_with_rewards_handling(
+        None,
+        ProtocolVersion::V2_0_0,
+        block_rewards,
+        0,
+        RewardsHandling::Sustain {
+            ratio: Ratio::new(1, 4),
+            purse_address: sustain_purse.to_formatted_string(),
+        },
+    );
+    assert!(
+        result.is_success(),
+        "distribute with only PublicKey::System rewards must succeed without minting"
+    );
+
+    let supply_after = builder.total_supply(DEFAULT_PROTOCOL_VERSION, None);
+    let sustain_balance_after = builder.get_purse_balance(sustain_purse);
+
+    assert_eq!(
+        sustain_balance_after, sustain_balance_before,
+        "system-key reward must not credit the sustain purse"
+    );
+    assert_eq!(
+        supply_after, supply_before,
+        "system-key reward must not increase total supply"
+    );
+}

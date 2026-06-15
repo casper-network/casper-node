@@ -22,7 +22,7 @@ use tracing::{debug, error, warn};
 
 /// Maximum length of bridge records chain.
 /// Used when looking for the most recent bid record to avoid unbounded computations.
-const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
+pub(super) const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
@@ -1428,6 +1428,19 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
             continue;
         }
 
+        // Reduce the delegator's active stake *before* writing the unbond record. Otherwise a
+        // locked delegator (vesting table uninitialized but era past validator lockout) leaves
+        // an unbond pending against unchanged active stake - the same motes are both still
+        // counted as delegated and queued for release once the unbond matures.
+        let updated_stake = match delegator.decrease_stake(unbond_amount, era_end_timestamp_millis)
+        {
+            Ok(updated_stake) => updated_stake,
+            // Work around the case when the locked amounts table has yet to be
+            // initialized (likely pre-90 day mark).
+            Err(Error::DelegatorFundsLocked) => continue,
+            Err(err) => return Err(err),
+        };
+
         let unbond_kind = delegator.unbond_kind();
         create_unbonding_purse(
             provider,
@@ -1437,15 +1450,6 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
             unbond_amount,
             None,
         )?;
-
-        let updated_stake = match delegator.decrease_stake(unbond_amount, era_end_timestamp_millis)
-        {
-            Ok(updated_stake) => updated_stake,
-            // Work around the case when the locked amounts table has yet to be
-            // initialized (likely pre-90 day mark).
-            Err(Error::DelegatorFundsLocked) => continue,
-            Err(err) => return Err(err),
-        };
 
         let delegator_bid_addr = delegator.bid_addr();
         if updated_stake.is_zero() {

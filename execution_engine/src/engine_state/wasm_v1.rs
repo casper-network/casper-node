@@ -477,6 +477,11 @@ pub struct WasmV1Result {
     ret: Option<CLValue>,
     /// Tracking copy cache captured during execution.
     cache: Option<TrackingCopyCache>,
+    /// Remaining approved spending limit on the caller's main purse at the end of execution, if
+    /// the runtime context produced one. Used to forward the leftover budget from a
+    /// custom-payment Wasm into the following session phase so a transaction cannot reset its
+    /// approved spending limit twice.
+    remaining_spending_limit: Option<U512>,
 }
 
 impl WasmV1Result {
@@ -501,7 +506,19 @@ impl WasmV1Result {
             error,
             ret,
             cache,
+            remaining_spending_limit: None,
         }
+    }
+
+    /// Sets the post-execution remaining spending limit. Builder-style.
+    pub fn with_remaining_spending_limit(mut self, remaining: U512) -> Self {
+        self.remaining_spending_limit = Some(remaining);
+        self
+    }
+
+    /// Returns the post-execution remaining approved spending limit, if captured.
+    pub fn remaining_spending_limit(&self) -> Option<U512> {
+        self.remaining_spending_limit
     }
 
     /// Error, if any.
@@ -555,6 +572,7 @@ impl WasmV1Result {
             error: Some(EngineError::RootNotFound(state_hash)),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -569,6 +587,7 @@ impl WasmV1Result {
             error: Some(error),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -583,6 +602,7 @@ impl WasmV1Result {
             error: Some(EngineError::InvalidExecutableItem(error)),
             ret: None,
             cache: None,
+            remaining_spending_limit: None,
         }
     }
 
@@ -614,6 +634,7 @@ impl WasmV1Result {
                 error: None,
                 ret: None,
                 cache: Some(cache),
+                remaining_spending_limit: None,
             }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
@@ -625,25 +646,55 @@ impl WasmV1Result {
                     error: Some(EngineError::Transfer(te)),
                     ret: None,
                     cache: None,
+                    remaining_spending_limit: None,
                 })
             }
         }
     }
 
-    /// Checks effects for an AddUInt512 transform to a balance at imputed addr
-    /// and for exactly the imputed amount.
+    /// Returns true if the effects on the balance at `addr` leave its value at >= `amount`.
     pub fn balance_increased_by_amount(&self, addr: URefAddr, amount: U512) -> bool {
+        match self.balance_after_effects(addr) {
+            Some(total) => total >= amount,
+            None => false,
+        }
+    }
+
+    /// Returns the running balance value the effects leave at `addr`, folding `AddUInt512` and
+    /// `Write(CLValue<U512>)` transforms in execution order. Returns `None` if no balance-shape
+    /// effect on this key is observed.
+    ///
+    /// - The payment purse starts each transaction empty (system invariant maintained by
+    ///   audit-082's `Phase::Session` guard on `get_payment_purse`);
+    /// - `mint::transfer` writes the new total balance via `write_balance`, producing a `Write`
+    ///   transform whose CLValue contains the post-transfer purse balance;
+    /// - `mint`'s `add_balance` path produces `AddUInt512`.
+    pub fn balance_after_effects(&self, addr: URefAddr) -> Option<U512> {
         if self.effects.is_empty() || self.effects.transforms().is_empty() {
-            return false;
+            return None;
         }
 
         let key = Key::Balance(addr);
-        if let Some(transform) = self.effects.transforms().iter().find(|x| x.key() == &key) {
-            if let TransformKindV2::AddUInt512(added) = transform.kind() {
-                return *added == amount;
+        let mut total = U512::zero();
+        let mut saw_balance_effect = false;
+        for transform in self.effects.transforms().iter().filter(|x| x.key() == &key) {
+            match transform.kind() {
+                TransformKindV2::AddUInt512(added) => {
+                    saw_balance_effect = true;
+                    total = total.saturating_add(*added);
+                }
+                TransformKindV2::Write(stored) => {
+                    if let Some(cl_value) = stored.as_cl_value() {
+                        if let Ok(written) = cl_value.clone().into_t::<U512>() {
+                            saw_balance_effect = true;
+                            total = written;
+                        }
+                    }
+                }
+                _ => {}
             }
         }
-        false
+        saw_balance_effect.then_some(total)
     }
 }
 

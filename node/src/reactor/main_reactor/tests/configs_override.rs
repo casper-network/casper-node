@@ -32,6 +32,7 @@ pub(crate) struct ConfigsOverride {
     pub pricing_handling_override: Option<PricingHandling>,
     pub allow_prepaid_override: Option<bool>,
     pub balance_hold_interval_override: Option<TimeDiff>,
+    pub baseline_motes_amount_override: Option<u64>,
     pub administrators: Option<BTreeSet<PublicKey>>,
     pub chain_name: Option<String>,
     pub gas_hold_balance_handling: Option<HoldBalanceHandling>,
@@ -64,6 +65,11 @@ impl ConfigsOverride {
 
     pub(crate) fn with_balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
         self.balance_hold_interval_override = Some(balance_hold_interval);
+        self
+    }
+
+    pub(crate) fn with_baseline_motes_amount(mut self, baseline_motes_amount: u64) -> Self {
+        self.baseline_motes_amount_override = Some(baseline_motes_amount);
         self
     }
 
@@ -158,6 +164,7 @@ impl Default for ConfigsOverride {
             pricing_handling_override: None,
             allow_prepaid_override: None,
             balance_hold_interval_override: None,
+            baseline_motes_amount_override: None,
             administrators: None,
             chain_name: None,
             gas_hold_balance_handling: None,

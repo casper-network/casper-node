@@ -170,6 +170,7 @@ impl TestFixture {
             pricing_handling_override,
             allow_prepaid_override,
             balance_hold_interval_override,
+            baseline_motes_amount_override,
             administrators,
             chain_name,
             gas_hold_balance_handling,
@@ -215,6 +216,9 @@ impl TestFixture {
         }
         if let Some(balance_hold_interval) = balance_hold_interval_override {
             chainspec.core_config.gas_hold_interval = balance_hold_interval;
+        }
+        if let Some(baseline_motes_amount) = baseline_motes_amount_override {
+            chainspec.core_config.baseline_motes_amount = baseline_motes_amount;
         }
         if let Some(administrators) = administrators {
             chainspec.core_config.administrators = administrators;

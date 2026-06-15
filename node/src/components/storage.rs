@@ -1330,11 +1330,15 @@ impl Storage {
         };
 
         let mut transactions = vec![];
-        for (transaction, _) in (self
+        for (transaction, maybe_finalized_approvals) in (self
             .get_transactions_with_finalized_approvals(block.all_transactions())?)
         .into_iter()
         .flatten()
         {
+            let transaction = match maybe_finalized_approvals {
+                Some(finalized_approvals) => transaction.with_approvals(finalized_approvals),
+                None => transaction,
+            };
             transactions.push(transaction);
         }
 

@@ -226,6 +226,12 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
+        // Mirror the zero-amount guard already applied to `add_bid` / `delegate`. Otherwise a
+        // zero withdraw would still persist a meaningless validator unbond era.
+        if amount.is_zero() {
+            return Err(Error::BondTooSmall);
+        }
+
         let validator_bid_addr = BidAddr::from(public_key.clone());
         let validator_bid_key = validator_bid_addr.into();
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
@@ -568,6 +574,27 @@ pub trait Auction:
         detail::process_unbond_requests(self, max_delegators_per_validator)?;
         debug!("processing unbond request successful");
 
+        // Resolve any evicted public key that may identify a validator only via its prior
+        // (pre-rotation) key through the existing bridge chain. Without this step, an eviction
+        // for the old key would be silently ignored because the active bid lives under a new key.
+        let mut resolved_evicted: Vec<PublicKey> = Vec::with_capacity(evicted_validators.len());
+        for evicted in evicted_validators.iter() {
+            resolved_evicted.push(evicted.clone());
+            let mut current_addr = BidAddr::from(evicted.clone());
+            for _ in 0..detail::MAX_BRIDGE_CHAIN_LENGTH {
+                match self.read_bid(&current_addr.into())? {
+                    Some(BidKind::Bridge(bridge)) => {
+                        let new_key = bridge.new_validator_public_key().clone();
+                        current_addr = BidAddr::from(new_key.clone());
+                        if !resolved_evicted.contains(&new_key) {
+                            resolved_evicted.push(new_key);
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+
         let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 
         // Process bids
@@ -584,7 +611,7 @@ pub trait Auction:
                 bids_modified = true;
             }
 
-            if evicted_validators.contains(validator_public_key) {
+            if resolved_evicted.contains(validator_public_key) {
                 validator_bid.deactivate();
                 bids_modified = true;
             }
@@ -654,7 +681,10 @@ pub trait Auction:
 
         let total = {
             let mut ret = U512::zero();
-            for rewards_vec in rewards.values() {
+            for (public_key, rewards_vec) in rewards.iter() {
+                if public_key == &PublicKey::System {
+                    continue;
+                }
                 for reward in rewards_vec {
                     ret += *reward
                 }
@@ -710,6 +740,11 @@ pub trait Auction:
 
             let validator_bid_addr = BidAddr::Validator(validator_public_key.to_account_hash());
             let mut maybe_bridged_validator_addrs: Option<Vec<BidAddr>> = None;
+            // The validator key to use for any same-call undelegation effects. For a bridged
+            // validator this is the *current* (post-rotation) key, not the stale reward-map key
+            // - otherwise the queued `undelegate` call below would look up a bid under the old
+            // key and fail with `ValidatorNotFound`.
+            let mut current_validator_public_key = validator_public_key.clone();
             let validator_reward_amount = reward_info.validator_reward();
             let (validator_bonding_purse, min_del, max_del) =
                 match detail::get_distribution_target(self, validator_bid_addr) {
@@ -737,6 +772,8 @@ pub trait Auction:
                         } => {
                             debug!(?validator_public_key, "bridged validator payout starting ");
                             maybe_bridged_validator_addrs = Some(bridged_validator_addrs); // <-- important
+                            current_validator_public_key =
+                                validator_bid.validator_public_key().clone();
                             let validator_bonding_purse = *validator_bid.bonding_purse();
                             validator_bid.increase_stake(validator_reward_amount)?;
 
@@ -838,7 +875,7 @@ pub trait Auction:
                                         // prune
                                         undelegates.push((
                                             delegator_kind.clone(),
-                                            validator_public_key.clone(),
+                                            current_validator_public_key.clone(),
                                             increased_stake,
                                         ));
                                         prunes.push(delegator_bid_addr);
@@ -848,7 +885,7 @@ pub trait Auction:
                                         if !unbond_amount.is_zero() {
                                             undelegates.push((
                                                 delegator_kind.clone(),
-                                                validator_public_key.clone(),
+                                                current_validator_public_key.clone(),
                                                 unbond_amount,
                                             ));
                                         }
@@ -986,6 +1023,13 @@ pub trait Auction:
         public_key: PublicKey,
         new_public_key: PublicKey,
     ) -> Result<(), Error> {
+        // The normal `add_bid` path cannot create a `PublicKey::System` validator bid (the
+        // caller must own the validator key). Reject the same identity in the key-rotation
+        // path so a validator can't move its active bid into the reserved system identity.
+        if new_public_key == PublicKey::System {
+            return Err(Error::InvalidPublicKey);
+        }
+
         let validator_account_hash = AccountHash::from(&public_key);
 
         // check that the caller is the current bid's owner
@@ -1046,6 +1090,25 @@ pub trait Auction:
 
             debug!("pruning delegator bid {delegator_bid_addr}");
             self.prune_bid(delegator_bid_addr);
+        }
+
+        debug!("transferring reservation bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
+        let reservations = detail::read_reservation_bids(self, &public_key)?;
+        for mut reservation in reservations {
+            let reservation_bid_addr =
+                BidAddr::new_reservation_kind(&public_key, reservation.delegator_kind());
+
+            reservation.with_validator_public_key(new_public_key.clone());
+            let new_reservation_bid_addr =
+                BidAddr::new_reservation_kind(&new_public_key, reservation.delegator_kind());
+
+            self.write_bid(
+                new_reservation_bid_addr.into(),
+                BidKind::Reservation(Box::new(reservation)),
+            )?;
+
+            debug!("pruning reservation bid {reservation_bid_addr}");
+            self.prune_bid(reservation_bid_addr);
         }
 
         Ok(())

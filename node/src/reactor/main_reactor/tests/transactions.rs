@@ -3,17 +3,20 @@ use crate::{
     testing::LARGE_WASM_LANE_ID,
     types::{transaction::calculate_transaction_lane_for_transaction, MetaTransaction},
 };
-use casper_storage::data_access_layer::{
-    AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
-    BalanceIdentifierPurseResult, ProofHandling, QueryRequest, QueryResult,
+use casper_storage::{
+    data_access_layer::{
+        AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
+        BalanceIdentifierPurseResult, ProofHandling, QueryRequest, QueryResult,
+    },
+    global_state::state::CommitProvider,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeyAddr,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
-    AccessRights, AddressableEntity, Digest, EntityAddr, ExecutableDeployItem, ExecutionInfo,
-    TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
+    AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, ExecutableDeployItem,
+    ExecutionInfo, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -530,6 +533,86 @@ fn get_bids(fixture: &mut TestFixture, block_height: Option<u64>) -> Option<Vec<
         .data_access_layer()
         .bids(BidsRequest::new(state_hash))
         .into_option()
+}
+
+fn handle_payment_refund_purse_is_set(fixture: &TestFixture, block_height: Option<u64>) -> bool {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let protocol_version = fixture.chainspec.protocol_version();
+    let state_hash = state_root_hash_at(fixture, block_height);
+    let request =
+        BalanceIdentifierPurseRequest::new(state_hash, protocol_version, BalanceIdentifier::Refund);
+
+    matches!(
+        runner
+            .main_reactor()
+            .contract_runtime()
+            .data_access_layer()
+            .balance_purse(request),
+        BalanceIdentifierPurseResult::Success { .. }
+    )
+}
+
+fn state_root_hash_at(fixture: &TestFixture, block_height: Option<u64>) -> Digest {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_height = block_height.unwrap_or(
+        runner
+            .main_reactor()
+            .storage()
+            .highest_complete_block_height()
+            .expect("missing highest completed block"),
+    );
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .expect("should have header");
+    *block_header.state_root_hash()
+}
+
+fn seed_payment_purse_balance_at_tip(fixture: &mut TestFixture, amount: U512) {
+    let protocol_version = fixture.chainspec.protocol_version();
+
+    for runner in fixture.network.runners_mut() {
+        let reactor = runner.reactor_mut().inner_mut().inner_mut();
+        let highest_block = reactor
+            .storage()
+            .read_highest_block()
+            .expect("highest block should exist");
+        let state_root_hash = *highest_block.state_root_hash();
+        let data_access_layer = reactor.contract_runtime().data_access_layer();
+        let payment_purse_addr =
+            match data_access_layer.balance_purse(BalanceIdentifierPurseRequest::new(
+                state_root_hash,
+                protocol_version,
+                BalanceIdentifier::Payment,
+            )) {
+                BalanceIdentifierPurseResult::Success { purse_addr } => purse_addr,
+                other => panic!("payment purse should exist: {other:?}"),
+            };
+
+        let seeded_state_root_hash = data_access_layer
+            .commit_values(
+                state_root_hash,
+                vec![(
+                    Key::Balance(payment_purse_addr),
+                    StoredValue::CLValue(
+                        CLValue::from_t(amount).expect("seeded amount is CLValue"),
+                    ),
+                )],
+                BTreeSet::new(),
+            )
+            .expect("payment purse seed should commit");
+
+        reactor.contract_runtime.set_initial_state(
+            crate::components::contract_runtime::ExecutionPreState::new(
+                highest_block.height() + 1,
+                seeded_state_root_hash,
+                *highest_block.hash(),
+                *highest_block.accumulated_seed(),
+            ),
+        );
+    }
 }
 
 fn get_payment_purse_balance(
@@ -5810,4 +5893,1064 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     fixture
         .assert_execution_in_lane(&largest_txn_hash, largest_lane_id, TEN_SECS)
         .await;
+}
+
+/// Regression for audit-confirmed-13: when the initial-balance precheck fails (initiator's main
+/// purse below `baseline_motes_amount`), `ExecutionArtifactBuilder::with_initial_balance_result`
+/// must return `Err(false)` so `execute_finalized_block` stops the transaction. Without the fix
+/// the precheck records an error but execution continues into custom payment and session code,
+/// the session writes a named key, and the handle-payment refund purse is left set.
+#[tokio::test]
+async fn failed_custom_payment_precheck_does_not_leave_refund_purse_set() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_baseline_motes_amount(2_500_000_000);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    assert!(
+        !handle_payment_refund_purse_is_set(&test.fixture, None),
+        "refund purse should start unset"
+    );
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let baseline_motes = test.chainspec().core_config.baseline_motes_amount_u512();
+    let custom_payment_amount = baseline_motes;
+    let custom_payment_purse_name = "custom_payment_purse";
+    let created_session_key = "hello-world";
+
+    let purse_setup_contract = base_path.join("transfer_main_purse_to_new_purse.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(purse_setup_contract).expect("cannot read module bytes"));
+    let mut purse_setup_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "destination" => custom_payment_purse_name,
+            "amount" => custom_payment_amount,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    purse_setup_txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(purse_setup_txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let (_, bob_initial_balance, _) = test.get_balances(None);
+    let drain_amount = bob_initial_balance.available.saturating_sub(baseline_motes) + U512::one();
+    let transfer_hold = U512::from(test.chainspec().system_costs_config.mint_costs().transfer);
+
+    let chain_name = test.chainspec().network_config.name.clone();
+    let mut drain_txn = Transaction::from(
+        TransactionV1Builder::new_transfer(drain_amount, None, CHARLIE_PUBLIC_KEY.clone(), None)
+            .unwrap()
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: transfer_hold.as_u64(),
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: true,
+            })
+            .with_chain_name(chain_name.clone())
+            .build()
+            .unwrap(),
+    );
+    drain_txn.sign(&BOB_SECRET_KEY);
+    let drain_txn_hash = drain_txn.hash();
+
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("named_purse_payment.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "amount" => custom_payment_amount,
+                "purse_name" => custom_payment_purse_name.to_string(),
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("named_keys.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "command" => "create-uref1".to_string(),
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+    let custom_payment_txn_hash = custom_payment_txn.hash();
+
+    test.fixture.inject_transaction(drain_txn).await;
+    test.fixture.inject_transaction(custom_payment_txn).await;
+
+    test.fixture
+        .run_until_executed_transaction(&custom_payment_txn_hash, TEN_SECS)
+        .await;
+
+    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+    let drain_exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(drain_txn_hash)
+        .expect("drain transaction should be included");
+    let custom_payment_exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(custom_payment_txn_hash)
+        .expect("custom payment transaction should be included");
+
+    assert_eq!(
+        drain_exec_info.block_height, custom_payment_exec_info.block_height,
+        "drain and custom payment transactions must execute in the same block"
+    );
+    let drain_exec_result = drain_exec_info
+        .execution_result
+        .expect("drain transaction should have an execution result");
+    assert!(
+        exec_result_is_success(&drain_exec_result),
+        "{:?}",
+        drain_exec_result
+    );
+
+    let exec_result = custom_payment_exec_info
+        .execution_result
+        .expect("custom payment transaction should have an execution result");
+    let error_message = exec_result
+        .error_message()
+        .expect("transaction should fail the initial balance precheck");
+    assert!(
+        error_message.contains(&format!("has less than {}", baseline_motes)),
+        "{error_message}"
+    );
+
+    let state_root_hash =
+        state_root_hash_at(&test.fixture, Some(custom_payment_exec_info.block_height));
+    let bob_entity_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+    assert!(
+        get_entity_named_key(
+            &mut test.fixture,
+            state_root_hash,
+            bob_entity_addr,
+            created_session_key,
+        )
+        .is_none(),
+        "failed custom payment precheck must not execute session code"
+    );
+    assert!(
+        !handle_payment_refund_purse_is_set(
+            &test.fixture,
+            Some(custom_payment_exec_info.block_height)
+        ),
+        "failed custom payment precheck must not leave the handle-payment refund purse set"
+    );
+}
+
+/// Regression for audit-confirmed-32: native burn must subtract the burned amount from the
+/// purse's *total* balance, not overwrite it with `available - amount`. Otherwise burning while
+/// a gas/processing hold is active permanently erases the held balance even though total supply
+/// is reduced only by the burn amount.
+#[tokio::test]
+async fn native_burn_with_active_gas_hold_preserves_held_balance() {
+    const HELD_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+    const BURN_AMOUNT: u64 = 1;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::NoFee);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let held_txn = invalid_wasm_txn(
+        BOB_SECRET_KEY.clone(),
+        PricingMode::PaymentLimited {
+            payment_amount: HELD_PAYMENT_AMOUNT,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        },
+    );
+    let (_txn_hash, hold_block_height, hold_result) = test.send_transaction(held_txn).await;
+    assert!(
+        !exec_result_is_success(&hold_result),
+        "invalid wasm transaction should fail while creating a gas hold"
+    );
+
+    let (_alice_after_hold, bob_after_hold, _) = test.get_balances(Some(hold_block_height));
+    let total_supply_after_hold = test.get_total_supply(Some(hold_block_height));
+    assert!(
+        bob_after_hold.available < bob_after_hold.total,
+        "repro requires an active gas hold before burning"
+    );
+
+    let mut burn_txn = Transaction::from(
+        TransactionV1Builder::new_burn(BURN_AMOUNT, None)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount: HELD_PAYMENT_AMOUNT,
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: true,
+            })
+            .build()
+            .unwrap(),
+    );
+    burn_txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, burn_block_height, burn_result) = test.send_transaction(burn_txn).await;
+    assert!(
+        exec_result_is_success(&burn_result),
+        "native burn should succeed: {:?}",
+        burn_result
+    );
+
+    let (_alice_after_burn, bob_after_burn, _) = test.get_balances(Some(burn_block_height));
+    let total_supply_after_burn = test.get_total_supply(Some(burn_block_height));
+    let expected_bob_total = bob_after_hold.total - U512::from(BURN_AMOUNT);
+
+    assert_eq!(
+        total_supply_after_burn,
+        total_supply_after_hold - U512::from(BURN_AMOUNT),
+        "native burn should reduce total supply by exactly the burned amount"
+    );
+    assert_eq!(
+        bob_after_burn.total, expected_bob_total,
+        "native burn with an active gas hold removed more from the purse than the burned amount: before={bob_after_hold:?}, after={bob_after_burn:?}"
+    );
+}
+
+/// Regression for audit-confirmed-35: V1 custom payment must not be executed with a gas budget
+/// independent of the transaction's declared payment-limited gas. Otherwise payment-phase Wasm
+/// can consume far more gas than the transaction limit (since cost is later capped at the limit),
+/// undercharging the sender while still using validator execution resources.
+#[tokio::test]
+async fn custom_payment_cannot_consume_more_than_transaction_limit() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("overlimit_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let payment_amount = 2_500_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+
+    assert!(
+        result.consumed <= result.limit,
+        "custom payment consumed more gas than the transaction limit: consumed={}, limit={}, cost={}, error={:?}",
+        result.consumed.value(),
+        result.limit.value(),
+        result.cost,
+        result.error_message,
+    );
+}
+
+/// Regression for audit-confirmed-51: a failed-custom-payment transaction must include the gas
+/// consumed by the payment Wasm in `consumed` and charge for it. Without the fix expensive
+/// payment work that underdeposits records `consumed = 0` and only the baseline penalty cost is
+/// charged, letting senders burn unaccounted gas.
+#[tokio::test]
+async fn failed_custom_payment_charges_consumed_payment_gas() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("underpaying_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let bob_before = get_balance(&test.fixture, &BOB_PUBLIC_KEY, None, true)
+        .total_balance()
+        .copied()
+        .expect("Bob should have a balance");
+
+    let payment_amount = 20_000_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .expect("custom payment should fail")
+            .starts_with("Insufficient custom payment"),
+        "{:?}",
+        result.error_message
+    );
+
+    let baseline_motes = test.chainspec().core_config.baseline_motes_amount_u512();
+    assert!(
+        result.consumed.value() > baseline_motes,
+        "failed custom payment recorded only {} consumed gas after expensive payment work; baseline={}, cost={}, limit={}, error={:?}",
+        result.consumed.value(),
+        baseline_motes,
+        result.cost,
+        result.limit.value(),
+        result.error_message,
+    );
+    assert_eq!(
+        result.cost,
+        result.consumed.value(),
+        "failed custom payment charged {} despite consuming {} gas",
+        result.cost,
+        result.consumed.value(),
+    );
+
+    let bob_after = get_balance(&test.fixture, &BOB_PUBLIC_KEY, Some(block_height), true)
+        .total_balance()
+        .copied()
+        .expect("Bob should have a balance");
+    assert_eq!(
+        bob_before - bob_after,
+        result.cost,
+        "payer balance delta should match charged failed-payment gas"
+    );
+}
+
+/// Regression for audit-confirmed-152: a failed VM1 session (here: burn from main purse then run
+/// out of gas) must not leave its state-changing effects applied. With `FeeHandling::PayToProposer`
+/// fee finalization itself does not move mint total supply, so the only way the supply could go
+/// down is if the failed session's burn was nevertheless committed. Asserts total supply is
+/// unchanged after the failed transaction.
+#[tokio::test]
+async fn failed_wasm_session_burn_must_not_reduce_total_supply() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let module_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("burn_then_out_of_gas.wasm");
+    let module_bytes = Bytes::from(std::fs::read(module_path).expect("burn_then_out_of_gas wasm"));
+
+    let supply_before = test.get_total_supply(None);
+
+    let burn_amount = U512::from(1_000_000u64);
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "amount" => burn_amount,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 2_500_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        !exec_result_is_success(&exec_result),
+        "burn_then_out_of_gas should fail: {:?}",
+        exec_result
+    );
+
+    let supply_after = test.get_total_supply(Some(block_height));
+    assert_eq!(
+        supply_before, supply_after,
+        "failed Wasm session burn reduced total supply: before={supply_before}, after={supply_after}",
+    );
+}
+
+/// Regression for audit-confirmed-109: a forged V1 transaction whose declared `initiator_addr`
+/// is a victim account but whose approvals only carry an unrelated attacker key must not let
+/// fee finalization charge the victim. Without the fix, block execution selects the victim as
+/// the standard-payment payer before the execution engine performs account authorization, the
+/// session fails with `Authorization`, and fee finalization still debits the victim's main
+/// purse for the full declared `payment_amount`.
+#[tokio::test]
+async fn forged_initiator_must_not_drain_victim_fees() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // Use a no-op session module (`do_nothing.wasm`). It would never get to execute on a fixed
+    // runtime because authorization should fail before payment.
+    let do_nothing_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("do_nothing.wasm");
+    let module_bytes = Bytes::from(std::fs::read(do_nothing_path).expect("do_nothing wasm"));
+
+    let payment_amount = 100_000_000_000u64;
+    // Declared initiator: Bob (the victim). Signature: Charlie (the attacker).
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&CHARLIE_SECRET_KEY);
+
+    let (_, bob_before, _) = test.get_balances(None);
+    let (_txn_hash, block_height, _exec_result) = test.send_transaction(txn).await;
+    let (_, bob_after, _) = test.get_balances(Some(block_height));
+
+    let victim_loss = bob_before.total.saturating_sub(bob_after.total);
+    assert_eq!(
+        victim_loss,
+        U512::zero(),
+        "forged-approval transaction charged victim initiator: victim_loss={victim_loss}",
+    );
+}
+
+/// Regression for audit-confirmed-85: a VM1 custom-payment transaction must not let custom
+/// payment and the following session each spend the full approved amount from the caller's main
+/// purse. The custom payment in this test transfers `payment_amount` from Bob's main purse into
+/// the system payment purse (consuming the approved spending limit), and the session then tries
+/// to transfer `payment_amount` again from the main purse into a fresh named purse. Without the
+/// fix the session sees a fresh full spending limit derived from the same `amount` runtime arg
+/// and the transaction debits Bob's main purse for `2 * payment_amount`.
+#[tokio::test]
+async fn custom_payment_and_session_share_spending_limit() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let payment_amount = U512::from(500_000_000_000u64);
+    let new_purse_name = "audit-85-overflow-purse";
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let payment_bytes =
+        std::fs::read(base_path.join("non_standard_payment.wasm")).expect("payment wasm");
+    let session_bytes = std::fs::read(base_path.join("transfer_main_purse_to_new_purse.wasm"))
+        .expect("session wasm");
+
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: payment_bytes.into(),
+            args: runtime_args! {
+                "amount" => payment_amount,
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: session_bytes.into(),
+            args: runtime_args! {
+                "amount" => payment_amount,
+                "destination" => new_purse_name.to_string(),
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+
+    let (_, bob_before, _) = test.get_balances(None);
+    let (_txn_hash, block_height, _exec_result) = test.send_transaction(custom_payment_txn).await;
+    let (_, bob_after, _) = test.get_balances(Some(block_height));
+
+    let caller_loss = bob_before.total.saturating_sub(bob_after.total);
+    // With the spending-limit reset bug, custom payment and session each transfer
+    // `payment_amount` out of Bob's main purse, so caller_loss > payment_amount * 2 - epsilon.
+    // The fixed runtime forwards the post-payment remaining spending limit into the session
+    // request, which surfaces as the session reverting with UnapprovedSpendingAmount (rolling
+    // back its main-purse debit); only the payment-phase transfer commits.
+    assert!(
+        caller_loss < payment_amount * U512::from(2u64),
+        "custom payment and session each spent the approved amount from the main purse: \
+         approved={payment_amount}, caller_loss={caller_loss}"
+    );
+}
+
+/// Regression for audit-confirmed-80: a failed custom-payment transaction must not be allowed
+/// to settle pre-existing shared payment-purse funds as its own fee. The repro seeds the shared
+/// payment purse with 100 motes directly in test state, then runs a failing custom-payment whose
+/// `payment_amount` exceeds the actual consumed payment gas. Asserts the 100 seeded motes are
+/// still in the payment purse afterwards. Without the fix `fee_amount` was derived from the full
+/// post-payment purse balance, so fee finalization (PayToProposer / Burn / Accumulate) could
+/// pay or burn those unrelated motes.
+#[tokio::test]
+async fn failed_custom_payment_must_not_settle_preexisting_payment_purse_balance() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let seeded_amount = U512::from(100u64);
+    seed_payment_purse_balance_at_tip(&mut test.fixture, seeded_amount);
+
+    let base_path = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    let underpaying_payment_bytes = Bytes::from(
+        std::fs::read(base_path.join("underpaying_custom_payment.wasm"))
+            .expect("cannot read underpaying custom payment module bytes"),
+    );
+    let mut custom_payment_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            underpaying_payment_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "iterations" => 1u32,
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 20_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    custom_payment_txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, custom_block_height, custom_result) =
+        test.send_transaction(custom_payment_txn).await;
+    assert!(
+        custom_result
+            .error_message()
+            .expect("custom payment should fail")
+            .starts_with("Insufficient custom payment"),
+        "{:?}",
+        custom_result
+    );
+
+    let payment_purse_balance =
+        get_payment_purse_balance(&mut test.fixture, Some(custom_block_height));
+    assert_eq!(
+        *payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        seeded_amount,
+        "failed custom payment fee finalization drained pre-existing shared payment-purse balance"
+    );
+}
+
+/// Regression for audit-confirmed-75: a VM1 custom payment that funds the payment purse with
+/// multiple valid transfers must be accepted as long as the total deposit matches the requested
+/// `payment_amount`. Without the fix `balance_increased_by_amount` only inspected the first
+/// `AddUInt512` transform on the payment-purse balance and required an exact match, so a split
+/// deposit was misclassified as `Insufficient custom payment` and the sender was penalized.
+#[tokio::test]
+async fn split_custom_payment_deposit_satisfies_payment_amount() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("split_custom_payment.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let payment_amount = 2_500_000_000u64;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        exec_result_is_success(&exec_result),
+        "split custom payment was penalized despite depositing the full payment amount: {:?}",
+        exec_result
+    );
+}
+
+/// Regression for audit-confirmed-156: a VM1 custom payment that deposits more than the required
+/// payment amount must not leave the excess stranded in the shared system payment purse. The
+/// payment phase spends from a pre-funded named purse so the overfund is not blocked by the main
+/// purse approved-spending limit.
+#[tokio::test]
+async fn overfunded_custom_payment_drains_payment_purse() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(75, 100),
+        })
+        .with_fee_handling(FeeHandling::Burn);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+    let payment_amount = 20_000_000_000u64;
+    let overfund_amount = U512::from(1_000u64);
+    let source_purse_name = "audit-156-overfund-source";
+
+    let setup_bytes = Bytes::from(
+        std::fs::read(base_path.join("transfer_main_purse_to_new_purse.wasm"))
+            .expect("cannot read setup module bytes"),
+    );
+    let mut setup_txn = Transaction::from(
+        TransactionV1Builder::new_session(true, setup_bytes, TransactionRuntimeParams::VmCasperV1)
+            .with_chain_name(CHAIN_NAME)
+            .with_pricing_mode(PricingMode::PaymentLimited {
+                payment_amount,
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: true,
+            })
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_runtime_args(runtime_args! {
+                "destination" => source_purse_name.to_string(),
+                "amount" => U512::from(payment_amount) + overfund_amount,
+            })
+            .build()
+            .unwrap(),
+    );
+    setup_txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _setup_block_height, setup_result) = test.send_transaction(setup_txn).await;
+    assert!(
+        exec_result_is_success(&setup_result),
+        "source purse setup should succeed: {:?}",
+        setup_result
+    );
+
+    let payment_bytes = Bytes::from(
+        std::fs::read(base_path.join("overfund_custom_payment.wasm"))
+            .expect("cannot read overfund custom payment module bytes"),
+    );
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            payment_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .with_runtime_args(runtime_args! {
+            "source" => source_purse_name.to_string(),
+            "extra" => overfund_amount,
+        })
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        exec_result_is_success(&exec_result),
+        "overfunded custom payment should succeed: {:?}",
+        exec_result
+    );
+
+    let payment_purse_balance = get_payment_purse_balance(&mut test.fixture, Some(block_height));
+    assert_eq!(
+        *payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        U512::zero(),
+        "overfunded custom payment left motes in the shared payment purse"
+    );
+}
+
+/// Regression for audit-confirmed-57: custom-payment code must not be able to persist the system
+/// payment purse via a stored-helper subcall that resolves `handle_payment.get_payment_purse`.
+/// The parent runtime previously failed to see the marker set by the helper's context and let
+/// `put_key` accept the payment purse URef.
+#[tokio::test]
+async fn custom_payment_subcall_returned_payment_purse_cannot_be_persisted() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::PaymentLimited)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let base_path = RESOURCES_PATH
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+    let payment_purse_persist_bytes = Bytes::from(
+        std::fs::read(base_path.join("payment_purse_persist.wasm"))
+            .expect("cannot read payment-purse-persist module bytes"),
+    );
+
+    let mut install_txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            true,
+            payment_purse_persist_bytes.clone(),
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            "method" => "install_helper".to_string(),
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 100_000_000_000u64,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: true,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    install_txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, install_result) = test.send_transaction(install_txn).await;
+    assert!(
+        exec_result_is_success(&install_result),
+        "helper install should succeed: {:?}",
+        install_result
+    );
+
+    let payment_amount = U512::from(2_500_000_000u64);
+    let custom_payment_txn = {
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_seconds(100);
+        let gas_price = 1;
+        let chain_name = test.chainspec().network_config.name.clone();
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: payment_purse_persist_bytes,
+            args: runtime_args! {
+                "method" => "subcall_put_key".to_string(),
+                "amount" => payment_amount,
+            },
+        };
+
+        let session = ExecutableDeployItem::ModuleBytes {
+            module_bytes: std::fs::read(base_path.join("do_nothing.wasm"))
+                .unwrap()
+                .into(),
+            args: runtime_args! {
+                "this_is_session" => true,
+            },
+        };
+
+        Transaction::Deploy(Deploy::new_signed(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            &BOB_SECRET_KEY,
+            Some(BOB_PUBLIC_KEY.clone()),
+        ))
+    };
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(custom_payment_txn).await;
+    if exec_result_is_success(&exec_result) {
+        let state_root_hash = state_root_hash_at(&test.fixture, Some(block_height));
+        let bob_entity_addr = get_entity_addr_from_account_hash(
+            &mut test.fixture,
+            state_root_hash,
+            BOB_PUBLIC_KEY.to_account_hash(),
+        );
+        assert!(
+            get_entity_named_key(
+                &mut test.fixture,
+                state_root_hash,
+                bob_entity_addr,
+                "this_should_fail",
+            )
+            .is_none(),
+            "payment purse returned from subcall was persisted as a named key"
+        );
+        panic!("custom payment unexpectedly succeeded without persisting the payment purse");
+    }
+
+    let error_message = exec_result
+        .error_message()
+        .expect("custom payment should reject payment-purse persistence");
+    assert!(
+        error_message.contains("HandlePayment")
+            || error_message.contains("Handle Payment")
+            || error_message.contains("[40]")
+            || error_message.contains("error: 40"),
+        "custom payment failed before reaching the payment-purse persistence guard: {error_message}"
+    );
 }
