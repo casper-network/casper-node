@@ -5,8 +5,7 @@ use casper_types::{
     InvalidTransactionV1, PricingHandling, PricingMode, PublicKey, TimeDiff, Timestamp,
     TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
     TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
-    TransactionV1Config, TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID,
-    MINT_LANE_ID, U512,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use datasize::DataSize;
@@ -46,8 +45,9 @@ pub(crate) struct MetaTransactionV1 {
 impl MetaTransactionV1 {
     pub(crate) fn from_transaction_v1(
         v1: &TransactionV1,
-        transaction_v1_config: &TransactionV1Config,
+        chainspec: &Chainspec,
     ) -> Result<MetaTransactionV1, InvalidTransaction> {
+        let transaction_v1_config = &chainspec.transaction_config.transaction_v1_config;
         let args_binary_len = v1
             .payload()
             .fields()
@@ -60,6 +60,25 @@ impl MetaTransactionV1 {
         let target: TransactionTarget = v1.deserialize_field(TARGET_MAP_KEY).map_err(|error| {
             InvalidTransaction::V1(InvalidTransactionV1::CouldNotDeserializeField { error })
         })?;
+        let vm_casper_v1 = chainspec.transaction_config.runtime_config.vm_casper_v1;
+        let vm_casper_v2 = chainspec.transaction_config.runtime_config.vm_casper_v2;
+        match &target {
+            TransactionTarget::Stored { runtime, .. }
+            | TransactionTarget::Session { runtime, .. } => match runtime {
+                TransactionRuntimeParams::VmCasperV1 if !vm_casper_v1 => Err(
+                    InvalidTransaction::V1(InvalidTransactionV1::InvalidTransactionRuntime {
+                        expected: ContractRuntimeTag::VmCasperV2,
+                    }),
+                ),
+                TransactionRuntimeParams::VmCasperV2 { .. } if !vm_casper_v2 => Err(
+                    InvalidTransaction::V1(InvalidTransactionV1::InvalidTransactionRuntime {
+                        expected: ContractRuntimeTag::VmCasperV1,
+                    }),
+                ),
+                _ => Ok(()),
+            },
+            _ => Ok(()),
+        }?;
         let entry_point: TransactionEntryPoint =
             v1.deserialize_field(ENTRY_POINT_MAP_KEY).map_err(|error| {
                 InvalidTransaction::V1(InvalidTransactionV1::CouldNotDeserializeField { error })
@@ -876,10 +895,16 @@ mod tests {
     use super::MetaTransactionV1;
     use crate::types::transaction::transaction_v1_builder::TransactionV1Builder;
     use casper_types::{
-        testing::TestRng, InvalidTransaction, InvalidTransactionV1, PricingMode, SecretKey,
-        TransactionInvocationTarget, TransactionLaneDefinition, TransactionRuntimeParams,
-        TransactionV1Config,
+        testing::TestRng, Chainspec, InvalidTransaction, InvalidTransactionV1, PricingMode,
+        SecretKey, TransactionInvocationTarget, TransactionLaneDefinition,
+        TransactionRuntimeParams, TransactionV1Config,
     };
+
+    fn chainspec_with_v1_config(config: TransactionV1Config) -> Chainspec {
+        let mut chainspec = Chainspec::default();
+        chainspec.transaction_config.transaction_v1_config = config;
+        chainspec
+    }
 
     #[test]
     fn limited_amount_should_determine_transaction_lane_for_session() {
@@ -901,9 +926,9 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config(build_v1_config());
 
-        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config)
+        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec)
             .expect("meta transaction should be valid");
         assert_eq!(meta_transaction.lane_id(), 4);
     }
@@ -928,9 +953,9 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config(build_v1_config());
 
-        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config);
+        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec);
         assert!(matches!(
             res,
             Err(InvalidTransaction::V1(InvalidTransactionV1::NoLaneMatch))
@@ -957,8 +982,8 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let mut config = TransactionV1Config::default();
-        config.set_wasm_lanes(vec![
+        let mut v1_config = TransactionV1Config::default();
+        v1_config.set_wasm_lanes(vec![
             TransactionLaneDefinition {
                 id: 3,
                 max_transaction_length: 200,
@@ -974,8 +999,9 @@ mod tests {
                 max_transaction_count: 10,
             },
         ]);
+        let chainspec = chainspec_with_v1_config(v1_config);
 
-        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config);
+        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec);
         assert!(matches!(
             res,
             Err(InvalidTransaction::V1(InvalidTransactionV1::NoLaneMatch))
@@ -1002,9 +1028,9 @@ mod tests {
         .with_pricing_mode(pricing_mode)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config(build_v1_config());
 
-        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config)
+        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec)
             .expect("meta transaction should be valid");
         assert_eq!(meta_transaction.lane_id(), 4);
     }

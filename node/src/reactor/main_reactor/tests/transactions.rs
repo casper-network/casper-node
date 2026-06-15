@@ -2230,7 +2230,7 @@ async fn should_gas_hold_fee_erroneous_wasm(txn_pricing_mode: PricingMode) {
     let meta_transaction = MetaTransaction::from_transaction(
         &txn,
         test.chainspec().core_config.pricing_handling,
-        &test.chainspec().transaction_config,
+        test.chainspec(),
     )
     .unwrap();
     // Fixed transaction pricing.

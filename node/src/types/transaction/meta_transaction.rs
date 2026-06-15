@@ -7,8 +7,8 @@ use casper_types::InvalidTransactionV1;
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, ExecutableDeployItem,
     Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase, PricingHandling,
-    PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionConfig,
-    TransactionEntryPoint, TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID,
+    PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionEntryPoint,
+    TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use meta_deploy::MetaDeploy;
@@ -235,20 +235,18 @@ impl MetaTransaction {
     pub(crate) fn from_transaction(
         transaction: &Transaction,
         pricing_handling: PricingHandling,
-        transaction_config: &TransactionConfig,
+        chainspec: &Chainspec,
     ) -> Result<Self, InvalidTransaction> {
         match transaction {
             Transaction::Deploy(deploy) => MetaDeploy::from_deploy(
                 deploy.clone(),
                 pricing_handling,
-                &transaction_config.transaction_v1_config,
+                &chainspec.transaction_config.transaction_v1_config,
             )
             .map(MetaTransaction::Deploy),
-            Transaction::V1(v1) => MetaTransactionV1::from_transaction_v1(
-                v1,
-                &transaction_config.transaction_v1_config,
-            )
-            .map(MetaTransaction::V1),
+            Transaction::V1(v1) => {
+                MetaTransactionV1::from_transaction_v1(v1, chainspec).map(MetaTransaction::V1)
+            }
         }
     }
 
@@ -430,7 +428,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
             let meta = MetaTransaction::from_transaction(
                 transaction,
                 chainspec.core_config.pricing_handling,
-                &chainspec.transaction_config,
+                chainspec,
             )?;
             Ok(meta.transaction_lane())
         }
@@ -473,8 +471,11 @@ mod proptests {
     proptest! {
         #[test]
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
-            let mut transaction_config = TransactionConfig::default();
-            transaction_config.transaction_v1_config.set_wasm_lanes(vec![
+            let mut chainspec = Chainspec::default();
+            // Enable both runtimes so the proptest covers VmCasperV1 and VmCasperV2 transactions.
+            chainspec.transaction_config.runtime_config.vm_casper_v1 = true;
+            chainspec.transaction_config.runtime_config.vm_casper_v2 = true;
+            chainspec.transaction_config.transaction_v1_config.set_wasm_lanes(vec![
                 TransactionLaneDefinition {
                     id: 3,
                     max_transaction_length: u64::MAX/2,
@@ -490,7 +491,7 @@ mod proptests {
                     max_transaction_count: 10,
                 },
                 ]);
-            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
+            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &chainspec);
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);
         }
     }

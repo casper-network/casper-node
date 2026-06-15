@@ -8,7 +8,8 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionHash, TransactionId, TransactionV1, TransactionV1Config, AUCTION_LANE_ID,
+    TransactionArgs, TransactionHash, TransactionId, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionV1, TransactionV1Config, AUCTION_LANE_ID,
     INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
@@ -20,7 +21,9 @@ use crate::{
     effect::requests::StorageRequest,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::LARGE_WASM_LANE_ID,
-    types::{BlockPayload, ValidatorMatrix},
+    types::{
+        transaction::transaction_v1_builder::TransactionV1Builder, BlockPayload, ValidatorMatrix,
+    },
     utils::{self, Loadable},
 };
 
@@ -357,6 +360,14 @@ impl ValidationContext {
             large_limit,
         );
         self.chainspec.transaction_config.transaction_v1_config = transaction_v1_config;
+        self
+    }
+
+    fn with_vm_casper_v2(mut self, enabled: bool) -> Self {
+        self.chainspec
+            .transaction_config
+            .runtime_config
+            .vm_casper_v2 = enabled;
         self
     }
 
@@ -1376,4 +1387,174 @@ async fn should_validate_with_delayed_block() {
         .include_signatures(3, 5, &validators);
 
     assert!(context.proposal_is_valid(&mut rng, timestamp).await);
+}
+
+#[tokio::test]
+async fn block_with_transaction_targetting_stored_vm2_contract_rejected_when_vm2_disabled() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+    let ttl = TimeDiff::from_millis(30_000);
+    let secret_key = SecretKey::random(&mut rng);
+
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    assert!(
+        !chainspec.transaction_config.runtime_config.vm_casper_v2,
+        "test requires vm_casper_v2 = false"
+    );
+
+    let vm2_tx = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByHash([1u8; 32]),
+            "do_something",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(&secret_key)
+        .with_timestamp(timestamp)
+        .with_ttl(ttl)
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+        .build()
+        .unwrap(),
+    );
+
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(vec![vm2_tx])
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(15_300_000_000_000)
+        .include_all_transactions();
+
+    assert!(
+        !context.proposal_is_valid(&mut rng, timestamp).await,
+        "block proposal containing a VmCasperV2 transaction should be rejected when \
+         vm_casper_v2 = false in the chainspec"
+    );
+}
+
+#[tokio::test]
+async fn block_with_transaction_targetting_stored_vm2_contract_not_rejected_when_vm2_enabled() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+    let ttl = TimeDiff::from_millis(30_000);
+    let secret_key = SecretKey::random(&mut rng);
+
+    let vm2_tx = Transaction::from(
+        TransactionV1Builder::new_targeting_stored(
+            TransactionInvocationTarget::ByHash([1u8; 32]),
+            "do_something",
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(&secret_key)
+        .with_timestamp(timestamp)
+        .with_ttl(ttl)
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+        .build()
+        .unwrap(),
+    );
+
+    let mut context = ValidationContext::new()
+        .with_vm_casper_v2(true)
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(vec![vm2_tx])
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(15_300_000_000_000)
+        .include_all_transactions();
+
+    assert!(
+        context.proposal_is_valid(&mut rng, timestamp).await,
+        "block proposal containing a VmCasperV2 transaction should not be rejected when \
+         vm_casper_v2 = true in the chainspec"
+    );
+}
+
+#[tokio::test]
+async fn block_with_session_targetting_vm2_rejected_when_vm2_disabled() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+    let ttl = TimeDiff::from_millis(30_000);
+    let secret_key = SecretKey::random(&mut rng);
+
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    assert!(
+        !chainspec.transaction_config.runtime_config.vm_casper_v2,
+        "test requires vm_casper_v2 = false"
+    );
+
+    let vm2_tx = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(vec![]),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(&secret_key)
+        .with_timestamp(timestamp)
+        .with_ttl(ttl)
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+        .build()
+        .unwrap(),
+    );
+
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(vec![vm2_tx])
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(15_300_000_000_000)
+        .include_all_transactions();
+
+    assert!(
+        !context.proposal_is_valid(&mut rng, timestamp).await,
+        "block proposal containing a VmCasperV2 transaction should be rejected when \
+         vm_casper_v2 = false in the chainspec"
+    );
+}
+
+#[tokio::test]
+async fn block_with_session_targetting_vm2_not_rejected_when_vm2_enabled() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+    let ttl = TimeDiff::from_millis(30_000);
+    let secret_key = SecretKey::random(&mut rng);
+
+    let vm2_tx = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            Bytes::from(vec![]),
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_chain_name("casper-example")
+        .with_secret_key(&secret_key)
+        .with_timestamp(timestamp)
+        .with_ttl(ttl)
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+        .build()
+        .unwrap(),
+    );
+
+    let mut context = ValidationContext::new()
+        .with_vm_casper_v2(true)
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(vec![vm2_tx])
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(15_300_000_000_000)
+        .include_all_transactions();
+
+    assert!(
+        context.proposal_is_valid(&mut rng, timestamp).await,
+        "block proposal containing a VmCasperV2 transaction should not be rejected when \
+         vm_casper_v2 = true in the chainspec"
+    );
 }

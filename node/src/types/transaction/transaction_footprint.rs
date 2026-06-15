@@ -44,7 +44,7 @@ impl TransactionFootprint {
         let transaction = MetaTransaction::from_transaction(
             transaction,
             chainspec.core_config.pricing_handling,
-            &chainspec.transaction_config,
+            chainspec,
         )?;
         Self::new_from_meta_transaction(chainspec, &transaction)
     }

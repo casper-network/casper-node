@@ -207,13 +207,11 @@ pub fn execute_finalized_block(
         }
     }
 
-    let transaction_config = &chainspec.transaction_config;
-
     for stored_transaction in executable_block.transactions {
         let transaction = MetaTransaction::from_transaction(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
-            transaction_config,
+            chainspec,
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
@@ -1484,11 +1482,10 @@ pub(super) fn speculatively_execute<S>(
 where
     S: StateProvider,
 {
-    let transaction_config = &chainspec.transaction_config;
     let maybe_transaction = MetaTransaction::from_transaction(
         &input_transaction,
         chainspec.core_config.pricing_handling,
-        transaction_config,
+        chainspec,
     );
     if let Err(error) = maybe_transaction {
         return SpeculativeExecutionResult::invalid_transaction(error);
