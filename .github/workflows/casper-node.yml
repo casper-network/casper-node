@@ -105,7 +105,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: test
-        run: make test CARGO_FLAGS=--release
+        run: make test CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
 
   test_contracts:
     name: test-contracts
@@ -139,7 +139,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: test-contracts
-        run: make test-contracts CARGO_FLAGS=--release
+        run: make test-contracts CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
 
   tests:
     name: tests

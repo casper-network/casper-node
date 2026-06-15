@@ -20,6 +20,7 @@ ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]* -mindepth 1 -m
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
+CARGO_TEST_PROFILE_ENV ?=
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 
@@ -62,18 +63,18 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml build-contracts-rs
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
-	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test
 test: test-rs-no-default-features test-rs
 
 .PHONY: test-contracts-rs
 test-contracts-rs: resources/local/chainspec.toml build-contracts-rs
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
+	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-timings
 test-contracts-timings: resources/local/chainspec.toml build-contracts-rs
