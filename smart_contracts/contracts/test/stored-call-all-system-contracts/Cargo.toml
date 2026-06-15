@@ -1,0 +1,16 @@
+[package]
+name = "stored-call-all-system-contracts"
+version = "0.1.0"
+authors = ["Jakub Zajkowski <jakub@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "stored_call_all_system_contracts"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

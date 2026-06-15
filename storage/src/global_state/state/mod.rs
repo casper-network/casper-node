@@ -2783,8 +2783,10 @@ where
         let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
         let instruction = match (read_result, kind) {
-            (_, TransformKindV2::Identity) => {
-                // effectively a noop.
+            (_, TransformKindV2::Identity)
+            | (_, TransformKindV2::Ret(_))
+            | (_, TransformKindV2::EntryPointCalled(_, _)) => {
+                // These transforms are not committed to global state.
                 continue;
             }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {

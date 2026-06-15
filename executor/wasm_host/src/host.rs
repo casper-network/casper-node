@@ -30,6 +30,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
+    execution::RetValue,
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
@@ -550,14 +551,28 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     )?;
 
     let flags = ReturnFlags::from_bits_retain(flags);
+    let is_revert = flags.contains(ReturnFlags::REVERT);
     let data = if data_ptr == 0 {
+        if !is_revert {
+            let key = caller.context().callee;
+            caller.context_mut().tracking_copy.ret(key, RetValue::Unit);
+        }
         None
     } else {
         let data = caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
             .map(Bytes::from)?;
+        if !is_revert {
+            let key = caller.context().callee;
+            let bytes = casper_types::bytesrepr::Bytes::from(data.to_vec());
+            caller
+                .context_mut()
+                .tracking_copy
+                .ret(key, RetValue::Bytes(bytes));
+        }
         Some(data)
     };
+
     Err(VMError::Return { flags, data })
 }
 
@@ -927,7 +942,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     caller.memory_write(out_ptr, &output)?;
                 }
             }
-
             let host_result = match host_error {
                 Some(host_error) => Err(host_error),
                 None => {
@@ -938,7 +952,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     Ok(())
                 }
             };
-
             (gas_usage, host_result)
         }
         Err(execute_error) => {
