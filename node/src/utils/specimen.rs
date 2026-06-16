@@ -43,6 +43,7 @@ use crate::{
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
+use crate::types::transaction::ProposedTransaction;
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
@@ -1148,6 +1149,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::Transaction => Message::new_get_request::<Transaction>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
+            Tag::ProposedTransaction => Message::new_get_request::<ProposedTransaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
@@ -1183,6 +1187,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
         match variant {
             Tag::Transaction => Message::new_get_response::<Transaction>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
+            Tag::ProposedTransaction => Message::new_get_response::<ProposedTransaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache)
             ),
             Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),

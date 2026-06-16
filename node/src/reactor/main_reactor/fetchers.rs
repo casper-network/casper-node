@@ -13,6 +13,7 @@ use crate::{
     FetcherConfig, NodeRng,
 };
 use casper_storage::block_store::types::ApprovalsHashes;
+use crate::types::transaction::ProposedTransaction;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
@@ -25,6 +26,7 @@ pub(super) struct Fetchers {
     transaction_fetcher: Fetcher<Transaction>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
+    proposed_transaction_fetcher: Fetcher<ProposedTransaction>
 }
 
 impl Fetchers {
@@ -50,6 +52,7 @@ impl Fetchers {
                 config,
                 metrics_registry,
             )?,
+            proposed_transaction_fetcher:  Fetcher::new("proposed_transaction", config, metrics_registry)?,
         })
     }
 
@@ -127,6 +130,16 @@ impl Fetchers {
             MainEvent::TransactionFetcherRequest(request) => reactor::wrap_effects(
                 MainEvent::TransactionFetcher,
                 self.transaction_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            MainEvent::ProposedTransactionFetcher(event) => reactor::wrap_effects(
+                MainEvent::ProposedTransactionFetcher,
+                self.proposed_transaction_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ProposedTransactionFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::ProposedTransactionFetcher,
+                self.proposed_transaction_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(

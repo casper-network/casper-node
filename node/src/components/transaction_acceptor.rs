@@ -30,7 +30,6 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    fatal,
     types::MetaTransaction,
     utils::Source,
     NodeRng,

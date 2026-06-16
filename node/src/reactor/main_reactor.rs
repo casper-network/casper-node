@@ -1053,6 +1053,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::BlockFetcherRequest(..)
             | MainEvent::TransactionFetcher(..)
             | MainEvent::TransactionFetcherRequest(..)
+            | MainEvent::ProposedTransactionFetcher(..)
+            | MainEvent::ProposedTransactionFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)
             | MainEvent::TrieOrChunkFetcher(..)

@@ -275,8 +275,7 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..)
             | TestScenario::InvalidFieldsFromPeer
-            | TestScenario::FromPeerInsufficientBalance(_) => Source::Peer(NodeId::random(rng)),
-            | TestScenario::InvalidFieldsFromPeer
+            | TestScenario::FromPeerInsufficientBalance(_) 
             | TestScenario::FromPeerWithSystemInitiator(_) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)

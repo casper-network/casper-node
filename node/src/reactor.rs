@@ -64,9 +64,7 @@ use tracing::{debug_span, error, info, instrument, trace, warn, Instrument, Span
 use crate::components::ComponentState;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{
-    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
-};
+use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction, TransactionId};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -93,6 +91,9 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 pub(crate) use queue_kind::QueueKind;
+use crate::components::fetcher::Tag;
+use crate::types::transaction::ProposedTransaction;
+use crate::utils::Source;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -1046,6 +1047,27 @@ where
             sender,
             serialized_item,
         ),
+        NetResponse::ProposedTransaction(ref serialized_item) => {
+            match bincode::deserialize::<fetcher::FetchResponse<ProposedTransaction, TransactionId>>(serialized_item) {
+                Ok(fetcher::FetchResponse::Fetched(item)) => {
+                    let transaction = item.transaction().clone();
+                    let acceptor_event = transaction_acceptor::Event::Accept {
+                        transaction,
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                    };
+                    Reactor::dispatch_event(reactor, effect_builder, rng, acceptor_event.into())
+                },
+                Ok(_) | Err(_) => {
+                    effect_builder
+                        .announce_block_peer_with_justification(
+                            sender,
+                            BlocklistJustification::SentBadItem { tag: Tag::ProposedTransaction },
+                        )
+                        .ignore()
+                }
+            }
+        }
         NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
             reactor,
             effect_builder,

@@ -31,7 +31,7 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    TransactionFetcher(FetcherRequest<Transaction>),
+    TransactionFetcher(FetcherRequest<ProposedTransaction>),
     #[from]
     FinalitySigFetcher(FetcherRequest<FinalitySignature>),
     #[from]
@@ -84,7 +84,7 @@ impl MockReactor {
                 }) => {
                     if let Some(transaction) = context.get_transaction(id) {
                         let response = FetchedData::FromPeer {
-                            item: Box::new(transaction),
+                            item: Box::new(ProposedTransaction::new(transaction)),
                             peer,
                         };
                         responder.respond(Ok(response)).await;

@@ -47,6 +47,7 @@ use crate::{
     types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
 };
 use casper_storage::block_store::types::ApprovalsHashes;
+use crate::types::transaction::ProposedTransaction;
 
 // Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
 // 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
@@ -242,6 +243,10 @@ pub(crate) enum MainEvent {
     MetaBlockAnnouncement(MetaBlockAnnouncement),
     #[from]
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
+    #[from]
+    ProposedTransactionFetcher(#[serde(skip_serializing)] fetcher::Event<ProposedTransaction>),
+    #[from]
+    ProposedTransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ProposedTransaction>),
 
     // Event related to figuring out validators for blocks after upgrades.
     GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
@@ -276,6 +281,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AcceptTransactionRequest(_) => "AcceptTransactionRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::TransactionFetcher(_) => "TransactionFetcher",
+            MainEvent::ProposedTransactionFetcher(_) => "ProposedTransactionFetcher",
             MainEvent::TransactionGossiper(_) => "TransactionGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
@@ -300,6 +306,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::LegacyDeployFetcherRequest(_) => "LegacyDeployFetcherRequest",
             MainEvent::TransactionFetcherRequest(_) => "TransactionFetcherRequest",
+            MainEvent::ProposedTransactionFetcherRequest(_) => "ProposedTransactionFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
@@ -382,6 +389,7 @@ impl Display for MainEvent {
             MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::TransactionFetcher(event) => write!(f, "transaction fetcher: {}", event),
+            MainEvent::ProposedTransactionFetcher(event) => write!(f, "proposed transaction fetcher: {}", event),
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
@@ -458,6 +466,9 @@ impl Display for MainEvent {
             }
             MainEvent::TransactionFetcherRequest(request) => {
                 write!(f, "transaction fetcher request: {}", request)
+            }
+            MainEvent::ProposedTransactionFetcherRequest(request) => {
+                write!(f, "proposed transaction fetcher request: {}", request)
             }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
                 write!(f, "finality signature fetcher request: {}", request)
