@@ -9,6 +9,16 @@ All notable changes to this project will be documented in this file. The format 
 [comment]: <> (Fixed: any bug fixes)
 [comment]: <> (Security: in case of vulnerabilities)
 
+
+## [Unreleased] 
+
+### Added
+
+- in enum TransformKindV2:
+  - new variant `EntryPointCalled`
+  - new variant `Ret`
+
+
 ## casper-types 7.0.0
 
 ### Added

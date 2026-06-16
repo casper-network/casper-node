@@ -1176,6 +1176,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "call-all-system-contracts"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "call-contract"
 version = "0.1.0"
 dependencies = [
@@ -2893,6 +2901,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "do-nothing-revert-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "do-nothing-stored"
 version = "0.1.0"
 dependencies = [
@@ -2902,6 +2918,14 @@ dependencies = [
 
 [[package]]
 name = "do-nothing-stored-caller"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "do-nothing-stored-caller-stored"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -6589,6 +6613,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ret-journal-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ret-uref"
 version = "0.1.0"
 dependencies = [
@@ -7657,6 +7689,14 @@ checksum = "5c0e04424e733e69714ca1bbb9204c1a57f09f5493439520f9f68c132ad25eec"
 
 [[package]]
 name = "storage-costs"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "stored-call-all-system-contracts"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -8849,6 +8889,29 @@ dependencies = [
  "borsh",
  "casper-contract-sdk",
  "vm2-cep18",
+]
+
+[[package]]
+name = "vm2-counter"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
+]
+
+[[package]]
+name = "vm2-counter-caller"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "vm2-counter",
+]
+
+[[package]]
+name = "vm2-do-nothing-session"
+version = "0.1.0"
+dependencies = [
+ "casper-contract-sdk",
 ]
 
 [[package]]

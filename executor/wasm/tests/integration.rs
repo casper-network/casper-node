@@ -35,10 +35,13 @@ use casper_storage::{
     AddressGenerator, KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME,
+    execution::{RetValue, TransformKindV2, TransformV2},
+    BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfig,
+    HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase, ProtocolVersion,
+    PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp, TransactionHash,
+    TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -429,7 +432,9 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         casper_types::HoldBalanceHandling::Accrued,
         0,
         true,
+        None,
         StorageCosts::default(),
+        0u8,
     );
     let genesis_request: GenesisRequest = GenesisRequest::new(
         Digest::hash("foo"),
@@ -1015,4 +1020,645 @@ fn non_existing_smart_contract_does_not_panic() {
     assert!(matches!(
         result,
         ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
+}
+
+fn expect_successful_execution(
+    executor: &mut ExecutorV2,
+    global_state: &LmdbGlobalState,
+    pre_state_hash: Digest,
+    execute_request: ExecuteRequest,
+) -> ExecuteWithProviderResult {
+    let result = executor
+        .execute_with_provider(pre_state_hash, global_state, execute_request)
+        .expect("execute_with_provider should succeed");
+    if let Some(host_error) = result.host_error {
+        panic!("Host error: {host_error:?}");
+    }
+    result
+}
+
+#[test]
+fn casper_return_writes_to_execution_journal() {
+    let address_generator = make_address_generator();
+    let mut executor = make_executor();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    // Create a contract that will be used to test the ret host function
+    let input_data = borsh::to_vec(&("write".to_string(),))
+        .map(Bytes::from)
+        .unwrap();
+
+    let install_request = base_install_request_builder()
+        .with_wasm_bytes(read_wasm("vm2_host.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    let contract_address = *create_result.smart_contract_addr();
+    state_root_hash = create_result.post_state_hash();
+
+    // Execute the contract to trigger the return
+    let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: contract_address,
+            entry_point: "ret".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+
+    let execute_result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    // Check that the effects contain a Ret transform
+    let effects = execute_result.effects();
+    let transforms = effects.transforms();
+
+    let ret_transforms: Vec<&TransformV2> = transforms
+        .iter()
+        .filter(|transform| matches!(transform.kind(), TransformKindV2::Ret(_)))
+        .collect();
+    assert_eq!(ret_transforms.len(), 1);
+    let ret_transform = ret_transforms
+        .first()
+        .expect("Expected to find a Ret transform in the effects");
+
+    match ret_transform.kind() {
+        TransformKindV2::Ret(RetValue::Bytes(bytes)) => {
+            // The ret function in the test contract calls casper::ret with [1, 2, 3] data
+            assert_eq!(
+                bytes.as_slice(),
+                &[1u8, 2, 3],
+                "Return data should match what was passed to casper::ret"
+            );
+        }
+        _ => panic!("Expected Ret transform kind"),
+    }
+    assert_eq!(
+        ret_transform.key(),
+        &Key::Hash(contract_address.into()),
+        "Ret transform should be under the callee (contract) key"
+    );
+}
+
+#[test]
+fn calling_upgrade_contract_should_produce_ret_and_call_result() {
+    let mut executor = make_executor();
+    let upgradable_address;
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+    let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
+
+    let create_request = base_install_request_builder()
+        .with_wasm_bytes(read_wasm("vm2_upgradable.wasm"))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data)
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        create_request,
+    );
+
+    upgradable_address = *create_result.smart_contract_addr();
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
+    let binding = read_wasm("vm2_upgradable_v2.wasm");
+    let new_code = binding.as_ref();
+
+    let execute_request = base_execute_builder()
+        .with_transferred_value(0)
+        .with_target(ExecutionKind::Stored {
+            address: upgradable_address,
+            entry_point: "perform_upgrade".to_string(),
+        })
+        .with_gas_limit(DEFAULT_GAS_LIMIT * 10)
+        .with_serialized_input((new_code,))
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+    let upgrade_result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    let transforms = upgrade_result.effects().transforms();
+    let ep_calls_and_rets = get_ep_calls_and_rets(transforms);
+    assert_eq!(ep_calls_and_rets.len(), 4);
+
+    let expected_call_1 = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*create_result.smart_contract_addr()),
+            "perform_upgrade".to_string(),
+        ),
+    );
+    let expected_call_2 = TransformV2::new(
+        Key::Hash(*create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*create_result.smart_contract_addr()),
+            "migrate".to_string(),
+        ),
+    );
+    let ret_1 = TransformV2::new(
+        Key::Hash(*create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let ret_2 = TransformV2::new(
+        Key::Hash(*create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    assert_eq!(
+        ep_calls_and_rets,
+        vec![expected_call_1, expected_call_2, ret_1, ret_2]
+    );
+}
+
+#[test]
+fn calling_constructor_method_should_produce_ret_and_call_result() {
+    let mut executor = make_executor();
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let block_time_1 = Timestamp::now().into();
+
+    let create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("default".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        create_request,
+    );
+    let transforms = create_result.effects().transforms();
+    let ep_calls_and_rets = get_ep_calls_and_rets(transforms);
+    assert_eq!(ep_calls_and_rets.len(), 2);
+    let constructor_called = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*create_result.smart_contract_addr()),
+            "default".to_string(),
+        ),
+    );
+    let ret = TransformV2::new(
+        Key::Hash(*create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    assert_eq!(ep_calls_and_rets, vec![constructor_called, ret]);
+}
+
+#[test]
+fn contract_calling_different_contract_should_produce_ret_and_call_result() {
+    let mut executor = make_executor();
+
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let block_time_1 = Timestamp::now().into();
+    let input = borsh::to_vec(&(0u32,)).map(Bytes::from).unwrap();
+    let counter_create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .with_input(input)
+        .build()
+        .expect("should build");
+
+    let counter_create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        counter_create_request,
+    );
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, counter_create_result.effects().clone())
+        .expect("Should commit");
+
+    let caller_create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter_caller.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("create".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+
+    let caller_create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        caller_create_request,
+    );
+
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, caller_create_result.effects().clone())
+        .expect("Should commit");
+
+    let execute_caller_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *caller_create_result.smart_contract_addr(),
+            entry_point: "inc_and_get".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block")))
+        .with_serialized_input((counter_create_result.smart_contract_addr(),))
+        .build()
+        .expect("should build");
+
+    let result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_caller_request,
+    );
+    let b = 1_u32.to_le_bytes();
+    assert_eq!(result.output().unwrap().iter().as_slice(), b.as_slice());
+    let transforms = result.effects().transforms();
+    let ep_calls_and_rets = get_ep_calls_and_rets(transforms);
+    assert_eq!(ep_calls_and_rets.len(), 6);
+
+    let inc_and_get_call = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*caller_create_result.smart_contract_addr()),
+            "inc_and_get".to_string(),
+        ),
+    );
+    let increment_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "increment".to_string(),
+        ),
+    );
+    let increment_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let get_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "get".to_string(),
+        ),
+    );
+    let get_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+
+    let inc_and_get_return = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+
+    assert_eq!(
+        ep_calls_and_rets,
+        vec![
+            inc_and_get_call,
+            increment_call,
+            increment_return,
+            get_call,
+            get_return,
+            inc_and_get_return
+        ]
+    );
+}
+
+#[test]
+fn calling_session_should_produce_entry_point_called_and_ret() {
+    let mut executor = make_executor();
+
+    let (global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+    let address_generator = make_address_generator();
+
+    let execute_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::SessionBytes(read_wasm(
+            "vm2_do_nothing_session.wasm",
+        )))
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+    let result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+
+    let transforms = result.effects().transforms();
+    let ep_calls_and_rets = get_ep_calls_and_rets(transforms);
+    assert_eq!(ep_calls_and_rets.len(), 2);
+    let call = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(None, DEFAULT_ENTRY_POINT_NAME.to_string()),
+    );
+    let session_return = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+
+    assert_eq!(ep_calls_and_rets, vec![call, session_return]);
+}
+
+/// Test: 3-level nesting (account → counter-caller → counter × 2 calls).
+///
+/// The counter-caller contract calls counter's `increment` then `get`, so the journal
+/// shows 3 EC-Ret pairs across 2 depths of stored-contract nesting.
+#[test]
+fn vm2_three_levels_of_contract_calls_produce_journal() {
+    let mut executor = make_executor();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    let block_time_1 = Timestamp::now().into();
+
+    let counter_create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .with_input(borsh::to_vec(&(0u32,)).map(Bytes::from).unwrap())
+        .build()
+        .expect("should build");
+
+    let counter_create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        counter_create_request,
+    );
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, counter_create_result.effects().clone())
+        .expect("Should commit");
+
+    let caller_create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter_caller.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("create".to_string())
+        .with_block_time(block_time_1)
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+    let caller_create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        caller_create_request,
+    );
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, caller_create_result.effects().clone())
+        .expect("Should commit");
+
+    // Call counter-caller (depth 1) which calls counter twice (depth 2):
+    // account → counter-caller.inc_and_get  [EC + Ret]
+    //   → counter.increment                 [EC + Ret]
+    //   → counter.get                       [EC + Ret]
+    // = 3 distinct EntryPointCalled + 3 corresponding Ret entries
+    let execute_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *caller_create_result.smart_contract_addr(),
+            entry_point: "inc_and_get".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block")))
+        .with_serialized_input((counter_create_result.smart_contract_addr(),))
+        .build()
+        .expect("should build");
+
+    let result = expect_successful_execution(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        execute_request,
+    );
+    let ep_calls_and_rets = get_ep_calls_and_rets(result.effects().transforms());
+    let b = 1_u32.to_le_bytes();
+    let inc_and_get_call = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*caller_create_result.smart_contract_addr()),
+            "inc_and_get".to_string(),
+        ),
+    );
+    let increment_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "increment".to_string(),
+        ),
+    );
+    let increment_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let get_call = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::EntryPointCalled(
+            Some(*counter_create_result.smart_contract_addr()),
+            "get".to_string(),
+        ),
+    );
+    let get_return = TransformV2::new(
+        Key::Hash(*counter_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+    let inc_and_get_return = TransformV2::new(
+        Key::Hash(*caller_create_result.smart_contract_addr()),
+        TransformKindV2::Ret(RetValue::Bytes(b.as_slice().into())),
+    );
+    assert_eq!(
+        ep_calls_and_rets,
+        vec![
+            inc_and_get_call,
+            increment_call,
+            increment_return,
+            get_call,
+            get_return,
+            inc_and_get_return,
+        ]
+    );
+}
+
+/// Test: When a stored contract fails (bad input → deserialization panic → trap),
+/// its EntryPointCalled appears in the journal but no Ret is recorded.
+#[test]
+fn vm2_failed_call_shows_entry_point_called_without_ret() {
+    let mut executor = make_executor();
+    let (global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
+
+    // Install counter-caller (does not need a real counter for this test)
+    let caller_create_request = base_install_request_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_wasm_bytes(read_wasm("vm2_counter_caller.wasm").clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("create".to_string())
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(Digest::from_raw([0; 32]))
+        .with_block_height(1)
+        .with_parent_block_hash(BlockHash::new(Digest::from_raw([0; 32])))
+        .build()
+        .expect("should build");
+
+    let caller_create_result = run_create_contract(
+        &mut executor,
+        &global_state,
+        state_root_hash,
+        caller_create_request,
+    );
+    state_root_hash = global_state
+        .commit_effects(state_root_hash, caller_create_result.effects().clone())
+        .expect("Should commit");
+
+    // Call counter-caller.inc_and_get with EMPTY input. The contract expects a serialized
+    // Address as input; empty bytes cause borsh deserialization to fail → WASM trap.
+    // With EntryPointCalled recorded before the tracking-copy fork, the EC appears in
+    // the returned effects even though the call failed.
+    let execute_request = base_execute_builder()
+        .with_initiator(*DEFAULT_ACCOUNT_HASH)
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transaction_hash(TRANSACTION_HASH)
+        .with_target(ExecutionKind::Stored {
+            address: *caller_create_result.smart_contract_addr(),
+            entry_point: "inc_and_get".to_string(),
+        })
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_block_time(Timestamp::now().into())
+        .with_state_hash(state_root_hash)
+        .with_block_height(2)
+        .with_parent_block_hash(BlockHash::new(Digest::hash(b"block")))
+        .with_input(Bytes::new()) // deliberately empty — triggers deserialization failure
+        .build()
+        .expect("should build");
+
+    let result = executor
+        .execute_with_provider(state_root_hash, &global_state, execute_request)
+        .expect("execute_with_provider should succeed even for trapping calls");
+
+    // The call must have failed
+    assert!(
+        result.host_error.is_some(),
+        "Expected a host error due to wasm trap"
+    );
+
+    // EntryPointCalled is present — the call was attempted
+    let ep_calls_and_rets = get_ep_calls_and_rets(result.effects().transforms());
+    let expected_ec = TransformV2::new(
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        TransformKindV2::EntryPointCalled(
+            Some(*caller_create_result.smart_contract_addr()),
+            "inc_and_get".to_string(),
+        ),
+    );
+    assert_eq!(ep_calls_and_rets, vec![expected_ec]);
+}
+
+fn get_ep_calls_and_rets(transforms: &[TransformV2]) -> Vec<TransformV2> {
+    transforms
+        .iter()
+        .filter(|transform| {
+            matches!(
+                transform.kind(),
+                TransformKindV2::EntryPointCalled(_, _) | TransformKindV2::Ret(_)
+            )
+        })
+        .cloned()
+        .collect()
 }

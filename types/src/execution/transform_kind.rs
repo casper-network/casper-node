@@ -1,4 +1,7 @@
-use alloc::{string::ToString, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{any, convert::TryFrom};
 
 #[cfg(feature = "datasize")]
@@ -15,7 +18,9 @@ use super::TransformError;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
-    CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+    execution::ret_value::RetValue,
+    CLType, CLTyped, CLValue, HashAddr, Key, StoredValue, StoredValueTypeMismatch, U128, U256,
+    U512,
 };
 
 /// Taxonomy of Transform.
@@ -89,6 +94,11 @@ pub enum TransformKindV2 {
     Prune(Key),
     /// Represents the case where applying a transform would cause an error.
     Failure(TransformError),
+    /// Registers a value return from the contract
+    Ret(RetValue),
+    /// Registers an entry point called. If the hash addr is none that means that the call was
+    /// made to session bytes.
+    EntryPointCalled(Option<HashAddr>, String),
 }
 
 impl TransformKindV2 {
@@ -210,13 +220,15 @@ impl TransformKindV2 {
                 }
             },
             TransformKindV2::Failure(error) => Err(error),
+            TransformKindV2::Ret(_) => Ok(store(stored_value)),
+            TransformKindV2::EntryPointCalled(_, _) => Ok(store(stored_value)),
         }
     }
 
     /// Returns a random `TransformKind`.
     #[cfg(any(feature = "testing", test))]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        match rng.gen_range(0..10) {
+        match rng.gen_range(0..12) {
             0 => TransformKindV2::Identity,
             1 => TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
             2 => TransformKindV2::AddInt32(rng.gen()),
@@ -235,6 +247,11 @@ impl TransformKindV2 {
                 bytesrepr::Error::EarlyEndOfStream,
             )),
             9 => TransformKindV2::Prune(rng.gen::<Key>()),
+            10 => TransformKindV2::Ret(RetValue::random(rng)),
+            11 => {
+                let addr: Option<HashAddr> = if rng.gen() { Some(rng.gen()) } else { None };
+                TransformKindV2::EntryPointCalled(addr, rng.gen::<u64>().to_string())
+            }
             _ => unreachable!(),
         }
     }
@@ -260,6 +277,10 @@ impl ToBytes for TransformKindV2 {
                 TransformKindV2::AddKeys(named_keys) => named_keys.serialized_length(),
                 TransformKindV2::Failure(error) => error.serialized_length(),
                 TransformKindV2::Prune(value) => value.serialized_length(),
+                TransformKindV2::Ret(value) => value.serialized_length(),
+                TransformKindV2::EntryPointCalled(addr, entry_point_name) => {
+                    addr.serialized_length() + entry_point_name.serialized_length()
+                }
             }
     }
 
@@ -301,6 +322,15 @@ impl ToBytes for TransformKindV2 {
             TransformKindV2::Prune(value) => {
                 (TransformTag::Prune as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
+            }
+            TransformKindV2::Ret(value) => {
+                (TransformTag::Ret as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKindV2::EntryPointCalled(addr, entry_point_name) => {
+                (TransformTag::EntryPointCalled as u8).write_bytes(writer)?;
+                addr.write_bytes(writer)?;
+                entry_point_name.write_bytes(writer)
             }
         }
     }
@@ -357,6 +387,18 @@ impl FromBytes for TransformKindV2 {
             tag if tag == TransformTag::Prune as u8 => {
                 let (key, remainder) = Key::from_bytes(remainder)?;
                 Ok((TransformKindV2::Prune(key), remainder))
+            }
+            tag if tag == TransformTag::Ret as u8 => {
+                let (ret_val, remainder) = RetValue::from_bytes(remainder)?;
+                Ok((TransformKindV2::Ret(ret_val), remainder))
+            }
+            tag if tag == TransformTag::EntryPointCalled as u8 => {
+                let (addr, remainder) = Option::<HashAddr>::from_bytes(remainder)?;
+                let (entrypoint_name, remainder) = String::from_bytes(remainder)?;
+                Ok((
+                    TransformKindV2::EntryPointCalled(addr, entrypoint_name),
+                    remainder,
+                ))
             }
             _ => {
                 error!(%tag, rem_len = remainder.len(), "FromBytes for TransformKindV2: unknown tag");
@@ -429,6 +471,8 @@ enum TransformTag {
     AddKeys = 7,
     Failure = 8,
     Prune = 9,
+    Ret = 10,
+    EntryPointCalled = 11,
 }
 
 #[cfg(test)]
@@ -880,7 +924,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        for _ in 0..11 {
+        for _ in 0..36 {
             let execution_result = TransformKindV2::random(rng);
             bytesrepr::test_serialization_roundtrip(&execution_result);
         }
