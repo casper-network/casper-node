@@ -327,7 +327,7 @@ impl TransactionV1 {
         let container = FieldsContainer::random(rng);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
         let pricing_mode = PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 0,
         };
         TransactionV1::build(
@@ -356,7 +356,7 @@ impl TransactionV1 {
         let container = FieldsContainer::random_of_lane(rng, lane);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
         let pricing_mode = PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 0,
         };
         TransactionV1::build(

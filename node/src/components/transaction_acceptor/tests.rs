@@ -361,7 +361,7 @@ impl TestScenario {
                 )
                 .with_pricing_mode(PricingMode::PaymentLimited {
                     standard_payment: true,
-                    gas_price_tolerance: 5,
+                    gas_price_tolerance: 1,
                     payment_amount: 0,
                 })
                 .with_chain_name("casper-example")
@@ -379,7 +379,7 @@ impl TestScenario {
                 )
                 .with_pricing_mode(PricingMode::PaymentLimited {
                     standard_payment: true,
-                    gas_price_tolerance: 5,
+                    gas_price_tolerance: 1,
                     payment_amount: 0,
                 })
                 .with_chain_name("casper-example")
@@ -724,7 +724,7 @@ impl TestScenario {
             TestScenario::InvalidPricingModeForTransactionV1 => {
                 let payment_limited_mode_transaction = TransactionV1Builder::new_random(rng)
                     .with_pricing_mode(PricingMode::Fixed {
-                        gas_price_tolerance: 5,
+                        gas_price_tolerance: 1,
                         additional_computation_factor: 0,
                     })
                     .with_chain_name("casper-example")

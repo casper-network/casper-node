@@ -472,6 +472,10 @@ mod proptests {
         #[test]
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
             let mut chainspec = Chainspec::default();
+            // These min/max values are in no way legal for running the node, but they should be
+            // considered for the structural integrity of the serialization itself
+            chainspec.vacancy_config.min_gas_price = 0;
+            chainspec.vacancy_config.max_gas_price = u8::MAX;
             // Enable both runtimes so the proptest covers VmCasperV1 and VmCasperV2 transactions.
             chainspec.transaction_config.runtime_config.vm_casper_v1 = true;
             chainspec.transaction_config.runtime_config.vm_casper_v2 = true;

@@ -97,6 +97,37 @@ impl MetaTransactionV1 {
         let payload_hash = v1.payload_hash()?;
         let serialized_length = v1.serialized_length();
         let pricing_mode = v1.payload().pricing_mode();
+        let vacancy_config = &chainspec.vacancy_config;
+        match pricing_mode {
+            PricingMode::PaymentLimited {
+                gas_price_tolerance,
+                ..
+            }
+            | PricingMode::Fixed {
+                gas_price_tolerance,
+                ..
+            } => {
+                if *gas_price_tolerance < vacancy_config.min_gas_price {
+                    Err(InvalidTransaction::V1(
+                        InvalidTransactionV1::GasPriceToleranceTooLow {
+                            min_gas_price_tolerance: vacancy_config.min_gas_price,
+                            provided_gas_price_tolerance: *gas_price_tolerance,
+                        },
+                    ))
+                } else {
+                    if *gas_price_tolerance > vacancy_config.max_gas_price {
+                        Err(InvalidTransaction::V1(
+                            InvalidTransactionV1::InvalidPricingMode {
+                                price_mode: pricing_mode.clone(),
+                            },
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+            }
+            _ => Ok(()),
+        }?;
         let lane_id = calculate_transaction_lane(
             &entry_point,
             &target,
