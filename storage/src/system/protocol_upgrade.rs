@@ -9,9 +9,15 @@ use std::{
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
+use crate::{
+    global_state::state::StateProvider,
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
+    AddressGenerator,
+};
 use casper_types::{
+    account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, Weight,
+        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue,
     },
     bytesrepr::{self, Bytes, ToBytes},
     contracts::{ContractHash, ContractPackageStatus, NamedKeys},
@@ -32,18 +38,12 @@ use casper_types::{
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersionKey,
-    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling, Groups,
-    HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
+    EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
+    FeeHandling, Groups, HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, StoredValue,
-    SystemHashRegistry, URef, REWARDS_HANDLING_RATIO_TAG, U512,
-};
-
-use crate::{
-    global_state::state::StateProvider,
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator,
+    SystemHashRegistry, URef, URefAddr, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 const NO_CARRY_FORWARD: bool = false;
@@ -88,6 +88,9 @@ pub enum ProtocolUpgradeError {
     /// Tracking copy error.
     #[error("{0}")]
     TrackingCopy(crate::tracking_copy::TrackingCopyError),
+    /// Missing stored value expected to be in global state.
+    #[error("Missing expected stored value: {0}")]
+    MissingStoredValue(String),
 }
 
 impl From<CLValueError> for ProtocolUpgradeError {
@@ -178,14 +181,15 @@ where
     /// Apply a protocol upgrade.
     pub fn upgrade(
         mut self,
-        pre_state_hash: Digest,
     ) -> Result<TrackingCopy<<S as StateProvider>::Reader>, ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_hashes()?;
 
+        self.read_only_system_purse(system_entity_addresses.mint)?;
+
         if self.config.enable_addressable_entity() {
-            self.migrate_system_account(pre_state_hash)?;
+            self.migrate_system_account(system_entity_addresses.mint())?;
             self.create_accumulation_purse_if_required(
                 &system_entity_addresses.handle_payment(),
                 self.config.fee_handling(),
@@ -673,40 +677,42 @@ where
         Ok(())
     }
 
-    /// Migrate the system account to addressable entity if necessary.
-    pub fn migrate_system_account(
-        &mut self,
-        pre_state_hash: Digest,
-    ) -> Result<(), ProtocolUpgradeError> {
+    /// Migrates the system account to addressable entity.
+    pub fn migrate_system_account(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
         debug!("migrate system account");
-        let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
-
         let account_hash = PublicKey::System.to_account_hash();
 
-        let main_purse = {
-            let purse_addr = address_generator.new_hash_address();
-            let balance_cl_value = CLValue::from_t(U512::zero())
-                .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
-
-            self.tracking_copy.write(
-                Key::Balance(purse_addr),
-                StoredValue::CLValue(balance_cl_value),
-            );
-
-            let purse_cl_value = CLValue::unit();
-            let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
-
-            self.tracking_copy
-                .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
-            purse_uref
+        let account = match self.get_account(account_hash)? {
+            AccountRepr::Account(account) => account,
+            AccountRepr::EntityAddr(_) => {
+                // account has already been upgraded to addressable entity, so get out
+                return Ok(());
+            }
         };
 
-        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
-        let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
-        let package_hash = PackageHash::new(address_generator.new_hash_address());
+        let main_purse = account.main_purse().into_read();
 
-        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
+        let system_account_balance = match self
+            .tracking_copy
+            .get_total_balance(Key::Balance(main_purse.addr()))
+        {
+            Ok(balance) => balance,
+            Err(tce) => return Err(ProtocolUpgradeError::TrackingCopy(tce)),
+        };
+
+        if system_account_balance.value() > U512::zero() {
+            warn!(
+                "system account had balance at upgrade, burning {}",
+                system_account_balance
+            );
+
+            self.burn(mint, system_account_balance.value(), main_purse.addr())?;
+        }
+
+        let mut address_generator = self.address_generator.borrow_mut();
+        let package_hash = PackageHash::new(address_generator.new_hash_address());
+        let associated_keys = account.associated_keys().clone().into();
+        let byte_code_hash = ByteCodeHash::default();
 
         let system_account_entity = AddressableEntity::new(
             package_hash,
@@ -717,6 +723,9 @@ where
             ActionThresholds::default(),
             EntityKind::Account(account_hash),
         );
+
+        let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
+        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 
         let package = {
             let mut package = Package::new(
@@ -746,18 +755,19 @@ where
         self.tracking_copy
             .write(package_hash.into(), StoredValue::SmartContract(package));
 
-        let contract_by_account = CLValue::from_t(entity_key)
+        let entity_pointer = CLValue::from_t(entity_key)
             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 
+        // this overwrites the original account with a pointer record to the new entity
         self.tracking_copy.write(
             Key::Account(account_hash),
-            StoredValue::CLValue(contract_by_account),
+            StoredValue::CLValue(entity_pointer),
         );
 
         Ok(())
     }
 
-    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    /// Creates an accumulation purse in the handle payment system contract if it's not present.
     ///
     /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
     /// at the genesis. In such cases we have to check the state of handle payment contract and
@@ -807,13 +817,13 @@ where
             NamedKeyAddr::new_from_string(entity_addr, ACCUMULATION_PURSE_KEY.to_string())
                 .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
 
-        let requries_accumulation_purse = self
+        let requires_accumulation_purse = self
             .tracking_copy
             .read(&Key::NamedKey(named_key_addr))
             .map_err(|_| ProtocolUpgradeError::UnexpectedStoredValueVariant)?
             .is_none();
 
-        if requries_accumulation_purse {
+        if requires_accumulation_purse {
             let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
             let balance_clvalue = CLValue::from_t(U512::zero())?;
             self.tracking_copy.write(
@@ -844,7 +854,7 @@ where
         Ok(())
     }
 
-    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    /// Creates an accumulation purse in the handle payment system contract if it's not present.
     ///
     /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
     /// at the genesis. In such cases we have to check the state of handle payment contract and
@@ -957,54 +967,12 @@ where
             return Ok(());
         }
         warn!("payment purse had remaining balance at upgrade {}", balance);
-        let balance_key = {
-            let uref_addr = payment_purse_key
-                .as_uref()
-                .expect("payment purse key must be uref.")
-                .addr();
-            Key::Balance(uref_addr)
-        };
 
-        let mint_named_keys = self.get_named_keys(mint)?;
-        let total_supply_key = mint_named_keys
-            .get(TOTAL_SUPPLY_KEY)
-            .expect("total supply key must exist in mint contract's named keys");
-
-        let stored_value = self
-            .tracking_copy
-            .read(total_supply_key)
-            .expect("must be able to read total supply")
-            .expect("total supply must have a value");
-
-        // by convention, we only store CLValues under Key::URef
-        if let StoredValue::CLValue(value) = stored_value {
-            // Only CLTyped instances should be stored as a CLValue.
-            let total_supply: U512 =
-                CLValue::into_t(value).expect("total supply must have expected type.");
-
-            let new_total_supply = total_supply.saturating_sub(balance.value());
-            info!(
-                "adjusting total supply from {} to {}",
-                total_supply, new_total_supply
-            );
-            let cl_value = CLValue::from_t(new_total_supply)
-                .expect("new total supply must convert to CLValue.");
-            self.tracking_copy
-                .write(*total_supply_key, StoredValue::CLValue(cl_value));
-            info!(
-                "adjusting payment purse balance from {} to {}",
-                balance.value(),
-                U512::zero()
-            );
-            let cl_value = CLValue::from_t(U512::zero()).expect("zero must convert to CLValue.");
-            self.tracking_copy
-                .write(balance_key, StoredValue::CLValue(cl_value));
-            Ok(())
-        } else {
-            Err(ProtocolUpgradeError::CLValue(
-                "failure to retrieve total supply".to_string(),
-            ))
-        }
+        let uref_addr = payment_purse_key
+            .as_uref()
+            .expect("payment purse key must be uref.")
+            .addr();
+        self.burn(mint, balance.value(), uref_addr)
     }
 
     /// Upsert gas hold interval to mint named keys.
@@ -1255,11 +1223,11 @@ where
                 if existing_bid.staked_amount().is_zero() {
                     // the previous logic enforces unbonding all delegators of
                     // a validator that reduced their personal stake to 0 (and we have
-                    // various existent tests that prove this), thus there is no need
+                    // various existent tests that prove this). thus there is no need
                     // to handle the complicated hypothetical case of one or more
                     // delegator stakes being > 0 if the validator stake is 0.
                     //
-                    // tl;dr this is a "zombie" bid and we don't need to continue
+                    // tl;dr this is a "zombie" bid, and we don't need to continue
                     // carrying it forward at tip.
                     continue;
                 }
@@ -1750,4 +1718,125 @@ where
         )?;
         Ok(())
     }
+
+    /// Sets system purse to read only, if necessary.
+    pub fn read_only_system_purse(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
+        debug!("set system purse to read only");
+        let account_hash = PublicKey::System.to_account_hash();
+
+        let account = match self.get_account(account_hash)? {
+            AccountRepr::Account(account) => account,
+            AccountRepr::EntityAddr(_) => {
+                // account has been upgraded to addressable entity, so get out
+                return Ok(());
+            }
+        };
+
+        let main_purse_addr = account.main_purse().addr();
+        let system_account_balance = match self
+            .tracking_copy
+            .get_total_balance(Key::Balance(main_purse_addr))
+        {
+            Ok(balance) => balance,
+            Err(tce) => return Err(ProtocolUpgradeError::TrackingCopy(tce)),
+        };
+
+        if system_account_balance.value() > U512::zero() {
+            warn!(
+                "system account had balance at upgrade, burning {}",
+                system_account_balance
+            );
+
+            self.burn(mint, system_account_balance.value(), main_purse_addr)?;
+        }
+
+        if !account.main_purse().is_addable() && !account.main_purse().is_writeable() {
+            return Ok(());
+        }
+
+        let updated_account = Account::new(
+            account_hash,
+            account.named_keys().clone(),
+            account.main_purse().into_read(),
+            account.associated_keys().clone(),
+            account.action_thresholds().clone(),
+        );
+        self.tracking_copy.write(
+            Key::Account(account_hash),
+            StoredValue::Account(updated_account),
+        );
+        Ok(())
+    }
+
+    /// Returns account or error.
+    fn get_account(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<AccountRepr, ProtocolUpgradeError> {
+        let account_key = Key::Account(account_hash);
+        match self.tracking_copy.read(&account_key) {
+            Ok(Some(StoredValue::Account(account))) => Ok(AccountRepr::Account(account)),
+            Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<Key>() {
+                Ok(Key::AddressableEntity(entity_addr)) => Ok(AccountRepr::EntityAddr(entity_addr)),
+                Ok(_) => Err(ProtocolUpgradeError::UnexpectedStoredValueVariant),
+                Err(cve) => Err(ProtocolUpgradeError::CLValue(cve.to_string())),
+            },
+            Ok(Some(_)) => Err(ProtocolUpgradeError::UnexpectedStoredValueVariant),
+            Ok(None) => Err(ProtocolUpgradeError::MissingStoredValue(
+                "account not found".to_string(),
+            )),
+            Err(tce) => Err(ProtocolUpgradeError::TrackingCopy(tce)),
+        }
+    }
+
+    /// Burns amount from target purse, and reduces total supply by the same amount.
+    fn burn(
+        &mut self,
+        mint: HashAddr,
+        burn_amount: U512,
+        purse_to_burn_from: URefAddr,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let mint_named_keys = self.get_named_keys(mint)?;
+        let total_supply_key = mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("total supply key must exist in mint contract's named keys");
+        let stored_value = self
+            .tracking_copy
+            .read(total_supply_key)
+            .expect("must be able to read total supply")
+            .expect("total supply must have a value");
+
+        if let StoredValue::CLValue(value) = stored_value {
+            // Only CLTyped instances should be stored as a CLValue.
+            let total_supply: U512 =
+                CLValue::into_t(value).expect("total supply must have expected type.");
+
+            let new_total_supply = total_supply.saturating_sub(burn_amount);
+            info!(
+                "adjusting total supply from {} to {}",
+                total_supply, new_total_supply
+            );
+            let cl_value = CLValue::from_t(new_total_supply)
+                .expect("new total supply must convert to CLValue.");
+            self.tracking_copy
+                .write(*total_supply_key, StoredValue::CLValue(cl_value));
+
+            let cl_value = CLValue::from_t(U512::zero()).expect("zero must convert to CLValue.");
+            self.tracking_copy.write(
+                Key::Balance(purse_to_burn_from),
+                StoredValue::CLValue(cl_value),
+            );
+            Ok(())
+        } else {
+            Err(ProtocolUpgradeError::CLValue(
+                "failure to retrieve total supply".to_string(),
+            ))
+        }
+    }
+}
+
+enum AccountRepr {
+    Account(Account),
+    #[allow(unused)]
+    EntityAddr(EntityAddr),
 }
