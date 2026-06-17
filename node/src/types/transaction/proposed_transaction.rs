@@ -1,5 +1,5 @@
 use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
-use casper_types::{Transaction};
+use casper_types::Transaction;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

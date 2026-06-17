@@ -122,7 +122,7 @@ pub(super) struct Metrics {
     pub(super) in_bytes_accepted_transaction_gossip: IntCounter,
     /// Count of incoming messages with accepted transaction gossiper payload.
     pub(super) in_count_accepted_transaction_gossip: IntCounter,
-    
+
     /// Registry instance.
     registry: Registry,
 }

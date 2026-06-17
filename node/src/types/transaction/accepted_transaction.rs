@@ -11,10 +11,7 @@ pub(crate) struct AcceptedTransactionId {
     block_hash: BlockHash,
 }
 
-impl AcceptedTransactionId {
-    
-}
-
+impl AcceptedTransactionId {}
 
 impl Display for AcceptedTransactionId {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
@@ -67,7 +64,6 @@ impl AcceptedTransaction {
     pub(crate) fn block_hash(&self) -> BlockHash {
         self.block_hash
     }
-
 
     pub(crate) fn accepted_id(&self) -> AcceptedTransactionId {
         let transaction_id = self.transaction.compute_id();

@@ -1460,7 +1460,7 @@ fn inject_balance_check_for_peer(
             Some(responder),
             Timestamp::now(),
             false,
-            None
+            None,
         ));
         effect_builder
             .into_inner()

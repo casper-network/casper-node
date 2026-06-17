@@ -358,7 +358,7 @@ where
                 sender,
                 message: Box::new(message),
             }
-                .into(),
+            .into(),
             Message::FinalitySignatureGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),

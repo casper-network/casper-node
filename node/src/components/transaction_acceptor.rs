@@ -937,14 +937,16 @@ impl TransactionAcceptor {
         let mut effects = Effects::new();
         if is_new {
             debug!(transaction = %event_metadata.transaction, "accepted transaction");
-            let block_hash = event_metadata.maybe_block_hash.expect("must have block hash before committing to storage");
+            let block_hash = event_metadata
+                .maybe_block_hash
+                .expect("must have block hash before committing to storage");
             effects.extend(
                 effect_builder
                     .announce_new_transaction_accepted(
                         Arc::new(event_metadata.transaction),
                         event_metadata.source,
                         event_metadata.is_proposed,
-                        block_hash
+                        block_hash,
                     )
                     .ignore(),
             );
@@ -997,7 +999,12 @@ impl TransactionAcceptor {
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source, is_proposed, block_hash)
+                    .announce_new_transaction_accepted(
+                        Arc::new(transaction),
+                        source,
+                        is_proposed,
+                        block_hash,
+                    )
                     .ignore(),
             );
         }

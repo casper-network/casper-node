@@ -43,10 +43,9 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{AcceptedTransaction, NodeId},
     utils::WithDir,
 };
-use crate::types::AcceptedTransaction;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 

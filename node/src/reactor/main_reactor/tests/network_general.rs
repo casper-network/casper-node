@@ -707,19 +707,23 @@ async fn should_store_finalized_approvals() {
                     .ignore()
             })
             .await;
-        
+
         let highest_block_header = *runner
             .main_reactor()
             .storage
             .read_highest_block()
             .expect("must have block")
             .hash();
-        
-        
+
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client, false, highest_block_header)
+                    .announce_new_transaction_accepted(
+                        Arc::new(transaction),
+                        Source::Client,
+                        false,
+                        highest_block_header,
+                    )
                     .ignore()
             })
             .await;
@@ -801,8 +805,13 @@ async fn should_update_last_progress_after_block_execution() {
             .hash();
         runner
             .process_injected_effects(|eff| {
-                eff.announce_new_transaction_accepted(Arc::new(transaction), Source::Client, false, highest_block_header)
-                    .ignore()
+                eff.announce_new_transaction_accepted(
+                    Arc::new(transaction),
+                    Source::Client,
+                    false,
+                    highest_block_header,
+                )
+                .ignore()
             })
             .await;
     }

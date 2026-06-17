@@ -204,9 +204,7 @@ impl SingleTransactionTestCase {
         txn: Transaction,
     ) -> (TransactionHash, u64, ExecutionResult) {
         let txn_hash = txn.hash();
-        
-        
-        
+
         self.fixture.inject_transaction(txn).await;
         self.fixture
             .run_until_executed_transaction(&txn_hash, Duration::from_secs(30))
@@ -3765,8 +3763,6 @@ async fn delegate_and_undelegate_bid_transaction() {
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
 
-
-
     let mut txn = Transaction::from(
         TransactionV1Builder::new_undelegate(
             PublicKey::from(&**BOB_SECRET_KEY),
@@ -3813,7 +3809,7 @@ async fn insufficient_funds_transfer_from_account() {
 
     let mut txn = Transaction::from(txn_v1);
     txn.sign(&BOB_SECRET_KEY);
-    
+
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
@@ -5400,9 +5396,8 @@ async fn should_allow_native_transfer_v1() {
         Some(config),
     )
     .await;
-    
-    test
-        .fixture
+
+    test.fixture
         .run_until_consensus_in_era(ERA_ONE, THIRTY_SECS)
         .await;
 
@@ -5454,7 +5449,7 @@ async fn should_allow_native_burn() {
         Some(config),
     )
     .await;
-    
+
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, THIRTY_SECS)
         .await;

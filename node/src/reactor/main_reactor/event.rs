@@ -380,8 +380,12 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::BinaryPort(_) => "BinaryPort",
             MainEvent::AcceptedTransactionGossiper(_) => "AcceptedTransactionGossiper",
-            MainEvent::AcceptedTransactionGossiperIncoming(_) => "AcceptedTransactionGossiperIncoming",
-            MainEvent::AcceptedTransactionGossiperAnnouncement(_) => "AcceptedTransactionGossiperAnnouncement"
+            MainEvent::AcceptedTransactionGossiperIncoming(_) => {
+                "AcceptedTransactionGossiperIncoming"
+            }
+            MainEvent::AcceptedTransactionGossiperAnnouncement(_) => {
+                "AcceptedTransactionGossiperAnnouncement"
+            }
         }
     }
 }
@@ -408,7 +412,9 @@ impl Display for MainEvent {
                 write!(f, "proposed transaction fetcher: {}", event)
             }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
-            MainEvent::AcceptedTransactionGossiper(event) => write!(f, "accepted transaction gossiper: {}", event),
+            MainEvent::AcceptedTransactionGossiper(event) => {
+                write!(f, "accepted transaction gossiper: {}", event)
+            }
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }

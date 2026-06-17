@@ -844,15 +844,14 @@ impl TestFixture {
                         .ignore()
                 })
                 .await;
-            
+
             let highest_block_header = *runner
                 .main_reactor()
                 .storage
                 .read_highest_block()
                 .expect("must have block")
                 .hash();
-            
-            
+
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
@@ -860,7 +859,7 @@ impl TestFixture {
                             Arc::new(txn.clone()),
                             Source::Client,
                             false,
-                            highest_block_header
+                            highest_block_header,
                         )
                         .ignore()
                 })

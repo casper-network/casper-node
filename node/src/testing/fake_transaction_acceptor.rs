@@ -75,11 +75,11 @@ impl FakeTransactionAcceptor {
             maybe_responder,
             Timestamp::now(),
             false,
-            None
+            None,
         ));
-        
+
         let fake_block = Arc::new(Block::example().clone());
-        
+
         effect_builder
             .put_block_to_storage(Arc::clone(&fake_block))
             .event(move |_| Event::GetBlockHeaderResult {
@@ -92,11 +92,11 @@ impl FakeTransactionAcceptor {
         &self,
         effect_builder: EffectBuilder<REv>,
         mut event_metadata: Box<EventMetadata>,
-        maybe_block_header: Option<Box<BlockHeader>>
+        maybe_block_header: Option<Box<BlockHeader>>,
     ) -> Effects<Event> {
-        
-        event_metadata.maybe_block_hash = Some(maybe_block_header.expect("must have header").block_hash());
-        
+        event_metadata.maybe_block_hash =
+            Some(maybe_block_header.expect("must have header").block_hash());
+
         effect_builder
             .put_transaction_to_storage(event_metadata.transaction.clone())
             .event(move |is_new| Event::PutToStorageResult {
@@ -104,8 +104,7 @@ impl FakeTransactionAcceptor {
                 is_new,
             })
     }
-    
-    
+
     fn handle_put_to_storage<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -117,14 +116,20 @@ impl FakeTransactionAcceptor {
             transaction,
             source,
             maybe_responder,
-            maybe_block_hash, ..
+            maybe_block_hash,
+            ..
         } = *event_metadata;
         let mut effects = Effects::new();
         let block_hash = maybe_block_hash.expect("must have set block hash correctly");
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source, false, block_hash)
+                    .announce_new_transaction_accepted(
+                        Arc::new(transaction),
+                        source,
+                        false,
+                        block_hash,
+                    )
                     .ignore(),
             );
         }
@@ -163,10 +168,8 @@ impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
             } => self.accept(effect_builder, transaction, source, maybe_responder),
             Event::GetBlockHeaderResult {
                 event_metadata,
-                maybe_block_header
-            } => {
-                self.handle_get_block_header(effect_builder, event_metadata, maybe_block_header)
-            }
+                maybe_block_header,
+            } => self.handle_get_block_header(effect_builder, event_metadata, maybe_block_header),
             Event::PutToStorageResult {
                 event_metadata,
                 is_new,

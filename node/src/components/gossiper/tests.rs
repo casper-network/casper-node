@@ -17,7 +17,10 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_types::{testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2, ProtocolVersion, TimeDiff, Transaction, TransactionConfig, BlockHash, Block};
+use casper_types::{
+    testing::TestRng, Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId,
+    FinalitySignatureV2, ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
+};
 
 use super::*;
 use crate::{
@@ -46,11 +49,10 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{AcceptedTransaction, NodeId},
     utils::WithDir,
     NodeRng,
 };
-use crate::types::AcceptedTransaction;
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -77,7 +79,9 @@ enum Event {
     #[from]
     TransactionAcceptorAnnouncement(#[serde(skip_serializing)] TransactionAcceptorAnnouncement),
     #[from]
-    TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<AcceptedTransaction>),
+    TransactionGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<AcceptedTransaction>,
+    ),
     #[from]
     TransactionGossiperIncoming(GossiperIncoming<AcceptedTransaction>),
 }
@@ -103,7 +107,6 @@ impl From<NetworkRequest<Message<AcceptedTransaction>>> for Event {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
-
 
 trait Unhandled {}
 
@@ -139,7 +142,8 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_transaction_acceptor: FakeTransactionAcceptor,
-    transaction_gossiper: Gossiper<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, AcceptedTransaction>,
+    transaction_gossiper:
+        Gossiper<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, AcceptedTransaction>,
     _storage_tempdir: TempDir,
 }
 
@@ -180,11 +184,12 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let fake_transaction_acceptor = FakeTransactionAcceptor::new();
-        let transaction_gossiper = Gossiper::<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, _>::new(
-            "transaction_gossiper",
-            config,
-            registry,
-        )?;
+        let transaction_gossiper =
+            Gossiper::<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, _>::new(
+                "transaction_gossiper",
+                config,
+                registry,
+            )?;
 
         let network = NetworkController::create_node(event_queue, rng);
         let reactor = Reactor {
@@ -282,7 +287,7 @@ impl reactor::Reactor for Reactor {
                     source: Source::Client,
                     maybe_responder: Some(responder),
                     is_proposed: false,
-                    maybe_block_hash: None
+                    maybe_block_hash: None,
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))
             }
@@ -294,7 +299,8 @@ impl reactor::Reactor for Reactor {
                     block_hash,
                 },
             ) => {
-                let accepted_transaction = AcceptedTransaction::new((*transaction).clone(), block_hash);
+                let accepted_transaction =
+                    AcceptedTransaction::new((*transaction).clone(), block_hash);
                 let event = super::Event::ItemReceived {
                     item_id: accepted_transaction.gossip_id(),
                     source,
@@ -311,23 +317,20 @@ impl reactor::Reactor for Reactor {
             Event::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
-            }) => {
-                
-                reactor::wrap_effects(
-                    Event::TransactionAcceptor,
-                    self.fake_transaction_acceptor.handle_event(
-                        effect_builder,
-                        rng,
-                        transaction_acceptor::Event::Accept {
-                            transaction: item.transaction().clone(),
-                            source: Source::Peer(sender),
-                            maybe_responder: None,
-                            is_proposed: false,
-                            maybe_block_hash: None,
-                        },
-                    ),
-                )
-            },
+            }) => reactor::wrap_effects(
+                Event::TransactionAcceptor,
+                self.fake_transaction_acceptor.handle_event(
+                    effect_builder,
+                    rng,
+                    transaction_acceptor::Event::Accept {
+                        transaction: item.transaction().clone(),
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                        is_proposed: false,
+                        maybe_block_hash: None,
+                    },
+                ),
+            ),
             Event::TransactionGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
@@ -460,7 +463,9 @@ async fn should_get_from_alternate_source() {
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
-                if let NodeMessage::AcceptedTransactionGossiper(Message::GossipResponse { .. }) = **payload
+                if let NodeMessage::AcceptedTransactionGossiper(Message::GossipResponse {
+                    ..
+                }) = **payload
                 {
                     **dest == node_id_0
                 } else {
@@ -656,8 +661,10 @@ async fn should_not_gossip_old_stored_item_again() {
             .put_block_to_storage(Arc::new(fake_block.clone()))
             .ignore()
     };
-    network.process_injected_effect_on(&node_0, store_block).await;
-    
+    network
+        .process_injected_effect_on(&node_0, store_block)
+        .await;
+
     // Store the transaction on node 0.
     let store_txn = |effect_builder: EffectBuilder<Event>| {
         effect_builder
@@ -726,7 +733,10 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = Box::new(AcceptedTransaction::new(Transaction::random(rng), BlockHash::default()));
+    let txn = Box::new(AcceptedTransaction::new(
+        Transaction::random(rng),
+        BlockHash::default(),
+    ));
 
     let message = match message_type {
         Unexpected::Response => Message::GossipResponse {
