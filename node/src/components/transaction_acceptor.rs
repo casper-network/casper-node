@@ -12,7 +12,7 @@ use casper_types::{
 };
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, trace};
 
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
@@ -1022,8 +1022,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        info!(?event, "TransactionAcceptor: handling event");
-        println!("TA Events: {:?}", event);
+        trace!(?event, "TransactionAcceptor: handling event");
         match event {
             Event::Accept {
                 transaction,

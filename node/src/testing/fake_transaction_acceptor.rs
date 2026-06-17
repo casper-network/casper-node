@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use tracing::debug;
+use tracing::{debug, info};
 
 use casper_types::{Block, BlockHeader, Chainspec, Timestamp, Transaction};
 
@@ -152,7 +152,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
             );
             return Effects::new();
         }
-        debug!(?event, "FakeTransactionAcceptor: handling event");
+        info!(?event, "FakeTransactionAcceptor: handling event");
         match event {
             Event::Accept {
                 transaction,

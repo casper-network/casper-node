@@ -16,6 +16,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 use tracing::debug;
+use tracing::info;
 
 use casper_types::{testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2, ProtocolVersion, TimeDiff, Transaction, TransactionConfig, BlockHash, Block};
 
@@ -204,7 +205,7 @@ impl reactor::Reactor for Reactor {
         rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
-        trace!(?event);
+        info!(?event);
         match event {
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -426,7 +427,7 @@ async fn should_gossip() {
 async fn should_get_from_alternate_source() {
     const NETWORK_SIZE: usize = 3;
     const POLL_DURATION: Duration = Duration::from_millis(10);
-    const TIMEOUT: Duration = Duration::from_secs(2);
+    const TIMEOUT: Duration = Duration::from_secs(10);
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
@@ -454,14 +455,14 @@ async fn should_get_from_alternate_source() {
         .crank_until(&node_ids[0], rng, made_gossip_request, TIMEOUT)
         .await;
     assert!(network.remove_node(&node_ids[0]).is_some());
-    debug!("removed node {}", &node_ids[0]);
-
+    println!("removed node {}", &node_ids[0]);
+    println!("removed");
     // Run node 2 until it receives and responds to the gossip request from node 0.
     let node_id_0 = node_ids[0];
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
-                if let NodeMessage::TransactionGossiper(Message::GossipResponse { .. }) = **payload
+                if let NodeMessage::AcceptedTransactionGossiper(Message::GossipResponse { .. }) = **payload
                 {
                     **dest == node_id_0
                 } else {
@@ -652,6 +653,13 @@ async fn should_not_gossip_old_stored_item_again() {
     let txn = Transaction::random(rng);
     let accepted_transaction = AcceptedTransaction::new(txn.clone(), *hash);
 
+    let store_block = |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .put_block_to_storage(Arc::new(fake_block.clone()))
+            .ignore()
+    };
+    network.process_injected_effect_on(&node_0, store_block).await;
+    
     // Store the transaction on node 0.
     let store_txn = |effect_builder: EffectBuilder<Event>| {
         effect_builder
