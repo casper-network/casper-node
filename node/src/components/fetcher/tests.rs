@@ -46,6 +46,7 @@ use crate::{
     types::NodeId,
     utils::WithDir,
 };
+use crate::types::AcceptedTransaction;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -124,6 +125,8 @@ enum Event {
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     GossiperIncomingTransaction(GossiperIncoming<Transaction>),
+    #[from]
+    GossiperIncomingAcceptedTransaction(GossiperIncoming<AcceptedTransaction>),
     #[from]
     GossiperIncomingBlock(GossiperIncoming<BlockV2>),
     #[from]
@@ -232,6 +235,7 @@ impl ReactorTrait for Reactor {
                     source: Source::Client,
                     maybe_responder: Some(responder),
                     is_proposed: false,
+                    maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
                     Event::FakeTransactionAcceptor,
@@ -260,6 +264,7 @@ impl ReactorTrait for Reactor {
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingTransaction(_)
+            | Event::GossiperIncomingAcceptedTransaction(_)
             | Event::GossiperIncomingBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
@@ -364,6 +369,7 @@ impl Reactor {
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
                         is_proposed: false,
+                        maybe_block_hash: None,
                     }),
                 )
             }

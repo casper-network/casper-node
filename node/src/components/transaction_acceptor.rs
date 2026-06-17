@@ -7,7 +7,8 @@ mod tests;
 use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use casper_types::{
-    contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
+    contracts::ProtocolVersionMajor, BlockHash, ContractRuntimeTag, InvalidTransaction,
+    InvalidTransactionV1,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -111,6 +112,7 @@ impl TransactionAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         is_proposed: bool,
+        maybe_block_hash: Option<BlockHash>,
     ) -> Effects<Event> {
         trace!(%source, %input_transaction, "checking transaction before accepting");
         let verification_start_timestamp = Timestamp::now();
@@ -141,6 +143,7 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
             is_proposed,
+            maybe_block_hash,
         ));
 
         if meta_transaction.is_install_or_upgrade()
@@ -185,18 +188,26 @@ impl TransactionAcceptor {
             );
         }
 
-        effect_builder
-            .get_highest_complete_block_header_from_storage()
-            .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                event_metadata,
-                maybe_block_header: maybe_block_header.map(Box::new),
-            })
+        match event_metadata.maybe_block_hash {
+            Some(block_hash) => effect_builder
+                .get_block_header_from_storage(block_hash, true)
+                .event(move |maybe_block_header| Event::GetBlockHeaderResult {
+                    event_metadata,
+                    maybe_block_header: maybe_block_header.map(Box::new),
+                }),
+            None => effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .event(move |maybe_block_header| Event::GetBlockHeaderResult {
+                    event_metadata,
+                    maybe_block_header: maybe_block_header.map(Box::new),
+                }),
+        }
     }
 
     fn handle_get_block_header_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        event_metadata: Box<EventMetadata>,
+        mut event_metadata: Box<EventMetadata>,
         maybe_block_header: Option<Box<BlockHeader>>,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
@@ -211,6 +222,10 @@ impl TransactionAcceptor {
                 return effects;
             }
         };
+
+        if event_metadata.maybe_block_hash.is_none() {
+            event_metadata.maybe_block_hash = Some(block_header.block_hash())
+        }
 
         let account_hash = match event_metadata.transaction.initiator_addr() {
             InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
@@ -875,6 +890,7 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
             is_proposed: _,
+            maybe_block_hash: _,
         } = event_metadata;
         self.reject_transaction_direct(
             effect_builder,
@@ -896,8 +912,6 @@ impl TransactionAcceptor {
         error: Error,
     ) -> Effects<Event> {
         error!(%error, transaction = %transaction, "rejected transaction");
-        println!("{:?}", error);
-        println!("rejected {}", transaction.hash());
         self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
@@ -923,12 +937,14 @@ impl TransactionAcceptor {
         let mut effects = Effects::new();
         if is_new {
             debug!(transaction = %event_metadata.transaction, "accepted transaction");
+            let block_hash = event_metadata.maybe_block_hash.expect("must have block hash before committing to storage");
             effects.extend(
                 effect_builder
                     .announce_new_transaction_accepted(
                         Arc::new(event_metadata.transaction),
                         event_metadata.source,
                         event_metadata.is_proposed,
+                        block_hash
                     )
                     .ignore(),
             );
@@ -972,14 +988,16 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
             is_proposed,
+            maybe_block_hash,
         } = *event_metadata;
         debug!(%transaction, "accepted transaction");
         self.metrics.observe_accepted(verification_start_timestamp);
         let mut effects = Effects::new();
+        let block_hash = maybe_block_hash.expect("this value must be set previously in this flow");
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source, is_proposed)
+                    .announce_new_transaction_accepted(Arc::new(transaction), source, is_proposed, block_hash)
                     .ignore(),
             );
         }
@@ -1012,7 +1030,15 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 source,
                 maybe_responder: responder,
                 is_proposed,
-            } => self.accept(effect_builder, transaction, source, responder, is_proposed),
+                maybe_block_hash,
+            } => self.accept(
+                effect_builder,
+                transaction,
+                source,
+                responder,
+                is_proposed,
+                maybe_block_hash,
+            ),
             Event::GetBlockHeaderResult {
                 event_metadata,
                 maybe_block_header,

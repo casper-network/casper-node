@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
-    PublicKey, Timestamp, Transaction, TransactionHash, U512,
+    execution::Effects, Block, BlockHash, EraId, FinalitySignature, FinalitySignatureV2,
+    NextUpgrade, PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 
 use crate::{
@@ -196,6 +196,8 @@ pub(crate) enum TransactionAcceptorAnnouncement {
         source: Source,
         /// Is this transaction part of a proposal
         is_proposed: bool,
+        /// The block hash for which the transaction was accepted.
+        block_hash: BlockHash,
     },
 
     /// An invalid transaction was received.

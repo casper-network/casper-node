@@ -45,8 +45,8 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap,
-        TrieOrChunk,
+        transaction::ProposedTransaction, AcceptedTransaction, BlockExecutionResultsOrChunk,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
@@ -195,6 +195,14 @@ pub(crate) enum MainEvent {
     TransactionGossiperIncoming(GossiperIncoming<Transaction>),
     #[from]
     TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
+    #[from]
+    AcceptedTransactionGossiper(#[serde(skip_serializing)] gossiper::Event<AcceptedTransaction>),
+    #[from]
+    AcceptedTransactionGossiperIncoming(GossiperIncoming<AcceptedTransaction>),
+    #[from]
+    AcceptedTransactionGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<AcceptedTransaction>,
+    ),
     #[from]
     TransactionBuffer(#[serde(skip_serializing)] transaction_buffer::Event),
     #[from]
@@ -371,6 +379,9 @@ impl ReactorEvent for MainEvent {
                 "GotImmediateSwitchBlockEraValidators"
             }
             MainEvent::BinaryPort(_) => "BinaryPort",
+            MainEvent::AcceptedTransactionGossiper(_) => "AcceptedTransactionGossiper",
+            MainEvent::AcceptedTransactionGossiperIncoming(_) => "AcceptedTransactionGossiperIncoming",
+            MainEvent::AcceptedTransactionGossiperAnnouncement(_) => "AcceptedTransactionGossiperAnnouncement"
         }
     }
 }
@@ -397,6 +408,7 @@ impl Display for MainEvent {
                 write!(f, "proposed transaction fetcher: {}", event)
             }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
+            MainEvent::AcceptedTransactionGossiper(event) => write!(f, "accepted transaction gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -512,6 +524,9 @@ impl Display for MainEvent {
             MainEvent::TransactionGossiperAnnouncement(ann) => {
                 write!(f, "transaction gossiper announcement: {}", ann)
             }
+            MainEvent::AcceptedTransactionGossiperAnnouncement(ann) => {
+                write!(f, "accepted transaction gossiper announcement: {}", ann)
+            }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
                 write!(f, "block signature gossiper announcement: {}", ann)
             }
@@ -533,6 +548,7 @@ impl Display for MainEvent {
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
             MainEvent::TransactionGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::AcceptedTransactionGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -609,6 +625,12 @@ impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
 
 impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
     fn from(request: NetworkRequest<gossiper::Message<Transaction>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<AcceptedTransaction>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<AcceptedTransaction>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

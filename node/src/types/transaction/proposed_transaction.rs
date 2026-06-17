@@ -1,27 +1,7 @@
 use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
-use casper_types::{BlockHash, Transaction, TransactionId};
-use core::fmt;
+use casper_types::{Transaction};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct AcceptedTransactionId {
-    transaction_id: TransactionId,
-
-    block_hash: BlockHash,
-}
-
-impl Display for AcceptedTransactionId {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "accepted-transaction-id({}, {}, {})",
-            self.transaction_id.transaction_hash(),
-            self.transaction_id.approvals_hash(),
-            self.block_hash
-        )
-    }
-}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct ProposedTransaction {

@@ -1428,6 +1428,7 @@ fn schedule_accept_transaction(
                     source,
                     maybe_responder: Some(responder),
                     is_proposed: false,
+                    maybe_block_hash: None,
                 },
                 QueueKind::Validation,
             )
@@ -1459,6 +1460,7 @@ fn inject_balance_check_for_peer(
             Some(responder),
             Timestamp::now(),
             false,
+            None
         ));
         effect_builder
             .into_inner()

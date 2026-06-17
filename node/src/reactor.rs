@@ -1060,6 +1060,7 @@ where
                         source: Source::Peer(sender),
                         maybe_responder: None,
                         is_proposed: true,
+                        maybe_block_hash: None,
                     };
                     Reactor::dispatch_event(reactor, effect_builder, rng, acceptor_event.into())
                 }

@@ -29,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::NodeId,
+    types::{AcceptedTransaction, NodeId},
 };
 
 /// Reactor message.
@@ -48,6 +48,9 @@ pub(crate) enum Message {
     /// Deploy gossiper component message.
     #[from]
     TransactionGossiper(gossiper::Message<Transaction>),
+    /// Deploy gossiper component message.
+    #[from]
+    AcceptedTransactionGossiper(gossiper::Message<AcceptedTransaction>),
     #[from]
     FinalitySignatureGossiper(gossiper::Message<FinalitySignatureV2>),
     /// Address gossiper component message.
@@ -80,6 +83,7 @@ impl Payload for Message {
             Message::ConsensusRequest(_) => MessageKind::Consensus,
             Message::BlockGossiper(_) => MessageKind::BlockGossip,
             Message::TransactionGossiper(_) => MessageKind::TransactionGossip,
+            Message::AcceptedTransactionGossiper(_) => MessageKind::AcceptedTransactionGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
                 Tag::Transaction | Tag::LegacyDeploy | Tag::ProposedTransaction => {
@@ -105,6 +109,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::ConsensusRequest(_) => false,
             Message::TransactionGossiper(_) => false,
+            Message::AcceptedTransactionGossiper(_) => false,
             Message::BlockGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
@@ -122,6 +127,7 @@ impl Payload for Message {
             Message::ConsensusRequest(_) => weights.consensus,
             Message::BlockGossiper(_) => weights.block_gossip,
             Message::TransactionGossiper(_) => weights.transaction_gossip,
+            Message::AcceptedTransactionGossiper(_) => weights.transaction_gossip,
             Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
             Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
@@ -156,6 +162,7 @@ impl Payload for Message {
             Message::ConsensusRequest(_) => false,
             Message::BlockGossiper(_) => false,
             Message::TransactionGossiper(_) => false,
+            Message::AcceptedTransactionGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             // Trie requests can deadlock between syncing nodes.
@@ -200,6 +207,10 @@ impl Debug for Message {
             Message::ConsensusRequest(c) => f.debug_tuple("ConsensusRequest").field(&c).finish(),
             Message::BlockGossiper(dg) => f.debug_tuple("BlockGossiper").field(&dg).finish(),
             Message::TransactionGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
+            Message::AcceptedTransactionGossiper(dg) => f
+                .debug_tuple("AcceptedTransactionGossiper")
+                .field(&dg)
+                .finish(),
             Message::FinalitySignatureGossiper(sig) => f
                 .debug_tuple("FinalitySignatureGossiper")
                 .field(&sig)
@@ -252,6 +263,11 @@ mod specimen_support {
                     MessageDiscriminants::TransactionGossiper => Message::TransactionGossiper(
                         LargestSpecimen::largest_specimen(estimator, cache),
                     ),
+                    MessageDiscriminants::AcceptedTransactionGossiper => {
+                        Message::AcceptedTransactionGossiper(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
                     MessageDiscriminants::FinalitySignatureGossiper => {
                         Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
                             estimator, cache,
@@ -278,6 +294,9 @@ impl Display for Message {
             Message::ConsensusRequest(consensus) => write!(f, "ConsensusRequest({})", consensus),
             Message::BlockGossiper(deploy) => write!(f, "BlockGossiper::{}", deploy),
             Message::TransactionGossiper(txn) => write!(f, "TransactionGossiper::{}", txn),
+            Message::AcceptedTransactionGossiper(txn) => {
+                write!(f, "AcceptedTransactionGossiper::{}", txn)
+            }
             Message::FinalitySignatureGossiper(sig) => {
                 write!(f, "FinalitySignatureGossiper::{}", sig)
             }
@@ -304,6 +323,7 @@ where
         + From<ConsensusDemand>
         + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Transaction>>
+        + From<GossiperIncoming<AcceptedTransaction>>
         + From<GossiperIncoming<FinalitySignatureV2>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
@@ -334,6 +354,11 @@ where
                 message: Box::new(message),
             }
             .into(),
+            Message::AcceptedTransactionGossiper(message) => GossiperIncoming {
+                sender,
+                message: Box::new(message),
+            }
+                .into(),
             Message::FinalitySignatureGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),

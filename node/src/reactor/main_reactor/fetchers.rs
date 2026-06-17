@@ -183,6 +183,7 @@ impl Fetchers {
                     transaction,
                     source,
                     is_proposed,
+                    block_hash: _,
                 },
             ) if matches!(source, Source::Peer(..)) => {
                 if !is_proposed {

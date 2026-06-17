@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHeader,
-    EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
+    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHash,
+    BlockHeader, EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};
@@ -19,6 +19,7 @@ pub(crate) struct EventMetadata {
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
     pub(crate) verification_start_timestamp: Timestamp,
     pub(crate) is_proposed: bool,
+    pub(crate) maybe_block_hash: Option<BlockHash>,
 }
 
 impl EventMetadata {
@@ -29,6 +30,7 @@ impl EventMetadata {
         maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
         is_proposed: bool,
+        maybe_block_hash: Option<BlockHash>,
     ) -> Self {
         EventMetadata {
             transaction,
@@ -37,6 +39,7 @@ impl EventMetadata {
             maybe_responder,
             verification_start_timestamp,
             is_proposed,
+            maybe_block_hash,
         }
     }
 }
@@ -49,6 +52,7 @@ pub(crate) enum Event {
         transaction: Transaction,
         source: Source,
         is_proposed: bool,
+        maybe_block_hash: Option<BlockHash>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `TransactionAcceptor` putting a `Transaction` to the storage
