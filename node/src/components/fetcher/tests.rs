@@ -231,6 +231,7 @@ impl ReactorTrait for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    is_proposed: false,
                 };
                 reactor::wrap_effects(
                     Event::FakeTransactionAcceptor,
@@ -362,6 +363,7 @@ impl Reactor {
                         transaction,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
+                        is_proposed: false,
                     }),
                 )
             }

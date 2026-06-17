@@ -1427,6 +1427,7 @@ fn schedule_accept_transaction(
                     transaction,
                     source,
                     maybe_responder: Some(responder),
+                    is_proposed: false,
                 },
                 QueueKind::Validation,
             )
@@ -1457,6 +1458,7 @@ fn inject_balance_check_for_peer(
             source,
             Some(responder),
             Timestamp::now(),
+            false
         ));
         effect_builder
             .into_inner()
@@ -3180,9 +3182,10 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_peer() {
 
     assert!(matches!(
         result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::InvalidInitiator
-        )))
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
     ))
 }
 
@@ -3207,9 +3210,10 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_peer() {
 
     assert!(matches!(
         result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::InvalidInitiator
-        )))
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
     ))
 }
 

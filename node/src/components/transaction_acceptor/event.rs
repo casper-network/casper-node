@@ -18,6 +18,7 @@ pub(crate) struct EventMetadata {
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
     pub(crate) verification_start_timestamp: Timestamp,
+    pub(crate) is_proposed: bool,
 }
 
 impl EventMetadata {
@@ -27,6 +28,7 @@ impl EventMetadata {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
+        is_proposed: bool
     ) -> Self {
         EventMetadata {
             transaction,
@@ -34,6 +36,7 @@ impl EventMetadata {
             source,
             maybe_responder,
             verification_start_timestamp,
+            is_proposed,
         }
     }
 }
@@ -45,6 +48,7 @@ pub(crate) enum Event {
     Accept {
         transaction: Transaction,
         source: Source,
+        is_proposed: bool,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `TransactionAcceptor` putting a `Transaction` to the storage

@@ -1055,6 +1055,7 @@ where
                         transaction,
                         source: Source::Peer(sender),
                         maybe_responder: None,
+                        is_proposed: true
                     };
                     Reactor::dispatch_event(reactor, effect_builder, rng, acceptor_event.into())
                 },

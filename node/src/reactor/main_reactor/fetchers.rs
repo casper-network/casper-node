@@ -176,18 +176,37 @@ impl Fetchers {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
+                    is_proposed
                 },
-            ) if matches!(source, Source::Peer(..)) => reactor::wrap_effects(
-                MainEvent::TransactionFetcher,
-                self.transaction_fetcher.handle_event(
-                    effect_builder,
-                    rng,
-                    fetcher::Event::GotRemotely {
-                        item: Box::new((*transaction).clone()),
-                        source,
-                    },
-                ),
-            ),
+            ) if matches!(source, Source::Peer(..)) => {
+                if !is_proposed {
+                    reactor::wrap_effects(
+                        MainEvent::TransactionFetcher,
+                        self.transaction_fetcher.handle_event(
+                            effect_builder,
+                            rng,
+                            fetcher::Event::GotRemotely {
+                                item: Box::new((*transaction).clone()),
+                                source,
+                            },
+                        ),
+                    )
+                } else {
+                    reactor::wrap_effects(
+                        MainEvent::ProposedTransactionFetcher,
+                        self.proposed_transaction_fetcher.handle_event(
+                            effect_builder,
+                            rng,
+                            fetcher::Event::GotRemotely {
+                                item: Box::new(ProposedTransaction::new((*transaction).clone())),
+                                source,
+                            },
+                        ),
+                    )
+                }
+                
+                
+            },
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

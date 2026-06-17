@@ -74,6 +74,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             Timestamp::now(),
+            false
         ));
         effect_builder
             .put_transaction_to_storage(transaction)
@@ -95,12 +96,13 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp: _,
+            is_proposed:_,
         } = *event_metadata;
         let mut effects = Effects::new();
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source)
+                    .announce_new_transaction_accepted(Arc::new(transaction), source, false)
                     .ignore(),
             );
         }
@@ -134,6 +136,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
                 transaction,
                 source,
                 maybe_responder,
+                is_proposed: _,
             } => self.accept(effect_builder, transaction, source, maybe_responder),
             Event::PutToStorageResult {
                 event_metadata,

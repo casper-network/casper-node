@@ -194,6 +194,8 @@ pub(crate) enum TransactionAcceptorAnnouncement {
         transaction: Arc<Transaction>,
         /// The source (peer or client) of the transaction.
         source: Source,
+        /// Is this transaction part of a proposal
+        is_proposed: bool,
     },
 
     /// An invalid transaction was received.
@@ -211,6 +213,7 @@ impl Display for TransactionAcceptorAnnouncement {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
+                ..
             } => write!(
                 formatter,
                 "accepted new transaction {} from {}",

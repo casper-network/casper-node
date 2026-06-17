@@ -14,14 +14,7 @@ use tokio::{
 use tokio_util::codec::Framed;
 use tracing::info;
 
-use casper_types::{
-    bytesrepr::{FromBytes, ToBytes},
-    execution::TransformKindV2,
-    system::{auction::BidAddr, AUCTION},
-    testing::TestRng,
-    AvailableBlockRange, Deploy, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff,
-    Timestamp, Transaction,
-};
+use casper_types::{bytesrepr::{FromBytes, ToBytes}, execution::TransformKindV2, system::{auction::BidAddr, AUCTION}, testing::TestRng, AvailableBlockRange, Deploy, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, U512};
 
 use crate::{
     effect::{requests::ContractRuntimeRequest, EffectExt},
@@ -42,6 +35,7 @@ use crate::{
     types::{ExitCode, NodeId, SyncHandling},
     utils::Source,
 };
+use crate::types::transaction::transaction_v1_builder::TransactionV1Builder;
 
 #[tokio::test]
 async fn run_network() {
@@ -641,12 +635,24 @@ async fn should_store_finalized_approvals() {
     let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng)); // just for ordering testing purposes
 
+    let transfer_target = Arc::new(SecretKey::random(&mut fixture.rng));
+    let target_public_key = PublicKey::from(&*transfer_target);
+    
     // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     // Submit a transaction.
+    let txn = TransactionV1Builder::new_transfer(U512::from(2_500_000_000u64), None, target_public_key, None)
+        .expect("should build")
+        .with_initiator_addr(alice_public_key.clone())
+        .with_chain_name(fixture.chainspec.network_config.name.clone())
+        .build()
+        .expect("must builder transaction v1");
+    
+    
+    
     let mut transaction_alice_bob = Transaction::from(
-        Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng),
+        txn
     );
     let mut transaction_alice_bob_charlie = transaction_alice_bob.clone();
     let mut transaction_bob_alice = transaction_alice_bob.clone();
@@ -695,7 +701,7 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client)
+                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client, false)
                     .ignore()
             })
             .await;
@@ -771,7 +777,7 @@ async fn should_update_last_progress_after_block_execution() {
 
         runner
             .process_injected_effects(|eff| {
-                eff.announce_new_transaction_accepted(Arc::new(transaction), Source::Client)
+                eff.announce_new_transaction_accepted(Arc::new(transaction), Source::Client, false)
                     .ignore()
             })
             .await;

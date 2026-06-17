@@ -861,6 +861,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         transaction: Arc<Transaction>,
         source: Source,
+        is_proposed: bool,
     ) -> impl Future<Output = ()>
     where
         REv: From<TransactionAcceptorAnnouncement>,
@@ -869,6 +870,7 @@ impl<REv> EffectBuilder<REv> {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
+                is_proposed
             },
             QueueKind::Validation,
         )

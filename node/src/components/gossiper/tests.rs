@@ -275,6 +275,7 @@ impl reactor::Reactor for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    is_proposed: false,
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))
             }
@@ -282,6 +283,7 @@ impl reactor::Reactor for Reactor {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
+                    is_proposed: _,
                 },
             ) => {
                 let event = super::Event::ItemReceived {
@@ -309,6 +311,7 @@ impl reactor::Reactor for Reactor {
                         transaction: *item,
                         source: Source::Peer(sender),
                         maybe_responder: None,
+                        is_proposed: false,
                     },
                 ),
             ),

@@ -738,6 +738,7 @@ impl reactor::Reactor for MainReactor {
                     transaction,
                     source,
                     maybe_responder: Some(responder),
+                    is_proposed: false,
                 };
                 reactor::wrap_effects(
                     MainEvent::TransactionAcceptor,
@@ -749,6 +750,7 @@ impl reactor::Reactor for MainReactor {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
+                    is_proposed,
                 },
             ) => {
                 let mut effects = Effects::new();
@@ -764,6 +766,7 @@ impl reactor::Reactor for MainReactor {
                                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                                     transaction,
                                     source,
+                                    is_proposed
                                 },
                             ),
                         ));
@@ -840,6 +843,7 @@ impl reactor::Reactor for MainReactor {
                         transaction: *item,
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
+                        is_proposed: false,
                     },
                 ),
             ),

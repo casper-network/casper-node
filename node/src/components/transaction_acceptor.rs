@@ -11,7 +11,7 @@ use casper_types::{
 };
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, info};
 
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
@@ -110,6 +110,7 @@ impl TransactionAcceptor {
         input_transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        is_proposed: bool,
     ) -> Effects<Event> {
         trace!(%source, %input_transaction, "checking transaction before accepting");
         let verification_start_timestamp = Timestamp::now();
@@ -139,6 +140,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
+            is_proposed,
         ));
 
         if meta_transaction.is_install_or_upgrade()
@@ -872,6 +874,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
+            is_proposed: _,
         } = event_metadata;
         self.reject_transaction_direct(
             effect_builder,
@@ -892,7 +895,9 @@ impl TransactionAcceptor {
         verification_start_timestamp: Timestamp,
         error: Error,
     ) -> Effects<Event> {
-        trace!(%error, transaction = %transaction, "rejected transaction");
+        error!(%error, transaction = %transaction, "rejected transaction");
+        println!("{:?}", error);
+        println!("rejected {}", transaction.hash());
         self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
@@ -923,6 +928,7 @@ impl TransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(event_metadata.transaction),
                         event_metadata.source,
+                        event_metadata.is_proposed
                     )
                     .ignore(),
             );
@@ -965,6 +971,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
+            is_proposed
         } = *event_metadata;
         debug!(%transaction, "accepted transaction");
         self.metrics.observe_accepted(verification_start_timestamp);
@@ -972,7 +979,7 @@ impl TransactionAcceptor {
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source)
+                    .announce_new_transaction_accepted(Arc::new(transaction), source, is_proposed)
                     .ignore(),
             );
         }
@@ -997,13 +1004,15 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        trace!(?event, "TransactionAcceptor: handling event");
+        info!(?event, "TransactionAcceptor: handling event");
+        println!("TA Events: {:?}", event);
         match event {
             Event::Accept {
                 transaction,
                 source,
                 maybe_responder: responder,
-            } => self.accept(effect_builder, transaction, source, responder),
+                is_proposed,
+            } => self.accept(effect_builder, transaction, source, responder, is_proposed),
             Event::GetBlockHeaderResult {
                 event_metadata,
                 maybe_block_header,
