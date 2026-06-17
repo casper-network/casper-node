@@ -2230,7 +2230,7 @@ async fn should_gas_hold_fee_erroneous_wasm(txn_pricing_mode: PricingMode) {
     let meta_transaction = MetaTransaction::from_transaction(
         &txn,
         test.chainspec().core_config.pricing_handling,
-        &test.chainspec().transaction_config,
+        test.chainspec(),
     )
     .unwrap();
     // Fixed transaction pricing.
@@ -4038,7 +4038,7 @@ async fn charge_when_session_code_succeeds() {
         .with_chain_name(CHAIN_NAME)
         .with_initiator_addr(BOB_PUBLIC_KEY.clone())
         .with_pricing_mode(PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 2, /*Makes the transaction
                                                * "Large" despite the fact that the actual
                                                * WASM bytes categorize it as "Small" */

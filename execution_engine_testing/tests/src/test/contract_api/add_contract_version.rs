@@ -137,7 +137,7 @@ pub fn new_transaction_v1_session(
         timestamp,
         TimeDiff::from_millis(30 * 60 * 1_000),
         PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 0,
         },
         fields,
