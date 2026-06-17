@@ -114,16 +114,14 @@ impl MetaTransactionV1 {
                             provided_gas_price_tolerance: *gas_price_tolerance,
                         },
                     ))
+                } else if *gas_price_tolerance > vacancy_config.max_gas_price {
+                    Err(InvalidTransaction::V1(
+                        InvalidTransactionV1::InvalidPricingMode {
+                            price_mode: pricing_mode.clone(),
+                        },
+                    ))
                 } else {
-                    if *gas_price_tolerance > vacancy_config.max_gas_price {
-                        Err(InvalidTransaction::V1(
-                            InvalidTransactionV1::InvalidPricingMode {
-                                price_mode: pricing_mode.clone(),
-                            },
-                        ))
-                    } else {
-                        Ok(())
-                    }
+                    Ok(())
                 }
             }
             _ => Ok(()),
