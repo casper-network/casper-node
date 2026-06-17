@@ -19,7 +19,7 @@ CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -
 EVM_CONTRACTS    = $(shell find ./smart_contracts/evm_contracts -mindepth 1 -maxdepth 1 -name '*.sol' -exec basename {} .sol \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
-WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-feature=-bulk-memory"
+WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-cpu=mvp -C target-feature=-bulk-memory"
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 EVM_CONTRACT_TARGET_DIR   = target/evm-contracts
