@@ -16,7 +16,6 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 use tracing::debug;
-use tracing::info;
 
 use casper_types::{testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2, ProtocolVersion, TimeDiff, Transaction, TransactionConfig, BlockHash, Block};
 
@@ -205,7 +204,7 @@ impl reactor::Reactor for Reactor {
         rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
-        info!(?event);
+        trace!(?event);
         match event {
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -455,8 +454,7 @@ async fn should_get_from_alternate_source() {
         .crank_until(&node_ids[0], rng, made_gossip_request, TIMEOUT)
         .await;
     assert!(network.remove_node(&node_ids[0]).is_some());
-    println!("removed node {}", &node_ids[0]);
-    println!("removed");
+    debug!("removed node {}", &node_ids[0]);
     // Run node 2 until it receives and responds to the gossip request from node 0.
     let node_id_0 = node_ids[0];
     let sent_gossip_response = move |event: &Event| -> bool {
