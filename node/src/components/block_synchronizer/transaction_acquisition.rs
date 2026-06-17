@@ -87,6 +87,9 @@ impl TransactionAcquisition {
                         (TransactionHash::V1(transaction_v1_hash), txn_v1_approvals_hash) => {
                             TransactionId::new(transaction_v1_hash.into(), txn_v1_approvals_hash)
                         }
+                        (TransactionHash::Evm(transaction_hash), approvals_hash) => {
+                            TransactionId::new(transaction_hash.into(), approvals_hash)
+                        }
                     };
                     new_txn_ids.push((txn_id, TransactionState::Vacant));
                 }

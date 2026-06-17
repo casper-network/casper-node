@@ -1277,10 +1277,7 @@ mod tests {
 
         // Create a new, random transaction.
         let transaction = new_standard(fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
-        let transaction_hash = match &transaction {
-            Transaction::Deploy(deploy) => TransactionHash::Deploy(*deploy.hash()),
-            Transaction::V1(v1) => TransactionHash::V1(*v1.hash()),
-        };
+        let transaction_hash = transaction.hash();
         let chainspec = Chainspec::default();
         let footprint = TransactionFootprint::new(&chainspec, &transaction).unwrap();
 

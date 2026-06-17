@@ -833,6 +833,7 @@ where
                 TransactionId::new(deploy_hash.into(), approvals_hash)
             }
             TransactionHash::V1(v1_hash) => TransactionId::new(v1_hash.into(), approvals_hash),
+            TransactionHash::Evm(evm_hash) => TransactionId::new(evm_hash.into(), approvals_hash),
         };
         effects.extend(
             effect_builder

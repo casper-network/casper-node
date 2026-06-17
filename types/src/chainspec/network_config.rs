@@ -3,7 +3,7 @@ use datasize::DataSize;
 
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
@@ -12,7 +12,7 @@ use crate::testing::TestRng;
 use super::AccountsConfig;
 
 /// Configuration values associated with the network.
-#[derive(Clone, PartialEq, Eq, Serialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct NetworkConfig {
     /// The network name.

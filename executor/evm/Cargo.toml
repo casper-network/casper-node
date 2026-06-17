@@ -1,0 +1,20 @@
+[package]
+name = "casper-executor-evm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michał Papierski <michal@casper.network>"]
+description = "Casper EVM executor package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/evm"
+license = "Apache-2.0"
+
+[dependencies]
+alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
+casper-storage = { version = "5.0.0", path = "../../storage" }
+casper-types = { version = "7.0.0", path = "../../types", features = ["std"] }
+revm = { version = "38", features = ["dev", "optional_fee_charge"] }
+thiserror = "2"
+
+[dev-dependencies]
+alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
+alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak"] }

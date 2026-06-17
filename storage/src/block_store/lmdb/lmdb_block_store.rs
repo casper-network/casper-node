@@ -598,6 +598,9 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
             }
             // else no-op: we only record transfers from successful executions.
         }
+        ExecutionResult::Evm(_) => {
+            // No-op: EVM receipt logs are not Casper transfers.
+        }
         ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
         }

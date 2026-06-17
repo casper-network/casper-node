@@ -34,7 +34,7 @@ const ACCOUNT_HASH_FIELD_INDEX: u16 = 1;
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "The address of the initiator of a TransactionV1.")
+    schemars(description = "The address of the initiator of a transaction.")
 )]
 #[serde(deny_unknown_fields)]
 pub enum InitiatorAddr {
@@ -45,7 +45,7 @@ pub enum InitiatorAddr {
 }
 
 impl InitiatorAddr {
-    /// Gets the account hash.
+    /// Returns the Casper account hash carried by this initiator.
     pub fn account_hash(&self) -> AccountHash {
         match self {
             InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),

@@ -165,8 +165,8 @@ impl BalanceHoldRequest {
 
 /// Possible balance hold errors.
 #[derive(Error, Debug, Clone)]
-#[non_exhaustive]
 #[allow(clippy::large_enum_variant)]
+#[non_exhaustive]
 pub enum BalanceHoldError {
     /// Tracking copy error.
     TrackingCopy(TrackingCopyError),

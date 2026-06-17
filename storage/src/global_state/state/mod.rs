@@ -22,6 +22,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, Bytes, ToBytes},
     contracts::NamedKeys,
+    evm,
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     system::{
@@ -37,8 +38,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT,
     },
     Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntryPointAddr, EntryPointValue, HoldsEpoch, Key, KeyTag, Phase, PublicKey, RuntimeArgs,
-    StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
+    EntryPointAddr, EntryPointValue, EvmAddr, HoldsEpoch, Key, KeyTag, Phase, PublicKey,
+    RuntimeArgs, StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 #[cfg(test)]
@@ -1701,7 +1702,9 @@ pub trait StateProvider: Send + Sync + Sized {
                 };
                 runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        initiator_addr
+                            .as_ref()
+                            .map(|initiator_addr| initiator_addr.account_hash()),
                         source_purse,
                         target_purse,
                         amount,
@@ -2214,7 +2217,9 @@ pub trait StateProvider: Send + Sync + Sized {
         );
 
         match transfer_target_mode {
-            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists { .. } => {
+            TransferTargetMode::ExistingAccount { .. }
+            | TransferTargetMode::ExistingEvmAccount { .. }
+            | TransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
             TransferTargetMode::CreateAccount(account_hash) => {
@@ -2232,6 +2237,46 @@ pub trait StateProvider: Send + Sync + Sized {
                 {
                     return TransferResult::Failure(tce.into());
                 }
+            }
+            TransferTargetMode::CreateEvmAccount(address) => {
+                // Native transfers to a missing 20-byte target cannot derive a
+                // Casper `AccountHash`, because no Ethereum signature/public key
+                // is part of the transfer. Initialize the minimal EVM-native
+                // identity instead: deterministic purse, zero nonce, empty code,
+                // and zero balance before the transfer credits it.
+                let main_purse = evm::deterministic_purse(address);
+                let balance = match CLValue::from_t(U512::zero()) {
+                    Ok(balance) => balance,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                let identity = match CLValue::from_t(Key::URef(main_purse)) {
+                    Ok(identity) => identity,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                let nonce = match CLValue::from_t(0u64) {
+                    Ok(nonce) => nonce,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                let code_hash = match CLValue::from_t(evm::EMPTY_CODE_HASH) {
+                    Ok(code_hash) => code_hash,
+                    Err(error) => return TransferResult::Failure(TransferError::CLValue(error)),
+                };
+                tc.borrow_mut().write(
+                    Key::Evm(EvmAddr::Account(address)),
+                    StoredValue::CLValue(identity),
+                );
+                tc.borrow_mut().write(
+                    Key::Evm(EvmAddr::Nonce(address)),
+                    StoredValue::CLValue(nonce),
+                );
+                tc.borrow_mut().write(
+                    Key::Evm(EvmAddr::CodeHash(address)),
+                    StoredValue::CLValue(code_hash),
+                );
+                tc.borrow_mut().write(
+                    Key::Balance(main_purse.addr()),
+                    StoredValue::CLValue(balance),
+                );
             }
         }
         let transfer_args = match runtime_args_builder.build(

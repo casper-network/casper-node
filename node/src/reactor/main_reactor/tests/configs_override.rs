@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use num_rational::Ratio;
 
 use casper_types::{
-    ConsensusProtocolName, FeeHandling, HoldBalanceHandling, PricingHandling, PublicKey,
+    ConsensusProtocolName, EvmConfig, FeeHandling, HoldBalanceHandling, PricingHandling, PublicKey,
     RefundHandling, TimeDiff, TransactionV1Config,
 };
 
@@ -36,6 +36,7 @@ pub(crate) struct ConfigsOverride {
     pub chain_name: Option<String>,
     pub gas_hold_balance_handling: Option<HoldBalanceHandling>,
     pub transaction_v1_override: Option<TransactionV1Config>,
+    pub evm_config_override: Option<EvmConfig>,
     pub node_config_override: NodeConfigOverride,
     pub minimum_delegation_rate: u8,
 }
@@ -128,6 +129,11 @@ impl ConfigsOverride {
         self
     }
 
+    pub(crate) fn with_evm_config(mut self, evm_config: EvmConfig) -> Self {
+        self.evm_config_override = Some(evm_config);
+        self
+    }
+
     pub(crate) fn with_idle_tolerance(mut self, idle_tolernace: TimeDiff) -> Self {
         let config = NodeConfigOverride {
             idle_tolerance: Some(idle_tolernace),
@@ -171,6 +177,7 @@ impl Default for ConfigsOverride {
             chain_name: None,
             gas_hold_balance_handling: None,
             transaction_v1_override: None,
+            evm_config_override: None,
             node_config_override: NodeConfigOverride::default(),
             minimum_delegation_rate: 0,
         }

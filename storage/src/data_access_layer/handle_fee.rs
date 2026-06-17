@@ -13,7 +13,7 @@ pub enum HandleFeeMode {
     /// Pay the fee.
     Pay {
         /// Initiator.
-        initiator_addr: Box<InitiatorAddr>,
+        initiator_addr: Option<Box<InitiatorAddr>>,
         /// Source.
         source: Box<BalanceIdentifier>,
         /// Target.
@@ -42,7 +42,7 @@ pub enum HandleFeeMode {
 impl HandleFeeMode {
     /// Ctor for Pay mode.
     pub fn pay(
-        initiator_addr: Box<InitiatorAddr>,
+        initiator_addr: Option<Box<InitiatorAddr>>,
         source: BalanceIdentifier,
         target: BalanceIdentifier,
         amount: U512,

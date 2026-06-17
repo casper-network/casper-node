@@ -1,6 +1,6 @@
 use core::{convert::TryFrom, fmt};
 
-use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
+use casper_types::{EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -370,6 +370,12 @@ pub enum ErrorCode {
     InvalidDelegationAmount = 116,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget = 117,
+    /// EVM address transfer target is disabled for this deploy.
+    #[error("EVM address transfer target is disabled for this deploy")]
+    DeployEvmAddressTransferDisabled = 118,
+    /// EVM transaction nonce does not match the account nonce.
+    #[error("the EVM transaction nonce does not match the account nonce")]
+    InvalidTransactionEvmInvalidNonce = 119,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -397,6 +403,9 @@ impl From<InvalidTransaction> for ErrorCode {
         match value {
             InvalidTransaction::Deploy(invalid_deploy) => ErrorCode::from(invalid_deploy),
             InvalidTransaction::V1(invalid_transaction) => ErrorCode::from(invalid_transaction),
+            InvalidTransaction::Evm(EvmTransactionError::InvalidNonce { .. }) => {
+                ErrorCode::InvalidTransactionEvmInvalidNonce
+            }
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
         }
     }
@@ -581,7 +590,9 @@ mod tests {
     use std::convert::TryFrom;
 
     use crate::ErrorCode;
-    use casper_types::{InvalidDeploy, InvalidTransactionV1};
+    use casper_types::{
+        EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
+    };
     use strum::IntoEnumIterator;
 
     #[test]
@@ -616,6 +627,19 @@ mod tests {
                 "Seems like InvalidDeploy {error} has no corresponding error code"
             )
         }
+    }
+
+    #[test]
+    fn evm_invalid_nonce_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::InvalidNonce {
+            expected: 0,
+            actual: 1,
+        });
+
+        assert_eq!(
+            ErrorCode::from(error),
+            ErrorCode::InvalidTransactionEvmInvalidNonce
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
+    evm::{Address as EvmAddress, EvmAddr},
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
@@ -29,13 +30,15 @@ pub enum KeyPrefix {
     EntryPointsV1ByEntity(EntityAddr),
     /// Retrieves all V2 entry points for a given entity.
     EntryPointsV2ByEntity(EntityAddr),
+    /// Retrieves all EVM storage slots for a given EVM address.
+    EvmStorageByAddress(EvmAddress),
 }
 
 impl KeyPrefix {
     /// Returns a random `KeyPrefix`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..8) {
+        match rng.gen_range(0..9) {
             0 => KeyPrefix::DelegatorBidAddrsByValidator(rng.gen()),
             1 => KeyPrefix::MessagesByEntity(rng.gen()),
             2 => KeyPrefix::MessagesByEntityAndTopic(rng.gen(), rng.gen()),
@@ -44,6 +47,7 @@ impl KeyPrefix {
             5 => KeyPrefix::ProcessingBalanceHoldsByPurse(rng.gen()),
             6 => KeyPrefix::EntryPointsV1ByEntity(rng.gen()),
             7 => KeyPrefix::EntryPointsV2ByEntity(rng.gen()),
+            8 => KeyPrefix::EvmStorageByAddress(EvmAddress::new(rng.gen())),
             _ => unreachable!(),
         }
     }
@@ -96,6 +100,11 @@ impl ToBytes for KeyPrefix {
                 writer.push(1);
                 entity.write_bytes(writer)?;
             }
+            KeyPrefix::EvmStorageByAddress(address) => {
+                writer.push(KeyTag::Evm as u8);
+                writer.push(EvmAddr::STORAGE_TAG);
+                address.write_bytes(writer)?;
+            }
         }
         Ok(())
     }
@@ -122,6 +131,9 @@ impl ToBytes for KeyPrefix {
                 }
                 KeyPrefix::EntryPointsV2ByEntity(entity) => {
                     U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+                KeyPrefix::EvmStorageByAddress(address) => {
+                    U8_SERIALIZED_LENGTH + address.serialized_length()
                 }
             }
     }
@@ -179,6 +191,16 @@ impl FromBytes for KeyPrefix {
                 match entry_point_type {
                     0 => (KeyPrefix::EntryPointsV1ByEntity(entity), remainder),
                     1 => (KeyPrefix::EntryPointsV2ByEntity(entity), remainder),
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
+            tag if tag == KeyTag::Evm as u8 => {
+                let (evm_addr_tag, remainder) = u8::from_bytes(remainder)?;
+                match evm_addr_tag {
+                    tag if tag == EvmAddr::STORAGE_TAG => {
+                        let (address, remainder) = EvmAddress::from_bytes(remainder)?;
+                        (KeyPrefix::EvmStorageByAddress(address), remainder)
+                    }
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }

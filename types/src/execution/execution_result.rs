@@ -1,4 +1,8 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -11,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use super::{ExecutionResultV1, ExecutionResultV2};
+use super::{EvmExecutionResult, ExecutionResultV1, ExecutionResultV2};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -21,6 +25,7 @@ use crate::{
 
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
+const EVM_TAG: u8 = 2;
 
 /// The versioned result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
@@ -34,6 +39,8 @@ pub enum ExecutionResult {
     /// Version 2 of execution result type.
     #[serde(rename = "Version2")]
     V2(Box<ExecutionResultV2>),
+    /// EVM transaction execution result type.
+    Evm(Box<EvmExecutionResult>),
 }
 
 impl ExecutionResult {
@@ -42,6 +49,7 @@ impl ExecutionResult {
         match self {
             ExecutionResult::V1(result) => result.cost(),
             ExecutionResult::V2(result) => result.cost,
+            ExecutionResult::Evm(result) => result.cost,
         }
     }
 
@@ -50,6 +58,7 @@ impl ExecutionResult {
         match self {
             ExecutionResult::V1(result) => result.cost(),
             ExecutionResult::V2(result) => result.consumed.value(),
+            ExecutionResult::Evm(result) => result.receipt.gas_used.into(),
         }
     }
 
@@ -58,16 +67,18 @@ impl ExecutionResult {
         match self {
             ExecutionResult::V1(_) => None,
             ExecutionResult::V2(result) => Some(result.refund),
+            ExecutionResult::Evm(result) => Some(result.refund),
         }
     }
 
     /// Returns a random ExecutionResult.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        if rng.gen_bool(0.5) {
-            Self::V1(rand::distributions::Standard.sample(rng))
-        } else {
-            Self::V2(Box::new(ExecutionResultV2::random(rng)))
+        match rng.gen_range(0..3) {
+            0 => Self::V1(rand::distributions::Standard.sample(rng)),
+            1 => Self::V2(Box::new(ExecutionResultV2::random(rng))),
+            2 => Self::Evm(Box::new(EvmExecutionResult::random(rng))),
+            _ => unreachable!(),
         }
     }
 
@@ -79,6 +90,7 @@ impl ExecutionResult {
                 ExecutionResultV1::Success { .. } => None,
             },
             ExecutionResult::V2(v2) => v2.error_message.clone(),
+            ExecutionResult::Evm(evm) => evm.receipt.status.message().map(str::to_string),
         }
     }
 
@@ -89,6 +101,7 @@ impl ExecutionResult {
                 vec![]
             }
             ExecutionResult::V2(execution_result) => execution_result.transfers.clone(),
+            ExecutionResult::Evm(_) => vec![],
         }
     }
 }
@@ -105,6 +118,12 @@ impl From<ExecutionResultV2> for ExecutionResult {
     }
 }
 
+impl From<EvmExecutionResult> for ExecutionResult {
+    fn from(value: EvmExecutionResult) -> Self {
+        ExecutionResult::Evm(Box::new(value))
+    }
+}
+
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -117,6 +136,7 @@ impl ToBytes for ExecutionResult {
             + match self {
                 ExecutionResult::V1(result) => result.serialized_length(),
                 ExecutionResult::V2(result) => result.serialized_length(),
+                ExecutionResult::Evm(result) => result.serialized_length(),
             }
     }
 
@@ -128,6 +148,10 @@ impl ToBytes for ExecutionResult {
             }
             ExecutionResult::V2(result) => {
                 V2_TAG.write_bytes(writer)?;
+                result.write_bytes(writer)
+            }
+            ExecutionResult::Evm(result) => {
+                EVM_TAG.write_bytes(writer)?;
                 result.write_bytes(writer)
             }
         }
@@ -155,6 +179,10 @@ impl FromBytes for ExecutionResult {
                 let (result, remainder) = ExecutionResultV2::from_bytes(remainder)?;
                 Ok((ExecutionResult::V2(Box::new(result)), remainder))
             }
+            EVM_TAG => {
+                let (result, remainder) = EvmExecutionResult::from_bytes(remainder)?;
+                Ok((ExecutionResult::Evm(Box::new(result)), remainder))
+            }
             _ => {
                 error!(%tag, rem_len = remainder.len(), "FromBytes for ExecutionResult: unknown tag");
                 Err(bytesrepr::Error::Formatting)
@@ -177,6 +205,8 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&execution_result);
         let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
         bytesrepr::test_serialization_roundtrip(&execution_result);
+        let execution_result = ExecutionResult::from(EvmExecutionResult::random(rng));
+        bytesrepr::test_serialization_roundtrip(&execution_result);
     }
 
     #[test]
@@ -188,6 +218,11 @@ mod tests {
         assert_eq!(execution_result, deserialized);
 
         let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
+        let serialized = bincode::serialize(&execution_result).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(execution_result, deserialized);
+
+        let execution_result = ExecutionResult::from(EvmExecutionResult::random(rng));
         let serialized = bincode::serialize(&execution_result).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);
@@ -204,6 +239,11 @@ mod tests {
         let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
         let serialized = serde_json::to_string(&execution_result).unwrap();
         println!("{:#}", serialized);
+        let deserialized = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(execution_result, deserialized);
+
+        let execution_result = ExecutionResult::from(EvmExecutionResult::random(rng));
+        let serialized = serde_json::to_string(&execution_result).unwrap();
         let deserialized = serde_json::from_str(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);
     }

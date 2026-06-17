@@ -11,8 +11,8 @@ use crate::test_case::{Error, TestCase};
 
 /// Representation of supported input value.
 #[derive(Serialize, Deserialize, Debug, From)]
-#[serde(tag = "type", content = "value")]
 #[allow(clippy::large_enum_variant)]
+#[serde(tag = "type", content = "value")]
 pub enum Input {
     U8(u8),
     U16(u16),

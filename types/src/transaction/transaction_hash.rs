@@ -14,11 +14,12 @@ use super::{DeployHash, TransactionV1Hash};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest,
+    Digest, EvmTransactionHash,
 };
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
+const EVM_TAG: u8 = 2;
 const TAG_LENGTH: u8 = 1;
 
 /// A versioned wrapper for a transaction hash or deploy hash.
@@ -32,6 +33,8 @@ pub enum TransactionHash {
     /// A version 1 transaction hash.
     #[serde(rename = "Version1")]
     V1(TransactionV1Hash),
+    /// An EVM transaction hash.
+    Evm(EvmTransactionHash),
 }
 
 impl TransactionHash {
@@ -42,6 +45,7 @@ impl TransactionHash {
         match self {
             TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
             TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
+            TransactionHash::Evm(transaction_hash) => *transaction_hash.inner(),
         }
     }
 
@@ -53,9 +57,10 @@ impl TransactionHash {
     /// Returns a random `TransactionHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..3) {
             0 => TransactionHash::from(DeployHash::random(rng)),
             1 => TransactionHash::from(TransactionV1Hash::random(rng)),
+            2 => TransactionHash::from(EvmTransactionHash::random(rng)),
             _ => panic!(),
         }
     }
@@ -91,6 +96,18 @@ impl From<&TransactionV1Hash> for TransactionHash {
     }
 }
 
+impl From<EvmTransactionHash> for TransactionHash {
+    fn from(hash: EvmTransactionHash) -> Self {
+        Self::Evm(hash)
+    }
+}
+
+impl From<&EvmTransactionHash> for TransactionHash {
+    fn from(hash: &EvmTransactionHash) -> Self {
+        Self::from(*hash)
+    }
+}
+
 impl Default for TransactionHash {
     fn default() -> Self {
         TransactionHash::V1(TransactionV1Hash::default())
@@ -102,6 +119,7 @@ impl Display for TransactionHash {
         match self {
             TransactionHash::Deploy(hash) => Display::fmt(hash, formatter),
             TransactionHash::V1(hash) => Display::fmt(hash, formatter),
+            TransactionHash::Evm(hash) => Display::fmt(hash, formatter),
         }
     }
 }
@@ -111,6 +129,7 @@ impl AsRef<[u8]> for TransactionHash {
         match self {
             TransactionHash::Deploy(hash) => hash.as_ref(),
             TransactionHash::V1(hash) => hash.as_ref(),
+            TransactionHash::Evm(hash) => hash.as_ref(),
         }
     }
 }
@@ -127,6 +146,7 @@ impl ToBytes for TransactionHash {
             + match self {
                 TransactionHash::Deploy(hash) => hash.serialized_length(),
                 TransactionHash::V1(hash) => hash.serialized_length(),
+                TransactionHash::Evm(hash) => hash.serialized_length(),
             }
     }
 
@@ -138,6 +158,10 @@ impl ToBytes for TransactionHash {
             }
             TransactionHash::V1(hash) => {
                 V1_TAG.write_bytes(writer)?;
+                hash.write_bytes(writer)
+            }
+            TransactionHash::Evm(hash) => {
+                EVM_TAG.write_bytes(writer)?;
                 hash.write_bytes(writer)
             }
         }
@@ -155,6 +179,10 @@ impl FromBytes for TransactionHash {
             V1_TAG => {
                 let (hash, remainder) = TransactionV1Hash::from_bytes(remainder)?;
                 Ok((TransactionHash::V1(hash), remainder))
+            }
+            EVM_TAG => {
+                let (hash, remainder) = EvmTransactionHash::from_bytes(remainder)?;
+                Ok((TransactionHash::Evm(hash), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

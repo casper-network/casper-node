@@ -193,6 +193,7 @@ impl TestBlockV2Builder {
                     let target = transaction_v1.get_transaction_target().unwrap();
                     simplified_calculate_transaction_lane_from_values(&entry_point, &target)
                 }
+                Transaction::Evm(_) => LARGE_WASM_LANE_ID,
             };
             match lane_id {
                 MINT_LANE_ID => mint_hashes.push(txn_hash),

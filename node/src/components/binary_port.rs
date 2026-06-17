@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::SpeculativeExecutionResult,
+    contract_runtime::{load_recent_evm_block_hashes, SpeculativeExecutionResult},
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -347,6 +347,7 @@ where
         }
         KeyPrefix::EntryPointsV1ByEntity(addr) => StorageKeyPrefix::EntryPointsV1ByEntity(addr),
         KeyPrefix::EntryPointsV2ByEntity(addr) => StorageKeyPrefix::EntryPointsV2ByEntity(addr),
+        KeyPrefix::EvmStorageByAddress(addr) => StorageKeyPrefix::EvmStorageByAddress(addr),
     };
     let request = PrefixedValuesRequest::new(state_root_hash, storage_key_prefix);
     match effect_builder.get_prefixed_values(request).await {
@@ -1367,8 +1368,10 @@ where
         None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
     };
 
+    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
+
     let result = effect_builder
-        .speculatively_execute(Box::new(tip), Box::new(transaction))
+        .speculatively_execute(Box::new(tip), block_hashes, Box::new(transaction))
         .await;
 
     match result {
@@ -1377,6 +1380,9 @@ where
             BinaryResponse::new_error(error.into())
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
+            BinaryResponse::from_value(spec_exec_result)
+        }
+        SpeculativeExecutionResult::Evm(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result)
         }
     }

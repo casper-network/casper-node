@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
+    evm,
     system::auction::{DelegatorKind, Reservation, ARG_VALIDATOR},
     CLType, CLTyped, CLValue, CLValueError, Chainspec, InvalidTransactionV1, PublicKey,
     RuntimeArgs, TransactionArgs, URef, U512,
@@ -166,6 +167,7 @@ pub fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
         TransferTarget::AccountHash(account_hash) => {
             args.insert(TRANSFER_ARG_TARGET, account_hash)?
         }
+        TransferTarget::EvmAddress(address) => args.insert(TRANSFER_ARG_TARGET, address)?,
         TransferTarget::URef(uref) => args.insert(TRANSFER_ARG_TARGET, uref)?,
     }
     TRANSFER_ARG_AMOUNT.insert(&mut args, amount.into())?;
@@ -179,6 +181,7 @@ pub fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
 pub fn has_valid_transfer_args(
     args: &TransactionArgs,
     native_transfer_minimum_motes: u64,
+    evm_enabled: bool,
 ) -> Result<(), InvalidTransactionV1> {
     let args = args
         .as_named()
@@ -204,12 +207,22 @@ pub fn has_valid_transfer_args(
             arg_name: TRANSFER_ARG_TARGET.to_string(),
         }
     })?;
+    let expected_target_types = || {
+        let mut expected = vec![CLType::PublicKey, CLType::ByteArray(32), CLType::URef];
+        if evm_enabled {
+            expected.push(CLType::ByteArray(evm::ADDRESS_LENGTH as u32));
+        }
+        expected
+    };
     match target_cl_value.cl_type() {
         CLType::PublicKey => {
             let _ = parse_cl_value::<PublicKey>(target_cl_value, TRANSFER_ARG_TARGET);
         }
         CLType::ByteArray(32) => {
             let _ = parse_cl_value::<AccountHash>(target_cl_value, TRANSFER_ARG_TARGET);
+        }
+        CLType::ByteArray(length) if *length == evm::ADDRESS_LENGTH as u32 && evm_enabled => {
+            let _ = parse_cl_value::<evm::Address>(target_cl_value, TRANSFER_ARG_TARGET);
         }
         CLType::URef => {
             let _ = parse_cl_value::<URef>(target_cl_value, TRANSFER_ARG_TARGET);
@@ -225,7 +238,7 @@ pub fn has_valid_transfer_args(
             );
             return Err(InvalidTransactionV1::unexpected_arg_type(
                 TRANSFER_ARG_TARGET.to_string(),
-                vec![CLType::PublicKey, CLType::ByteArray(32), CLType::URef],
+                expected_target_types(),
                 target_cl_value.cl_type().clone(),
             ));
         }
@@ -588,7 +601,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false).unwrap();
 
         // Check random args, AccountHash target, within motes limit.
         let args = new_transfer_args(
@@ -598,7 +611,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false).unwrap();
 
         // Check random args, URef target, within motes limit.
         let args = new_transfer_args(
@@ -608,7 +621,36 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false).unwrap();
+
+        // Check random args, EVM address target, within motes limit.
+        let evm_address = evm::Address::new(rng.gen());
+        let args = new_transfer_args(
+            U512::from(rng.gen_range(min_motes..=u64::MAX)),
+            rng.gen::<bool>().then(|| rng.gen()),
+            evm_address,
+            rng.gen::<bool>().then(|| rng.gen()),
+        )
+        .unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, true).unwrap();
+
+        let evm_address = evm::Address::new(rng.gen());
+        let args = new_transfer_args(
+            U512::from(rng.gen_range(min_motes..=u64::MAX)),
+            rng.gen::<bool>().then(|| rng.gen()),
+            evm_address,
+            rng.gen::<bool>().then(|| rng.gen()),
+        )
+        .unwrap();
+        let expected_error = InvalidTransactionV1::unexpected_arg_type(
+            TRANSFER_ARG_TARGET.to_string(),
+            vec![CLType::PublicKey, CLType::ByteArray(32), CLType::URef],
+            CLType::ByteArray(evm::ADDRESS_LENGTH as u32),
+        );
+        assert_eq!(
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
+            Err(expected_error)
+        );
 
         // Check at minimum motes limit.
         let args = new_transfer_args(
@@ -618,7 +660,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false).unwrap();
 
         // Check with extra arg.
         let mut args = new_transfer_args(
@@ -629,7 +671,7 @@ mod tests {
         )
         .unwrap();
         args.insert("a", 1).unwrap();
-        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false).unwrap();
     }
 
     #[test]
@@ -648,7 +690,7 @@ mod tests {
         };
 
         assert_eq!(
-            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
             Err(expected_error)
         );
     }
@@ -666,7 +708,7 @@ mod tests {
             arg_name: TRANSFER_ARG_TARGET.to_string(),
         };
         assert_eq!(
-            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
             Err(expected_error)
         );
 
@@ -678,7 +720,7 @@ mod tests {
             arg_name: TRANSFER_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(
-            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
             Err(expected_error)
         );
     }
@@ -699,7 +741,7 @@ mod tests {
             CLType::String,
         );
         assert_eq!(
-            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
             Err(expected_error)
         );
 
@@ -715,7 +757,7 @@ mod tests {
             CLType::U8,
         );
         assert_eq!(
-            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes, false),
             Err(expected_error)
         );
     }
@@ -1427,7 +1469,7 @@ mod tests {
         let args = TransactionArgs::Bytesrepr(vec![b'a'; 100].into());
         let expected_error = InvalidTransactionV1::ExpectedNamedArguments;
         assert_eq!(
-            has_valid_transfer_args(&args, 0).as_ref(),
+            has_valid_transfer_args(&args, 0, false).as_ref(),
             Err(&expected_error)
         );
         assert_eq!(check_add_bid_args(&args).as_ref(), Err(&expected_error));

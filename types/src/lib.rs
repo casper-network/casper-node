@@ -44,6 +44,7 @@ mod deploy_info;
 mod digest;
 mod display_iter;
 mod era_id;
+pub mod evm;
 pub mod execution;
 #[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;
@@ -164,6 +165,10 @@ pub use digest::{
 };
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
+pub use evm::{
+    EvmAddr, EvmApproval, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError,
+    EvmTransactionHash, EvmTransactionKind,
+};
 pub use gas::Gas;
 #[cfg(feature = "json-schema")]
 pub use json_pretty_printer::json_pretty_print;
@@ -193,10 +198,11 @@ pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(feature = "std", test))]
 pub use transaction::{calculate_lane_id_for_deploy, calculate_transaction_lane, GasLimited};
+#[allow(deprecated)]
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployCategory,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
+    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
     PricingMode, PricingModeError, RuntimeArgs, Transaction, TransactionArgs,
     TransactionEntryPoint, TransactionHash, TransactionId, TransactionInvocationTarget,

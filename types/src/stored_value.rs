@@ -292,6 +292,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns EVM bytecode if this is an EVM bytecode value.
+    pub fn as_evm_byte_code(&self) -> Option<&ByteCode> {
+        match self {
+            StoredValue::ByteCode(byte_code) => Some(byte_code),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the wrapped `EntryPointValue` if this is a `EntryPointValue` variant.
     pub fn as_entry_point_value(&self) -> Option<&EntryPointValue> {
         match self {
@@ -1154,7 +1162,7 @@ mod tests {
                     "access": "Public",
                     "entry_point_type": "Factory"
                 }
-                
+
             ],
             "protocol_version": "2.0.0"
         }

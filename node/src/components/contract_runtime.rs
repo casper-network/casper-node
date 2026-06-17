@@ -81,6 +81,7 @@ pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
+pub(crate) use utils::load_recent_evm_block_hashes;
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -721,6 +722,7 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 block_header,
+                block_hashes,
                 transaction,
                 responder,
             } => {
@@ -734,6 +736,7 @@ impl ContractRuntime {
                             chainspec.as_ref(),
                             execution_engine_v1.as_ref(),
                             *block_header,
+                            block_hashes,
                             *transaction,
                         )
                     })

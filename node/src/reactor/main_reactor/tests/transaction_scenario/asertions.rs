@@ -65,6 +65,11 @@ impl Assertion for TransactionFailure {
             casper_types::execution::ExecutionResult::V2(execution_result_v2) => {
                 execution_result_v2.error_message.clone()
             }
+            casper_types::execution::ExecutionResult::Evm(execution_result) => execution_result
+                .receipt
+                .status
+                .message()
+                .map(str::to_string),
         };
         assert!(error_msg.is_some());
         if let Some(msg) = &self.expected_error_message {

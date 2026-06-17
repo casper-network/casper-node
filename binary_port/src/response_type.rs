@@ -18,7 +18,7 @@ use casper_types::{
 use crate::{
     global_state_query_result::GlobalStateQueryResult,
     node_status::NodeStatus,
-    speculative_execution_result::SpeculativeExecutionResult,
+    speculative_execution_result::{EvmSpeculativeExecutionResult, SpeculativeExecutionResult},
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
@@ -119,6 +119,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
+    /// Result of the EVM speculative execution.
+    EvmSpeculativeExecutionResult,
 }
 
 impl ResponseType {
@@ -145,7 +147,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..44)).unwrap()
+        Self::try_from(rng.gen_range(0..45)).unwrap()
     }
 }
 
@@ -228,6 +230,9 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
+            x if x == ResponseType::EvmSpeculativeExecutionResult as u8 => {
+                Ok(ResponseType::EvmSpeculativeExecutionResult)
+            }
             _ => Err(()),
         }
     }
@@ -289,6 +294,9 @@ impl fmt::Display for ResponseType {
             ResponseType::PackageWithProof => write!(f, "PackageWithProof"),
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
+            }
+            ResponseType::EvmSpeculativeExecutionResult => {
+                write!(f, "EvmSpeculativeExecutionResult")
             }
         }
     }
@@ -386,6 +394,10 @@ impl PayloadEntity for GetTrieFullResult {
 
 impl PayloadEntity for SpeculativeExecutionResult {
     const RESPONSE_TYPE: ResponseType = ResponseType::SpeculativeExecutionResult;
+}
+
+impl PayloadEntity for EvmSpeculativeExecutionResult {
+    const RESPONSE_TYPE: ResponseType = ResponseType::EvmSpeculativeExecutionResult;
 }
 
 impl PayloadEntity for NodeStatus {

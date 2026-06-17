@@ -213,8 +213,9 @@ impl WasmV2Request {
                 // different API.
                 debug_assert_eq!(transferred_value, value);
 
+                let initiator_account_hash = initiator_addr.account_hash();
                 let install_request = builder
-                    .with_initiator(initiator_addr.account_hash())
+                    .with_initiator(initiator_account_hash)
                     .with_gas_limit(gas_limit)
                     .with_transaction_hash(transaction_hash)
                     .with_wasm_bytes(module_bytes)
@@ -233,15 +234,15 @@ impl WasmV2Request {
             Target::Session { .. } | Target::Stored { .. } => {
                 let mut builder = ExecuteRequestBuilder::default();
 
-                let initiator_account_hash = &initiator_addr.account_hash();
+                let initiator_account_hash = initiator_addr.account_hash();
 
-                let initiator_key = Key::Account(*initiator_account_hash);
+                let initiator_key = Key::Account(initiator_account_hash);
 
                 builder = builder
                     .with_address_generator(address_generator)
                     .with_gas_limit(gas_limit)
                     .with_transaction_hash(transaction_hash)
-                    .with_initiator(*initiator_account_hash)
+                    .with_initiator(initiator_account_hash)
                     .with_caller_key(initiator_key)
                     .with_chain_name(network_name)
                     .with_transferred_value(value)

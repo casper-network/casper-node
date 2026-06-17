@@ -179,6 +179,7 @@ impl TestFixture {
             chain_name,
             gas_hold_balance_handling,
             transaction_v1_override,
+            evm_config_override,
             node_config_override,
             minimum_delegation_rate,
         } = spec_override.unwrap_or_default();
@@ -232,6 +233,9 @@ impl TestFixture {
         }
         if let Some(transaction_v1_config) = transaction_v1_override {
             chainspec.transaction_config.transaction_v1_config = transaction_v1_config
+        }
+        if let Some(evm_config) = evm_config_override {
+            chainspec.evm_config = evm_config;
         }
 
         let applied_block_gas_limit = chainspec.transaction_config.block_gas_limit;
@@ -899,6 +903,17 @@ impl TestFixture {
                     panic!(
                         "transaction execution failed: {:?} gas: {}",
                         execution_result_v2.error_message, execution_result_v2.consumed
+                    );
+                }
+            }
+            ExecutionResult::Evm(execution_result) => {
+                if execution_result.receipt.status.is_success() {
+                    execution_result.effects.transforms().to_vec()
+                } else {
+                    panic!(
+                        "EVM transaction execution failed: {:?} gas: {}",
+                        execution_result.receipt.status.message(),
+                        execution_result.receipt.gas_used
                     );
                 }
             }

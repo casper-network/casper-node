@@ -301,19 +301,24 @@ where
                 } => {
                     let (initiator_addr, timestamp, ttl) = match *transaction_header {
                         TransactionHeader::Deploy(deploy_header) => (
-                            InitiatorAddr::PublicKey(deploy_header.account().clone()),
+                            Box::new(InitiatorAddr::PublicKey(deploy_header.account().clone())),
                             deploy_header.timestamp(),
                             deploy_header.ttl(),
                         ),
                         TransactionHeader::V1(metadata) => (
-                            metadata.initiator_addr().clone(),
+                            Box::new(metadata.initiator_addr().clone()),
+                            metadata.timestamp(),
+                            metadata.ttl(),
+                        ),
+                        TransactionHeader::Evm(metadata) => (
+                            Box::new(metadata.initiator_addr().clone()),
                             metadata.timestamp(),
                             metadata.ttl(),
                         ),
                     };
                     self.broadcast(SseData::TransactionProcessed {
                         transaction_hash: Box::new(transaction_hash),
-                        initiator_addr: Box::new(initiator_addr),
+                        initiator_addr,
                         timestamp,
                         ttl,
                         block_hash: Box::new(block_hash),

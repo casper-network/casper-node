@@ -31,6 +31,7 @@ use crate::{
         gens::{public_key_arb_no_system, secret_key_arb_no_system},
     },
     deploy_info::gens::deploy_info_arb,
+    evm,
     global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::{
@@ -52,11 +53,11 @@ use crate::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr,
     CLType, CLValue, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess,
-    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, Group, InitiatorAddr,
-    Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs,
-    SemVer, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1, URef,
-    U128, U256, U512,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, EvmAddr, Group,
+    InitiatorAddr, Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion,
+    PublicKey, RuntimeArgs, SemVer, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionScheduling, TransactionTarget,
+    TransactionV1, URef, U128, U256, U512,
 };
 use proptest::{
     array, bits, bool,
@@ -197,6 +198,7 @@ pub fn all_keys_arb() -> impl Strategy<Value = Key> {
         balance_hold_addr_arb().prop_map(Key::BalanceHold),
         entry_point_addr_arb().prop_map(Key::EntryPoint),
         entity_addr_arb().prop_map(Key::State),
+        evm_addr_arb().prop_map(Key::Evm),
     ]
 }
 
@@ -315,6 +317,21 @@ pub fn u128_arb() -> impl Strategy<Value = U128> {
 
 pub fn u256_arb() -> impl Strategy<Value = U256> {
     collection::vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
+}
+
+pub fn evm_addr_arb() -> impl Strategy<Value = EvmAddr> {
+    prop_oneof![
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| EvmAddr::Account(evm::Address::new(bytes))),
+        u8_slice_32().prop_map(|bytes| EvmAddr::ByteCode(evm::Hash::new(bytes))),
+        (prop::array::uniform20(any::<u8>()), u256_arb()).prop_map(|(address, slot)| {
+            EvmAddr::Storage(evm::StorageAddr::new(evm::Address::new(address), slot))
+        }),
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| EvmAddr::Nonce(evm::Address::new(bytes))),
+        prop::array::uniform20(any::<u8>())
+            .prop_map(|bytes| EvmAddr::CodeHash(evm::Address::new(bytes))),
+    ]
 }
 
 pub fn u512_arb() -> impl Strategy<Value = U512> {

@@ -3,8 +3,9 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHeader,
-    EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
+    account::AccountHash, contracts::ProtocolVersionMajor, evm, AddressableEntity,
+    AddressableEntityHash, BlockHeader, EntityVersion, Package, PackageHash, Timestamp,
+    Transaction, URef, U512,
 };
 
 use super::{Error, Source};
@@ -36,6 +37,50 @@ impl EventMetadata {
             verification_start_timestamp,
         }
     }
+}
+
+/// Result of looking up the identity record for an EVM address.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) enum EvmAccountLookup {
+    /// Identity pointer to a Casper account.
+    Account(AccountHash),
+    /// Identity pointer to an EVM-native purse.
+    Purse(URef),
+    /// The EVM account identity record exists but is malformed.
+    Invalid(String),
+    /// No EVM account identity exists yet.
+    Missing,
+}
+
+/// Source used for EVM client balance checks.
+#[derive(Clone, Copy, Debug, Serialize)]
+pub(crate) enum EvmBalanceSource {
+    /// Check the given purse directly.
+    Purse(URef),
+    /// Check the main purse of a Casper account.
+    Account(AccountHash),
+}
+
+/// Result of looking up a split EVM nonce record.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) enum EvmNonceLookup {
+    /// Nonce record exists and decoded successfully.
+    Value(u64),
+    /// No nonce record exists.
+    Missing,
+    /// The nonce record exists but is malformed.
+    Invalid(String),
+}
+
+/// Result of looking up a split EVM code-hash record.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) enum EvmCodeHashLookup {
+    /// Code-hash record exists and decoded successfully.
+    Value(evm::Hash),
+    /// No code-hash record exists.
+    Missing,
+    /// The code-hash record exists but is malformed.
+    Invalid(String),
 }
 
 /// `TransactionAcceptor` events.
@@ -78,6 +123,40 @@ pub(crate) enum Event {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         maybe_balance: Option<U512>,
+    },
+    /// The result of querying global state for the EVM account associated with an EVM transaction.
+    GetEvmAccountResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        account: EvmAccountLookup,
+    },
+    /// The result of querying global state for an EVM account nonce.
+    GetEvmNonceResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        balance_source: EvmBalanceSource,
+        nonce: EvmNonceLookup,
+    },
+    /// The result of querying nonce for an EVM transaction whose identity pointer is missing.
+    GetMissingEvmIdentityNonceResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        nonce: EvmNonceLookup,
+    },
+    /// The result of querying code hash for an EVM transaction whose identity pointer is missing.
+    GetMissingEvmIdentityCodeHashResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        expected_nonce: u64,
+        code_hash: EvmCodeHashLookup,
+    },
+    /// The result of querying the Casper account matching a missing EVM identity.
+    GetEvmAccountEntityResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        expected_nonce: u64,
+        account_hash: AccountHash,
+        maybe_entity: Option<AddressableEntity>,
     },
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
@@ -174,6 +253,41 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying account balance to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetEvmAccountResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying EVM account identity to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetEvmNonceResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying EVM account nonce to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetMissingEvmIdentityNonceResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying missing EVM identity nonce to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetMissingEvmIdentityCodeHashResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying missing EVM identity code hash to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
+                )
+            }
+            Event::GetEvmAccountEntityResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying EVM signer account to validate transaction with hash {}",
                     event_metadata.transaction.hash()
                 )
             }

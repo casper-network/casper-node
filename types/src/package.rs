@@ -562,10 +562,9 @@ impl From<&PublicKey> for PackageHash {
 }
 
 /// A enum to determine the lock status of the package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[derive(Default)]
 pub enum PackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,

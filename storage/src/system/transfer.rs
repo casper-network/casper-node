@@ -4,9 +4,10 @@ use thiserror::Error;
 use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
+    evm,
     system::{mint, mint::Error as MintError},
-    AccessRights, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion, RuntimeArgs,
-    RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, CLValueError, EvmAddr, Key, ProtocolVersion,
+    RuntimeArgs, RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{
@@ -50,6 +51,9 @@ pub enum TransferError {
     /// Invalid operation.
     #[error("Invalid operation")]
     InvalidOperation,
+    /// Native transfer to an EVM contract address.
+    #[error("Native transfer to EVM contract address {0} is not allowed")]
+    EvmContractAddress(evm::Address),
     /// Disallowed transfer attempt (private chain).
     #[error("Either the source or the target must be an admin (private chain).")]
     RestrictedTransferAttempted,
@@ -87,6 +91,15 @@ pub enum TransferTargetMode {
         /// Main purse of a resolved account.
         main_purse: URef,
     },
+    /// Native transfer arguments resolved into a transfer to an existing EVM identity.
+    ///
+    /// The identity may point to a linked Casper account main purse or to an
+    /// EVM-native purse. Transfer records still do not expose an account hash
+    /// for 20-byte EVM targets.
+    ExistingEvmAccount {
+        /// Main purse of a resolved EVM account.
+        main_purse: URef,
+    },
     /// Native transfer arguments resolved into a transfer to a purse.
     PurseExists {
         /// Target account hash (if known).
@@ -96,6 +109,12 @@ pub enum TransferTargetMode {
     },
     /// Native transfer arguments resolved into a transfer to a new account.
     CreateAccount(AccountHash),
+    /// Native transfer arguments resolved into a transfer to a new EVM-native identity.
+    ///
+    /// Native transfers do not have an Ethereum signature, so they cannot
+    /// discover or create a Casper account hash for the 20-byte target. Missing
+    /// EVM targets therefore get a deterministic purse identity.
+    CreateEvmAccount(evm::Address),
 }
 
 impl TransferTargetMode {
@@ -111,6 +130,8 @@ impl TransferTargetMode {
                 ..
             } => Some(*target_account_hash),
             TransferTargetMode::CreateAccount(target_account_hash) => Some(*target_account_hash),
+            TransferTargetMode::ExistingEvmAccount { .. }
+            | TransferTargetMode::CreateEvmAccount(_) => None,
         }
     }
 }
@@ -342,6 +363,55 @@ impl TransferRuntimeArgsBuilder {
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 self.map_cl_value(cl_value)?
             }
+            Some(cl_value)
+                if *cl_value.cl_type() == CLType::ByteArray(evm::ADDRESS_LENGTH as u32) =>
+            {
+                let address: evm::Address = self.map_cl_value(cl_value)?;
+                self.reject_evm_contract_target(address, Rc::clone(&tracking_copy))?;
+                let key = Key::Evm(EvmAddr::Account(address));
+                let maybe_stored_value = tracking_copy.borrow_mut().read(&key)?;
+                return match maybe_stored_value {
+                    Some(StoredValue::CLValue(cl_value)) => {
+                        let identity_key =
+                            cl_value.into_t::<Key>().map_err(TransferError::CLValue)?;
+                        match identity_key {
+                            // Existing EVM identity linked to a Casper account:
+                            // credit the account's main purse so native and EVM
+                            // sends converge on the same funds.
+                            Key::Account(account_hash) => {
+                                let (_, entity) = tracking_copy
+                                    .borrow_mut()
+                                    .runtime_footprint_by_account_hash(
+                                        protocol_version,
+                                        account_hash,
+                                    )?;
+                                let main_purse = entity
+                                    .main_purse()
+                                    .ok_or(TransferError::InvalidPurse)?
+                                    .with_access_rights(AccessRights::ADD);
+                                Ok(TransferTargetMode::ExistingEvmAccount { main_purse })
+                            }
+                            // Existing EVM-native identity: credit its backing
+                            // purse without attempting to infer a Casper
+                            // account hash from the 20-byte address.
+                            Key::URef(uref) => Ok(TransferTargetMode::ExistingEvmAccount {
+                                main_purse: uref.with_access_rights(AccessRights::ADD),
+                            }),
+                            other => Err(TransferError::UnexpectedKeyVariant(other)),
+                        }
+                    }
+                    Some(stored_value) => {
+                        Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                            "StoredValue::CLValue(Key)".to_string(),
+                            stored_value.type_name(),
+                        )))
+                    }
+                    // A native transfer has no EVM signature/public key. For a
+                    // new 20-byte target, create the EVM-native deterministic
+                    // purse identity and fund that purse.
+                    None => Ok(TransferTargetMode::CreateEvmAccount(address)),
+                };
+            }
             Some(cl_value) if *cl_value.cl_type() == CLType::Key => {
                 let account_key: Key = self.map_cl_value(cl_value)?;
                 let account_hash: AccountHash = account_key
@@ -372,6 +442,37 @@ impl TransferRuntimeArgsBuilder {
                 })
             }
             Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+        }
+    }
+
+    fn reject_evm_contract_target<R>(
+        &self,
+        address: evm::Address,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+    ) -> Result<(), TransferError>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
+        let key = Key::Evm(EvmAddr::CodeHash(address));
+        match tracking_copy.borrow_mut().read(&key)? {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let code_hash = cl_value
+                    .into_t::<evm::Hash>()
+                    .map_err(TransferError::CLValue)?;
+                // Crediting a contract purse directly would bypass Ethereum value-transfer
+                // semantics. Preserving those semantics would require executing recipient
+                // EVM code, which is intentionally outside native transfer behavior.
+                if code_hash == evm::EMPTY_CODE_HASH {
+                    Ok(())
+                } else {
+                    Err(TransferError::EvmContractAddress(address))
+                }
+            }
+            Some(stored_value) => Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                "StoredValue::CLValue(evm::Hash)".to_string(),
+                stored_value.type_name(),
+            ))),
+            None => Ok(()),
         }
     }
 
@@ -426,11 +527,15 @@ impl TransferRuntimeArgsBuilder {
                 main_purse: purse_uref,
                 target_account_hash: target_account,
             } => (Some(target_account), purse_uref),
+            TransferTargetMode::ExistingEvmAccount {
+                main_purse: purse_uref,
+                ..
+            } => (None, purse_uref),
             TransferTargetMode::PurseExists {
                 target_account_hash,
                 purse_uref,
             } => (target_account_hash, purse_uref),
-            TransferTargetMode::CreateAccount(_) => {
+            TransferTargetMode::CreateAccount(_) | TransferTargetMode::CreateEvmAccount(_) => {
                 // Method "build()" is called after `resolve_transfer_target_mode` is first called
                 // and handled by creating a new account. Calling `resolve_transfer_target_mode`
                 // for the second time should never return `CreateAccount` variant.

@@ -637,6 +637,7 @@ impl MetaTransactionV1 {
                 TransactionEntryPoint::Transfer => arg_handling::has_valid_transfer_args(
                     &self.args,
                     config.native_transfer_minimum_motes,
+                    chainspec.evm_config.enabled,
                 ),
                 TransactionEntryPoint::Burn => arg_handling::has_valid_burn_args(&self.args),
                 TransactionEntryPoint::AddBid => {

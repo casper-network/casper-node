@@ -28,14 +28,14 @@ use std::{fmt::Debug, sync::Arc};
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
+    ChainNameDigest, Digest, EraId, EvmConfig, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -98,7 +98,7 @@ pub use vm_config::{
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(Clone, PartialEq, Eq, Serialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct Chainspec {
@@ -121,6 +121,10 @@ pub struct Chainspec {
     /// Transaction Config.
     #[serde(rename = "transactions")]
     pub transaction_config: TransactionConfig,
+
+    /// EVM config.
+    #[serde(rename = "evm")]
+    pub evm_config: EvmConfig,
 
     /// Wasm config.
     #[serde(rename = "wasm")]
@@ -277,6 +281,7 @@ impl Chainspec {
         let core_config = CoreConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
         let transaction_config = TransactionConfig::random(rng);
+        let evm_config = EvmConfig::default();
         let wasm_config = rng.gen();
         let system_costs_config = SystemConfig::random(rng);
         let vacancy_config = VacancyConfig::random(rng);
@@ -287,6 +292,7 @@ impl Chainspec {
             core_config,
             highway_config,
             transaction_config,
+            evm_config,
             wasm_config,
             system_costs_config,
             vacancy_config,
@@ -338,6 +344,7 @@ impl ToBytes for Chainspec {
         self.core_config.write_bytes(writer)?;
         self.highway_config.write_bytes(writer)?;
         self.transaction_config.write_bytes(writer)?;
+        self.evm_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
         self.system_costs_config.write_bytes(writer)?;
         self.vacancy_config.write_bytes(writer)?;
@@ -356,6 +363,7 @@ impl ToBytes for Chainspec {
             + self.core_config.serialized_length()
             + self.highway_config.serialized_length()
             + self.transaction_config.serialized_length()
+            + self.evm_config.serialized_length()
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
             + self.vacancy_config.serialized_length()
@@ -370,6 +378,7 @@ impl FromBytes for Chainspec {
         let (core_config, remainder) = CoreConfig::from_bytes(remainder)?;
         let (highway_config, remainder) = HighwayConfig::from_bytes(remainder)?;
         let (transaction_config, remainder) = TransactionConfig::from_bytes(remainder)?;
+        let (evm_config, remainder) = EvmConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let (vacancy_config, remainder) = VacancyConfig::from_bytes(remainder)?;
@@ -380,6 +389,7 @@ impl FromBytes for Chainspec {
             core_config,
             highway_config,
             transaction_config,
+            evm_config,
             wasm_config,
             system_costs_config,
             vacancy_config,

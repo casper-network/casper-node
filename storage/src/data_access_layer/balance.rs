@@ -70,6 +70,15 @@ pub enum BalanceIdentifier {
     PenalizedPayment,
 }
 
+impl From<InitiatorAddr> for BalanceIdentifier {
+    fn from(value: InitiatorAddr) -> Self {
+        match value {
+            InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
+            InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
+        }
+    }
+}
+
 impl BalanceIdentifier {
     /// Returns underlying uref addr from balance identifier, if any.
     pub fn as_purse_addr(&self) -> Option<URefAddr> {
@@ -184,15 +193,6 @@ impl BalanceIdentifier {
 impl Default for BalanceIdentifier {
     fn default() -> Self {
         BalanceIdentifier::Purse(URef::default())
-    }
-}
-
-impl From<InitiatorAddr> for BalanceIdentifier {
-    fn from(value: InitiatorAddr) -> Self {
-        match value {
-            InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
-            InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
-        }
     }
 }
 

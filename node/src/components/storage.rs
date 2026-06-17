@@ -1615,7 +1615,7 @@ impl Storage {
                 .all_transactions()
                 .filter_map(|transaction_hash| match transaction_hash {
                     TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
-                    TransactionHash::V1(_) => None,
+                    TransactionHash::V1(_) | TransactionHash::Evm(_) => None,
                 })
                 .collect(),
         };
@@ -1661,7 +1661,7 @@ impl Storage {
 
         match transaction {
             Transaction::Deploy(deploy) => Ok(Some(LegacyDeploy::from(deploy))),
-            transaction @ Transaction::V1(_) => {
+            transaction @ (Transaction::V1(_) | Transaction::Evm(_)) => {
                 let mismatch = VariantMismatch(Box::new((transaction_hash, transaction)));
                 error!(%mismatch, "failed getting legacy deploy");
                 Err(FatalStorageError::from(mismatch))
@@ -1718,6 +1718,21 @@ impl Storage {
                     Ok(_computed_approvals_hash) => Ok(None),
                     Err(error) => {
                         error!(%error, "failed to calculate finalized transaction approvals hash");
+                        Err(FatalStorageError::UnexpectedSerializationFailure(error))
+                    }
+                }
+            }
+            (approvals_hash, finalized_approvals, transaction @ Transaction::Evm(_)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash)
+                        if computed_approvals_hash == approvals_hash
+                            && finalized_approvals == transaction.approvals() =>
+                    {
+                        Ok(Some(transaction))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized EVM transaction approvals hash");
                         Err(FatalStorageError::UnexpectedSerializationFailure(error))
                     }
                 }
@@ -2036,6 +2051,11 @@ impl Storage {
                 Some(Transaction::V1(transaction_v1)) => {
                     ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
                 }
+                Some(Transaction::Evm(transaction)) => ret.push((
+                    transaction_hash,
+                    transaction.as_ref().into(),
+                    execution_result,
+                )),
             };
         }
         Ok(Some(ret))
@@ -2125,6 +2145,7 @@ impl Storage {
                             ExecutionResultV1::Success { cost, .. } => *cost,
                         },
                         ExecutionResult::V2(v2_result) => v2_result.limit.value(),
+                        ExecutionResult::Evm(evm_result) => evm_result.limit.value(),
                     })
                     .sum();
 
@@ -2140,6 +2161,8 @@ impl Storage {
                     .values()
                     .map(|results| {
                         if let ExecutionResult::V2(result) = results {
+                            result.size_estimate
+                        } else if let ExecutionResult::Evm(result) = results {
                             result.size_estimate
                         } else {
                             0u64
@@ -2304,6 +2327,9 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
                 }
             }
             // else no-op: we only record transfers from successful executions.
+        }
+        ExecutionResult::Evm(_) => {
+            // No-op: EVM receipt logs are not Casper transfers.
         }
         ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.

@@ -2,6 +2,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
+    evm::{Address as EvmAddress, EvmAddr},
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
@@ -25,6 +26,8 @@ pub enum KeyPrefix {
     EntryPointsV1ByEntity(EntityAddr),
     /// Retrieves all V2 entry points for a given entity.
     EntryPointsV2ByEntity(EntityAddr),
+    /// Retrieves all EVM storage slots for a given EVM address.
+    EvmStorageByAddress(EvmAddress),
 }
 
 impl ToBytes for KeyPrefix {
@@ -56,6 +59,9 @@ impl ToBytes for KeyPrefix {
                 }
                 KeyPrefix::EntryPointsV2ByEntity(entity) => {
                     U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+                KeyPrefix::EvmStorageByAddress(address) => {
+                    U8_SERIALIZED_LENGTH + address.serialized_length()
                 }
             }
     }
@@ -99,6 +105,11 @@ impl ToBytes for KeyPrefix {
                 writer.push(KeyTag::EntryPoint as u8);
                 writer.push(1);
                 entity.write_bytes(writer)?;
+            }
+            KeyPrefix::EvmStorageByAddress(address) => {
+                writer.push(KeyTag::Evm as u8);
+                writer.push(EvmAddr::STORAGE_TAG);
+                address.write_bytes(writer)?;
             }
         }
         Ok(())
@@ -160,6 +171,16 @@ impl FromBytes for KeyPrefix {
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }
+            tag if tag == KeyTag::Evm as u8 => {
+                let (evm_addr_tag, remainder) = u8::from_bytes(remainder)?;
+                match evm_addr_tag {
+                    tag if tag == EvmAddr::STORAGE_TAG => {
+                        let (address, remainder) = EvmAddress::from_bytes(remainder)?;
+                        (KeyPrefix::EvmStorageByAddress(address), remainder)
+                    }
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok(result)
@@ -176,7 +197,7 @@ mod tests {
         contract_messages::MessageAddr,
         gens::{account_hash_arb, entity_addr_arb, topic_name_hash_arb, u8_slice_32},
         system::{auction::BidAddr, mint::BalanceHoldAddr},
-        BlockTime, EntryPointAddr, Key,
+        BlockTime, EntryPointAddr, Key, U256,
     };
 
     use super::*;
@@ -194,6 +215,8 @@ mod tests {
             u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
             entity_addr_arb().prop_map(KeyPrefix::EntryPointsV1ByEntity),
             entity_addr_arb().prop_map(KeyPrefix::EntryPointsV2ByEntity),
+            prop::array::uniform20(any::<u8>())
+                .prop_map(|bytes| { KeyPrefix::EvmStorageByAddress(EvmAddress::new(bytes)) }),
         ]
     }
 
@@ -214,6 +237,8 @@ mod tests {
 
         let hash1 = rng.gen();
         let hash2 = rng.gen();
+        let evm_address = EvmAddress::new(rng.gen());
+        let evm_slot = U256::from(1);
 
         for (key, prefix) in [
             (
@@ -252,6 +277,13 @@ mod tests {
                         .expect("should create entry point"),
                 ),
                 KeyPrefix::EntryPointsV1ByEntity(EntityAddr::Account(hash1)),
+            ),
+            (
+                Key::Evm(EvmAddr::Storage(casper_types::evm::StorageAddr::new(
+                    evm_address,
+                    evm_slot,
+                ))),
+                KeyPrefix::EvmStorageByAddress(evm_address),
             ),
         ] {
             let key_bytes = key.to_bytes().expect("should serialize key");

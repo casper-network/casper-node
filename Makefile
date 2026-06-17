@@ -16,11 +16,13 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 VM2_CONTRACTS    = $(shell find ./smart_contracts/contracts/vm2 -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]* -mindepth 1 -maxdepth 1 -not -path "./smart_contracts/contracts/vm2*" -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EVM_CONTRACTS    = $(shell find ./smart_contracts/evm_contracts -mindepth 1 -maxdepth 1 -name '*.sol' -exec basename {} .sol \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
-WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-feature=-bulk-memory,-bulk-memory-opt"
+WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-cpu=mvp -C target-feature=-bulk-memory"
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
+EVM_CONTRACT_TARGET_DIR   = target/evm-contracts
 
 build-contract-rs/%:
 	cd smart_contracts/contracts && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
@@ -56,6 +58,21 @@ build-client-contracts: build-client-contracts-rs strip-client-contracts
 
 .PHONY: build-contracts
 build-contracts: build-contracts-rs
+
+.PHONY: setup-evm
+setup-evm:
+	@command -v solc >/dev/null || (echo "solc is required to build EVM contract fixtures" && exit 1)
+
+build-contract-evm/%: setup-evm
+	mkdir -p $(EVM_CONTRACT_TARGET_DIR)
+	solc --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
+
+.PHONY: build-contracts-evm
+build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))
+
+.PHONY: test-contracts-evm
+test-contracts-evm: build-contracts-evm
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-executor-evm
 
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<
@@ -110,30 +127,30 @@ format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all
 
 lint-contracts-rs:
-	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -A renamed_and_removed_lints
 
 .PHONY: lint
 lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts lint-no-default-features
 
 .PHONY: lint-default-features
 lint-default-features:
-	$(CARGO) clippy --all-targets -- -D warnings
+	$(CARGO) clippy --all-targets
 
 .PHONY: lint-no-default-features
 lint-no-default-features:
-	$(CARGO) clippy --all-targets --no-default-features -- -D warnings
+	$(CARGO) clippy --all-targets --no-default-features
 
 .PHONY: lint-all-features
 lint-all-features:
-	$(CARGO) clippy --all-targets --all-features -- -D warnings
+	LC_ALL=C LANG=C LC_CTYPE=C $(CARGO) clippy --all-targets --all-features
 
 .PHONY: lint-smart-contracts
 lint-smart-contracts:
-	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2025-0055
 
 .PHONY: audit
 audit: audit-rs

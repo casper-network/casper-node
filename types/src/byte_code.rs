@@ -135,6 +135,7 @@ impl ByteCodeAddr {
                 ByteCodeKind::V1CasperWasm => Ok(ByteCodeAddr::V1CasperWasm(byte_code_addr)),
                 ByteCodeKind::V2CasperWasm => Ok(ByteCodeAddr::V2CasperWasm(byte_code_addr)),
                 ByteCodeKind::Empty => Ok(ByteCodeAddr::Empty),
+                ByteCodeKind::EvmPrague => Err(FromStrError::InvalidPrefix),
             };
         }
 
@@ -187,6 +188,7 @@ impl FromBytes for ByteCodeAddr {
                 let (addr, remainder) = HashAddr::from_bytes(remainder)?;
                 Ok((ByteCodeAddr::V2CasperWasm(addr), remainder))
             }
+            ByteCodeKind::EvmPrague => Err(Error::Formatting),
         }
     }
 }
@@ -420,6 +422,20 @@ pub enum ByteCodeKind {
     V1CasperWasm = 1,
     /// Byte code to be executed with the version 2 Casper execution engine.
     V2CasperWasm = 2,
+    /// Prague-compatible EVM bytecode.
+    ///
+    /// This variant records bytecode that is valid for the Prague EVM rules.
+    /// When support for a future bytecode-affecting EVM spec is added,
+    /// introduce a new `Evm<Spec>` variant instead of changing the meaning
+    /// of this one.
+    EvmPrague = 3,
+}
+
+impl ByteCodeKind {
+    /// Returns whether this bytecode kind is executable by the EVM executor.
+    pub fn is_evm(self) -> bool {
+        matches!(self, ByteCodeKind::EvmPrague)
+    }
 }
 
 impl ToBytes for ByteCodeKind {
@@ -449,6 +465,9 @@ impl FromBytes for ByteCodeKind {
             byte_code_kind if byte_code_kind == ByteCodeKind::V2CasperWasm as u8 => {
                 Ok((ByteCodeKind::V2CasperWasm, remainder))
             }
+            byte_code_kind if byte_code_kind == ByteCodeKind::EvmPrague as u8 => {
+                Ok((ByteCodeKind::EvmPrague, remainder))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -466,6 +485,9 @@ impl Display for ByteCodeKind {
             ByteCodeKind::V2CasperWasm => {
                 write!(f, "v2-casper-wasm")
             }
+            ByteCodeKind::EvmPrague => {
+                write!(f, "evm-prague")
+            }
         }
     }
 }
@@ -473,10 +495,11 @@ impl Display for ByteCodeKind {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<ByteCodeKind> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ByteCodeKind {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..=3) {
             0 => ByteCodeKind::Empty,
             1 => ByteCodeKind::V1CasperWasm,
             2 => ByteCodeKind::V2CasperWasm,
+            3 => ByteCodeKind::EvmPrague,
             _ => unreachable!(),
         }
     }
