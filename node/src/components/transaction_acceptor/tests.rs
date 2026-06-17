@@ -275,7 +275,7 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..)
             | TestScenario::InvalidFieldsFromPeer
-            | TestScenario::FromPeerInsufficientBalance(_) 
+            | TestScenario::FromPeerInsufficientBalance(_)
             | TestScenario::FromPeerWithSystemInitiator(_) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
@@ -1458,7 +1458,7 @@ fn inject_balance_check_for_peer(
             source,
             Some(responder),
             Timestamp::now(),
-            false
+            false,
         ));
         effect_builder
             .into_inner()

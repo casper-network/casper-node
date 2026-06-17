@@ -23,7 +23,6 @@ impl Display for AcceptedTransactionId {
     }
 }
 
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct ProposedTransaction {
     /// The transaction that has been accepted by the node gossiping this transaction,
@@ -32,27 +31,19 @@ pub(crate) struct ProposedTransaction {
 
 impl Display for ProposedTransaction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Accepted Transaction({})",
-            self.transaction,
-        )
+        write!(f, "Accepted Transaction({})", self.transaction,)
     }
 }
 
 impl ProposedTransaction {
     pub(crate) fn new(transaction: Transaction) -> Self {
-        Self {
-            transaction,
-        }
+        Self { transaction }
     }
 
     pub(crate) fn transaction(&self) -> &Transaction {
         &self.transaction
     }
 }
-
-
 
 impl LargestSpecimen for ProposedTransaction {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
@@ -67,8 +58,6 @@ impl LargestSpecimen for ProposedTransaction {
             }
         };
 
-        Self {
-            transaction,
-        }
+        Self { transaction }
     }
 }

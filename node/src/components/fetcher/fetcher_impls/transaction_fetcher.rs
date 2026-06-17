@@ -11,9 +11,8 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::NodeId,
+    types::{transaction::ProposedTransaction, NodeId},
 };
-use crate::types::transaction::{ProposedTransaction};
 
 impl FetchItem for Transaction {
     type Id = TransactionId;
@@ -124,7 +123,9 @@ impl ItemFetcher<ProposedTransaction> for Fetcher<ProposedTransaction> {
         effect_builder: EffectBuilder<REv>,
         id: TransactionId,
     ) -> Option<ProposedTransaction> {
-        effect_builder.get_stored_transaction(id).await
+        effect_builder
+            .get_stored_transaction(id)
+            .await
             .map(ProposedTransaction::new)
     }
 
@@ -135,7 +136,7 @@ impl ItemFetcher<ProposedTransaction> for Fetcher<ProposedTransaction> {
         StoringState::Enqueued(
             async move {
                 let transaction = item.transaction();
-                
+
                 let is_new = effect_builder
                     .put_transaction_to_storage(transaction.clone())
                     .await;
@@ -148,7 +149,7 @@ impl ItemFetcher<ProposedTransaction> for Fetcher<ProposedTransaction> {
                         .await;
                 }
             }
-                .boxed(),
+            .boxed(),
         )
     }
 

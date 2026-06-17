@@ -870,7 +870,7 @@ impl<REv> EffectBuilder<REv> {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
-                is_proposed
+                is_proposed,
             },
             QueueKind::Validation,
         )

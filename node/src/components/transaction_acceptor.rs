@@ -11,7 +11,7 @@ use casper_types::{
 };
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, trace, info};
+use tracing::{debug, error, info, trace};
 
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
@@ -928,7 +928,7 @@ impl TransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(event_metadata.transaction),
                         event_metadata.source,
-                        event_metadata.is_proposed
+                        event_metadata.is_proposed,
                     )
                     .ignore(),
             );
@@ -971,7 +971,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
-            is_proposed
+            is_proposed,
         } = *event_metadata;
         debug!(%transaction, "accepted transaction");
         self.metrics.observe_accepted(verification_start_timestamp);

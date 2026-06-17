@@ -116,9 +116,7 @@ impl Display for NetRequest {
             NetRequest::BlockExecutionResults(_) => {
                 f.write_str("request for block execution results")
             }
-            NetRequest::ProposedTransaction(_) => {
-                f.write_str("request for a proposed transaction")
-            }
+            NetRequest::ProposedTransaction(_) => f.write_str("request for a proposed transaction"),
         }
     }
 }
@@ -135,7 +133,7 @@ impl NetRequest {
             | NetRequest::SyncLeap(ref id)
             | NetRequest::ApprovalsHashes(ref id)
             | NetRequest::BlockExecutionResults(ref id)
-            | NetRequest::ProposedTransaction(ref id)=> id,
+            | NetRequest::ProposedTransaction(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);

@@ -3,9 +3,9 @@ use derive_more::{Display, From};
 use casper_types::{EraId, FinalitySignature, FinalitySignatureId, TransactionHash};
 
 use crate::{
-    components::fetcher::FetchResult, effect::requests::BlockValidationRequest,
-    types::BlockWithMetadata,
-    types::transaction::ProposedTransaction
+    components::fetcher::FetchResult,
+    effect::requests::BlockValidationRequest,
+    types::{transaction::ProposedTransaction, BlockWithMetadata},
 };
 
 #[derive(Debug, From, Display)]

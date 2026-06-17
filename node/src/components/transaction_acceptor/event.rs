@@ -28,7 +28,7 @@ impl EventMetadata {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
-        is_proposed: bool
+        is_proposed: bool,
     ) -> Self {
         EventMetadata {
             transaction,

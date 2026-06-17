@@ -14,7 +14,14 @@ use tokio::{
 use tokio_util::codec::Framed;
 use tracing::info;
 
-use casper_types::{bytesrepr::{FromBytes, ToBytes}, execution::TransformKindV2, system::{auction::BidAddr, AUCTION}, testing::TestRng, AvailableBlockRange, Deploy, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, U512};
+use casper_types::{
+    bytesrepr::{FromBytes, ToBytes},
+    execution::TransformKindV2,
+    system::{auction::BidAddr, AUCTION},
+    testing::TestRng,
+    AvailableBlockRange, Deploy, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff,
+    Timestamp, Transaction, U512,
+};
 
 use crate::{
     effect::{requests::ContractRuntimeRequest, EffectExt},
@@ -32,10 +39,11 @@ use crate::{
         Runner,
     },
     testing::{filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor},
-    types::{ExitCode, NodeId, SyncHandling},
+    types::{
+        transaction::transaction_v1_builder::TransactionV1Builder, ExitCode, NodeId, SyncHandling,
+    },
     utils::Source,
 };
-use crate::types::transaction::transaction_v1_builder::TransactionV1Builder;
 
 #[tokio::test]
 async fn run_network() {
@@ -637,23 +645,24 @@ async fn should_store_finalized_approvals() {
 
     let transfer_target = Arc::new(SecretKey::random(&mut fixture.rng));
     let target_public_key = PublicKey::from(&*transfer_target);
-    
+
     // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     // Submit a transaction.
-    let txn = TransactionV1Builder::new_transfer(U512::from(2_500_000_000u64), None, target_public_key, None)
-        .expect("should build")
-        .with_initiator_addr(alice_public_key.clone())
-        .with_chain_name(fixture.chainspec.network_config.name.clone())
-        .build()
-        .expect("must builder transaction v1");
-    
-    
-    
-    let mut transaction_alice_bob = Transaction::from(
-        txn
-    );
+    let txn = TransactionV1Builder::new_transfer(
+        U512::from(2_500_000_000u64),
+        None,
+        target_public_key,
+        None,
+    )
+    .expect("should build")
+    .with_initiator_addr(alice_public_key.clone())
+    .with_chain_name(fixture.chainspec.network_config.name.clone())
+    .build()
+    .expect("must builder transaction v1");
+
+    let mut transaction_alice_bob = Transaction::from(txn);
     let mut transaction_alice_bob_charlie = transaction_alice_bob.clone();
     let mut transaction_bob_alice = transaction_alice_bob.clone();
 

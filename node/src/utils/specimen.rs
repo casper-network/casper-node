@@ -38,12 +38,12 @@ use crate::{
     },
     protocol::Message,
     types::{
-        transaction::transaction_v1_builder::TransactionV1Builder, BlockExecutionResultsOrChunk,
-        BlockPayload, FinalizedBlock, InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
+        transaction::{transaction_v1_builder::TransactionV1Builder, ProposedTransaction},
+        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
-use crate::types::transaction::ProposedTransaction;
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
@@ -1189,7 +1189,7 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
             Tag::ProposedTransaction => Message::new_get_response::<ProposedTransaction>(
-                &LargestSpecimen::largest_specimen(estimator, cache)
+                &LargestSpecimen::largest_specimen(estimator, cache),
             ),
             Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),

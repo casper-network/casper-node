@@ -23,8 +23,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, TransactionHash,
-    TransactionId,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -40,14 +39,14 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, InvalidProposalError, NodeId, TransactionFootprint, ValidatorMatrix,
+        transaction::ProposedTransaction, BlockWithMetadata, InvalidProposalError, NodeId,
+        TransactionFootprint, ValidatorMatrix,
     },
     NodeRng,
 };
 pub use config::Config;
 pub(crate) use event::Event;
 use state::{AddResponderResult, BlockValidationState, MaybeStartFetching};
-use crate::types::transaction::ProposedTransaction;
 
 const COMPONENT_NAME: &str = "block_validator";
 
@@ -606,8 +605,7 @@ impl BlockValidator {
                         responders,
                     );
                 }
-                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, item)
-                {
+                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, item) {
                     Ok(footprint) => footprint,
                     Err(invalid_transaction_error) => {
                         warn!(
@@ -844,7 +842,11 @@ where
         };
         effects.extend(
             effect_builder
-                .fetch::<ProposedTransaction>(transaction_id, holder, Box::new(EmptyValidationMetadata))
+                .fetch::<ProposedTransaction>(
+                    transaction_id,
+                    holder,
+                    Box::new(EmptyValidationMetadata),
+                )
                 .event(move |result| Event::TransactionFetched {
                     transaction_hash,
                     result,

@@ -847,7 +847,11 @@ impl TestFixture {
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .announce_new_transaction_accepted(Arc::new(txn.clone()), Source::Client, false)
+                        .announce_new_transaction_accepted(
+                            Arc::new(txn.clone()),
+                            Source::Client,
+                            false,
+                        )
                         .ignore()
                 })
                 .await;

@@ -82,7 +82,9 @@ impl Payload for Message {
             Message::TransactionGossiper(_) => MessageKind::TransactionGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
-                Tag::Transaction | Tag::LegacyDeploy | Tag::ProposedTransaction => MessageKind::TransactionTransfer,
+                Tag::Transaction | Tag::LegacyDeploy | Tag::ProposedTransaction => {
+                    MessageKind::TransactionTransfer
+                }
                 Tag::Block => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
@@ -123,7 +125,7 @@ impl Payload for Message {
             Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
             Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Transaction | Tag::ProposedTransaction=> weights.transaction_requests,
+                Tag::Transaction | Tag::ProposedTransaction => weights.transaction_requests,
                 Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
                 Tag::BlockHeader => weights.block_header_requests,
@@ -134,7 +136,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Transaction | Tag::ProposedTransaction=> weights.transaction_responses,
+                Tag::Transaction | Tag::ProposedTransaction => weights.transaction_responses,
                 Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
                 Tag::BlockHeader => weights.block_header_responses,
@@ -352,7 +354,7 @@ where
                     sender,
                     message: Box::new(NetRequest::ProposedTransaction(serialized_id)),
                 }
-                    .into(),
+                .into(),
                 Tag::LegacyDeploy => NetRequestIncoming {
                     sender,
                     message: Box::new(NetRequest::LegacyDeploy(serialized_id)),
@@ -405,8 +407,9 @@ where
                 .into(),
                 Tag::ProposedTransaction => NetResponseIncoming {
                     sender,
-                    message: Box::new(NetResponse::ProposedTransaction(serialized_item))
-                }.into(),
+                    message: Box::new(NetResponse::ProposedTransaction(serialized_item)),
+                }
+                .into(),
                 Tag::LegacyDeploy => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::LegacyDeploy(serialized_item)),

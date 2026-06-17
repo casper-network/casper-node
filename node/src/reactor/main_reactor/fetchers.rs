@@ -8,12 +8,14 @@ use crate::{
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap,
+        TrieOrChunk,
+    },
     utils::Source,
     FetcherConfig, NodeRng,
 };
 use casper_storage::block_store::types::ApprovalsHashes;
-use crate::types::transaction::ProposedTransaction;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
@@ -26,7 +28,7 @@ pub(super) struct Fetchers {
     transaction_fetcher: Fetcher<Transaction>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
-    proposed_transaction_fetcher: Fetcher<ProposedTransaction>
+    proposed_transaction_fetcher: Fetcher<ProposedTransaction>,
 }
 
 impl Fetchers {
@@ -52,7 +54,11 @@ impl Fetchers {
                 config,
                 metrics_registry,
             )?,
-            proposed_transaction_fetcher:  Fetcher::new("proposed_transaction", config, metrics_registry)?,
+            proposed_transaction_fetcher: Fetcher::new(
+                "proposed_transaction",
+                config,
+                metrics_registry,
+            )?,
         })
     }
 
@@ -176,7 +182,7 @@ impl Fetchers {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
-                    is_proposed
+                    is_proposed,
                 },
             ) if matches!(source, Source::Peer(..)) => {
                 if !is_proposed {
@@ -204,9 +210,7 @@ impl Fetchers {
                         ),
                     )
                 }
-                
-                
-            },
+            }
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

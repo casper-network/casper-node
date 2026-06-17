@@ -44,10 +44,12 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap,
+        TrieOrChunk,
+    },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
-use crate::types::transaction::ProposedTransaction;
 
 // Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
 // 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
@@ -246,7 +248,9 @@ pub(crate) enum MainEvent {
     #[from]
     ProposedTransactionFetcher(#[serde(skip_serializing)] fetcher::Event<ProposedTransaction>),
     #[from]
-    ProposedTransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ProposedTransaction>),
+    ProposedTransactionFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<ProposedTransaction>,
+    ),
 
     // Event related to figuring out validators for blocks after upgrades.
     GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
@@ -389,7 +393,9 @@ impl Display for MainEvent {
             MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::TransactionFetcher(event) => write!(f, "transaction fetcher: {}", event),
-            MainEvent::ProposedTransactionFetcher(event) => write!(f, "proposed transaction fetcher: {}", event),
+            MainEvent::ProposedTransactionFetcher(event) => {
+                write!(f, "proposed transaction fetcher: {}", event)
+            }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)

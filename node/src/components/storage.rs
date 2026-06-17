@@ -98,6 +98,7 @@ use crate::{
     utils::{display_error, WithDir},
 };
 
+use crate::types::transaction::ProposedTransaction;
 pub use config::Config;
 use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
@@ -105,7 +106,6 @@ use error::GetRequestError;
 pub(crate) use event::Event;
 use metrics::Metrics;
 use object_pool::ObjectPool;
-use crate::types::transaction::ProposedTransaction;
 
 const COMPONENT_NAME: &str = "storage";
 
@@ -434,7 +434,8 @@ impl Storage {
             }
             NetRequest::ProposedTransaction(ref serialized_id) => {
                 let id = decode_item_id::<ProposedTransaction>(serialized_id)?;
-                let opt_item = self.get_transaction_by_id(id)?
+                let opt_item = self
+                    .get_transaction_by_id(id)?
                     .map(ProposedTransaction::new);
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 

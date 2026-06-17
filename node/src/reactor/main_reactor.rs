@@ -766,7 +766,7 @@ impl reactor::Reactor for MainReactor {
                                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                                     transaction,
                                     source,
-                                    is_proposed
+                                    is_proposed,
                                 },
                             ),
                         ));

@@ -74,7 +74,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             Timestamp::now(),
-            false
+            false,
         ));
         effect_builder
             .put_transaction_to_storage(transaction)
@@ -96,7 +96,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp: _,
-            is_proposed:_,
+            is_proposed: _,
         } = *event_metadata;
         let mut effects = Effects::new();
         if is_new {
