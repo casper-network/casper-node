@@ -182,11 +182,11 @@ impl Fetchers {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
-                    is_proposed,
+                    provenance,
                     block_hash: _,
                 },
             ) if matches!(source, Source::Peer(..)) => {
-                if !is_proposed.is_proposed() {
+                if !provenance.is_proposed() {
                     reactor::wrap_effects(
                         MainEvent::TransactionFetcher,
                         self.transaction_fetcher.handle_event(

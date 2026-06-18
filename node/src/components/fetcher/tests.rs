@@ -46,7 +46,7 @@ use crate::{
     types::{GossipedTransaction, NodeId},
     utils::WithDir,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -234,7 +234,7 @@ impl ReactorTrait for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
-                    is_proposed: TransactionFlavor::Client,
+                    provenance: TransactionProvenance::Client,
                     maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
@@ -368,7 +368,7 @@ impl Reactor {
                         transaction,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
-                        is_proposed: TransactionFlavor::Gossiped,
+                        provenance: TransactionProvenance::Gossiped,
                         maybe_block_hash: None,
                     }),
                 )

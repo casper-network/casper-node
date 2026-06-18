@@ -131,7 +131,7 @@ impl LargestSpecimen for GossipedTransaction {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) enum TransactionFlavor {
+pub(crate) enum TransactionProvenance {
     /// A transaction sent from outside the network
     Client,
     /// This transaction flavor is normal gossiping
@@ -140,7 +140,7 @@ pub(crate) enum TransactionFlavor {
     Proposed
 }
 
-impl TransactionFlavor {
+impl TransactionProvenance {
     pub(crate) fn is_proposed(&self) -> bool {
         matches!(self, Self::Proposed)
     }

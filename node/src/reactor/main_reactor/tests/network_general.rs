@@ -44,7 +44,7 @@ use crate::{
     },
     utils::Source,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 #[tokio::test]
 async fn run_network() {
@@ -722,7 +722,7 @@ async fn should_store_finalized_approvals() {
                     .announce_new_transaction_accepted(
                         Arc::new(transaction),
                         Source::Client,
-                        TransactionFlavor::Client,
+                        TransactionProvenance::Client,
                         highest_block_header,
                     )
                     .ignore()
@@ -809,7 +809,7 @@ async fn should_update_last_progress_after_block_execution() {
                 eff.announce_new_transaction_accepted(
                     Arc::new(transaction),
                     Source::Client,
-                    TransactionFlavor::Client,
+                    TransactionProvenance::Client,
                     highest_block_header,
                 )
                 .ignore()

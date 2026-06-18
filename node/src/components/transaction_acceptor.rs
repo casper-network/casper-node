@@ -39,7 +39,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 const COMPONENT_NAME: &str = "transaction_acceptor";
 
@@ -112,7 +112,7 @@ impl TransactionAcceptor {
         input_transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
-        is_proposed: TransactionFlavor,
+        provenance: TransactionProvenance,
         maybe_block_hash: Option<BlockHash>,
     ) -> Effects<Event> {
         trace!(%source, %input_transaction, "checking transaction before accepting");
@@ -143,7 +143,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
-            is_proposed,
+            provenance,
             maybe_block_hash,
         ));
 
@@ -890,7 +890,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
-            is_proposed: _,
+            provenance: _,
             maybe_block_hash: _,
         } = event_metadata;
         self.reject_transaction_direct(
@@ -946,7 +946,7 @@ impl TransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(event_metadata.transaction),
                         event_metadata.source,
-                        event_metadata.is_proposed,
+                        event_metadata.provenance,
                         block_hash,
                     )
                     .ignore(),
@@ -990,7 +990,7 @@ impl TransactionAcceptor {
             source,
             maybe_responder,
             verification_start_timestamp,
-            is_proposed,
+            provenance,
             maybe_block_hash,
         } = *event_metadata;
         debug!(%transaction, "accepted transaction");
@@ -1003,7 +1003,7 @@ impl TransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(transaction),
                         source,
-                        is_proposed,
+                        provenance,
                         block_hash,
                     )
                     .ignore(),
@@ -1036,14 +1036,14 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 transaction,
                 source,
                 maybe_responder: responder,
-                is_proposed,
+                provenance,
                 maybe_block_hash,
             } => self.accept(
                 effect_builder,
                 transaction,
                 source,
                 responder,
-                is_proposed,
+                provenance,
                 maybe_block_hash,
             ),
             Event::GetBlockHeaderResult {

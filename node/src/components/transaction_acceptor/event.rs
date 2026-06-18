@@ -9,7 +9,7 @@ use casper_types::{
 
 use super::{Error, Source};
 use crate::{effect::Responder, types::MetaTransaction};
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
@@ -19,7 +19,7 @@ pub(crate) struct EventMetadata {
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
     pub(crate) verification_start_timestamp: Timestamp,
-    pub(crate) is_proposed: TransactionFlavor,
+    pub(crate) provenance: TransactionProvenance,
     pub(crate) maybe_block_hash: Option<BlockHash>,
 }
 
@@ -30,7 +30,7 @@ impl EventMetadata {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
-        is_proposed: TransactionFlavor,
+        provenance: TransactionProvenance,
         maybe_block_hash: Option<BlockHash>,
     ) -> Self {
         EventMetadata {
@@ -39,7 +39,7 @@ impl EventMetadata {
             source,
             maybe_responder,
             verification_start_timestamp,
-            is_proposed,
+            provenance,
             maybe_block_hash,
         }
     }
@@ -52,7 +52,7 @@ pub(crate) enum Event {
     Accept {
         transaction: Transaction,
         source: Source,
-        is_proposed: TransactionFlavor,
+        provenance: TransactionProvenance,
         maybe_block_hash: Option<BlockHash>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },

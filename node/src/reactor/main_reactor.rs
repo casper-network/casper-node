@@ -91,7 +91,7 @@ pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 /// Main node reactor.
 ///
@@ -741,7 +741,7 @@ impl reactor::Reactor for MainReactor {
                     transaction,
                     source,
                     maybe_responder: Some(responder),
-                    is_proposed: TransactionFlavor::Client,
+                    provenance: TransactionProvenance::Client,
                     maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
@@ -754,7 +754,7 @@ impl reactor::Reactor for MainReactor {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
-                    is_proposed,
+                    provenance,
                     block_hash,
                 },
             ) => {
@@ -771,7 +771,7 @@ impl reactor::Reactor for MainReactor {
                                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                                     transaction,
                                     source,
-                                    is_proposed,
+                                    provenance,
                                     block_hash,
                                 },
                             ),
@@ -878,7 +878,7 @@ impl reactor::Reactor for MainReactor {
                             transaction,
                             source: Source::PeerGossiped(sender),
                             maybe_responder: None,
-                            is_proposed: TransactionFlavor::Gossiped,
+                            provenance: TransactionProvenance::Gossiped,
                             maybe_block_hash: Some(block_hash),
                         },
                     ),

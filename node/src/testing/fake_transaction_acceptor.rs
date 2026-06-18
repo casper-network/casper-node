@@ -24,7 +24,7 @@ use crate::{
     utils::Source,
     NodeRng,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 const COMPONENT_NAME: &str = "fake_transaction_acceptor";
 
@@ -69,12 +69,12 @@ impl FakeTransactionAcceptor {
             &self.chainspec.transaction_config,
         )
         .unwrap();
-        let is_proposed = match source {
+        let provenance = match source {
             Source::PeerGossiped(_)  | Source::Peer(_) => {
-                TransactionFlavor::Gossiped
+                TransactionProvenance::Gossiped
             }
             Source::Client | Source::SpeculativeExec | Source::Ourself=> {
-                TransactionFlavor::Client
+                TransactionProvenance::Client
             }
         };
         let event_metadata = Box::new(EventMetadata::new(
@@ -83,7 +83,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             Timestamp::now(),
-            is_proposed,
+            provenance,
             None,
         ));
 
@@ -126,7 +126,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             maybe_block_hash,
-            is_proposed,
+            provenance,
             ..
         } = *event_metadata;
         let mut effects = Effects::new();
@@ -137,7 +137,7 @@ impl FakeTransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(transaction),
                         source,
-                        is_proposed,
+                        provenance,
                         block_hash,
                     )
                     .ignore(),
@@ -173,7 +173,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
                 transaction,
                 source,
                 maybe_responder,
-                is_proposed: _,
+                provenance: _,
                 maybe_block_hash: _,
             } => self.accept(effect_builder, transaction, source, maybe_responder),
             Event::GetBlockHeaderResult {

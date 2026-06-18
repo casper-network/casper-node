@@ -53,7 +53,7 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -287,7 +287,7 @@ impl reactor::Reactor for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
-                    is_proposed: TransactionFlavor::Client,
+                    provenance: TransactionProvenance::Client,
                     maybe_block_hash: None,
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))
@@ -296,7 +296,7 @@ impl reactor::Reactor for Reactor {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
-                    is_proposed: _,
+                    provenance: _,
                     block_hash,
                 },
             ) => {
@@ -327,7 +327,7 @@ impl reactor::Reactor for Reactor {
                         transaction: item.transaction().clone(),
                         source: Source::Peer(sender),
                         maybe_responder: None,
-                        is_proposed: TransactionFlavor::Gossiped,
+                        provenance: TransactionProvenance::Gossiped,
                         maybe_block_hash: None,
                     },
                 ),

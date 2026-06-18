@@ -5,7 +5,7 @@ mod meta_transaction;
 mod proposed_transaction;
 
 mod transaction_footprint;
-pub(crate) use gossiped_transaction::{GossipedTransaction, GossipedTransactionId, TransactionFlavor};
+pub(crate) use gossiped_transaction::{GossipedTransaction, GossipedTransactionId, TransactionProvenance};
 pub(crate) use deploy::LegacyDeploy;
 #[cfg(test)]
 pub(crate) use meta_transaction::calculate_transaction_lane_for_transaction;

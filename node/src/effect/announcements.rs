@@ -32,7 +32,7 @@ use crate::{
     types::{FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
@@ -196,7 +196,7 @@ pub(crate) enum TransactionAcceptorAnnouncement {
         /// The source (peer or client) of the transaction.
         source: Source,
         /// Is this transaction part of a proposal
-        is_proposed: TransactionFlavor,
+        provenance: TransactionProvenance,
         /// The block hash for which the transaction was accepted.
         block_hash: BlockHash,
     },

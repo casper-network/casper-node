@@ -44,7 +44,7 @@ use crate::{
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
-use crate::types::TransactionFlavor;
+use crate::types::TransactionProvenance;
 
 pub(crate) struct NodeContext {
     pub id: NodeId,
@@ -859,7 +859,7 @@ impl TestFixture {
                         .announce_new_transaction_accepted(
                             Arc::new(txn.clone()),
                             Source::Client,
-                            TransactionFlavor::Client,
+                            TransactionProvenance::Client,
                             highest_block_header,
                         )
                         .ignore()
