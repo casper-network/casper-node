@@ -38,8 +38,9 @@ use crate::{
     },
     protocol::Message,
     types::{
-        transaction::transaction_v1_builder::TransactionV1Builder, BlockExecutionResultsOrChunk,
-        BlockPayload, FinalizedBlock, InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
+        transaction::{transaction_v1_builder::TransactionV1Builder, ProposedTransaction},
+        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
@@ -1148,6 +1149,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::Transaction => Message::new_get_request::<Transaction>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
+            Tag::ProposedTransaction => Message::new_get_request::<ProposedTransaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
@@ -1182,6 +1186,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
     largest_variant::<Message, Tag, _, _>(estimator, |variant| {
         match variant {
             Tag::Transaction => Message::new_get_response::<Transaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
+            Tag::ProposedTransaction => Message::new_get_response::<ProposedTransaction>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
             Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(

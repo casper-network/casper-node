@@ -255,6 +255,7 @@ enum TestScenario {
     // false means use account hash
     FromPeerWithSystemInitiator(bool),
     FromClientWithSystemInitiator(bool),
+    FromPeerInsufficientBalance(TxnType),
 }
 
 impl TestScenario {
@@ -274,6 +275,7 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..)
             | TestScenario::InvalidFieldsFromPeer
+            | TestScenario::FromPeerInsufficientBalance(_)
             | TestScenario::FromPeerWithSystemInitiator(_) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
@@ -420,6 +422,7 @@ impl TestScenario {
             | TestScenario::FromPeerAccountWithInsufficientWeight(txn_type)
             | TestScenario::FromClientMissingAccount(txn_type)
             | TestScenario::FromClientInsufficientBalance(txn_type)
+            | TestScenario::FromPeerInsufficientBalance(txn_type)
             | TestScenario::FromClientValidTransaction(txn_type)
             | TestScenario::FromClientRepeatedValidTransaction(txn_type)
             | TestScenario::FromClientAccountWithInvalidAssociatedKeys(txn_type)
@@ -897,9 +900,7 @@ impl TestScenario {
             TestScenario::FromPeerRepeatedValidTransaction(_)
                     | TestScenario::FromPeerExpired(_)
                     | TestScenario::FromPeerValidTransaction(_)
-                    | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
-                    | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
-                    | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
+                    | TestScenario::BalanceCheckForDeploySentByPeer
                     | TestScenario::FromClientRepeatedValidTransaction(_)
                     | TestScenario::FromClientValidTransaction(_)
                     | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
@@ -907,6 +908,7 @@ impl TestScenario {
             TestScenario::FromPeerInvalidTransaction(_)
                     | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientInsufficientBalance(_)
+                    | TestScenario::FromPeerInsufficientBalance(_)
                     | TestScenario::FromClientMissingAccount(_)
                     | TestScenario::FromClientInvalidTransaction(_)
                     | TestScenario::FromClientInvalidTransactionZeroPayment(_)
@@ -922,7 +924,10 @@ impl TestScenario {
                     | TestScenario::DeployWithoutTransferAmount
                     | TestScenario::DeployWithoutTransferTarget
                     | TestScenario::DeployWithPaymentOne
-                    | TestScenario::BalanceCheckForDeploySentByPeer
+
+            | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
+            | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
                     | TestScenario::FromClientExpired(_) => false,
             TestScenario::FromPeerCustomPaymentContract(contract_scenario)
                     | TestScenario::FromPeerSessionContract(_, contract_scenario)
@@ -1205,6 +1210,7 @@ impl reactor::Reactor for Reactor {
                     let motes = if matches!(
                         self.test_scenario,
                         TestScenario::FromClientInsufficientBalance(_)
+                            | TestScenario::FromPeerInsufficientBalance(_)
                     ) {
                         baseline_amount - 1
                     } else {
@@ -1421,6 +1427,8 @@ fn schedule_accept_transaction(
                     transaction,
                     source,
                     maybe_responder: Some(responder),
+                    provenance: TransactionProvenance::Client,
+                    maybe_block_hash: None,
                 },
                 QueueKind::Validation,
             )
@@ -1448,6 +1456,8 @@ fn inject_balance_check_for_peer(
             source,
             Some(responder),
             Timestamp::now(),
+            TransactionProvenance::Gossiped,
+            None,
         ));
         effect_builder
             .into_inner()
@@ -1654,7 +1664,10 @@ async fn run_transaction_acceptor_without_timeout(
             // announcement with the appropriate source.
             TestScenario::FromPeerInvalidTransaction(_)
             | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
-            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::FromPeerMissingAccount(_)
+            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_)
+            | TestScenario::FromPeerAccountWithInsufficientWeight(_)
+            | TestScenario::FromPeerInsufficientBalance(_)
             | TestScenario::InvalidFieldsFromPeer => {
                 matches!(
                     event,
@@ -1669,9 +1682,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that a new and valid, transaction sent by a peer raises an
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromPeerValidTransaction(_)
-            | TestScenario::FromPeerMissingAccount(_)
-            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_)
-            | TestScenario::FromPeerAccountWithInsufficientWeight(_)
+            | TestScenario::BalanceCheckForDeploySentByPeer
             | TestScenario::FromPeerExpired(_) => {
                 matches!(
                     event,
@@ -1895,13 +1906,25 @@ async fn should_reject_zero_payment_transaction_v1_from_peer() {
 async fn should_accept_valid_deploy_from_peer_for_missing_account() {
     let result =
         run_transaction_acceptor(TestScenario::FromPeerMissingAccount(TxnType::Deploy)).await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::NoSuchAddressableEntity { .. },
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
 async fn should_accept_valid_transaction_v1_from_peer_for_missing_account() {
     let result = run_transaction_acceptor(TestScenario::FromPeerMissingAccount(TxnType::V1)).await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::NoSuchAddressableEntity { .. },
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -1910,7 +1933,13 @@ async fn should_accept_valid_deploy_from_peer_for_account_with_invalid_associate
         TxnType::Deploy,
     ))
     .await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys,
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -1919,7 +1948,13 @@ async fn should_accept_valid_transaction_v1_from_peer_for_account_with_invalid_a
         TxnType::V1,
     ))
     .await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys,
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -1928,7 +1963,13 @@ async fn should_accept_valid_deploy_from_peer_for_account_with_insufficient_weig
         TxnType::Deploy,
     ))
     .await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InsufficientSignatureWeight,
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -1937,7 +1978,13 @@ async fn should_accept_valid_transaction_v1_from_peer_for_account_with_insuffici
         TxnType::V1,
     ))
     .await;
-    assert!(result.is_ok())
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InsufficientSignatureWeight,
+            ..
+        })
+    ))
 }
 
 #[tokio::test]
@@ -2138,6 +2185,32 @@ async fn should_reject_valid_deploy_from_client_for_insufficient_balance() {
 async fn should_reject_valid_transaction_v1_from_client_for_insufficient_balance() {
     let result =
         run_transaction_acceptor(TestScenario::FromClientInsufficientBalance(TxnType::V1)).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InsufficientBalance { .. },
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_valid_deploy_from_peer_for_insufficient_balance() {
+    let result =
+        run_transaction_acceptor(TestScenario::FromPeerInsufficientBalance(TxnType::Deploy)).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InsufficientBalance { .. },
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_valid_transaction_v1_from_peer_for_insufficient_balance() {
+    let result =
+        run_transaction_acceptor(TestScenario::FromPeerInsufficientBalance(TxnType::V1)).await;
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
@@ -2835,7 +2908,6 @@ async fn should_accept_expired_transaction_v1_from_peer() {
 }
 
 #[tokio::test]
-#[should_panic]
 async fn should_panic_when_balance_checking_for_deploy_sent_by_peer() {
     let test_scenario = TestScenario::BalanceCheckForDeploySentByPeer;
     let result = run_transaction_acceptor(test_scenario).await;
@@ -3109,9 +3181,10 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_peer() {
 
     assert!(matches!(
         result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::InvalidInitiator
-        )))
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
     ))
 }
 
@@ -3136,9 +3209,10 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_peer() {
 
     assert!(matches!(
         result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::InvalidInitiator
-        )))
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
     ))
 }
 

@@ -3,12 +3,15 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHeader,
-    EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
+    contracts::ProtocolVersionMajor, AddressableEntity, AddressableEntityHash, BlockHash,
+    BlockHeader, EntityVersion, Package, PackageHash, Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};
-use crate::{effect::Responder, types::MetaTransaction};
+use crate::{
+    effect::Responder,
+    types::{MetaTransaction, TransactionProvenance},
+};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
@@ -18,6 +21,8 @@ pub(crate) struct EventMetadata {
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
     pub(crate) verification_start_timestamp: Timestamp,
+    pub(crate) provenance: TransactionProvenance,
+    pub(crate) maybe_block_hash: Option<BlockHash>,
 }
 
 impl EventMetadata {
@@ -27,6 +32,8 @@ impl EventMetadata {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         verification_start_timestamp: Timestamp,
+        provenance: TransactionProvenance,
+        maybe_block_hash: Option<BlockHash>,
     ) -> Self {
         EventMetadata {
             transaction,
@@ -34,6 +41,8 @@ impl EventMetadata {
             source,
             maybe_responder,
             verification_start_timestamp,
+            provenance,
+            maybe_block_hash,
         }
     }
 }
@@ -45,6 +54,8 @@ pub(crate) enum Event {
     Accept {
         transaction: Transaction,
         source: Source,
+        provenance: TransactionProvenance,
+        maybe_block_hash: Option<BlockHash>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `TransactionAcceptor` putting a `Transaction` to the storage

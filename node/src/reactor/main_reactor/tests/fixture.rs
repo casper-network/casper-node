@@ -40,7 +40,7 @@ use crate::{
         Config, MainReactor, ReactorState,
     },
     testing::{self, filter_reactor::FilterReactor, network::TestingNetwork},
-    types::NodeId,
+    types::{NodeId, TransactionProvenance},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -844,10 +844,23 @@ impl TestFixture {
                         .ignore()
                 })
                 .await;
+
+            let highest_block_header = *runner
+                .main_reactor()
+                .storage
+                .read_highest_block()
+                .expect("must have block")
+                .hash();
+
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .announce_new_transaction_accepted(Arc::new(txn.clone()), Source::Client)
+                        .announce_new_transaction_accepted(
+                            Arc::new(txn.clone()),
+                            Source::Client,
+                            TransactionProvenance::Client,
+                            highest_block_header,
+                        )
                         .ignore()
                 })
                 .await;

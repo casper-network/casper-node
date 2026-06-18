@@ -159,6 +159,7 @@ use crate::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
         InvalidProposalError, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
+        TransactionProvenance,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -861,6 +862,8 @@ impl<REv> EffectBuilder<REv> {
         self,
         transaction: Arc<Transaction>,
         source: Source,
+        provenance: TransactionProvenance,
+        block_hash: BlockHash,
     ) -> impl Future<Output = ()>
     where
         REv: From<TransactionAcceptorAnnouncement>,
@@ -869,6 +872,8 @@ impl<REv> EffectBuilder<REv> {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
+                provenance,
+                block_hash,
             },
             QueueKind::Validation,
         )

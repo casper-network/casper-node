@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use tracing::debug;
+use tracing::{debug, trace};
 
-use casper_types::{Chainspec, Timestamp, Transaction};
+use casper_types::{Block, BlockHeader, Chainspec, Timestamp, Transaction};
 
 pub(crate) use crate::components::transaction_acceptor::{Error, Event};
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
         announcements::TransactionAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
-    types::MetaTransaction,
+    types::{MetaTransaction, TransactionProvenance},
     utils::Source,
     NodeRng,
 };
@@ -68,15 +68,43 @@ impl FakeTransactionAcceptor {
             &self.chainspec,
         )
         .unwrap();
+        let provenance = match source {
+            Source::PeerGossiped(_) | Source::Peer(_) => TransactionProvenance::Gossiped,
+            Source::Client | Source::SpeculativeExec | Source::Ourself => {
+                TransactionProvenance::Client
+            }
+        };
         let event_metadata = Box::new(EventMetadata::new(
             transaction.clone(),
             meta_transaction,
             source,
             maybe_responder,
             Timestamp::now(),
+            provenance,
+            None,
         ));
+
+        let fake_block = Arc::new(Block::example().clone());
+
         effect_builder
-            .put_transaction_to_storage(transaction)
+            .put_block_to_storage(Arc::clone(&fake_block))
+            .event(move |_| Event::GetBlockHeaderResult {
+                event_metadata,
+                maybe_block_header: Some(Box::new(fake_block.clone_header())),
+            })
+    }
+
+    fn handle_get_block_header<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        mut event_metadata: Box<EventMetadata>,
+        maybe_block_header: Option<Box<BlockHeader>>,
+    ) -> Effects<Event> {
+        event_metadata.maybe_block_hash =
+            Some(maybe_block_header.expect("must have header").block_hash());
+
+        effect_builder
+            .put_transaction_to_storage(event_metadata.transaction.clone())
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,
@@ -94,13 +122,21 @@ impl FakeTransactionAcceptor {
             transaction,
             source,
             maybe_responder,
-            verification_start_timestamp: _,
+            maybe_block_hash,
+            provenance,
+            ..
         } = *event_metadata;
         let mut effects = Effects::new();
+        let block_hash = maybe_block_hash.expect("must have set block hash correctly");
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_transaction_accepted(Arc::new(transaction), source)
+                    .announce_new_transaction_accepted(
+                        Arc::new(transaction),
+                        source,
+                        provenance,
+                        block_hash,
+                    )
                     .ignore(),
             );
         }
@@ -128,13 +164,19 @@ impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
             );
             return Effects::new();
         }
-        debug!(?event, "FakeTransactionAcceptor: handling event");
+        trace!(?event, "FakeTransactionAcceptor: handling event");
         match event {
             Event::Accept {
                 transaction,
                 source,
                 maybe_responder,
+                provenance: _,
+                maybe_block_hash: _,
             } => self.accept(effect_builder, transaction, source, maybe_responder),
+            Event::GetBlockHeaderResult {
+                event_metadata,
+                maybe_block_header,
+            } => self.handle_get_block_header(effect_builder, event_metadata, maybe_block_header),
             Event::PutToStorageResult {
                 event_metadata,
                 is_new,

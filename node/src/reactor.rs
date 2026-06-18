@@ -65,7 +65,7 @@ use crate::components::ComponentState;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction, TransactionId,
 };
 
 #[cfg(target_os = "linux")]
@@ -76,7 +76,7 @@ use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
         block_accumulator,
-        fetcher::{self, FetchItem},
+        fetcher::{self, FetchItem, Tag},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
         transaction_acceptor,
     },
@@ -86,9 +86,12 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     failpoints::FailpointActivation,
-    types::{BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk},
+    types::{
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy,
+        NodeId, SyncLeap, TransactionProvenance, TrieOrChunk,
+    },
     unregister_metric,
-    utils::{self, SharedFlag, WeightedRoundRobin},
+    utils::{self, SharedFlag, Source, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
 use casper_storage::block_store::types::ApprovalsHashes;
@@ -1046,6 +1049,31 @@ where
             sender,
             serialized_item,
         ),
+        NetResponse::ProposedTransaction(ref serialized_item) => {
+            match bincode::deserialize::<fetcher::FetchResponse<ProposedTransaction, TransactionId>>(
+                serialized_item,
+            ) {
+                Ok(fetcher::FetchResponse::Fetched(item)) => {
+                    let transaction = item.transaction().clone();
+                    let acceptor_event = transaction_acceptor::Event::Accept {
+                        transaction,
+                        source: Source::Peer(sender),
+                        maybe_responder: None,
+                        provenance: TransactionProvenance::Proposed,
+                        maybe_block_hash: None,
+                    };
+                    Reactor::dispatch_event(reactor, effect_builder, rng, acceptor_event.into())
+                }
+                Ok(_) | Err(_) => effect_builder
+                    .announce_block_peer_with_justification(
+                        sender,
+                        BlocklistJustification::SentBadItem {
+                            tag: Tag::ProposedTransaction,
+                        },
+                    )
+                    .ignore(),
+            }
+        }
         NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
             reactor,
             effect_builder,

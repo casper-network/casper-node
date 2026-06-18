@@ -24,6 +24,8 @@ pub(super) struct Metrics {
     pub(super) out_count_consensus: IntCounter,
     /// Count of outgoing messages with deploy gossiper payload.
     pub(super) out_count_deploy_gossip: IntCounter,
+    /// Count of outgoing messages with deploy gossiper payload.
+    pub(super) out_count_accepted_transaction_gossip: IntCounter,
     pub(super) out_count_block_gossip: IntCounter,
     pub(super) out_count_finality_signature_gossip: IntCounter,
     /// Count of outgoing messages with address gossiper payload.
@@ -43,6 +45,8 @@ pub(super) struct Metrics {
     pub(super) out_bytes_consensus: IntCounter,
     /// Volume in bytes of outgoing messages with deploy gossiper payload.
     pub(super) out_bytes_deploy_gossip: IntCounter,
+    /// Volume in bytes of outgoing messages with deploy gossiper payload.
+    pub(super) out_bytes_accepted_transaction_gossip: IntCounter,
     pub(super) out_bytes_block_gossip: IntCounter,
     pub(super) out_bytes_finality_signature_gossip: IntCounter,
     /// Volume in bytes of outgoing messages with address gossiper payload.
@@ -114,6 +118,10 @@ pub(super) struct Metrics {
     pub(super) accumulated_outgoing_limiter_delay: Counter,
     /// Total time spent delaying incoming traffic from non-validators due to limiter, in seconds.
     pub(super) accumulated_incoming_limiter_delay: Counter,
+    /// Volume in bytes of incoming messages with accepted transaction gossiper payload.
+    pub(super) in_bytes_accepted_transaction_gossip: IntCounter,
+    /// Count of incoming messages with accepted transaction gossiper payload.
+    pub(super) in_count_accepted_transaction_gossip: IntCounter,
 
     /// Registry instance.
     registry: Registry,
@@ -144,6 +152,10 @@ impl Metrics {
         )?;
         let out_count_deploy_gossip = IntCounter::new(
             "net_out_count_deploy_gossip",
+            "count of outgoing messages with deploy gossiper payload",
+        )?;
+        let out_count_accepted_transaction_gossip = IntCounter::new(
+            "net_out_count_accepted_transaction_gossip",
             "count of outgoing messages with deploy gossiper payload",
         )?;
         let out_count_block_gossip = IntCounter::new(
@@ -185,6 +197,10 @@ impl Metrics {
         )?;
         let out_bytes_deploy_gossip = IntCounter::new(
             "net_out_bytes_deploy_gossip",
+            "volume in bytes of outgoing messages with deploy gossiper payload",
+        )?;
+        let out_bytes_accepted_transaction_gossip = IntCounter::new(
+            "net_out_bytes_accepted_transaction_gossip",
             "volume in bytes of outgoing messages with deploy gossiper payload",
         )?;
         let out_bytes_block_gossip = IntCounter::new(
@@ -249,6 +265,10 @@ impl Metrics {
             "net_in_count_deploy_gossip",
             "count of incoming messages with deploy gossiper payload",
         )?;
+        let in_count_accepted_transaction_gossip = IntCounter::new(
+            "net_in_count_accepted_transaction_gossip",
+            "count of incoming messages with deploy gossiper payload",
+        )?;
         let in_count_block_gossip = IntCounter::new(
             "net_in_count_block_gossip",
             "count of incoming messages with block gossiper payload",
@@ -289,6 +309,10 @@ impl Metrics {
         let in_bytes_deploy_gossip = IntCounter::new(
             "net_in_bytes_deploy_gossip",
             "volume in bytes of incoming messages with deploy gossiper payload",
+        )?;
+        let in_bytes_accepted_transaction_gossip = IntCounter::new(
+            "net_in_bytes_accepted_transaction_gossip",
+            "volume in bytes of incoming messages with accepted transaction gossiper payload",
         )?;
         let in_bytes_block_gossip = IntCounter::new(
             "net_in_bytes_block_gossip",
@@ -345,6 +369,7 @@ impl Metrics {
         registry.register(Box::new(out_count_protocol.clone()))?;
         registry.register(Box::new(out_count_consensus.clone()))?;
         registry.register(Box::new(out_count_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_count_accepted_transaction_gossip.clone()))?;
         registry.register(Box::new(out_count_block_gossip.clone()))?;
         registry.register(Box::new(out_count_finality_signature_gossip.clone()))?;
         registry.register(Box::new(out_count_address_gossip.clone()))?;
@@ -356,6 +381,7 @@ impl Metrics {
         registry.register(Box::new(out_bytes_protocol.clone()))?;
         registry.register(Box::new(out_bytes_consensus.clone()))?;
         registry.register(Box::new(out_bytes_deploy_gossip.clone()))?;
+        registry.register(Box::new(out_bytes_accepted_transaction_gossip.clone()))?;
         registry.register(Box::new(out_bytes_block_gossip.clone()))?;
         registry.register(Box::new(out_bytes_finality_signature_gossip.clone()))?;
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
@@ -373,6 +399,7 @@ impl Metrics {
         registry.register(Box::new(in_count_protocol.clone()))?;
         registry.register(Box::new(in_count_consensus.clone()))?;
         registry.register(Box::new(in_count_deploy_gossip.clone()))?;
+        registry.register(Box::new(in_count_accepted_transaction_gossip.clone()))?;
         registry.register(Box::new(in_count_block_gossip.clone()))?;
         registry.register(Box::new(in_count_finality_signature_gossip.clone()))?;
         registry.register(Box::new(in_count_address_gossip.clone()))?;
@@ -384,6 +411,7 @@ impl Metrics {
         registry.register(Box::new(in_bytes_protocol.clone()))?;
         registry.register(Box::new(in_bytes_consensus.clone()))?;
         registry.register(Box::new(in_bytes_deploy_gossip.clone()))?;
+        registry.register(Box::new(in_bytes_accepted_transaction_gossip.clone()))?;
         registry.register(Box::new(in_bytes_block_gossip.clone()))?;
         registry.register(Box::new(in_bytes_finality_signature_gossip.clone()))?;
         registry.register(Box::new(in_bytes_address_gossip.clone()))?;
@@ -406,6 +434,7 @@ impl Metrics {
             out_count_protocol,
             out_count_consensus,
             out_count_deploy_gossip,
+            out_count_accepted_transaction_gossip,
             out_count_block_gossip,
             out_count_finality_signature_gossip,
             out_count_address_gossip,
@@ -416,6 +445,7 @@ impl Metrics {
             out_bytes_protocol,
             out_bytes_consensus,
             out_bytes_deploy_gossip,
+            out_bytes_accepted_transaction_gossip,
             out_bytes_block_gossip,
             out_bytes_finality_signature_gossip,
             out_bytes_address_gossip,
@@ -452,6 +482,8 @@ impl Metrics {
             requests_for_trie_finished,
             accumulated_outgoing_limiter_delay,
             accumulated_incoming_limiter_delay,
+            in_bytes_accepted_transaction_gossip,
+            in_count_accepted_transaction_gossip,
             registry: registry.clone(),
         })
     }
@@ -471,6 +503,10 @@ impl Metrics {
                 MessageKind::TransactionGossip => {
                     metrics.out_bytes_deploy_gossip.inc_by(size);
                     metrics.out_count_deploy_gossip.inc();
+                }
+                MessageKind::GossipedTransactionGossip => {
+                    metrics.out_bytes_accepted_transaction_gossip.inc_by(size);
+                    metrics.out_count_accepted_transaction_gossip.inc();
                 }
                 MessageKind::BlockGossip => {
                     metrics.out_bytes_block_gossip.inc_by(size);
@@ -549,6 +585,10 @@ impl Metrics {
                 MessageKind::Other => {
                     metrics.in_bytes_other.inc_by(size);
                     metrics.in_count_other.inc();
+                }
+                MessageKind::GossipedTransactionGossip => {
+                    metrics.in_bytes_accepted_transaction_gossip.inc_by(size);
+                    metrics.in_count_accepted_transaction_gossip.inc();
                 }
             }
         } else {
@@ -648,5 +688,11 @@ impl Drop for Metrics {
 
         unregister_metric!(self.registry, self.accumulated_outgoing_limiter_delay);
         unregister_metric!(self.registry, self.accumulated_incoming_limiter_delay);
+
+        unregister_metric!(self.registry, self.in_count_accepted_transaction_gossip);
+        unregister_metric!(self.registry, self.in_bytes_accepted_transaction_gossip);
+
+        unregister_metric!(self.registry, self.out_count_accepted_transaction_gossip);
+        unregister_metric!(self.registry, self.out_bytes_accepted_transaction_gossip);
     }
 }

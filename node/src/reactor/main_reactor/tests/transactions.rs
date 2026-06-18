@@ -3756,12 +3756,12 @@ async fn delegate_and_undelegate_bid_transaction() {
     );
     txn.sign(&BOB_SECRET_KEY);
 
-    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
-    assert!(exec_result_is_success(&exec_result));
-
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
 
     let mut txn = Transaction::from(
         TransactionV1Builder::new_undelegate(
@@ -3810,6 +3810,9 @@ async fn insufficient_funds_transfer_from_account() {
     let mut txn = Transaction::from(txn_v1);
     txn.sign(&BOB_SECRET_KEY);
 
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     let ExecutionResult::V2(result) = exec_result else {
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
@@ -5394,6 +5397,10 @@ async fn should_allow_native_transfer_v1() {
     )
     .await;
 
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, THIRTY_SECS)
+        .await;
+
     let transfer_amount = U512::from(100);
 
     let txn_v1 =
@@ -5442,6 +5449,10 @@ async fn should_allow_native_burn() {
         Some(config),
     )
     .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, THIRTY_SECS)
+        .await;
 
     let burn_amount = U512::from(100);
 

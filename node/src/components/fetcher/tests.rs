@@ -43,7 +43,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{GossipedTransaction, NodeId, TransactionProvenance},
     utils::WithDir,
 };
 
@@ -124,6 +124,8 @@ enum Event {
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     GossiperIncomingTransaction(GossiperIncoming<Transaction>),
+    #[from]
+    GossiperIncomingGossipedTransaction(GossiperIncoming<GossipedTransaction>),
     #[from]
     GossiperIncomingBlock(GossiperIncoming<BlockV2>),
     #[from]
@@ -231,6 +233,8 @@ impl ReactorTrait for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    provenance: TransactionProvenance::Client,
+                    maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
                     Event::FakeTransactionAcceptor,
@@ -259,6 +263,7 @@ impl ReactorTrait for Reactor {
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingTransaction(_)
+            | Event::GossiperIncomingGossipedTransaction(_)
             | Event::GossiperIncomingBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
@@ -362,6 +367,8 @@ impl Reactor {
                         transaction,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
+                        provenance: TransactionProvenance::Gossiped,
+                        maybe_block_hash: None,
                     }),
                 )
             }
