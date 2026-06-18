@@ -186,7 +186,7 @@ impl Fetchers {
                     block_hash: _,
                 },
             ) if matches!(source, Source::Peer(..)) => {
-                if !is_proposed {
+                if !is_proposed.is_proposed() {
                     reactor::wrap_effects(
                         MainEvent::TransactionFetcher,
                         self.transaction_fetcher.handle_event(

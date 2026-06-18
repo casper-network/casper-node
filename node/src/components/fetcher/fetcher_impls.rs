@@ -7,3 +7,4 @@ mod legacy_deploy_fetcher;
 mod sync_leap_fetcher;
 mod transaction_fetcher;
 mod trie_or_chunk_fetcher;
+mod proposed_transaction;

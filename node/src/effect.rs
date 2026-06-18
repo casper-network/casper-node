@@ -179,6 +179,7 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
     UpgradeWatcherRequest,
 };
+use crate::types::TransactionFlavor;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -861,7 +862,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         transaction: Arc<Transaction>,
         source: Source,
-        is_proposed: bool,
+        is_proposed: TransactionFlavor,
         block_hash: BlockHash,
     ) -> impl Future<Output = ()>
     where

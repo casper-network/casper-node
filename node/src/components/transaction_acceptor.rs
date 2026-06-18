@@ -39,6 +39,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
+use crate::types::TransactionFlavor;
 
 const COMPONENT_NAME: &str = "transaction_acceptor";
 
@@ -111,7 +112,7 @@ impl TransactionAcceptor {
         input_transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
-        is_proposed: bool,
+        is_proposed: TransactionFlavor,
         maybe_block_hash: Option<BlockHash>,
     ) -> Effects<Event> {
         trace!(%source, %input_transaction, "checking transaction before accepting");

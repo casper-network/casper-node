@@ -5,19 +5,19 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct AcceptedTransactionId {
+pub(crate) struct GossipedTransactionId {
     transaction_id: TransactionId,
 
     block_hash: BlockHash,
 }
 
-impl AcceptedTransactionId {}
+impl GossipedTransactionId {}
 
-impl Display for AcceptedTransactionId {
+impl Display for GossipedTransactionId {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "accepted-transaction-id({}, {}, {})",
+            "gossiped-transaction-id({}, {}, {})",
             self.transaction_id.transaction_hash(),
             self.transaction_id.approvals_hash(),
             self.block_hash
@@ -25,7 +25,7 @@ impl Display for AcceptedTransactionId {
     }
 }
 
-impl AcceptedTransactionId {
+impl GossipedTransactionId {
     pub(crate) fn transaction_id(&self) -> TransactionId {
         self.transaction_id
     }
@@ -36,14 +36,14 @@ impl AcceptedTransactionId {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct AcceptedTransaction {
+pub(crate) struct GossipedTransaction {
     /// The transaction that has been accepted by the node gossiping this transaction,
     transaction: Transaction,
     /// The hash of the block the transaction was verified against.
     block_hash: BlockHash,
 }
 
-impl Display for AcceptedTransaction {
+impl Display for GossipedTransaction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -53,7 +53,7 @@ impl Display for AcceptedTransaction {
     }
 }
 
-impl AcceptedTransaction {
+impl GossipedTransaction {
     pub(crate) fn new(transaction: Transaction, block_hash: BlockHash) -> Self {
         Self {
             transaction,
@@ -65,9 +65,9 @@ impl AcceptedTransaction {
         self.block_hash
     }
 
-    pub(crate) fn accepted_id(&self) -> AcceptedTransactionId {
+    pub(crate) fn accepted_id(&self) -> GossipedTransactionId {
         let transaction_id = self.transaction.compute_id();
-        AcceptedTransactionId {
+        GossipedTransactionId {
             transaction_id,
             block_hash: self.block_hash,
         }
@@ -78,7 +78,7 @@ impl AcceptedTransaction {
     }
 }
 
-impl LargestSpecimen for AcceptedTransactionId {
+impl LargestSpecimen for GossipedTransactionId {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         let transaction_id = {
             let deploy_hash =
@@ -108,7 +108,7 @@ impl LargestSpecimen for AcceptedTransactionId {
     }
 }
 
-impl LargestSpecimen for AcceptedTransaction {
+impl LargestSpecimen for GossipedTransaction {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         let transaction = {
             let deploy = Transaction::Deploy(LargestSpecimen::largest_specimen(estimator, cache));
@@ -128,4 +128,21 @@ impl LargestSpecimen for AcceptedTransaction {
             block_hash,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) enum TransactionFlavor {
+    /// A transaction sent from outside the network
+    Client,
+    /// This transaction flavor is normal gossiping
+    Gossiped,
+    /// This transaction is part of a block proposal
+    Proposed
+}
+
+impl TransactionFlavor {
+    pub(crate) fn is_proposed(&self) -> bool {
+        matches!(self, Self::Proposed)
+    }
+    
 }

@@ -45,7 +45,7 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        transaction::ProposedTransaction, AcceptedTransaction, BlockExecutionResultsOrChunk,
+        transaction::ProposedTransaction, GossipedTransaction, BlockExecutionResultsOrChunk,
         LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
@@ -196,12 +196,12 @@ pub(crate) enum MainEvent {
     #[from]
     TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
-    AcceptedTransactionGossiper(#[serde(skip_serializing)] gossiper::Event<AcceptedTransaction>),
+    GossipedTransactionGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedTransaction>),
     #[from]
-    AcceptedTransactionGossiperIncoming(GossiperIncoming<AcceptedTransaction>),
+    GossipedTransactionGossiperIncoming(GossiperIncoming<GossipedTransaction>),
     #[from]
-    AcceptedTransactionGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<AcceptedTransaction>,
+    GossipedTransactionGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<GossipedTransaction>,
     ),
     #[from]
     TransactionBuffer(#[serde(skip_serializing)] transaction_buffer::Event),
@@ -379,11 +379,11 @@ impl ReactorEvent for MainEvent {
                 "GotImmediateSwitchBlockEraValidators"
             }
             MainEvent::BinaryPort(_) => "BinaryPort",
-            MainEvent::AcceptedTransactionGossiper(_) => "AcceptedTransactionGossiper",
-            MainEvent::AcceptedTransactionGossiperIncoming(_) => {
+            MainEvent::GossipedTransactionGossiper(_) => "GossipedTransactionGossiper",
+            MainEvent::GossipedTransactionGossiperIncoming(_) => {
                 "AcceptedTransactionGossiperIncoming"
             }
-            MainEvent::AcceptedTransactionGossiperAnnouncement(_) => {
+            MainEvent::GossipedTransactionGossiperAnnouncement(_) => {
                 "AcceptedTransactionGossiperAnnouncement"
             }
         }
@@ -412,7 +412,7 @@ impl Display for MainEvent {
                 write!(f, "proposed transaction fetcher: {}", event)
             }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
-            MainEvent::AcceptedTransactionGossiper(event) => {
+            MainEvent::GossipedTransactionGossiper(event) => {
                 write!(f, "accepted transaction gossiper: {}", event)
             }
             MainEvent::FinalitySignatureGossiper(event) => {
@@ -530,7 +530,7 @@ impl Display for MainEvent {
             MainEvent::TransactionGossiperAnnouncement(ann) => {
                 write!(f, "transaction gossiper announcement: {}", ann)
             }
-            MainEvent::AcceptedTransactionGossiperAnnouncement(ann) => {
+            MainEvent::GossipedTransactionGossiperAnnouncement(ann) => {
                 write!(f, "accepted transaction gossiper announcement: {}", ann)
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
@@ -554,7 +554,7 @@ impl Display for MainEvent {
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
             MainEvent::TransactionGossiperIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::AcceptedTransactionGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::GossipedTransactionGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -635,8 +635,8 @@ impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
     }
 }
 
-impl From<NetworkRequest<gossiper::Message<AcceptedTransaction>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<AcceptedTransaction>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedTransaction>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedTransaction>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

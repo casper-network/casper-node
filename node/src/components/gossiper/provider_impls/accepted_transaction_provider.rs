@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use crate::{
     components::gossiper::{GossipItem, GossipTarget, Gossiper, ItemProvider, LargeGossipItem},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{AcceptedTransaction, AcceptedTransactionId},
+    types::{GossipedTransaction, GossipedTransactionId},
 };
 
-impl GossipItem for AcceptedTransaction {
-    type Id = AcceptedTransactionId;
+impl GossipItem for GossipedTransaction {
+    type Id = GossipedTransactionId;
 
     const ID_IS_COMPLETE_ITEM: bool = false;
     const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
@@ -21,15 +21,15 @@ impl GossipItem for AcceptedTransaction {
     }
 }
 
-impl LargeGossipItem for AcceptedTransaction {}
+impl LargeGossipItem for GossipedTransaction {}
 
 #[async_trait]
-impl ItemProvider<AcceptedTransaction>
-    for Gossiper<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, AcceptedTransaction>
+impl ItemProvider<GossipedTransaction>
+    for Gossiper<{ GossipedTransaction::ID_IS_COMPLETE_ITEM }, GossipedTransaction>
 {
     async fn is_stored<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item_id: AcceptedTransactionId,
+        item_id: GossipedTransactionId,
     ) -> bool {
         let block_hash = item_id.block_hash();
         let transaction_id = item_id.transaction_id();
@@ -40,8 +40,8 @@ impl ItemProvider<AcceptedTransaction>
 
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item_id: AcceptedTransactionId,
-    ) -> Option<Box<AcceptedTransaction>> {
+        item_id: GossipedTransactionId,
+    ) -> Option<Box<GossipedTransaction>> {
         let block_id = item_id.block_hash();
 
         if !effect_builder.is_block_stored(block_id).await {
@@ -53,6 +53,6 @@ impl ItemProvider<AcceptedTransaction>
         effect_builder
             .get_stored_transaction(transaction_id)
             .await
-            .map(|txn| Box::new(AcceptedTransaction::new(txn, block_id)))
+            .map(|txn| Box::new(GossipedTransaction::new(txn, block_id)))
     }
 }

@@ -24,6 +24,7 @@ use crate::{
     utils::Source,
     NodeRng,
 };
+use crate::types::TransactionFlavor;
 
 const COMPONENT_NAME: &str = "fake_transaction_acceptor";
 
@@ -68,13 +69,21 @@ impl FakeTransactionAcceptor {
             &self.chainspec.transaction_config,
         )
         .unwrap();
+        let is_proposed = match source {
+            Source::PeerGossiped(_)  | Source::Peer(_) => {
+                TransactionFlavor::Gossiped
+            }
+            Source::Client | Source::SpeculativeExec | Source::Ourself=> {
+                TransactionFlavor::Client
+            }
+        };
         let event_metadata = Box::new(EventMetadata::new(
             transaction.clone(),
             meta_transaction,
             source,
             maybe_responder,
             Timestamp::now(),
-            false,
+            is_proposed,
             None,
         ));
 
@@ -117,6 +126,7 @@ impl FakeTransactionAcceptor {
             source,
             maybe_responder,
             maybe_block_hash,
+            is_proposed,
             ..
         } = *event_metadata;
         let mut effects = Effects::new();
@@ -127,7 +137,7 @@ impl FakeTransactionAcceptor {
                     .announce_new_transaction_accepted(
                         Arc::new(transaction),
                         source,
-                        false,
+                        is_proposed,
                         block_hash,
                     )
                     .ignore(),

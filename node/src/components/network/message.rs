@@ -341,7 +341,7 @@ pub(crate) enum MessageKind {
     /// Tries transferred, usually as part of chain syncing.
     TrieTransfer,
     /// Accepted transactions being gossiped
-    AcceptedTransactionGossip,
+    GossipedTransactionGossip,
     /// Any other kind of payload (or missing classification).
     Other,
 }
@@ -352,7 +352,7 @@ impl Display for MessageKind {
             MessageKind::Protocol => f.write_str("protocol"),
             MessageKind::Consensus => f.write_str("consensus"),
             MessageKind::TransactionGossip => f.write_str("transaction_gossip"),
-            MessageKind::AcceptedTransactionGossip => f.write_str("accepted_transaction_gossip"),
+            MessageKind::GossipedTransactionGossip => f.write_str("gossiped_transaction_gossip"),
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),

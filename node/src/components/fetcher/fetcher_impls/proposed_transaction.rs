@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{InvalidTransaction, Transaction, TransactionId};
+use casper_types::{InvalidTransaction, TransactionId};
 
 use crate::{
     components::fetcher::{
@@ -11,32 +11,31 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{NodeId},
+    types::{transaction::ProposedTransaction, NodeId},
 };
-
-impl FetchItem for Transaction {
+impl FetchItem for ProposedTransaction {
     type Id = TransactionId;
     type ValidationError = InvalidTransaction;
     type ValidationMetadata = EmptyValidationMetadata;
 
-    const TAG: Tag = Tag::Transaction;
+    const TAG: Tag = Tag::ProposedTransaction;
 
     fn fetch_id(&self) -> Self::Id {
-        self.compute_id()
+        self.transaction().compute_id()
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.verify()
+        self.transaction().verify()
     }
 }
 
 #[async_trait]
-impl ItemFetcher<Transaction> for Fetcher<Transaction> {
+impl ItemFetcher<ProposedTransaction> for Fetcher<ProposedTransaction> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn item_handles(
         &mut self,
-    ) -> &mut HashMap<TransactionId, HashMap<NodeId, ItemHandle<Transaction>>> {
+    ) -> &mut HashMap<TransactionId, HashMap<NodeId, ItemHandle<ProposedTransaction>>> {
         &mut self.item_handles
     }
 
@@ -51,35 +50,40 @@ impl ItemFetcher<Transaction> for Fetcher<Transaction> {
     async fn get_locally<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: TransactionId,
-    ) -> Option<Transaction> {
-        effect_builder.get_stored_transaction(id).await
+    ) -> Option<ProposedTransaction> {
+        effect_builder
+            .get_stored_transaction(id)
+            .await
+            .map(ProposedTransaction::new)
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item: Transaction,
-    ) -> StoringState<'a, Transaction> {
+        item: ProposedTransaction,
+    ) -> StoringState<'a, ProposedTransaction> {
         StoringState::Enqueued(
             async move {
+                let transaction = item.transaction();
+
                 let is_new = effect_builder
-                    .put_transaction_to_storage(item.clone())
+                    .put_transaction_to_storage(transaction.clone())
                     .await;
                 // If `is_new` is `false`, the transaction was previously stored, and the incoming
                 // transaction could have a different set of approvals to the one already stored.
                 // We can treat the incoming approvals as finalized and now try and store them.
                 if !is_new {
                     effect_builder
-                        .store_finalized_approvals(item.hash(), item.approvals())
+                        .store_finalized_approvals(transaction.hash(), transaction.approvals())
                         .await;
                 }
             }
-            .boxed(),
+                .boxed(),
         )
     }
 
     async fn announce_fetched_new_item<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
-        _item: Transaction,
+        _item: ProposedTransaction,
         _peer: NodeId,
     ) {
     }

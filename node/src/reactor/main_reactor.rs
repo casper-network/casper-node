@@ -81,7 +81,7 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        AcceptedTransaction, ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling,
+        GossipedTransaction, ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling,
         TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
@@ -91,6 +91,7 @@ pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
+use crate::types::TransactionFlavor;
 
 /// Main node reactor.
 ///
@@ -164,7 +165,7 @@ pub(crate) struct MainReactor {
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
     transaction_gossiper:
-        Gossiper<{ AcceptedTransaction::ID_IS_COMPLETE_ITEM }, AcceptedTransaction>,
+        Gossiper<{ GossipedTransaction::ID_IS_COMPLETE_ITEM }, GossipedTransaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
@@ -740,7 +741,7 @@ impl reactor::Reactor for MainReactor {
                     transaction,
                     source,
                     maybe_responder: Some(responder),
-                    is_proposed: false,
+                    is_proposed: TransactionFlavor::Client,
                     maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
@@ -778,13 +779,13 @@ impl reactor::Reactor for MainReactor {
                     }
                     Source::Client | Source::PeerGossiped(_) => {
                         let accepted_transaction =
-                            AcceptedTransaction::new((*transaction).clone(), block_hash);
+                            GossipedTransaction::new((*transaction).clone(), block_hash);
 
                         // we must attempt to gossip onwards
                         effects.extend(self.dispatch_event(
                             effect_builder,
                             rng,
-                            MainEvent::AcceptedTransactionGossiper(gossiper::Event::ItemReceived {
+                            MainEvent::GossipedTransactionGossiper(gossiper::Event::ItemReceived {
                                 item_id: accepted_transaction.gossip_id(),
                                 source,
                                 target: accepted_transaction.gossip_target(),
@@ -840,29 +841,29 @@ impl reactor::Reactor for MainReactor {
                 // Ignore the announcement.
                 Effects::new()
             }
-            MainEvent::AcceptedTransactionGossiper(event) => reactor::wrap_effects(
-                MainEvent::AcceptedTransactionGossiper,
+            MainEvent::GossipedTransactionGossiper(event) => reactor::wrap_effects(
+                MainEvent::GossipedTransactionGossiper,
                 self.transaction_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::AcceptedTransactionGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::AcceptedTransactionGossiper,
+            MainEvent::GossipedTransactionGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::GossipedTransactionGossiper,
                 self.transaction_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::AcceptedTransactionGossiperAnnouncement(
+            MainEvent::GossipedTransactionGossiperAnnouncement(
                 GossiperAnnouncement::GossipReceived { .. },
             ) => {
                 // Ignore the announcement.
                 Effects::new()
             }
-            MainEvent::AcceptedTransactionGossiperAnnouncement(
+            MainEvent::GossipedTransactionGossiperAnnouncement(
                 GossiperAnnouncement::NewCompleteItem(gossiped_transaction_id),
             ) => {
                 error!(%gossiped_transaction_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
-            MainEvent::AcceptedTransactionGossiperAnnouncement(
+            MainEvent::GossipedTransactionGossiperAnnouncement(
                 GossiperAnnouncement::NewItemBody { item, sender },
             ) => {
                 let transaction = item.transaction().clone();
@@ -877,13 +878,13 @@ impl reactor::Reactor for MainReactor {
                             transaction,
                             source: Source::PeerGossiped(sender),
                             maybe_responder: None,
-                            is_proposed: false,
+                            is_proposed: TransactionFlavor::Gossiped,
                             maybe_block_hash: Some(block_hash),
                         },
                     ),
                 )
             }
-            MainEvent::AcceptedTransactionGossiperAnnouncement(
+            MainEvent::GossipedTransactionGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
             ) => {
                 let reactor_event = MainEvent::TransactionBuffer(

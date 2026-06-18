@@ -1427,7 +1427,7 @@ fn schedule_accept_transaction(
                     transaction,
                     source,
                     maybe_responder: Some(responder),
-                    is_proposed: false,
+                    is_proposed: TransactionFlavor::Client,
                     maybe_block_hash: None,
                 },
                 QueueKind::Validation,
@@ -1459,7 +1459,7 @@ fn inject_balance_check_for_peer(
             source,
             Some(responder),
             Timestamp::now(),
-            false,
+            TransactionFlavor::Gossiped,
             None,
         ));
         effect_builder

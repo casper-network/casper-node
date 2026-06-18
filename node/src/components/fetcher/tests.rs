@@ -43,9 +43,10 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::{AcceptedTransaction, NodeId},
+    types::{GossipedTransaction, NodeId},
     utils::WithDir,
 };
+use crate::types::TransactionFlavor;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -125,7 +126,7 @@ enum Event {
     #[from]
     GossiperIncomingTransaction(GossiperIncoming<Transaction>),
     #[from]
-    GossiperIncomingAcceptedTransaction(GossiperIncoming<AcceptedTransaction>),
+    GossiperIncomingGossipedTransaction(GossiperIncoming<GossipedTransaction>),
     #[from]
     GossiperIncomingBlock(GossiperIncoming<BlockV2>),
     #[from]
@@ -233,7 +234,7 @@ impl ReactorTrait for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
-                    is_proposed: false,
+                    is_proposed: TransactionFlavor::Client,
                     maybe_block_hash: None,
                 };
                 reactor::wrap_effects(
@@ -263,7 +264,7 @@ impl ReactorTrait for Reactor {
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingTransaction(_)
-            | Event::GossiperIncomingAcceptedTransaction(_)
+            | Event::GossiperIncomingGossipedTransaction(_)
             | Event::GossiperIncomingBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
@@ -367,7 +368,7 @@ impl Reactor {
                         transaction,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
-                        is_proposed: false,
+                        is_proposed: TransactionFlavor::Gossiped,
                         maybe_block_hash: None,
                     }),
                 )

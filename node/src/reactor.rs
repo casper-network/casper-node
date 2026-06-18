@@ -96,6 +96,7 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 pub(crate) use queue_kind::QueueKind;
+use crate::types::TransactionFlavor;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -1059,7 +1060,7 @@ where
                         transaction,
                         source: Source::Peer(sender),
                         maybe_responder: None,
-                        is_proposed: true,
+                        is_proposed: TransactionFlavor::Proposed,
                         maybe_block_hash: None,
                     };
                     Reactor::dispatch_event(reactor, effect_builder, rng, acceptor_event.into())
