@@ -15,7 +15,6 @@ use crate::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash,
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue,
     },
@@ -681,11 +680,11 @@ where
     pub fn migrate_system_account(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
         debug!("migrate system account");
         let account_hash = PublicKey::System.to_account_hash();
-
-        let account = match self.get_account(account_hash)? {
+        let account_key = Key::Account(account_hash);
+        let account = match self.get_account_repr(account_key)? {
             AccountRepr::Account(account) => account,
-            AccountRepr::EntityAddr(_) => {
-                // account has already been upgraded to addressable entity, so get out
+            AccountRepr::Entity(_) | AccountRepr::None => {
+                // migration has already occurred or chain never used account / contract model
                 return Ok(());
             }
         };
@@ -1723,16 +1722,26 @@ where
     pub fn read_only_system_purse(&mut self, mint: HashAddr) -> Result<(), ProtocolUpgradeError> {
         debug!("set system purse to read only");
         let account_hash = PublicKey::System.to_account_hash();
-
-        let account = match self.get_account(account_hash)? {
-            AccountRepr::Account(account) => account,
-            AccountRepr::EntityAddr(_) => {
-                // account has been upgraded to addressable entity, so get out
-                return Ok(());
+        let key = Key::Account(account_hash);
+        let main_purse_addr = match self.get_account_repr(key)? {
+            AccountRepr::Account(account) => self.upsert_account_purse_read_only(key, account),
+            AccountRepr::Entity(entity) => self.upsert_entity_purse_read_only(key, entity),
+            AccountRepr::None => {
+                // this applies on a network that never ran account / contract model
+                let key = Key::AddressableEntity(EntityAddr::Account(account_hash.value()));
+                if let AccountRepr::Entity(entity) = self.get_account_repr(key)? {
+                    self.upsert_entity_purse_read_only(key, entity)
+                } else {
+                    // this should be unreachable under current reality as a network
+                    // either genesis'd with account contract and never upgraded to ae,
+                    // or genesis'd with a / c and upgraded to ae
+                    // or genesis'd with ae and never had a / c
+                    return Err(ProtocolUpgradeError::MissingStoredValue(
+                        "system account and entity not found".to_string(),
+                    ));
+                }
             }
         };
-
-        let main_purse_addr = account.main_purse().addr();
         let system_account_balance = match self
             .tracking_copy
             .get_total_balance(Key::Balance(main_purse_addr))
@@ -1741,6 +1750,7 @@ where
             Err(tce) => return Err(ProtocolUpgradeError::TrackingCopy(tce)),
         };
 
+        // if balance > 0, burn balance
         if system_account_balance.value() > U512::zero() {
             warn!(
                 "system account had balance at upgrade, burning {}",
@@ -1749,42 +1759,72 @@ where
 
             self.burn(mint, system_account_balance.value(), main_purse_addr)?;
         }
-
-        if !account.main_purse().is_addable() && !account.main_purse().is_writeable() {
-            return Ok(());
-        }
-
-        let updated_account = Account::new(
-            account_hash,
-            account.named_keys().clone(),
-            account.main_purse().into_read(),
-            account.associated_keys().clone(),
-            account.action_thresholds().clone(),
-        );
-        self.tracking_copy.write(
-            Key::Account(account_hash),
-            StoredValue::Account(updated_account),
-        );
         Ok(())
     }
 
-    /// Returns account or error.
-    fn get_account(
-        &mut self,
-        account_hash: AccountHash,
-    ) -> Result<AccountRepr, ProtocolUpgradeError> {
-        let account_key = Key::Account(account_hash);
-        match self.tracking_copy.read(&account_key) {
+    /// Sets system purse of an account to read only, if necessary.
+    fn upsert_account_purse_read_only(&mut self, key: Key, account: Account) -> URefAddr {
+        let main_purse = account.main_purse();
+        let main_purse_addr = main_purse.addr();
+        if main_purse.is_addable() || main_purse.is_writeable() {
+            let account_hash = PublicKey::System.to_account_hash();
+            let read_only_purse = main_purse.into_read();
+            let updated_account = Account::new(
+                account_hash,
+                account.named_keys().clone(),
+                read_only_purse,
+                account.associated_keys().clone(),
+                account.action_thresholds().clone(),
+            );
+            self.tracking_copy
+                .write(key, StoredValue::Account(updated_account));
+        }
+        main_purse_addr
+    }
+
+    /// Sets system purse of an entity to read only, if necessary.
+    fn upsert_entity_purse_read_only(&mut self, key: Key, entity: AddressableEntity) -> URefAddr {
+        let main_purse = entity.main_purse();
+        let main_purse_addr = main_purse.addr();
+        if main_purse.is_addable() || main_purse.is_writeable() {
+            let read_only_purse = main_purse.into_read();
+            let updated_entity = AddressableEntity::new(
+                entity.package_hash(),
+                entity.byte_code_hash(),
+                entity.protocol_version(),
+                read_only_purse,
+                entity.associated_keys().clone(),
+                entity.action_thresholds().clone(),
+                entity.entity_kind(),
+            );
+            self.tracking_copy
+                .write(key, StoredValue::AddressableEntity(updated_entity));
+        }
+
+        main_purse_addr
+    }
+
+    /// Returns account representation if available, or error.
+    fn get_account_repr(&mut self, key: Key) -> Result<AccountRepr, ProtocolUpgradeError> {
+        match self.tracking_copy.read(&key) {
             Ok(Some(StoredValue::Account(account))) => Ok(AccountRepr::Account(account)),
             Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<Key>() {
-                Ok(Key::AddressableEntity(entity_addr)) => Ok(AccountRepr::EntityAddr(entity_addr)),
+                Ok(Key::AddressableEntity(entity_addr)) => {
+                    let entity_key = Key::AddressableEntity(entity_addr);
+                    if let Some(StoredValue::AddressableEntity(entity)) =
+                        self.tracking_copy.read(&entity_key)?
+                    {
+                        Ok(AccountRepr::Entity(entity))
+                    } else {
+                        Err(ProtocolUpgradeError::UnexpectedStoredValueVariant)
+                    }
+                }
                 Ok(_) => Err(ProtocolUpgradeError::UnexpectedStoredValueVariant),
                 Err(cve) => Err(ProtocolUpgradeError::CLValue(cve.to_string())),
             },
+            Ok(Some(StoredValue::AddressableEntity(entity))) => Ok(AccountRepr::Entity(entity)),
             Ok(Some(_)) => Err(ProtocolUpgradeError::UnexpectedStoredValueVariant),
-            Ok(None) => Err(ProtocolUpgradeError::MissingStoredValue(
-                "account not found".to_string(),
-            )),
+            Ok(None) => Ok(AccountRepr::None), // not found is not necessarily an error
             Err(tce) => Err(ProtocolUpgradeError::TrackingCopy(tce)),
         }
     }
@@ -1836,7 +1876,7 @@ where
 }
 
 enum AccountRepr {
+    None,
     Account(Account),
-    #[allow(unused)]
-    EntityAddr(EntityAddr),
+    Entity(AddressableEntity),
 }
