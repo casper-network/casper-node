@@ -11,7 +11,7 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{NodeId},
+    types::NodeId,
 };
 
 impl FetchItem for Transaction {

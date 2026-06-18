@@ -159,6 +159,7 @@ use crate::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
         InvalidProposalError, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
+        TransactionProvenance,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -179,7 +180,6 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
     UpgradeWatcherRequest,
 };
-use crate::types::TransactionProvenance;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));

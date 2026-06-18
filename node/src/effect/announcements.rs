@@ -29,10 +29,9 @@ use crate::{
     },
     effect::Responder,
     failpoints::FailpointActivation,
-    types::{FinalizedBlock, MetaBlock, NodeId},
+    types::{FinalizedBlock, MetaBlock, NodeId, TransactionProvenance},
     utils::Source,
 };
-use crate::types::TransactionProvenance;
 
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///

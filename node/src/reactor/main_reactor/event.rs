@@ -45,7 +45,7 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        transaction::ProposedTransaction, GossipedTransaction, BlockExecutionResultsOrChunk,
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, GossipedTransaction,
         LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };

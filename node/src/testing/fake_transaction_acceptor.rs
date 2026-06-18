@@ -20,11 +20,10 @@ use crate::{
         announcements::TransactionAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
-    types::MetaTransaction,
+    types::{MetaTransaction, TransactionProvenance},
     utils::Source,
     NodeRng,
 };
-use crate::types::TransactionProvenance;
 
 const COMPONENT_NAME: &str = "fake_transaction_acceptor";
 
@@ -70,10 +69,8 @@ impl FakeTransactionAcceptor {
         )
         .unwrap();
         let provenance = match source {
-            Source::PeerGossiped(_)  | Source::Peer(_) => {
-                TransactionProvenance::Gossiped
-            }
-            Source::Client | Source::SpeculativeExec | Source::Ourself=> {
+            Source::PeerGossiped(_) | Source::Peer(_) => TransactionProvenance::Gossiped,
+            Source::Client | Source::SpeculativeExec | Source::Ourself => {
                 TransactionProvenance::Client
             }
         };

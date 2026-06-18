@@ -36,10 +36,10 @@ use crate::{
     NodeRng,
 };
 
+use crate::types::TransactionProvenance;
 pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
-use crate::types::TransactionProvenance;
 
 const COMPONENT_NAME: &str = "transaction_acceptor";
 

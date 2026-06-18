@@ -8,8 +8,10 @@ use casper_types::{
 };
 
 use super::{Error, Source};
-use crate::{effect::Responder, types::MetaTransaction};
-use crate::types::TransactionProvenance;
+use crate::{
+    effect::Responder,
+    types::{MetaTransaction, TransactionProvenance},
+};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]

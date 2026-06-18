@@ -40,11 +40,10 @@ use crate::{
         Config, MainReactor, ReactorState,
     },
     testing::{self, filter_reactor::FilterReactor, network::TestingNetwork},
-    types::NodeId,
+    types::{NodeId, TransactionProvenance},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
-use crate::types::TransactionProvenance;
 
 pub(crate) struct NodeContext {
     pub id: NodeId,

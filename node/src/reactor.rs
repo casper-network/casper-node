@@ -88,7 +88,7 @@ use crate::{
     failpoints::FailpointActivation,
     types::{
         transaction::ProposedTransaction, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy,
-        NodeId, SyncLeap, TrieOrChunk,
+        NodeId, SyncLeap, TransactionProvenance, TrieOrChunk,
     },
     unregister_metric,
     utils::{self, SharedFlag, Source, WeightedRoundRobin},
@@ -96,7 +96,6 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 pub(crate) use queue_kind::QueueKind;
-use crate::types::TransactionProvenance;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.

@@ -77,7 +77,7 @@ impl ItemFetcher<ProposedTransaction> for Fetcher<ProposedTransaction> {
                         .await;
                 }
             }
-                .boxed(),
+            .boxed(),
         )
     }
 

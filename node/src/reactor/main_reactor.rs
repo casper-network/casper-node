@@ -81,8 +81,8 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        GossipedTransaction, ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling,
-        TrieOrChunk, ValidatorMatrix,
+        ForwardMetaBlock, GossipedTransaction, MetaBlock, MetaBlockState, SyncHandling,
+        TransactionProvenance, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -91,7 +91,6 @@ pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
-use crate::types::TransactionProvenance;
 
 /// Main node reactor.
 ///

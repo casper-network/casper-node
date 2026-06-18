@@ -41,10 +41,10 @@ use crate::{
     testing::{filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor},
     types::{
         transaction::transaction_v1_builder::TransactionV1Builder, ExitCode, NodeId, SyncHandling,
+        TransactionProvenance,
     },
     utils::Source,
 };
-use crate::types::TransactionProvenance;
 
 #[tokio::test]
 async fn run_network() {

@@ -4,7 +4,7 @@ mod block_fetcher;
 mod block_header_fetcher;
 mod finality_signature_fetcher;
 mod legacy_deploy_fetcher;
+mod proposed_transaction;
 mod sync_leap_fetcher;
 mod transaction_fetcher;
 mod trie_or_chunk_fetcher;
-mod proposed_transaction;

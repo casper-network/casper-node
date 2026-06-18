@@ -49,11 +49,10 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::{GossipedTransaction, NodeId},
+    types::{GossipedTransaction, NodeId, TransactionProvenance},
     utils::WithDir,
     NodeRng,
 };
-use crate::types::TransactionProvenance;
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);

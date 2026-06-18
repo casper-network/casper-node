@@ -137,12 +137,11 @@ pub(crate) enum TransactionProvenance {
     /// This transaction flavor is normal gossiping
     Gossiped,
     /// This transaction is part of a block proposal
-    Proposed
+    Proposed,
 }
 
 impl TransactionProvenance {
     pub(crate) fn is_proposed(&self) -> bool {
         matches!(self, Self::Proposed)
     }
-    
 }
