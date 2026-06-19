@@ -75,7 +75,7 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest-big
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     needs:
       - build_contracts
