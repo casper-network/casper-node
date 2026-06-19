@@ -70,6 +70,11 @@ build-test-artifacts: resources/local/chainspec.toml build-contracts-rs
 test-rs:
 	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
+.PHONY: test-rs-ci
+test-rs-ci:
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture --skip reactor::main_reactor::tests::rewards
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture --test-threads=1 reactor::main_reactor::tests::rewards
+
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
 	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
@@ -78,7 +83,7 @@ test-rs-no-default-features:
 test: build-test-artifacts test-rs-no-default-features test-rs
 
 .PHONY: test-ci
-test-ci: test-rs-no-default-features test-rs
+test-ci: test-rs-no-default-features test-rs-ci
 
 .PHONY: test-contracts-rs
 test-contracts-rs:

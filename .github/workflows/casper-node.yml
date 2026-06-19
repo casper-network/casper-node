@@ -116,7 +116,7 @@ jobs:
         run: tar -xzf smart-contracts.tar.gz
 
       - name: test
-        run: make test-rs CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+        run: make test-rs-ci CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
 
   test_no_default_features:
     name: test-no-default-features
