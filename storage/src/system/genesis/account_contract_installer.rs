@@ -585,10 +585,12 @@ where
         for account in accounts {
             let account_hash = account.account_hash();
             let main_purse = match account {
-                GenesisAccount::System
-                    if self.config.administrative_accounts().next().is_some() =>
-                {
-                    payment_purse_uref
+                GenesisAccount::System => {
+                    if self.config.administrative_accounts().next().is_some() {
+                        payment_purse_uref
+                    } else {
+                        self.create_purse(account.balance().value())?.into_read()
+                    }
                 }
                 _ => self.create_purse(account.balance().value())?,
             };

@@ -370,7 +370,9 @@ impl CommitProvider for ScratchGlobalState {
         for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
-                (_, TransformKindV2::Identity) => {
+                (_, TransformKindV2::Identity)
+                | (_, TransformKindV2::Ret(_))
+                | (_, TransformKindV2::EntryPointCalled(_, _)) => {
                     // effectively a noop.
                     continue;
                 }

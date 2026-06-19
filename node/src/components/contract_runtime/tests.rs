@@ -539,6 +539,18 @@ async fn should_correctly_manage_entity_version_calls() {
         .contract_runtime
         .set_execution_pre_state(initial_pre_state);
 
+    // Prepare to create a block which will take a while to execute, i.e. loaded with many deploys
+    // transferring from node-1's main account to new random public keys.
+    let proposer_secret_key = SecretKey::from_file(
+        RESOURCES_PATH
+            .join("local")
+            .join("secret_keys")
+            .join("node-2.pem"),
+    )
+    .unwrap();
+
+    let proposer = PublicKey::from(&proposer_secret_key);
+
     // Create the genesis immediate switch block.
     let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
@@ -547,7 +559,7 @@ async fn should_correctly_manage_entity_version_calls() {
             Timestamp::now(),
             EraId::new(0),
             0,
-            PublicKey::System,
+            proposer.clone(),
         ),
         vec![],
     );
@@ -567,7 +579,7 @@ async fn should_correctly_manage_entity_version_calls() {
             Timestamp::now(),
             EraId::new(1),
             1,
-            PublicKey::System,
+            proposer.clone(),
         ),
         vec![],
     );
@@ -621,7 +633,7 @@ async fn should_correctly_manage_entity_version_calls() {
             Timestamp::now(),
             EraId::new(1),
             2,
-            PublicKey::System,
+            proposer.clone(),
         ),
         vec![installer_transaction],
     );
@@ -701,7 +713,7 @@ async fn should_correctly_manage_entity_version_calls() {
             Timestamp::now(),
             EraId::new(1),
             3,
-            PublicKey::System,
+            proposer.clone(),
         ),
         vec![upgrader_transaction],
     );
@@ -823,7 +835,7 @@ async fn should_correctly_manage_entity_version_calls() {
             Timestamp::now(),
             EraId::new(1),
             4,
-            PublicKey::System,
+            proposer.clone(),
         ),
         txns.clone(),
     );

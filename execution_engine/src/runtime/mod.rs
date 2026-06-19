@@ -50,6 +50,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions, NamedKeys, ProtocolVersionMajor,
     },
+    execution::RetValue,
     system::{
         self,
         auction::{self, DelegatorKind, EraInfo, MINIMUM_DELEGATION_RATE_KEY},
@@ -59,12 +60,12 @@ use casper_types::{
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
-    EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
-    HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
-    PackageStatus, Phase, PublicKey, RewardsHandling, RuntimeArgs, RuntimeFootprint, StoredValue,
-    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    U512,
+    ByteCodeKind, CLType, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm,
+    EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess,
+    Group, Groups, HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package,
+    PackageHash, PackageStatus, Phase, PublicKey, RewardsHandling, RuntimeArgs, RuntimeFootprint,
+    StoredValue, Transfer, TransferResult, TransferV2, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1436,6 +1437,11 @@ where
             AccessRights::WRITE,
         )?);
 
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            None,
+            DEFAULT_ENTRY_POINT_NAME.to_string(),
+        );
         let result = instance.invoke_export(DEFAULT_ENTRY_POINT_NAME, &[], self);
 
         let error = match result {
@@ -1445,6 +1451,10 @@ where
             // returned the unit type `()` as per Rust functions which don't specify a
             // return value.
             Ok(_) => {
+                self.context
+                    .state()
+                    .borrow_mut()
+                    .ret(self.context.get_context_key(), RetValue::Unit);
                 return Ok(self.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
@@ -1458,9 +1468,18 @@ where
             // in the Runtime result field.
             let downcasted_error = host_error.downcast_ref::<ExecError>();
             return match downcasted_error {
-                Some(ExecError::Ret(ref _ret_urefs)) => self
-                    .take_host_buffer()
-                    .ok_or(ExecError::ExpectedReturnValue),
+                Some(ExecError::Ret(ref _ret_urefs)) => {
+                    let host_buffer = self.take_host_buffer();
+                    let ret_val = match &host_buffer {
+                        Some(cl) => RetValue::CLValue(cl.clone()),
+                        None => RetValue::Unit,
+                    };
+                    self.context
+                        .state()
+                        .borrow_mut()
+                        .ret(self.context.get_context_key(), ret_val);
+                    host_buffer.ok_or(ExecError::ExpectedReturnValue)
+                }
                 Some(error) => Err(error.clone()),
                 None => Err(ExecError::Interpreter(host_error.to_string())),
             };
@@ -2042,35 +2061,73 @@ where
             stack
         };
 
+        self.context.state().borrow_mut().entry_point_called(
+            self.context.get_context_key(),
+            Some(entity_addr.value()),
+            entry_point_name.to_string(),
+        );
+
         if let EntityKind::System(system_contract_type) = footprint.entity_kind() {
             let entry_point_name = entry_point.name();
 
             match system_contract_type {
                 SystemEntityType::Mint => {
-                    return self.call_host_mint(
-                        entry_point_name,
-                        &runtime_args,
-                        access_rights,
-                        stack,
-                    );
+                    let result =
+                        self.call_host_mint(entry_point_name, &runtime_args, access_rights, stack);
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
                 SystemEntityType::HandlePayment => {
-                    return self.call_host_handle_payment(
+                    let result = self.call_host_handle_payment(
                         entry_point_name,
                         &runtime_args,
                         access_rights,
                         stack,
                     );
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
                 SystemEntityType::Auction => {
-                    return self.call_host_auction(
+                    let result = self.call_host_auction(
                         entry_point_name,
                         &runtime_args,
                         access_rights,
                         stack,
                     );
+                    if let Ok(ref cl_value) = result {
+                        let ret_value = if cl_value.cl_type() == &CLType::Unit {
+                            RetValue::Unit
+                        } else {
+                            RetValue::CLValue(cl_value.clone())
+                        };
+                        self.context
+                            .state()
+                            .borrow_mut()
+                            .ret(context_entity_key, ret_value);
+                    }
+                    return result;
                 }
-                // Not callable
+                // Not callable via this path
                 SystemEntityType::StandardPayment => {}
             }
         }
@@ -2149,6 +2206,10 @@ where
                 }
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
+                self.context
+                    .state()
+                    .borrow_mut()
+                    .ret(runtime.context.get_context_key(), RetValue::Unit);
                 Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
             }
             Err(error) => {
@@ -2182,9 +2243,16 @@ where
                             }
                             // Stored contracts are expected to always call a `ret` function,
                             // otherwise it's an error.
-                            runtime
-                                .take_host_buffer()
-                                .ok_or(ExecError::ExpectedReturnValue)
+                            let host_buffer = runtime.take_host_buffer();
+                            let ret_val = match &host_buffer {
+                                Some(cl) => RetValue::CLValue(cl.clone()),
+                                None => RetValue::Unit,
+                            };
+                            self.context
+                                .state()
+                                .borrow_mut()
+                                .ret(runtime.context.get_context_key(), ret_val);
+                            host_buffer.ok_or(ExecError::ExpectedReturnValue)
                         }
                         Some(error) => Err(error.clone()),
                         None => Err(ExecError::Interpreter(host_error.to_string())),

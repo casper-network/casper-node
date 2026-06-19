@@ -128,7 +128,7 @@ impl MinHostWrapper {
     }
 
     pub fn ret(&self) {
-        casper::ret(ReturnFlags::empty(), None);
+        casper::ret(ReturnFlags::empty(), Some(&[1, 2, 3]));
     }
 
     pub fn transfer(&self) {

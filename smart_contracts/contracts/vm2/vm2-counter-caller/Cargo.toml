@@ -1,0 +1,13 @@
+[package]
+name = "vm2-counter-caller"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+casper-contract-sdk = { path = "../../../sdk" }
+vm2-counter = { path = "../vm2-counter" }
+borsh = { version = "1.5", features = ["derive"] }

@@ -36,16 +36,21 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
+    bytesrepr,
+    execution::RetValue,
+    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
+    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
+    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue,
+    TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
 use system::{MintArgs, MintTransferArgs};
 use tracing::{error, warn};
 
+// If calculating the wasm entry point for session bytecode ever changes we need
+// to revisit the code that produces EntyPointCalled journal entries for session
+// code (both for VM1 and VM2)
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
@@ -529,17 +534,25 @@ impl ExecutorV2 {
 
         let vm = Arc::clone(&self.compiled_wasm_engine);
 
-        let mut initial_tracking_copy = tracking_copy.fork2();
-
         // Derive callee key from the execution target.
-        let callee_key = match &execution_kind {
+        let (callee_key, entry_point_name, contract_addr) = match &execution_kind {
             ExecutionKind::Stored {
                 address: smart_contract_addr,
+                entry_point,
                 ..
-            } => Key::SmartContract(*smart_contract_addr),
-            ExecutionKind::SessionBytes(_wasm_bytes) => Key::Account(initiator),
+            } => {
+                let key = Key::Hash(*smart_contract_addr);
+                (key, entry_point.clone(), Some(*smart_contract_addr))
+            }
+            ExecutionKind::SessionBytes(_wasm_bytes) => (
+                Key::Account(initiator),
+                DEFAULT_WASM_ENTRY_POINT.to_string(),
+                None,
+            ),
         };
+        tracking_copy.entry_point_called(caller_key, contract_addr, entry_point_name);
 
+        let mut initial_tracking_copy = tracking_copy.fork2();
         let context = Context {
             initiator,
             config: self.config.wasm_config,
@@ -575,19 +588,22 @@ impl ExecutorV2 {
         let context = instance.teardown();
 
         let Context {
-            tracking_copy: final_tracking_copy,
+            tracking_copy: mut final_tracking_copy,
             ..
         } = context;
 
         match vm_result {
-            Ok(()) => Ok(ExecuteResult {
-                host_error: None,
-                output: None,
-                gas_usage,
-                effects: final_tracking_copy.effects(),
-                cache: final_tracking_copy.cache(),
-                messages: final_tracking_copy.messages(),
-            }),
+            Ok(()) => {
+                final_tracking_copy.ret(callee_key, RetValue::Unit);
+                Ok(ExecuteResult {
+                    host_error: None,
+                    output: None,
+                    gas_usage,
+                    effects: final_tracking_copy.effects(),
+                    cache: final_tracking_copy.cache(),
+                    messages: final_tracking_copy.messages(),
+                })
+            }
             Err(VMError::Return { flags, data }) => {
                 let host_error = if flags.contains(ReturnFlags::REVERT) {
                     // The contract has reverted.

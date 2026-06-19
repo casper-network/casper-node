@@ -3704,6 +3704,52 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Registers a value return from the contract",
+          "type": "object",
+          "required": [
+            "Ret"
+          ],
+          "properties": {
+            "Ret": {
+              "$ref": "#/definitions/RetValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Registers an entry point called. If the hash addr is none that means that the call was made to session bytes.",
+          "type": "object",
+          "required": [
+            "EntryPointCalled"
+          ],
+          "properties": {
+            "EntryPointCalled": {
+              "type": "array",
+              "items": [
+                {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  },
+                  "maxItems": 32,
+                  "minItems": 32
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -5018,6 +5064,44 @@
           "type": "string"
         }
       }
+    },
+    "RetValue": {
+      "description": "Type disambiguating between the formatting of the returned data.",
+      "oneOf": [
+        {
+          "description": "The returned data is CLValue.",
+          "type": "object",
+          "required": [
+            "CLValue"
+          ],
+          "properties": {
+            "CLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The returned data is serialized bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "There was no returned data.",
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        }
+      ]
     },
     "Message": {
       "description": "Message that was emitted by an addressable entity during execution.",
