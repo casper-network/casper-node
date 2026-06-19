@@ -63,13 +63,16 @@ build-contracts: build-contracts-rs
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<
 
+.PHONY: build-test-artifacts
+build-test-artifacts: resources/local/chainspec.toml build-contracts-rs
+
 .PHONY: test-rs
-test-rs: resources/local/chainspec.toml build-contracts-rs
+test-rs:
 	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
 # Reward network scenarios are long-running multi-node simulations; keep them isolated on CI.
 .PHONY: test-rs-ci
-test-rs-ci: resources/local/chainspec.toml build-contracts-rs
+test-rs-ci:
 	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture --skip reactor::main_reactor::tests::rewards
 	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -p casper-node --lib reactor::main_reactor::tests::rewards -- --nocapture --test-threads=1
 
@@ -78,13 +81,13 @@ test-rs-no-default-features:
 	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test
-test: test-rs-no-default-features test-rs
+test: build-test-artifacts test-rs-no-default-features test-rs
 
 .PHONY: test-ci
 test-ci: test-rs-no-default-features test-rs-ci
 
 .PHONY: test-contracts-rs
-test-contracts-rs: resources/local/chainspec.toml build-contracts-rs
+test-contracts-rs:
 	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-timings
@@ -92,7 +95,7 @@ test-contracts-timings: resources/local/chainspec.toml build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs
+test-contracts: build-test-artifacts test-contracts-rs
 
 .PHONY: check-no-default-features
 check-no-default-features:
