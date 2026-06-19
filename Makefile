@@ -20,16 +20,18 @@ ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]* -mindepth 1 -m
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
+WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-feature=-bulk-memory,-bulk-memory-opt"
 CARGO_TEST_PROFILE_ENV ?=
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 
 build-contract-rs/%:
-	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	cd smart_contracts/contracts && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 build-vm2-contract-rs/%:
-	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) run -p cargo-casper --bin cargo-casper -- build-schema --package $*
-	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	CMAKE_POLICY_VERSION_MINIMUM=3.5 $(CARGO) build -p cargo-casper --bin cargo-casper
+	RUSTFLAGS=$(RUSTC_FLAGS) $(CURDIR)/target/debug/cargo-casper build-schema --package $*
+	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 .PHONY: build-vm2-contracts-rs
 build-vm2-contracts-rs: $(patsubst %, build-vm2-contract-rs/%, $(VM2_CONTRACTS))
@@ -191,6 +193,7 @@ setup-rs:
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
+	$(RUSTUP) component add rust-src --toolchain $(PINNED_NIGHTLY)
 	$(CARGO_AUDIT) --version 2>/dev/null | grep -q ' $(CARGO_AUDIT_VERSION)$$' || \
 		$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
 
