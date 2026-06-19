@@ -116,7 +116,41 @@ jobs:
         run: tar -xzf smart-contracts.tar.gz
 
       - name: test
-        run: make -j2 test-ci CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+        run: make test-rs CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+
+  test_no_default_features:
+    name: test-no-default-features
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: test-no-default-features
+        run: make test-rs-no-default-features CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
 
   build_contracts:
     name: build-contracts
@@ -213,6 +247,7 @@ jobs:
       - checks
       - build_contracts
       - test
+      - test_no_default_features
       - test_contracts
     if: ${{ always() }}
     steps:
@@ -221,4 +256,5 @@ jobs:
           test "${{ needs.checks.result }}" = "success"
           test "${{ needs.build_contracts.result }}" = "success"
           test "${{ needs.test.result }}" = "success"
+          test "${{ needs.test_no_default_features.result }}" = "success"
           test "${{ needs.test_contracts.result }}" = "success"
