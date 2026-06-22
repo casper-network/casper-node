@@ -10,7 +10,7 @@ use tracing::{error, info, warn};
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
     ProtocolConfig, TimeDiff, TransactionConfig, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
-    MINT_LANE_ID,
+    MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
 };
 
 use crate::components::network;
@@ -37,6 +37,26 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             < chainspec.core_config.minimum_block_time * chainspec.core_config.minimum_era_height
     {
         warn!("era duration is less than minimum era height * block time!");
+    }
+
+    if chainspec.evm_config.wei_per_mote < MINIMUM_WEI_PER_MOTE {
+        error!(
+            wei_per_mote = chainspec.evm_config.wei_per_mote,
+            minimum = MINIMUM_WEI_PER_MOTE,
+            "EVM wei-per-mote ratio must be at least the default mote/wei scale",
+        );
+        return false;
+    }
+
+    // EVM fee accounting uses u128/U512, but the current revm BlockEnv stores
+    // the block base fee as u64. Reject chainspecs this executor cannot run.
+    if u64::try_from(chainspec.evm_config.base_fee_wei()).is_err() {
+        error!(
+            base_fee = chainspec.evm_config.base_fee,
+            wei_per_mote = chainspec.evm_config.wei_per_mote,
+            "EVM base fee converted to wei exceeds the current revm BlockEnv base fee limit",
+        );
+        return false;
     }
 
     if chainspec.core_config.consensus_protocol == ConsensusProtocolName::Highway {
@@ -788,6 +808,22 @@ mod tests {
         fail_validation_with_lane_id(MINT_LANE_ID);
         fail_validation_with_lane_id(AUCTION_LANE_ID);
         fail_validation_with_lane_id(INSTALL_UPGRADE_LANE_ID);
+    }
+
+    #[test]
+    fn should_fail_when_wei_per_mote_is_too_low() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        chainspec.evm_config.wei_per_mote = MINIMUM_WEI_PER_MOTE - 1;
+
+        assert!(!validate_chainspec(&chainspec));
+    }
+
+    #[test]
+    fn should_fail_when_scaled_evm_base_fee_exceeds_revm_limit() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        chainspec.evm_config.base_fee = u64::MAX;
+
+        assert!(!validate_chainspec(&chainspec));
     }
 
     fn fail_validation_with_lane_id(lane_id: u8) {

@@ -27,7 +27,7 @@ use casper_types::{
     evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry, Digest, EvmAddr, EvmConfig,
     EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
     ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    URef, WasmConfig, U256 as CasperU256, U512,
+    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
 
@@ -93,6 +93,7 @@ fn executor(spec: EvmSpec) -> EvmExecutor {
         spec,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     })
 }
 
@@ -1099,6 +1100,7 @@ fn signed_transactions_require_configured_chain_id() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     });
     let transaction = legacy_transaction(Some(7));
     let request = ExecuteRequest {

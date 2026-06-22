@@ -79,7 +79,7 @@ use crate::{
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(30);
 const EVM_TEST_CHAIN_ID: u64 = 1_129_533_695;
-const EVM_TEST_GAS_PRICE: u128 = 1_000_000;
+const EVM_TEST_GAS_PRICE: u128 = 1_000_000_000_000_000;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]

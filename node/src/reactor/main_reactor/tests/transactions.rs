@@ -37,7 +37,7 @@ use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     evm,
     execution::ExecutionResultV1,
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction,
+    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, DEFAULT_WEI_PER_MOTE,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -824,7 +824,7 @@ pub fn exec_result_is_success(exec_result: &ExecutionResult) -> bool {
 }
 
 const EVM_TEST_GAS_LIMIT: u64 = 500_000;
-const EVM_TEST_GAS_PRICE: u128 = 1;
+const EVM_TEST_GAS_PRICE: u128 = DEFAULT_WEI_PER_MOTE as u128;
 const EVM_INITIAL_BALANCE: u64 = 10_000_000_000_000;
 const EVM_LOG_TOPIC: evm::Topic = evm::Topic::new([0xAB; evm::HASH_LENGTH]);
 
@@ -1126,6 +1126,7 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)
@@ -1164,10 +1165,12 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
     assert_eq!(
         execution_result.receipt.effective_gas_price,
-        evm_transaction.effective_gas_price(evm_config.base_fee)
+        evm_transaction.effective_gas_price(evm_config.base_fee_wei())
     );
     assert!(execution_result.receipt.gas_used > 0);
-    let max_fee_amount = U512::from(evm_transaction.gas_limit()) * U512::from(EVM_TEST_GAS_PRICE);
+    let max_fee_amount = evm_transaction
+        .max_fee_amount(&evm_config)
+        .expect("max EVM fee should fit");
     assert_eq!(execution_result.cost, max_fee_amount);
     assert_eq!(execution_result.refund, U512::zero());
     assert!(execution_result.receipt.contract_address.is_some());
@@ -1202,6 +1205,7 @@ async fn should_apply_casper_refund_handling_to_evm_transaction() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)
@@ -1232,9 +1236,12 @@ async fn should_apply_casper_refund_handling_to_evm_transaction() {
         panic!("expected EVM execution result");
     };
 
-    let max_fee_amount = U512::from(evm_transaction.gas_limit()) * U512::from(EVM_TEST_GAS_PRICE);
-    let consumed_fee_amount =
-        U512::from(execution_result.receipt.gas_used) * U512::from(EVM_TEST_GAS_PRICE);
+    let max_fee_amount = evm_transaction
+        .max_fee_amount(&evm_config)
+        .expect("max EVM fee should fit");
+    let consumed_fee_amount = evm_transaction
+        .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        .expect("consumed EVM fee should fit");
 
     assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
     assert_eq!(execution_result.cost, max_fee_amount);
@@ -1255,6 +1262,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)
@@ -1321,6 +1329,7 @@ async fn should_not_seed_evm_accounts_at_genesis() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config().with_evm_config(evm_config);
     let alice_secret_key = Arc::new(
@@ -1371,6 +1380,7 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)
@@ -1443,6 +1453,7 @@ async fn should_reject_native_transfer_to_evm_contract_address() {
         spec: EvmSpec::Prague,
         block_gas_limit: 30_000_000,
         base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)

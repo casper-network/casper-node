@@ -86,6 +86,22 @@ fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
     }
 }
 
+fn execution_min_cost(
+    is_evm: bool,
+    gas_limit: Gas,
+    cost: U512,
+    baseline_motes_amount: U512,
+) -> U512 {
+    let min_cost = gas_limit.value().min(baseline_motes_amount);
+    // EVM cost is already converted to motes. Do not let the raw EVM gas
+    // limit raise the minimum above the maximum converted fee.
+    if is_evm {
+        min_cost.min(cost)
+    } else {
+        min_cost
+    }
+}
+
 #[derive(Clone, Debug)]
 enum RuntimeOrigin {
     Initiator {
@@ -668,7 +684,9 @@ pub fn execute_finalized_block(
                 }
             };
 
-            // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price).
+            // NOTE: this is the actual adjusted cost that we charge for.
+            // Native transactions use gas limit * Casper gas price. EVM
+            // transactions convert gas limit * EVM gas price from wei to motes.
             // For accepted EIP-1559 transactions, config compliance has already required
             // `max_priority_fee_per_gas == 0`, so the effective EVM gas price is the
             // configured base fee capped by `max_fee_per_gas`; Casper does not charge an
@@ -701,7 +719,7 @@ pub fn execute_finalized_block(
             };
 
             // this is the minimum we will charge, even if 0 is consumed
-            let min_cost = gas_limit.value().min(baseline_motes_amount);
+            let min_cost = execution_min_cost(is_evm, gas_limit, cost, baseline_motes_amount);
             ExecutionArtifactBuilder::new(
                 &stored_transaction,
                 gas_limit,
@@ -778,7 +796,8 @@ pub fn execute_finalized_block(
                 if let Some(evm_transaction) = evm_transaction {
                     artifact_builder.with_zero_cost().with_evm_receipt(
                         evm_precondition_receipt(
-                            evm_transaction.effective_gas_price(chainspec.evm_config.base_fee),
+                            evm_transaction
+                                .effective_gas_price(chainspec.evm_config.base_fee_wei()),
                         ),
                         U512::zero(),
                         Effects::new(),
@@ -1083,13 +1102,14 @@ pub fn execute_finalized_block(
                 }
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
+                    let base_fee_wei = chainspec.evm_config.base_fee_wei();
                     let block_context = EvmBlockContext {
                         number: block_height,
                         timestamp: block_time.value() / 1000,
                         beneficiary: EvmAddress::from_public_key(&proposer)
                             .unwrap_or(EvmAddress::ZERO),
                         gas_limit: Some(chainspec.evm_config.block_gas_limit),
-                        base_fee: Some(chainspec.evm_config.base_fee),
+                        base_fee: Some(base_fee_wei),
                     };
                     let request = EvmExecuteRequest {
                         block: block_context,
@@ -1122,8 +1142,7 @@ pub fn execute_finalized_block(
                     let execution_effects = tracking_copy.effects();
                     state_root_hash =
                         scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
-                    let effective_gas_price =
-                        evm_transaction.effective_gas_price(chainspec.evm_config.base_fee);
+                    let effective_gas_price = evm_transaction.effective_gas_price(base_fee_wei);
                     let consumed = if matches!(outcome.status, EvmExecutionStatus::Success) {
                         evm_transaction
                             .fee_amount(outcome.gas_used, &chainspec.evm_config)
@@ -1237,7 +1256,7 @@ pub fn execute_finalized_block(
         if is_evm && !allow_execution {
             let effective_gas_price = evm_transaction
                 .expect("EVM transaction should exist")
-                .effective_gas_price(chainspec.evm_config.base_fee);
+                .effective_gas_price(chainspec.evm_config.base_fee_wei());
             artifact_builder.with_zero_cost().with_evm_receipt(
                 evm_precondition_receipt(effective_gas_price),
                 U512::zero(),
@@ -2059,12 +2078,13 @@ where
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
+    let base_fee_wei = chainspec.evm_config.base_fee_wei();
     let block_context = EvmBlockContext {
         number: block_header.height(),
         timestamp: block_time.millis() / 1000,
         beneficiary: EvmAddress::ZERO,
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
-        base_fee: Some(chainspec.evm_config.base_fee),
+        base_fee: Some(base_fee_wei),
     };
     let kind = if evm_transaction.is_unsigned_call() {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
@@ -2073,7 +2093,7 @@ where
             value: evm_transaction.value(),
             input: evm_transaction.input().to_vec(),
             gas_limit: evm_transaction.gas_limit(),
-            gas_price: u128::from(chainspec.evm_config.base_fee),
+            gas_price: base_fee_wei,
             nonce: evm_transaction.nonce(),
             validation: EvmCallValidation::UncheckedSimulation,
         })
@@ -2099,9 +2119,9 @@ where
     };
     let effects = tracking_copy.effects();
     let effective_gas_price = if evm_transaction.is_unsigned_call() {
-        u128::from(chainspec.evm_config.base_fee)
+        base_fee_wei
     } else {
-        evm_transaction.effective_gas_price(chainspec.evm_config.base_fee)
+        evm_transaction.effective_gas_price(base_fee_wei)
     };
     let receipt = outcome.to_receipt(effective_gas_price);
     let error = receipt.status.message().map(str::to_string);
@@ -2235,4 +2255,33 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_not_raise_evm_min_cost_above_converted_fee() {
+        let gas_limit = Gas::new(21_000);
+        let cost = U512::from(1);
+        let baseline_motes_amount = U512::from(1_000_000);
+
+        assert_eq!(
+            execution_min_cost(true, gas_limit, cost, baseline_motes_amount),
+            cost
+        );
+    }
+
+    #[test]
+    fn should_keep_native_min_cost_based_on_gas_limit() {
+        let gas_limit = Gas::new(21_000);
+        let cost = U512::from(1);
+        let baseline_motes_amount = U512::from(1_000_000);
+
+        assert_eq!(
+            execution_min_cost(false, gas_limit, cost, baseline_motes_amount),
+            U512::from(21_000)
+        );
+    }
 }

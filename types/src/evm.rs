@@ -28,7 +28,7 @@ pub use transaction::{
 // (`casper_types::EvmFoo`), not through `casper_types::evm::EvmFoo`.
 // They are re-exported here so the rest of `casper-types` can import them
 // without going through the crate root.
-pub use config::{EvmConfig, EvmSpec};
+pub use config::{EvmConfig, EvmSpec, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE};
 pub use evm_addr::EvmAddr;
 pub use transaction::{
     EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,

@@ -524,3 +524,6 @@ block_gas_limit = 30_000_000
 # cheap enough for testing but expensive enough to discourage fill-block
 # spam with low-value logs or memory-heavy execution.
 base_fee = 1_000_000
+# Number of wei represented by one mote. EVM gas prices are denominated in wei,
+# while Casper fee accounting is denominated in motes.
+wei_per_mote = 1_000_000_000

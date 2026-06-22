@@ -206,9 +206,9 @@ For client-submitted EVM transactions, the acceptor currently validates:
 5. The EVM chain ID must equal `[evm].chain_id`.
 6. The EVM gas limit must not exceed `[evm].block_gas_limit`.
 7. Legacy and [EIP-2930][eip-2930] gas price must be at least
-   `[evm].base_fee`.
+   `[evm].base_fee * [evm].wei_per_mote`.
 8. [EIP-1559][eip-1559] `max_fee_per_gas` must be at least
-   `[evm].base_fee`.
+   `[evm].base_fee * [evm].wei_per_mote`.
 9. [EIP-1559][eip-1559] `max_priority_fee_per_gas` must be zero because
    Casper does not currently prioritize transactions based on transaction gas
    parameters.
@@ -253,7 +253,8 @@ cost is derived directly from `Transaction`. For EVM:
 - the initiator is the EVM sender address, `transaction.from()`,
 - the transaction lane is currently the last configured Wasm lane,
 - the gas limit is the Ethereum transaction gas limit,
-- the maximum cost is `gas_limit * effective_gas_price`,
+- the maximum cost is
+  `ceil(gas_limit * effective_gas_price_wei / [evm].wei_per_mote)`,
 - payment is treated as standard-payment-like,
 - custom payment and refund-purse setup are skipped.
 
@@ -283,10 +284,11 @@ When execution proceeds:
    - block timestamp,
    - deterministic proposer-derived beneficiary,
    - `[evm].block_gas_limit`,
-   - `[evm].base_fee`.
+   - `[evm].base_fee * [evm].wei_per_mote`.
 5. Runtime calls `casper-executor-evm`.
 6. `revm` executes EVM account, nonce, code, storage, log, create, and value
-   transfer semantics.
+   transfer semantics. The `BASEFEE` opcode observes
+   `[evm].base_fee * [evm].wei_per_mote`, denominated in wei per EVM gas.
 7. Runtime commits EVM tracking-copy effects into scratch global state.
 8. `ExecutionArtifactBuilder` records the EVM receipt, EVM effects, and the
    consumed amount.
@@ -306,14 +308,16 @@ rather than silently emulating Ethereum's full gas escrow semantics.
 Runtime computes:
 
 ```text
-effective_gas_price = transaction.effective_gas_price([evm].base_fee)
-max_fee_amount = gas_limit * effective_gas_price
+base_fee_wei = [evm].base_fee * [evm].wei_per_mote
+effective_gas_price_wei = transaction.effective_gas_price(base_fee_wei)
+max_fee_amount_motes = ceil(gas_limit * effective_gas_price_wei / [evm].wei_per_mote)
 ```
 
-The current chainspec base fee is:
+The current chainspec base fee and conversion ratio are:
 
 ```text
 [evm].base_fee = 1_000_000 motes per EVM gas
+[evm].wei_per_mote = 1_000_000_000 wei per mote
 ```
 
 At the current `evm.block_gas_limit` of 30,000,000 gas, filling the EVM block
@@ -328,19 +332,22 @@ For legacy and [EIP-2930][eip-2930] transactions, the effective gas price is
 the signed gas price. For [EIP-1559][eip-1559] transactions, the acceptor
 requires `max_priority_fee_per_gas == 0` because Casper does not currently
 prioritize transactions based on transaction gas parameters. Accepted EIP-1559
-transactions therefore pay `[evm].base_fee`; `max_fee_per_gas` is only a
-sender cap and must be high enough to cover the base fee.
+transactions therefore pay `[evm].base_fee * [evm].wei_per_mote` in
+wei-denominated transaction fee accounting; `max_fee_per_gas` is only a sender
+cap and must be high enough to cover the scaled base fee.
 
 The maximum fee is held from the resolved EVM payer. After execution:
 
-- Successful execution consumes `gas_used * effective_gas_price`.
+- Successful execution consumes
+  `ceil(gas_used * effective_gas_price_wei / [evm].wei_per_mote)`.
 - Failed/reverted/halted execution consumes the full held amount.
 - The unconsumed portion is processed through Casper `RefundHandling`.
 - The final fee is processed through Casper `FeeHandling`.
 
 This keeps EVM transactions aligned with the same chain policy knobs used by
-Deploy and native Transaction::V1 payloads. The EVM gas price is converted to motes before
-calling the balance/fee/refund machinery.
+Deploy and native Transaction::V1 payloads. The EVM gas price is converted to
+motes after multiplying by gas used, before calling the balance/fee/refund
+machinery.
 
 In the shared accounting loop, EVM cost is already expressed as motes. Refund
 calculation therefore uses `cost_to_use()` with an effective runtime gas price
@@ -658,7 +665,7 @@ forge create --broadcast \
     --rpc-url http://127.0.0.1:11101/rpc \
     --private-key 0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8 \
     --legacy \
-    --gas-price 1000000 \
+    --gas-price 1000000000000000 \
     --gas-limit 3000000 \
     --nonce 0 \
     smart_contracts/evm_contracts/Counter.sol:Counter
@@ -668,8 +675,8 @@ The current validation uses `--legacy` because the minimum RPC surface does
 not yet include gas estimation or dynamic-fee helper methods, and Casper only
 accepts [EIP-1559][eip-1559] transactions when
 `max_priority_fee_per_gas == 0`. Passing an explicit legacy gas price equal to
-`[evm].base_fee` keeps the transaction shape simple and avoids underpriced
-transaction rejection.
+`[evm].base_fee * [evm].wei_per_mote` keeps the transaction shape simple and
+avoids underpriced transaction rejection.
 
 Expected output:
 
@@ -715,7 +722,7 @@ cast send "$COUNTER_ADDRESS" \
     --rpc-url http://127.0.0.1:11101/rpc \
     --private-key 0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8 \
     --legacy \
-    --gas-price 1000000 \
+    --gas-price 1000000000000000 \
     --gas-limit 100000 \
     --nonce 1
 ```
@@ -725,7 +732,7 @@ Expected receipt highlights:
 ```text
 status               1 (success)
 type                 0
-effectiveGasPrice    1000000
+effectiveGasPrice    1000000000000000
 gasUsed              <non-zero gas used, including the event LOG cost>
 to                   0x6c0704679CA22b83778Ef815607359cf6F5352B6
 transactionHash      0x042ff975ec4b8fa8012f486bb7bd930e69978782b8b3c107ca2a276a43d7f293
@@ -844,7 +851,7 @@ cast send "$AUTHORITY_ADDRESS" \
     --rpc-url "$RPC_URL" \
     --private-key "$USER_PRIVATE_KEY" \
     --auth "$SET_CODE_AUTH" \
-    --gas-price 1000000 \
+    --gas-price 1000000000000000 \
     --priority-gas-price 0 \
     --gas-limit 300000 \
     --nonce "$USER_NONCE" \
@@ -910,7 +917,7 @@ cast send "$AUTHORITY_ADDRESS" \
     --rpc-url "$RPC_URL" \
     --private-key "$USER_PRIVATE_KEY" \
     --legacy \
-    --gas-price 1000000 \
+    --gas-price 1000000000000000 \
     --gas-limit 100000 \
     --nonce "$USER_NONCE" \
     --json | tee /tmp/casper-eip7702-persisted-delegation.json
@@ -936,8 +943,8 @@ backing purse, not from `user-1`'s Casper account purse:
 casper-cli account balance devnet:user-1
 ```
 
-With `--gas-price 1000000`, every 1,000 gas consumed is 1 CSPR before refund
-policy is applied.
+With `--gas-price 1000000000000000`, every 1,000 gas consumed is 1 CSPR
+before refund policy is applied.
 
 ## Useful Checks
 
