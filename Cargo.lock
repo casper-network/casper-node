@@ -1081,6 +1081,7 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
+ "blake2 0.10.6",
  "casper-types",
  "criterion",
  "datasize",

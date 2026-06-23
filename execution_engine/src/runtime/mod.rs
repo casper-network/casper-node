@@ -29,7 +29,7 @@ use num_rational::Ratio;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
-    tracking_copy::TrackingCopyExt,
+    tracking_copy::{MessageEmissionError, TrackingCopyExt},
 };
 use casper_types::{
     account::{
@@ -2790,6 +2790,35 @@ where
         self.context
             .metered_write_gs_unsafe(Key::Hash(contract_package_hash.value()), contract_package)?;
 
+        let current_blocktime = self.context.get_block_info().block_time();
+        match self.context.emit_messages_for_new_installed_version(
+            current_blocktime,
+            Key::Hash(contract_package_hash.value()),
+            Key::Hash(contract_hash_addr),
+            Key::Hash(contract_wasm_hash),
+            insert_contract_result.protocol_version_major(),
+            insert_contract_result.contract_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
+        }
+
         // set return values to buffer
         {
             let hash_bytes = match contract_hash_addr.to_bytes() {
@@ -2915,6 +2944,35 @@ where
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
+
+        let current_blocktime = self.context.get_block_info().block_time();
+        match self.context.emit_messages_for_new_installed_version(
+            current_blocktime,
+            Key::Hash(package_hash.value()),
+            entity_key,
+            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
+            insert_entity_version_result.protocol_version_major(),
+            insert_entity_version_result.entity_version(),
+        ) {
+            Ok(_) => (),
+            Err(MessageEmissionError::CLValue(clvalue_error)) => {
+                return Err(ExecError::CLValue(clvalue_error))
+            }
+            Err(MessageEmissionError::TrackingCopy(error)) => {
+                return Err(ExecError::TrackingCopy(error))
+            }
+            Err(MessageEmissionError::TypeMismatch(type_mismatch)) => {
+                return Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Err(MessageEmissionError::BytesRepr(error)) => return Err(ExecError::BytesRepr(error)),
+            Err(MessageEmissionError::TopicNotRegistered(_)) => {
+                return Ok(Err(ApiError::MessageTopicNotRegistered))
+            }
+            Err(MessageEmissionError::TopicFull(_)) => return Ok(Err(ApiError::MessageTopicFull)),
+            Err(MessageEmissionError::MaxMessagesPerBlockExceeded) => {
+                return Ok(Err(ApiError::MaxMessagesPerBlockExceeded))
+            }
+        }
 
         // set return values to buffer
         {

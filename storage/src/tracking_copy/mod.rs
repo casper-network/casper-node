@@ -5,6 +5,7 @@ mod byte_size;
 mod error;
 mod ext;
 mod ext_entity;
+mod messages;
 mod meter;
 #[cfg(test)]
 mod tests;
@@ -26,19 +27,23 @@ use crate::{
         error::Error as GlobalStateError, state::StateReader,
         trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
     },
-    KeyPrefix,
+    system::protocol_upgrade::blake2b,
+    tracking_copy::messages::NewContractMessagesEmitter,
+    KeyPrefix, MESSAGING_CONTRACT_ADDR_TOPIC, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC,
+    MESSAGING_CONTRACT_VERSION_TOPIC, MESSAGING_PACKAGE_ADDR_TOPIC,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, ToBytes},
-    contract_messages::{Message, Messages},
+    contract_messages::{Message, MessageTopicSummary, Messages},
     contracts::NamedKeys,
     execution::{
         Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
     },
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest,
-    HashAddr, Key, KeyTag, StoredValue, StoredValueTypeMismatch, U512,
+    handle_stored_dictionary_value, BlockGlobalAddr, BlockTime, CLType, CLValue, CLValueError,
+    Digest, EntityAddr, HashAddr, Key, KeyTag, MessageLimits, PublicKey, StoredValue,
+    StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -46,6 +51,7 @@ pub use self::{
     error::Error as TrackingCopyError,
     ext::TrackingCopyExt,
     ext_entity::{FeesPurseHandling, TrackingCopyEntityExt},
+    messages::{MessageEmissionError, NewContractVersionInfo},
 };
 
 /// Result of a query on a `TrackingCopy`.
@@ -451,7 +457,7 @@ where
             cache: self.cache.clone(),
             effects: self.effects.clone(),
             max_query_depth: self.max_query_depth,
-            messages: self.messages.clone(),
+            messages: Vec::new(),
             enable_addressable_entity: self.enable_addressable_entity,
         }
     }
@@ -470,7 +476,9 @@ where
     ) {
         self.effects = effects;
         self.cache = cache;
-        self.messages = messages;
+        // Extend rather than replace: forks start with empty messages (see fork2), so the caller's
+        // pre-fork messages remain in self while the fork's new messages are appended here.
+        self.messages.extend(messages);
     }
 
     /// Returns a copy of the execution effects cached by this instance.
@@ -713,6 +721,52 @@ where
     /// Returns a copy of the messages cached by this instance.
     pub fn messages(&self) -> Messages {
         self.messages.clone()
+    }
+
+    /// Creates the four system messaging topics under the system account, if they don't already
+    /// exist. Idempotent: a topic already present is left unchanged.
+    pub fn add_system_message_topics(
+        &mut self,
+        block_time: BlockTime,
+    ) -> Result<(), TrackingCopyError> {
+        self.add_system_message_topic(block_time, MESSAGING_PACKAGE_ADDR_TOPIC)?;
+        self.add_system_message_topic(block_time, MESSAGING_CONTRACT_ADDR_TOPIC)?;
+        self.add_system_message_topic(block_time, MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC)?;
+        self.add_system_message_topic(block_time, MESSAGING_CONTRACT_VERSION_TOPIC)?;
+        Ok(())
+    }
+
+    fn add_system_message_topic(
+        &mut self,
+        block_time: BlockTime,
+        topic_name: &str,
+    ) -> Result<(), TrackingCopyError> {
+        let entity_addr = EntityAddr::new_account(PublicKey::System.to_account_hash().value());
+        let topic_name_hash = blake2b(topic_name.as_bytes()).into();
+        let topic_key = Key::message_topic(entity_addr, topic_name_hash);
+        if self.get(&topic_key)?.is_some() {
+            return Ok(());
+        }
+        self.write(
+            topic_key,
+            StoredValue::MessageTopic(MessageTopicSummary::new(
+                0,
+                block_time,
+                topic_name.to_owned(),
+            )),
+        );
+        Ok(())
+    }
+
+    /// Emits system messages for a newly installed or upgraded contract version.
+    pub fn emit_messages_for_new_installed_version(
+        &mut self,
+        info: NewContractVersionInfo,
+        current_blocktime: BlockTime,
+        message_limits: MessageLimits,
+    ) -> Result<(), MessageEmissionError> {
+        let emitter = NewContractMessagesEmitter::new(info);
+        emitter.emit_contract_creation_messages(self, current_blocktime, message_limits)
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values

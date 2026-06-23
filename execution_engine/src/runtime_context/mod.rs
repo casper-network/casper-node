@@ -16,8 +16,8 @@ use tracing::error;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{
-        AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt, TrackingCopyError,
-        TrackingCopyExt,
+        AddResult, MessageEmissionError, NewContractVersionInfo, TrackingCopy, TrackingCopyCache,
+        TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt,
     },
     AddressGenerator,
 };
@@ -1646,5 +1646,29 @@ where
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))
+    }
+
+    pub(crate) fn emit_messages_for_new_installed_version(
+        &self,
+        current_blocktime: BlockTime,
+        contract_package_key: Key,
+        contract_key: Key,
+        contract_wasm_key: Key,
+        version_major: u32,
+        version_minor: u32,
+    ) -> Result<(), MessageEmissionError> {
+        let message_limits = self.engine_config.wasm_config().messages_limits();
+        let mut tracking_copy = self.tracking_copy.borrow_mut();
+        tracking_copy.emit_messages_for_new_installed_version(
+            NewContractVersionInfo {
+                key_of_package: contract_package_key,
+                key_of_contract: contract_key,
+                key_of_wasm: contract_wasm_key,
+                version_major,
+                version_minor,
+            },
+            current_blocktime,
+            message_limits,
+        )
     }
 }
