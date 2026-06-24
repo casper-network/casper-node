@@ -167,7 +167,7 @@ pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use evm::{
     EvmAddr, EvmApproval, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError,
-    EvmTransactionHash, EvmTransactionKind,
+    EvmTransactionHash, EvmTransactionKind, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE,
 };
 pub use gas::Gas;
 #[cfg(feature = "json-schema")]

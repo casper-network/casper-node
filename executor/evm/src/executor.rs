@@ -83,7 +83,7 @@ impl EvmExecutor {
 
         let spec = spec_id(self.config.spec);
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
-        let block = request.block.to_revm_block(&self.config);
+        let block = request.block.to_revm_block(&self.config)?;
         let skip_validation = match &request.kind {
             ExecuteKind::Transaction(_) => false,
             ExecuteKind::Call(call) => call.validation.is_unchecked_simulation(),
@@ -127,12 +127,15 @@ fn disabled_fee_transfers(
     result: &RevmExecutionResult,
 ) -> state::DisabledFeeTransfers {
     let gas = result_gas(result);
-    let base_fee = u128::from(request.block.base_fee.unwrap_or(config.base_fee));
+    let base_fee = request
+        .block
+        .base_fee
+        .unwrap_or_else(|| config.base_fee_wei());
     let (caller, gas_limit, effective_gas_price) = match &request.kind {
         ExecuteKind::Transaction(transaction) => (
             tx::to_revm_address(transaction.from()),
             transaction.gas_limit(),
-            transaction.effective_gas_price(base_fee as u64),
+            transaction.effective_gas_price(base_fee),
         ),
         ExecuteKind::Call(call) => (
             tx::to_revm_address(call.from),

@@ -1164,6 +1164,10 @@ impl EvmTransaction {
 
     /// Returns the effective gas price at the supplied block base fee.
     ///
+    /// The result follows the denomination of the transaction gas price fields
+    /// and the supplied block base fee. Node fee accounting supplies a
+    /// wei-denominated base fee.
+    ///
     /// Legacy and EIP-2930 transactions use their signed gas price directly.
     /// For EIP-1559, the calculation follows Ethereum's effective price
     /// formula: the lower of `max_fee_per_gas` and block base fee plus
@@ -1174,16 +1178,16 @@ impl EvmTransaction {
     /// prioritize transactions based on transaction gas parameters. For
     /// accepted node transactions, the EIP-1559 effective gas price is
     /// therefore the block base fee capped by `max_fee_per_gas`.
-    pub fn effective_gas_price(&self, base_fee: u64) -> u128 {
+    pub fn effective_gas_price(&self, base_fee: u128) -> u128 {
         match self.kind {
             EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
                 self.gas_price.unwrap_or(self.max_fee_per_gas)
             }
             EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
                 let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or(0);
-                let priority_fee = self.max_fee_per_gas.saturating_sub(u128::from(base_fee));
+                let priority_fee = self.max_fee_per_gas.saturating_sub(base_fee);
                 if priority_fee > max_priority_fee_per_gas {
-                    u128::from(base_fee).saturating_add(max_priority_fee_per_gas)
+                    base_fee.saturating_add(max_priority_fee_per_gas)
                 } else {
                     self.max_fee_per_gas
                 }
@@ -1191,12 +1195,13 @@ impl EvmTransaction {
         }
     }
 
-    /// Returns the fee amount for `gas_used` under the supplied EVM config.
+    /// Returns the fee amount for `gas_used`, denominated in motes.
     pub fn fee_amount(&self, gas_used: u64, evm_config: &EvmConfig) -> Option<U512> {
-        U512::from(gas_used).checked_mul(U512::from(self.effective_gas_price(evm_config.base_fee)))
+        let gas_price_wei = self.effective_gas_price(evm_config.base_fee_wei());
+        evm_config.gas_fee_motes(gas_used, gas_price_wei)
     }
 
-    /// Returns the maximum fee amount this transaction can consume.
+    /// Returns the maximum fee amount this transaction can consume, denominated in motes.
     pub fn max_fee_amount(&self, evm_config: &EvmConfig) -> Option<U512> {
         self.fee_amount(self.gas_limit, evm_config)
     }

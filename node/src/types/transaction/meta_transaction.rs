@@ -547,16 +547,19 @@ mod tests {
     use alloy_consensus::{SignableTransaction, TxEip1559, TxEip7702, TxEnvelope, TxLegacy};
     use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
     use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
-    use casper_types::{evm, EvmTransactionError, InitiatorAddr, TransactionLaneDefinition};
+    use casper_types::{
+        evm, EvmTransactionError, InitiatorAddr, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
+    };
 
     const CHAIN_ID: u64 = 7;
     const BASE_FEE: u64 = 1_000_000;
+    const BASE_FEE_WEI: u128 = BASE_FEE as u128 * DEFAULT_WEI_PER_MOTE as u128;
     const EVM_LANE: u8 = 4;
 
     #[test]
     fn evm_from_transaction_exposes_metadata() {
         let chainspec = chainspec();
-        let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000);
+        let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
         let transaction = Transaction::from_evm(evm_transaction.clone());
         let meta = MetaTransaction::from_transaction(
             &transaction,
@@ -588,7 +591,7 @@ mod tests {
 
     #[test]
     fn evm_transaction_header_keeps_initiator_addr() {
-        let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000);
+        let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
         let expected_signer = evm_transaction
             .signer()
             .expect("signed EVM transaction should have an approval signer")
@@ -615,7 +618,7 @@ mod tests {
             .transaction_v1_config
             .set_wasm_lanes(vec![]);
         let transaction =
-            Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000));
+            Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000));
         let error = MetaTransaction::from_transaction(
             &transaction,
             chainspec.core_config.pricing_handling,
@@ -634,7 +637,7 @@ mod tests {
         chainspec.evm_config.enabled = false;
         let meta = evm_meta(
             &chainspec,
-            legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000),
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -645,10 +648,7 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_missing_chain_id() {
         let chainspec = chainspec();
-        let meta = evm_meta(
-            &chainspec,
-            legacy_transaction(None, BASE_FEE.into(), 21_000),
-        );
+        let meta = evm_meta(&chainspec, legacy_transaction(None, BASE_FEE_WEI, 21_000));
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::MissingChainId))
@@ -660,7 +660,7 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            legacy_transaction(Some(CHAIN_ID + 1), BASE_FEE.into(), 21_000),
+            legacy_transaction(Some(CHAIN_ID + 1), BASE_FEE_WEI, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -676,21 +676,21 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            legacy_transaction(Some(CHAIN_ID), (BASE_FEE - 1).into(), 21_000),
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI - 1, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
                 gas_price,
                 base_fee
-            })) if gas_price == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+            })) if gas_price == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
         ));
     }
 
     #[test]
     fn evm_config_compliance_accepts_unsigned_call() {
         let chainspec = chainspec();
-        let meta = evm_meta(&chainspec, unsigned_call(CHAIN_ID, BASE_FEE.into(), 21_000));
+        let meta = evm_meta(&chainspec, unsigned_call(CHAIN_ID, BASE_FEE_WEI, 21_000));
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("unsigned EVM call should be config compliant");
     }
@@ -700,7 +700,7 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            unsigned_call(CHAIN_ID + 1, BASE_FEE.into(), 21_000),
+            unsigned_call(CHAIN_ID + 1, BASE_FEE_WEI, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -716,44 +716,41 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            unsigned_call(CHAIN_ID, u128::from(BASE_FEE - 1), 21_000),
+            unsigned_call(CHAIN_ID, BASE_FEE_WEI - 1, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
                 gas_price,
                 base_fee
-            })) if gas_price == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+            })) if gas_price == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
         ));
     }
 
     #[test]
     fn evm_config_compliance_rejects_max_fee_below_base_fee() {
         let chainspec = chainspec();
-        let meta = evm_meta(
-            &chainspec,
-            eip1559_transaction(u128::from(BASE_FEE - 1), 0, 60_000),
-        );
+        let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE_WEI - 1, 0, 60_000));
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::MaxFeePerGasBelowBaseFee {
                 max_fee_per_gas,
                 base_fee
-            })) if max_fee_per_gas == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+            })) if max_fee_per_gas == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
         ));
     }
 
     #[test]
     fn evm_config_compliance_rejects_non_zero_priority_fee() {
         let chainspec = chainspec();
-        let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE.into(), 1, 60_000));
+        let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE_WEI, 1, 60_000));
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
                 EvmTransactionError::NonZeroMaxPriorityFeePerGas {
-                    max_priority_fee_per_gas: 1
+                    max_priority_fee_per_gas
                 }
-            ))
+            )) if max_priority_fee_per_gas == 1
         ));
     }
 
@@ -762,7 +759,7 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 0, 60_000),
+            eip7702_transaction(CHAIN_ID, BASE_FEE_WEI, 0, 60_000),
         );
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("valid EIP-7702 transaction should be config compliant");
@@ -773,7 +770,7 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID + 1, BASE_FEE.into(), 0, 60_000),
+            eip7702_transaction(CHAIN_ID + 1, BASE_FEE_WEI, 0, 60_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -789,14 +786,14 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID, u128::from(BASE_FEE - 1), 0, 60_000),
+            eip7702_transaction(CHAIN_ID, BASE_FEE_WEI - 1, 0, 60_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::MaxFeePerGasBelowBaseFee {
                 max_fee_per_gas,
                 base_fee
-            })) if max_fee_per_gas == u128::from(BASE_FEE - 1) && base_fee == u128::from(BASE_FEE)
+            })) if max_fee_per_gas == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
         ));
     }
 
@@ -805,15 +802,15 @@ mod tests {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 1, 60_000),
+            eip7702_transaction(CHAIN_ID, BASE_FEE_WEI, 1, 60_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
                 EvmTransactionError::NonZeroMaxPriorityFeePerGas {
-                    max_priority_fee_per_gas: 1
+                    max_priority_fee_per_gas
                 }
-            ))
+            )) if max_priority_fee_per_gas == 1
         ));
     }
 
@@ -823,7 +820,7 @@ mod tests {
         let gas_limit = chainspec.evm_config.block_gas_limit + 1;
         let meta = evm_meta(
             &chainspec,
-            legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), gas_limit),
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, gas_limit),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -840,7 +837,7 @@ mod tests {
         let gas_limit = chainspec.evm_config.block_gas_limit + 1;
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID, BASE_FEE.into(), 0, gas_limit),
+            eip7702_transaction(CHAIN_ID, BASE_FEE_WEI, 0, gas_limit),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
@@ -855,7 +852,7 @@ mod tests {
     fn evm_config_compliance_rejects_invalid_approval() {
         let chainspec = chainspec();
         let evm_transaction =
-            legacy_transaction(Some(CHAIN_ID), BASE_FEE.into(), 21_000).with_evm_approval(None);
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000).with_evm_approval(None);
         let meta = evm_meta(&chainspec, evm_transaction);
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),

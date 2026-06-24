@@ -114,7 +114,7 @@ impl MetaEvmTransaction {
             });
         }
 
-        let base_fee = u128::from(evm_config.base_fee);
+        let base_fee = evm_config.base_fee_wei();
         match transaction.kind() {
             EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
                 let gas_price = transaction

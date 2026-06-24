@@ -520,9 +520,12 @@ impl Transaction {
                 // checks. Node config compliance separately rejects non-zero
                 // priority fees, so accepted type-2 transactions do not imply
                 // transaction priority based on gas parameters.
-                Ok(Motes::new(txn.gas_limit().saturating_mul(
-                    txn.max_fee_per_gas().min(u64::MAX as u128) as u64,
-                )))
+                let gas_limit = crate::U512::from(txn.gas_limit());
+                let max_fee_per_gas = crate::U512::from(txn.max_fee_per_gas());
+                let fee = gas_limit
+                    .checked_mul(max_fee_per_gas)
+                    .unwrap_or(crate::U512::MAX);
+                Ok(Motes::new(fee))
             }
         }
     }
