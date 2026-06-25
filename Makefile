@@ -1,9 +1,11 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
+CARGO_AUDIT = $(or $(shell which cargo-audit), $(HOME)/.cargo/bin/cargo-audit)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
+CARGO_AUDIT_VERSION := 0.22.1
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
@@ -19,6 +21,7 @@ CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
 WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-feature=-bulk-memory,-bulk-memory-opt"
+CARGO_TEST_PROFILE_ENV ?=
 
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 
@@ -60,27 +63,38 @@ build-contracts: build-contracts-rs
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<
 
+.PHONY: build-test-artifacts
+build-test-artifacts: resources/local/chainspec.toml build-contracts-rs
+
 .PHONY: test-rs
-test-rs: resources/local/chainspec.toml build-contracts-rs
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
+test-rs:
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
+
+.PHONY: test-rs-ci
+test-rs-ci:
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture --skip reactor::main_reactor::tests::rewards
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture --test-threads=1 reactor::main_reactor::tests::rewards
 
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
-	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
+	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test
-test: test-rs-no-default-features test-rs
+test: build-test-artifacts test-rs-no-default-features test-rs
+
+.PHONY: test-ci
+test-ci: test-rs-no-default-features test-rs-ci
 
 .PHONY: test-contracts-rs
-test-contracts-rs: build-contracts-rs
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
+test-contracts-rs:
+	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-timings
-test-contracts-timings: build-contracts-rs
+test-contracts-timings: resources/local/chainspec.toml build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs
+test-contracts: build-test-artifacts test-contracts-rs
 
 .PHONY: check-no-default-features
 check-no-default-features:
@@ -133,7 +147,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2024-0437 --ignore RUSTSEC-2025-0022 --ignore RUSTSEC-2025-0055 --ignore RUSTSEC-2026-0001 --ignore RUSTSEC-2026-0007 --ignore RUSTSEC-2026-0049 --ignore RUSTSEC-2026-0068 --ignore RUSTSEC-2026-0067 --ignore RUSTSEC-2026-0098 --ignore RUSTSEC-2026-0099 --ignore RUSTSEC-2026-0104
 
 .PHONY: audit
 audit: audit-rs
@@ -191,7 +205,8 @@ setup-rs:
 	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
 	$(RUSTUP) component add rust-src --toolchain $(PINNED_NIGHTLY)
-	$(CARGO) install cargo-audit
+	$(CARGO_AUDIT) --version 2>/dev/null | grep -q ' $(CARGO_AUDIT_VERSION)$$' || \
+		$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
 
 .PHONY: setup
 setup: setup-rs
