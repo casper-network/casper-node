@@ -24,21 +24,34 @@ on:
       - '**.md'
 
 jobs:
-  lints:
-    name: tests
+  checks:
+    name: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: setup
-        run: make setup
-
       - name: setup ubuntu
         run: |
-         sudo apt-get -y install wabt
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
 
       - uses: Swatinem/rust-cache@v2
 
@@ -60,8 +73,188 @@ jobs:
       - name: check-testing-features
         run: make check-testing-features
 
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+      - build_contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: download smart contracts
+        uses: actions/download-artifact@v4
+        with:
+          name: smart-contracts
+          path: .
+
+      - name: extract smart contracts
+        run: tar -xzf smart-contracts.tar.gz
+
       - name: test
-        run: make test CARGO_FLAGS=--release
+        run: make test-rs-ci CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+
+  test_no_default_features:
+    name: test-no-default-features
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: test-no-default-features
+        run: make test-rs-no-default-features CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+
+  build_contracts:
+    name: build-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build smart contracts
+        run: make build-test-artifacts CARGO_FLAGS=--release
+
+      - name: archive smart contracts
+        run: tar -czf smart-contracts.tar.gz resources/local/chainspec.toml target/wasm32-unknown-unknown/release/*.wasm
+
+      - name: upload smart contracts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-contracts
+          path: smart-contracts.tar.gz
+
+  test_contracts:
+    name: test-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+      - build_contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: download smart contracts
+        uses: actions/download-artifact@v4
+        with:
+          name: smart-contracts
+          path: .
+
+      - name: extract smart contracts
+        run: tar -xzf smart-contracts.tar.gz
 
       - name: test-contracts
-        run: make test-contracts CARGO_FLAGS=--release
+        run: make test-contracts-rs CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    needs:
+      - checks
+      - build_contracts
+      - test
+      - test_no_default_features
+      - test_contracts
+    if: ${{ always() }}
+    steps:
+      - name: check required jobs
+        run: |
+          test "${{ needs.checks.result }}" = "success"
+          test "${{ needs.build_contracts.result }}" = "success"
+          test "${{ needs.test.result }}" = "success"
+          test "${{ needs.test_no_default_features.result }}" = "success"
+          test "${{ needs.test_contracts.result }}" = "success"

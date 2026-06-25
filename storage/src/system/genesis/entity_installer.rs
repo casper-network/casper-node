@@ -576,8 +576,10 @@ where
 
         for account in accounts {
             let account_starting_balance = account.balance().value();
-
-            let main_purse = self.create_purse(account_starting_balance)?;
+            let main_purse = match account {
+                GenesisAccount::System => self.create_purse(account_starting_balance)?.into_read(),
+                _ => self.create_purse(account_starting_balance)?,
+            };
 
             self.store_addressable_entity(
                 EntityKind::Account(account.account_hash()),
@@ -876,7 +878,7 @@ where
         // Create all genesis accounts
         self.create_accounts(total_supply_key)?;
 
-        // Create the auction and setup the stake of all genesis validators.
+        // Create the auction and set up the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
 
         // Create handle payment
