@@ -222,7 +222,7 @@ pub trait CommitProvider: StateProvider {
         let protocol_upgrader: ProtocolUpgrader<Self> =
             ProtocolUpgrader::new(request.config().clone(), pre_state_hash, tc);
 
-        let post_upgrade_tc = match protocol_upgrader.upgrade(pre_state_hash) {
+        let post_upgrade_tc = match protocol_upgrader.upgrade() {
             Err(e) => return e.into(),
             Ok(tc) => tc,
         };
@@ -902,7 +902,7 @@ pub trait StateProvider: Send + Sync + Sized {
                         // but the system will put a hold on whatever balance remains.
                         // this is basically punitive to block an edge case resource consumption
                         // attack whereby a malicious purse holder drains a balance to not-zero
-                        // but not-enough-to-cover-holds and then spams a bunch of transactions
+                        // but not-enough-to-cover-holds. they could then spam transactions
                         // knowing that they will fail due to insufficient funds, but only
                         // after making the system do the work of processing the balance
                         // check without penalty to themselves.
@@ -2625,11 +2625,10 @@ fn get_snapshot_data<T: StateProvider>(
                     Ok(rewards_handling) => {
                         match rewards_handling.get(&REWARDS_HANDLING_RATIO_TAG) {
                             Some(bytes) => {
-                                let ratio =
-                                    match casper_types::bytesrepr::FromBytes::from_bytes(bytes) {
-                                        Ok((ratio, _)) => ratio,
-                                        Err(_) => Ratio::new(0, 1),
-                                    };
+                                let ratio = match bytesrepr::FromBytes::from_bytes(bytes) {
+                                    Ok((ratio, _)) => ratio,
+                                    Err(_) => Ratio::new(0, 1),
+                                };
 
                                 ratio
                             }

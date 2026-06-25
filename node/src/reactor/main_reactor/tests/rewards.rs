@@ -30,12 +30,12 @@ use crate::{
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 20000;
+const ERA_DURATION: u64 = 5000;
 //milliseconds
-const MIN_HEIGHT: u64 = 6;
+const MIN_HEIGHT: u64 = 4;
 const BLOCK_TIME: u64 = 1750;
 //milliseconds
-const TIME_OUT: u64 = 600;
+const TIME_OUT: u64 = 900;
 //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
