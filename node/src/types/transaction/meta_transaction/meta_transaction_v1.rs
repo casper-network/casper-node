@@ -2,8 +2,8 @@ use crate::types::transaction::arg_handling;
 use casper_types::{
     bytesrepr::ToBytes, calculate_transaction_lane, crypto, Approval, Chainspec,
     ContractRuntimeTag, Digest, DisplayIter, Gas, HashAddr, InitiatorAddr, InvalidTransaction,
-    InvalidTransactionV1, PricingHandling, PricingMode, TimeDiff, Timestamp, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
+    InvalidTransactionV1, PricingHandling, PricingMode, PublicKey, TimeDiff, Timestamp,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
     TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
     TransactionV1Config, TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID,
     MINT_LANE_ID, U512,
@@ -226,6 +226,19 @@ impl MetaTransactionV1 {
         if self.approvals.is_empty() {
             debug!(?self, "transaction has no approvals");
             return Err(InvalidTransactionV1::EmptyApprovals);
+        }
+
+        match &self.initiator_addr {
+            InitiatorAddr::PublicKey(public_key) => {
+                if public_key == &PublicKey::System {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
+            InitiatorAddr::AccountHash(account_hash) => {
+                if account_hash == &PublicKey::System.to_account_hash() {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
         }
 
         self.has_valid_hash().clone()?;

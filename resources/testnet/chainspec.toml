@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '2.2.0'
+version = '2.2.1'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 21500
+activation_point = 22223
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -180,7 +180,7 @@ baseline_motes_amount = 2_500_000_000
 # Flag on whether ambiguous entity versions returns an execution error.
 trap_on_ambiguous_entity_version = false
 # Controls how rewards are handled by the network
-# purse uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007 belongs to 
+# purse uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007 belongs to
 # account 018afa98ca4be12d613617f7339a2d576950a2f9a92102ca4d6508ee31b54d2c02 (faucet account for testnet)
 rewards_handling = { type = 'sustain', ratio = [2,8], purse_address = "uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007" }
 

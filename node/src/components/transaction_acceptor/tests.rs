@@ -250,6 +250,11 @@ enum TestScenario {
         ContractVersionExistance,
     ),
     VmCasperV2ByPackageHash,
+    // For both these scenarios,
+    // true means use public key
+    // false means use account hash
+    FromPeerWithSystemInitiator(bool),
+    FromClientWithSystemInitiator(bool),
 }
 
 impl TestScenario {
@@ -268,7 +273,8 @@ impl TestScenario {
             | TestScenario::FromPeerCustomPaymentContractPackage(_)
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..)
-            | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
+            | TestScenario::InvalidFieldsFromPeer
+            | TestScenario::FromPeerWithSystemInitiator(_) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
@@ -305,7 +311,8 @@ impl TestScenario {
             | TestScenario::RedelegateExceedingMaximumDelegation
             | TestScenario::DelegateExceedingMaximumDelegation
             | TestScenario::VmCasperV2ByPackageHash
-            | TestScenario::V1ByPackage(..) => Source::Client,
+            | TestScenario::V1ByPackage(..)
+            | TestScenario::FromClientWithSystemInitiator(_) => Source::Client,
         }
     }
 
@@ -322,6 +329,28 @@ impl TestScenario {
             | TestScenario::FromClientInvalidTransaction(TxnType::V1) => {
                 let mut txn = TransactionV1::random(rng);
                 txn.invalidate();
+                Transaction::from(txn)
+            }
+            TestScenario::FromPeerWithSystemInitiator(should_use_public_key)
+            | TestScenario::FromClientWithSystemInitiator(should_use_public_key) => {
+                let txn = TransactionV1::random_with_system_initiator(
+                    rng,
+                    *should_use_public_key,
+                    None,
+                    None,
+                );
+                let cloned = txn.clone();
+                if *should_use_public_key {
+                    assert_eq!(
+                        cloned.initiator_addr(),
+                        &InitiatorAddr::PublicKey(PublicKey::System)
+                    )
+                } else {
+                    assert_eq!(
+                        cloned.initiator_addr(),
+                        &InitiatorAddr::AccountHash(PublicKey::System.to_account_hash())
+                    )
+                };
                 Transaction::from(txn)
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
@@ -937,6 +966,7 @@ impl TestScenario {
                     HashOrName::Name => true,
                 }
             },
+            TestScenario::FromPeerWithSystemInitiator(_) | TestScenario::FromClientWithSystemInitiator(_) => false,
         }
     }
 
@@ -1756,6 +1786,15 @@ async fn run_transaction_acceptor_without_timeout(
                     )
                 ),
             },
+            TestScenario::FromPeerWithSystemInitiator(_)
+            | TestScenario::FromClientWithSystemInitiator(_) => {
+                matches!(
+                    event,
+                    Event::TransactionAcceptorAnnouncement(
+                        TransactionAcceptorAnnouncement::InvalidTransaction { .. }
+                    )
+                )
+            }
         }
     };
     runner
@@ -3064,4 +3103,58 @@ async fn should_succeed_when_asking_for_active_exact_version() {
     ))
     .await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_public_key_as_initiator_from_peer() {
+    let scenario = TestScenario::FromPeerWithSystemInitiator(true);
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidInitiator
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_public_key_as_initiator_from_client() {
+    let scenario = TestScenario::FromClientWithSystemInitiator(true);
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_account_hash_as_initiator_from_peer() {
+    let scenario = TestScenario::FromPeerWithSystemInitiator(false);
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidInitiator
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_txn_with_system_account_hash_as_initiator_from_client() {
+    let scenario = TestScenario::FromClientWithSystemInitiator(false);
+    let result = run_transaction_acceptor(scenario).await;
+
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            ..
+        })
+    ))
 }
