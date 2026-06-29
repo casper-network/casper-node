@@ -46,13 +46,23 @@ impl MainReactor {
 
         let execution_pre_state = self.contract_runtime.execution_pre_state();
         let next_consensus_height = self.consensus.next_executed_height();
-        if next_consensus_height != 0
-            && next_consensus_height != execution_pre_state.next_block_height()
-        {
-            warn!(
-                "Validate: misalignment of expected block height between consensus and contract runtime"
-            );
-            return ValidateInstruction::CatchUp;
+        let next_execution_height = execution_pre_state.next_block_height();
+        if next_consensus_height != 0 {
+            // A difference of exactly 1 where execution is ahead is expected: execution
+            // updates execution_pre_state synchronously, but consensus.next_executed_height
+            // only advances after the BlockAdded event propagates through handle_meta_block.
+            // Triggering CatchUp on this transient single-block gap causes a self-reinforcing
+            // loop (refresh_contract_runtime keeps the gap at 1) that takes minutes to escape.
+            let is_misaligned = next_execution_height < next_consensus_height
+                || next_execution_height > next_consensus_height.saturating_add(1);
+            if is_misaligned {
+                warn!(
+                    next_consensus_height,
+                    next_execution_height,
+                    "Validate: misalignment of expected block height between consensus and contract runtime"
+                );
+                return ValidateInstruction::CatchUp;
+            }
         }
 
         let queue_depth = self.contract_runtime.queue_depth();

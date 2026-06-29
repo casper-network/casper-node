@@ -433,7 +433,14 @@ impl BlockValidator {
 
         pending_requests
             .into_iter()
-            .flat_map(|request| self.handle_new_request(effect_builder, request))
+            .flat_map(|request| {
+                match self.try_handle_as_existing_request(effect_builder, request) {
+                    MaybeHandled::Handled(effects) => effects,
+                    MaybeHandled::NotHandled(request) => {
+                        self.handle_new_request(effect_builder, request)
+                    }
+                }
+            })
             .collect()
     }
 
