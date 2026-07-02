@@ -883,15 +883,90 @@ fn evm_log_emitting_init_code() -> Vec<u8> {
     init_code
 }
 
+fn evm_init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
+    let runtime_len = u8::try_from(runtime.len()).expect("runtime should fit in PUSH1");
+    let runtime_offset = 12u8;
+    let mut init_code = vec![
+        opcode::PUSH1,
+        runtime_len,
+        opcode::PUSH1,
+        runtime_offset,
+        opcode::PUSH1,
+        0,
+        opcode::CODECOPY,
+        opcode::PUSH1,
+        runtime_len,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code.extend(runtime);
+    init_code
+}
+
+fn evm_coinbase_transfer_init_code() -> Vec<u8> {
+    let revert_offset = 19u8;
+    evm_init_code_returning(vec![
+        opcode::PUSH1,
+        0,
+        opcode::PUSH1,
+        0,
+        opcode::PUSH1,
+        0,
+        opcode::PUSH1,
+        0,
+        opcode::CALLVALUE,
+        opcode::COINBASE,
+        opcode::PUSH2,
+        0x08,
+        0xfc,
+        opcode::CALL,
+        opcode::ISZERO,
+        opcode::PUSH1,
+        revert_offset,
+        opcode::JUMPI,
+        opcode::STOP,
+        opcode::JUMPDEST,
+        opcode::PUSH1,
+        0,
+        opcode::PUSH1,
+        0,
+        opcode::REVERT,
+    ])
+}
+
 fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
+    signed_evm_create_transaction(chain_id, 0, evm_log_emitting_init_code())
+}
+
+fn signed_evm_create_transaction(chain_id: u64, nonce: u64, init_code: Vec<u8>) -> EvmTransaction {
     let transaction = TxLegacy {
         chain_id: Some(chain_id),
-        nonce: 0,
+        nonce,
         gas_price: EVM_TEST_GAS_PRICE,
         gas_limit: EVM_TEST_GAS_LIMIT,
         to: TxKind::Create,
         value: U256::ZERO,
-        input: AlloyBytes::from(evm_log_emitting_init_code()),
+        input: AlloyBytes::from(init_code),
+    };
+    signed_evm_legacy_transaction(transaction)
+}
+
+fn signed_evm_call_transaction(
+    chain_id: u64,
+    nonce: u64,
+    recipient: evm::Address,
+    value: u64,
+    input: Vec<u8>,
+) -> EvmTransaction {
+    let transaction = TxLegacy {
+        chain_id: Some(chain_id),
+        nonce,
+        gas_price: EVM_TEST_GAS_PRICE,
+        gas_limit: EVM_TEST_GAS_LIMIT,
+        to: TxKind::Call(AlloyAddress::from(recipient.value())),
+        value: U256::from(value),
+        input: AlloyBytes::from(input),
     };
     signed_evm_legacy_transaction(transaction)
 }
@@ -1195,6 +1270,97 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         block_height > highest_block.height(),
         "EVM transaction should be included in a later block"
     );
+}
+
+#[tokio::test]
+async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let deploy =
+        signed_evm_create_transaction(evm_config.chain_id, 0, evm_coinbase_transfer_init_code());
+    let sender = deploy.from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+    let (_txn_hash, deploy_block_height, deploy_result) =
+        test.send_transaction(Transaction::from(deploy)).await;
+    let ExecutionResult::Evm(deploy_result) = deploy_result else {
+        panic!("expected EVM deploy execution result");
+    };
+    assert_eq!(deploy_result.receipt.status, evm::ReceiptStatus::Success);
+    let contract = deploy_result
+        .receipt
+        .contract_address
+        .expect("EVM deployment should create contract");
+
+    let deploy_block = test.fixture.get_block_by_height(deploy_block_height);
+    let deploy_proposer = deploy_block.proposer().clone();
+    assert!(
+        evm::Address::from_public_key(&deploy_proposer).is_none(),
+        "test expects an ed25519 proposer"
+    );
+    let deploy_proposer_account_hash = deploy_proposer.to_account_hash();
+    let deploy_beneficiary = evm::Address::from_block_proposer_public_key(&deploy_proposer);
+    assert_eq!(
+        evm_identity_at(&mut test.fixture, deploy_block_height, deploy_beneficiary),
+        Key::Account(deploy_proposer_account_hash)
+    );
+
+    let transfer_value = 250u64;
+    let call =
+        signed_evm_call_transaction(evm_config.chain_id, 1, contract, transfer_value, Vec::new());
+    let (_txn_hash, call_block_height, call_result) =
+        test.send_transaction(Transaction::from(call)).await;
+    let ExecutionResult::Evm(call_result) = call_result else {
+        panic!("expected EVM call execution result");
+    };
+    assert_eq!(call_result.receipt.status, evm::ReceiptStatus::Success);
+
+    let payout_block = test.fixture.get_block_by_height(call_block_height);
+    let proposer = payout_block.proposer().clone();
+    assert!(
+        evm::Address::from_public_key(&proposer).is_none(),
+        "test expects an ed25519 proposer"
+    );
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let mut expected_beneficiary = [0u8; evm::ADDRESS_LENGTH];
+    expected_beneficiary.copy_from_slice(&proposer_account_hash.as_bytes()[12..]);
+    assert_eq!(beneficiary, evm::Address::new(expected_beneficiary));
+
+    assert_eq!(
+        evm_identity_at(&mut test.fixture, call_block_height, beneficiary),
+        Key::Account(proposer_account_hash)
+    );
+    let proposer_before = get_balance(&test.fixture, &proposer, Some(deploy_block_height), true)
+        .total_balance()
+        .copied()
+        .expect("proposer should have balance before EVM payout");
+    let proposer_after = get_balance(&test.fixture, &proposer, Some(call_block_height), true)
+        .total_balance()
+        .copied()
+        .expect("proposer should have balance after EVM payout");
+    assert_eq!(proposer_after, proposer_before + U512::from(transfer_value));
 }
 
 #[tokio::test]

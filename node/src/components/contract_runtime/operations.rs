@@ -392,6 +392,32 @@ where
     }
 }
 
+fn evm_account_has_nonce<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: EvmAddress,
+) -> Result<bool, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
+    match tracking_copy
+        .read(&key)
+        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+    {
+        Some(StoredValue::CLValue(cl_value)) => {
+            let _nonce = cl_value
+                .into_t::<u64>()
+                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+            Ok(true)
+        }
+        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+            "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
+            stored_value.type_name()
+        ))),
+        None => Ok(false),
+    }
+}
+
 fn account_main_purse<R>(
     tracking_copy: &mut TrackingCopy<R>,
     protocol_version: ProtocolVersion,
@@ -410,6 +436,51 @@ where
             .ok_or_else(|| BlockExecutionError::PaymentError("missing account main purse".into())),
         Err(TrackingCopyError::KeyNotFound(_)) => Ok(None),
         Err(error) => Err(BlockExecutionError::PaymentError(error.to_string())),
+    }
+}
+
+fn apply_evm_proposer_identity<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    protocol_version: ProtocolVersion,
+    proposer: &PublicKey,
+) -> Result<(), BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    let address = EvmAddress::from_block_proposer_public_key(proposer);
+    let account_hash = proposer.to_account_hash();
+    if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
+        return Ok(());
+    }
+
+    let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
+    match tracking_copy
+        .read(&identity_key)
+        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+    {
+        Some(StoredValue::CLValue(cl_value)) => {
+            let identity = cl_value
+                .into_t::<Key>()
+                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+            match identity {
+                Key::Account(_) | Key::URef(_) => Ok(()),
+                other => Err(BlockExecutionError::PaymentError(format!(
+                    "invalid EVM account identity key: {other}"
+                ))),
+            }
+        }
+        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+            "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key), found {}",
+            stored_value.type_name()
+        ))),
+        None => {
+            if evm_account_has_code(tracking_copy, address)?
+                || evm_account_has_nonce(tracking_copy, address)?
+            {
+                return Ok(());
+            }
+            write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+        }
     }
 }
 
@@ -1106,8 +1177,7 @@ pub fn execute_finalized_block(
                     let block_context = EvmBlockContext {
                         number: block_height,
                         timestamp: block_time.value() / 1000,
-                        beneficiary: EvmAddress::from_public_key(&proposer)
-                            .unwrap_or(EvmAddress::ZERO),
+                        beneficiary: EvmAddress::from_block_proposer_public_key(&proposer),
                         gas_limit: Some(chainspec.evm_config.block_gas_limit),
                         base_fee: Some(base_fee_wei),
                     };
@@ -1130,6 +1200,7 @@ pub fn execute_finalized_block(
                             identity_plan,
                         )?;
                     }
+                    apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
                     let outcome = EvmExecutor::new(chainspec.evm_config)
                         .execute_with_block_hash_provider(
                             &mut tracking_copy,

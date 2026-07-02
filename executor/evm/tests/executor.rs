@@ -7,7 +7,7 @@ use alloy_eips::{
         Authorization as AlloyAuthorization, SignedAuthorization as AlloySignedAuthorization,
     },
 };
-use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256};
+use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
     EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
@@ -24,10 +24,11 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::NamedKeys,
-    evm, AccessRights, Account, BlockHash, CLValue, ChainspecRegistry, Digest, EvmAddr, EvmConfig,
-    EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
+    evm, AccessRights, Account, BlockHash, ByteCode, ByteCodeKind, CLValue, ChainspecRegistry,
+    Digest, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig,
+    HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
+    StoredValue, SystemConfig, Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE,
+    U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
 
@@ -185,6 +186,46 @@ fn return_word_contract_init_code(value: u8) -> Vec<u8> {
 fn reverting_contract_init_code() -> Vec<u8> {
     let runtime = vec![opcode::PUSH1, 0, opcode::PUSH1, 0, opcode::REVERT];
     init_code_returning(runtime)
+}
+
+fn reverting_runtime() -> Vec<u8> {
+    vec![opcode::PUSH1, 0, opcode::PUSH1, 0, opcode::REVERT]
+}
+
+fn coinbase_transfer_init_code() -> Vec<u8> {
+    let revert_offset = 19u8;
+    let runtime = vec![
+        opcode::PUSH1,
+        0, // return size
+        opcode::PUSH1,
+        0, // return offset
+        opcode::PUSH1,
+        0, // calldata size
+        opcode::PUSH1,
+        0, // calldata offset
+        opcode::CALLVALUE,
+        opcode::COINBASE,
+        opcode::PUSH2,
+        0x08,
+        0xfc, // 2300 gas
+        opcode::CALL,
+        opcode::ISZERO,
+        opcode::PUSH1,
+        revert_offset,
+        opcode::JUMPI,
+        opcode::STOP,
+        opcode::JUMPDEST,
+        opcode::PUSH1,
+        0,
+        opcode::PUSH1,
+        0,
+        opcode::REVERT,
+    ];
+    init_code_returning(runtime)
+}
+
+fn coinbase_observer_init_code() -> Vec<u8> {
+    init_code_returning(vec![opcode::COINBASE, opcode::POP, opcode::STOP])
 }
 
 fn call_request(
@@ -521,6 +562,42 @@ fn read_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     }
 }
 
+fn read_account_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    account_hash: casper_types::account::AccountHash,
+) -> U512 {
+    let main_purse = match tracking_copy
+        .read(&Key::Account(account_hash))
+        .expect("account read should not fail")
+    {
+        Some(StoredValue::Account(account)) => account.main_purse(),
+        Some(other) => panic!("unexpected account value: {other:?}"),
+        None => return U512::zero(),
+    };
+    match tracking_copy
+        .read(&Key::Balance(main_purse.addr()))
+        .expect("balance read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => value.into_t::<U512>().unwrap(),
+        Some(other) => panic!("unexpected balance value: {other:?}"),
+        None => U512::zero(),
+    }
+}
+
+fn read_evm_identity<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: evm::Address,
+) -> Option<Key> {
+    match tracking_copy
+        .read(&Key::Evm(EvmAddr::Account(address)))
+        .expect("identity read should not fail")
+    {
+        Some(StoredValue::CLValue(value)) => Some(value.into_t::<Key>().unwrap()),
+        Some(other) => panic!("unexpected EVM identity value: {other:?}"),
+        None => None,
+    }
+}
+
 fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
@@ -542,6 +619,41 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy.write(
         Key::Balance(main_purse.addr()),
         StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
+    );
+}
+
+fn seed_account<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    account_hash: casper_types::account::AccountHash,
+    main_purse: URef,
+    balance: U512,
+) {
+    tracking_copy.write(
+        Key::Account(account_hash),
+        StoredValue::Account(Account::create(account_hash, NamedKeys::new(), main_purse)),
+    );
+    tracking_copy.write(
+        Key::Balance(main_purse.addr()),
+        StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
+    );
+}
+
+fn seed_evm_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: evm::Address,
+    code: Vec<u8>,
+) {
+    let digest = keccak256(&code);
+    let mut hash = [0u8; evm::HASH_LENGTH];
+    hash.copy_from_slice(digest.as_slice());
+    let code_hash = evm::Hash::new(hash);
+    tracking_copy.write(
+        Key::Evm(EvmAddr::CodeHash(address)),
+        StoredValue::CLValue(CLValue::from_t(code_hash).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::ByteCode(code_hash)),
+        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, code)),
     );
 }
 
@@ -925,16 +1037,334 @@ fn erc20_and_native_purse_balances_update() {
 }
 
 #[test]
+fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([8; 32], AccessRights::READ_ADD_WRITE);
+    let proposer_initial_balance = U512::from(1_000u64);
+    let transfer_value = CasperU256::from(250u64);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        proposer_initial_balance,
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Account(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(Key::Account(proposer_account_hash)).unwrap()),
+    );
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_transfer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), transfer_value);
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase transfer should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::Account(proposer_account_hash))
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        proposer_initial_balance + U512::from(transfer_value)
+    );
+}
+
+#[test]
+fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([9; 32], AccessRights::READ_ADD_WRITE);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        U512::zero(),
+    );
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_transfer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), CasperU256::from(250u64));
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase transfer should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert!(matches!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::URef(_))
+    ));
+    assert_eq!(
+        read_balance(&mut tracking_copy, beneficiary),
+        U512::from(250u64)
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        U512::zero()
+    );
+}
+
+#[test]
+fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_observer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), CasperU256::zero());
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase observer should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert!(matches!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::URef(_))
+    ));
+}
+
+#[test]
+fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([10; 32], AccessRights::READ_ADD_WRITE);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        U512::zero(),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Account(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(Key::Account(proposer_account_hash)).unwrap()),
+    );
+    seed_evm_code(&mut tracking_copy, beneficiary, reverting_runtime());
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_transfer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), CasperU256::from(250u64));
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase transfer should execute EVM code");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+    assert_eq!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::Account(proposer_account_hash))
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        U512::zero()
+    );
+}
+
+#[test]
+fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([46; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([12; 32], AccessRights::READ_ADD_WRITE);
+    let existing_purse = URef::new([13; 32], AccessRights::READ_ADD_WRITE);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        U512::zero(),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Account(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(Key::URef(existing_purse)).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Nonce(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::CodeHash(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
+    );
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_transfer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), CasperU256::from(250u64));
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase transfer should preserve existing identity");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::URef(existing_purse))
+    );
+    assert_eq!(
+        read_balance(&mut tracking_copy, beneficiary),
+        U512::from(250u64)
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        U512::zero()
+    );
+}
+
+#[test]
+fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([1; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([47; SecretKey::ED25519_LENGTH]).unwrap();
+    let existing_secret_key =
+        SecretKey::ed25519_from_bytes([48; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let existing_account = PublicKey::from(&existing_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let existing_account_hash = existing_account.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([14; 32], AccessRights::READ_ADD_WRITE);
+    let existing_main_purse = URef::new([15; 32], AccessRights::READ_ADD_WRITE);
+    let existing_initial_balance = U512::from(500u64);
+    let transfer_value = CasperU256::from(250u64);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        U512::zero(),
+    );
+    seed_account(
+        &mut tracking_copy,
+        existing_account_hash,
+        existing_main_purse,
+        existing_initial_balance,
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Account(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(Key::Account(existing_account_hash)).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::Nonce(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
+    );
+    tracking_copy.write(
+        Key::Evm(EvmAddr::CodeHash(beneficiary)),
+        StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
+    );
+    let contract = deploy_code(
+        &executor,
+        &mut tracking_copy,
+        sender,
+        coinbase_transfer_init_code(),
+    );
+    let mut request = call_request(sender, Some(contract), Vec::new(), transfer_value);
+    request.block.beneficiary = beneficiary;
+
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("coinbase transfer should preserve existing account identity");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::Account(existing_account_hash))
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, existing_account_hash),
+        existing_initial_balance + U512::from(transfer_value)
+    );
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        U512::zero()
+    );
+}
+
+#[test]
 fn nonzero_gas_price_does_not_charge_evm_balances() {
     let executor = executor(EvmSpec::Prague);
     let sender = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
-    let beneficiary = evm::Address::new([3; 20]);
+    let proposer_secret_key =
+        SecretKey::ed25519_from_bytes([45; SecretKey::ED25519_LENGTH]).unwrap();
+    let proposer = PublicKey::from(&proposer_secret_key);
+    let proposer_account_hash = proposer.to_account_hash();
+    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+    let proposer_main_purse = URef::new([11; 32], AccessRights::READ_ADD_WRITE);
     let (mut tracking_copy, _tempdir) = tracking_copy();
     let initial_balance = U512::from(10_000_000u64);
     let transfer_value = CasperU256::from(250u64);
 
     seed_evm_balance(&mut tracking_copy, sender, initial_balance);
+    seed_account(
+        &mut tracking_copy,
+        proposer_account_hash,
+        proposer_main_purse,
+        U512::zero(),
+    );
     let mut block_context = block();
     block_context.beneficiary = beneficiary;
     let request = ExecuteRequest {
@@ -964,7 +1394,15 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
         read_balance(&mut tracking_copy, recipient),
         U512::from(250u64)
     );
+    assert!(matches!(
+        read_evm_identity(&mut tracking_copy, beneficiary),
+        Some(Key::URef(_))
+    ));
     assert_eq!(read_balance(&mut tracking_copy, beneficiary), U512::zero());
+    assert_eq!(
+        read_account_balance(&mut tracking_copy, proposer_account_hash),
+        U512::zero()
+    );
 }
 
 #[test]

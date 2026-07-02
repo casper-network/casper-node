@@ -69,6 +69,26 @@ impl Address {
         address.copy_from_slice(&digest.as_slice()[digest.len() - ADDRESS_LENGTH..]);
         Some(Address::new(address))
     }
+
+    /// Returns the EVM `block.coinbase` receive address for a Casper block proposer.
+    ///
+    /// Secp256k1 proposers use their Ethereum-native address. Non-secp256k1
+    /// proposers use a Casper-defined alias derived from the last 20 bytes of
+    /// their account hash. That alias is only a receive address for proposer
+    /// rewards and `block.coinbase` transfers; it is not controlled by an
+    /// Ethereum signing key and cannot be used to sign EVM transactions.
+    pub fn from_block_proposer_public_key(public_key: &PublicKey) -> Self {
+        if let Some(address) = Self::from_public_key(public_key) {
+            return address;
+        }
+
+        let account_hash = public_key.to_account_hash();
+        let mut address = [0u8; ADDRESS_LENGTH];
+        address.copy_from_slice(
+            &account_hash.as_bytes()[account_hash.as_bytes().len() - ADDRESS_LENGTH..],
+        );
+        Address::new(address)
+    }
 }
 
 impl AsRef<[u8]> for Address {
@@ -134,7 +154,7 @@ impl FromBytes for Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CLValue;
+    use crate::{CLValue, SecretKey};
 
     #[test]
     fn evm_address_cl_value_roundtrip() {
@@ -151,5 +171,41 @@ mod tests {
                 .expect("address should deserialize"),
             address
         );
+    }
+
+    #[test]
+    fn block_proposer_address_preserves_secp256k1_ethereum_address() {
+        let secret_key = SecretKey::secp256k1_from_bytes([7; SecretKey::SECP256K1_LENGTH]).unwrap();
+        let public_key = PublicKey::from(&secret_key);
+
+        assert_eq!(
+            Address::from_block_proposer_public_key(&public_key),
+            Address::from_public_key(&public_key).unwrap()
+        );
+    }
+
+    #[test]
+    fn block_proposer_address_uses_last_twenty_account_hash_bytes_for_ed25519() {
+        let secret_key = SecretKey::ed25519_from_bytes([9; SecretKey::ED25519_LENGTH]).unwrap();
+        let public_key = PublicKey::from(&secret_key);
+        let account_hash = public_key.to_account_hash();
+        let mut expected = [0u8; ADDRESS_LENGTH];
+        expected.copy_from_slice(&account_hash.as_bytes()[12..]);
+
+        assert_eq!(
+            Address::from_block_proposer_public_key(&public_key),
+            Address::new(expected)
+        );
+        assert!(Address::from_public_key(&public_key).is_none());
+    }
+
+    #[test]
+    fn block_proposer_address_is_total_for_system_public_key() {
+        let address = Address::from_block_proposer_public_key(&PublicKey::System);
+        let account_hash = PublicKey::System.to_account_hash();
+        let mut expected = [0u8; ADDRESS_LENGTH];
+        expected.copy_from_slice(&account_hash.as_bytes()[12..]);
+
+        assert_eq!(address, Address::new(expected));
     }
 }
