@@ -7,13 +7,13 @@ use casper_storage::{
 use casper_types::{EvmConfig, EvmSpec, Key, StoredValue};
 use revm::{
     context_interface::result::{EVMError, ExecutionResult as RevmExecutionResult, ResultGas},
-    primitives::{hardfork::SpecId, U256},
-    Context, ExecuteEvm, MainBuilder, MainContext,
+    primitives::{hardfork::SpecId, Bytes, U256},
+    Context, ExecuteEvm, MainBuilder, MainContext, SystemCallEvm,
 };
 
 use crate::{
     db::CasperDb, state, tx, BlockHashProvider, DbError, Error, ExecuteKind, ExecuteRequest,
-    ExecutionOutcome, NoBlockHashProvider, Result,
+    ExecutionOutcome, NoBlockHashProvider, Result, SystemCallRequest,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -48,6 +48,23 @@ impl EvmExecutor {
     {
         let block_hash_provider = NoBlockHashProvider;
         self.execute_with_block_hash_provider(tracking_copy, request, &block_hash_provider)
+    }
+
+    /// Executes a system call against the supplied tracking copy.
+    pub fn execute_system_call<R>(
+        &self,
+        tracking_copy: &mut TrackingCopy<R>,
+        request: SystemCallRequest,
+    ) -> Result<ExecutionOutcome>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
+        let block_hash_provider = NoBlockHashProvider;
+        self.execute_system_call_with_block_hash_provider(
+            tracking_copy,
+            request,
+            &block_hash_provider,
+        )
     }
 
     /// Executes with a provider for historical block hashes.
@@ -117,6 +134,52 @@ impl EvmExecutor {
             disabled_fee_transfers(&self.config, &request, &result_and_state.result);
         state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
         state::apply(tracking_copy, state)?;
+        Ok(outcome)
+    }
+
+    /// Executes a system call with a provider for historical block hashes.
+    pub fn execute_system_call_with_block_hash_provider<R, B>(
+        &self,
+        tracking_copy: &mut TrackingCopy<R>,
+        request: SystemCallRequest,
+        block_hash_provider: &B,
+    ) -> Result<ExecutionOutcome>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+        B: BlockHashProvider + ?Sized,
+    {
+        if !self.config.enabled {
+            return Err(Error::Disabled);
+        }
+
+        let spec = spec_id(self.config.spec);
+        let block = request.block.to_revm_block(&self.config)?;
+        let result_and_state = {
+            let db = CasperDb::new(tracking_copy, block_hash_provider);
+            let mut evm = Context::mainnet()
+                .with_db(db)
+                .with_block(block)
+                .modify_cfg_chained(|cfg| {
+                    cfg.spec = spec;
+                    cfg.chain_id = self.config.chain_id;
+                    cfg.tx_chain_id_check = false;
+                    cfg.disable_block_gas_limit = true;
+                    cfg.disable_base_fee = true;
+                    cfg.disable_balance_check = true;
+                    cfg.disable_nonce_check = true;
+                    cfg.disable_fee_charge = true;
+                })
+                .build_mainnet();
+
+            evm.system_call(
+                tx::to_revm_address(request.target),
+                Bytes::from(request.input),
+            )
+            .map_err(map_revm_error)?
+        };
+
+        let outcome = ExecutionOutcome::from_revm_result(&result_and_state.result);
+        state::apply(tracking_copy, result_and_state.state)?;
         Ok(outcome)
     }
 }

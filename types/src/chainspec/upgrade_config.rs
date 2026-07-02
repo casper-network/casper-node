@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
-    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, FeeHandling,
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, EvmConfig, FeeHandling,
     HoldBalanceHandling, Key, ProtocolVersion, RewardsHandling, StoredValue,
 };
 
@@ -23,6 +23,7 @@ pub struct ProtocolUpgradeConfig {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
+    evm_config: EvmConfig,
     fee_handling: FeeHandling,
     validator_minimum_bid_amount: u64,
     maximum_delegation_amount: u64,
@@ -49,6 +50,7 @@ impl ProtocolUpgradeConfig {
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
+        evm_config: EvmConfig,
         fee_handling: FeeHandling,
         validator_minimum_bid_amount: u64,
         maximum_delegation_amount: u64,
@@ -71,6 +73,7 @@ impl ProtocolUpgradeConfig {
             new_unbonding_delay,
             global_state_update,
             chainspec_registry,
+            evm_config,
             fee_handling,
             validator_minimum_bid_amount,
             maximum_delegation_amount,
@@ -144,6 +147,11 @@ impl ProtocolUpgradeConfig {
     /// Returns a reference to the chainspec registry.
     pub fn chainspec_registry(&self) -> &ChainspecRegistry {
         &self.chainspec_registry
+    }
+
+    /// Returns the EVM config for the target protocol version.
+    pub fn evm_config(&self) -> &EvmConfig {
+        &self.evm_config
     }
 
     /// Sets new pre state hash.

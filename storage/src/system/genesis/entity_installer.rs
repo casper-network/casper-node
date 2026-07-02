@@ -10,7 +10,10 @@ use std::{
 
 use crate::{
     global_state::state::StateProvider,
-    system::genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
+    system::{
+        evm::{should_upsert_eip4788_predeploy, upsert_eip4788_predeploy},
+        genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
+    },
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
@@ -889,6 +892,11 @@ where
 
         // Write block time to global state
         self.store_block_time()?;
+
+        if should_upsert_eip4788_predeploy(self.config.evm_config()) {
+            upsert_eip4788_predeploy(&mut self.tracking_copy.borrow_mut())
+                .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
+        }
 
         Ok(())
     }

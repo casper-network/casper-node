@@ -13,6 +13,17 @@ pub struct ExecuteRequest {
     pub kind: ExecuteKind,
 }
 
+/// Request passed to [`crate::EvmExecutor::execute_system_call`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SystemCallRequest {
+    /// Block context available to EVM opcodes.
+    pub block: BlockContext,
+    /// System contract address.
+    pub target: evm::Address,
+    /// System call input bytes.
+    pub input: Vec<u8>,
+}
+
 /// EVM work item to execute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecuteKind {

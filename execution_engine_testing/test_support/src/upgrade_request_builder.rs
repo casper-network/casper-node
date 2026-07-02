@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_types::{
-    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, FeeHandling,
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, EvmConfig, FeeHandling,
     HoldBalanceHandling, Key, ProtocolUpgradeConfig, ProtocolVersion, RewardsHandling, StoredValue,
 };
 
@@ -22,6 +22,7 @@ pub struct UpgradeRequestBuilder {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
+    evm_config: EvmConfig,
     fee_handling: FeeHandling,
     validator_minimum_bid_amount: u64,
     maximum_delegation_amount: u64,
@@ -157,6 +158,12 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the EVM config for the upgraded protocol version.
+    pub fn with_evm_config(mut self, evm_config: EvmConfig) -> Self {
+        self.evm_config = evm_config;
+        self
+    }
+
     /// Sets the minimum delegation rate for validator bids and reservations.
     pub fn with_new_minimum_delegation_rate(
         mut self,
@@ -182,6 +189,7 @@ impl UpgradeRequestBuilder {
             self.new_unbonding_delay,
             self.global_state_update,
             self.chainspec_registry,
+            self.evm_config,
             self.fee_handling,
             self.validator_minimum_bid_amount,
             self.maximum_delegation_amount,
@@ -209,6 +217,7 @@ impl Default for UpgradeRequestBuilder {
             new_unbonding_delay: None,
             global_state_update: Default::default(),
             chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
+            evm_config: EvmConfig::default(),
             fee_handling: FeeHandling::default(),
             validator_minimum_bid_amount: 2_500_000_000_000u64,
             maximum_delegation_amount: u64::MAX,

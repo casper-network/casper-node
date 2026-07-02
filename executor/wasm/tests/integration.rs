@@ -421,6 +421,7 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
 
     let genesis_config = GenesisConfig::new(
         default_accounts,
+        casper_types::EvmConfig::default(),
         WasmConfig::default(),
         SystemConfig::default(),
         10,

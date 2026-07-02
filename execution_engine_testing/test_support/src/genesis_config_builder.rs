@@ -123,6 +123,7 @@ impl GenesisConfigBuilder {
     pub fn build(self) -> GenesisConfig {
         GenesisConfig::new(
             self.accounts.unwrap_or_default(),
+            Default::default(),
             self.wasm_config.unwrap_or_default(),
             self.system_config.unwrap_or_default(),
             self.validator_slots.unwrap_or(DEFAULT_VALIDATOR_SLOTS),

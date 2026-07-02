@@ -12,7 +12,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    system::auction::DelegationRate, AdministratorAccount, Chainspec, GenesisAccount,
+    system::auction::DelegationRate, AdministratorAccount, Chainspec, EvmConfig, GenesisAccount,
     GenesisValidator, HoldBalanceHandling, Motes, PublicKey, RewardsHandling, SystemConfig,
     WasmConfig,
 };
@@ -23,6 +23,7 @@ use super::StorageCosts;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisConfig {
     accounts: Vec<GenesisAccount>,
+    evm_config: EvmConfig,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     validator_slots: u32,
@@ -44,6 +45,7 @@ impl GenesisConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: Vec<GenesisAccount>,
+        evm_config: EvmConfig,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
         validator_slots: u32,
@@ -61,6 +63,7 @@ impl GenesisConfig {
     ) -> GenesisConfig {
         GenesisConfig {
             accounts,
+            evm_config,
             wasm_config,
             system_config,
             validator_slots,
@@ -76,6 +79,11 @@ impl GenesisConfig {
             storage_costs,
             minimum_delegation_rate,
         }
+    }
+
+    /// Returns EVM config.
+    pub fn evm_config(&self) -> &EvmConfig {
+        &self.evm_config
     }
 
     /// Returns WASM config.
@@ -209,6 +217,8 @@ impl Distribution<GenesisConfig> for Standard {
 
         let accounts = iter::repeat(()).map(|_| rng.gen()).take(count).collect();
 
+        let evm_config = EvmConfig::default();
+
         let wasm_config = rng.gen();
 
         let system_config = rng.gen();
@@ -234,6 +244,7 @@ impl Distribution<GenesisConfig> for Standard {
 
         GenesisConfig {
             accounts,
+            evm_config,
             wasm_config,
             system_config,
             validator_slots,
@@ -268,6 +279,7 @@ impl From<&Chainspec> for GenesisConfig {
         let storage_costs = chainspec.storage_costs;
         GenesisConfig {
             accounts: chainspec.network_config.accounts_config.clone().into(),
+            evm_config: chainspec.evm_config,
             wasm_config: chainspec.wasm_config,
             system_config: chainspec.system_costs_config,
             validator_slots: chainspec.core_config.validator_slots,

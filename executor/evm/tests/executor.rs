@@ -10,7 +10,7 @@ use alloy_eips::{
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
-    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
+    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, SystemCallRequest, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -52,6 +52,7 @@ fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
         global_state::state::lmdb::make_temporary_global_state([]);
     let genesis_config = GenesisConfig::new(
         accounts,
+        EvmConfig::default(),
         WasmConfig::default(),
         SystemConfig::default(),
         10,
@@ -703,6 +704,133 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
     let mut code = vec![0xef, 0x01, 0x00];
     code.extend_from_slice(delegate.as_bytes());
     code
+}
+
+#[test]
+fn system_call_updates_eip4788_beacon_roots() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let root = [0xab; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    let query = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::BEACON_ROOTS_ADDRESS),
+        word(block().timestamp).to_vec(),
+    );
+    assert_eq!(query.output, root);
+}
+
+#[test]
+fn eip4788_unknown_timestamp_reverts() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let root = [0xcd; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let system_outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+    assert_eq!(system_outcome.status, ExecutionStatus::Success);
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(evm::BEACON_ROOTS_ADDRESS),
+                word(block().timestamp + 1).to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+}
+
+#[test]
+fn user_call_does_not_update_eip4788_beacon_roots() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let system_root = [0x11; evm::HASH_LENGTH];
+    let user_input = [0x22; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let system_outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: system_root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+    assert_eq!(system_outcome.status, ExecutionStatus::Success);
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::new([3; evm::ADDRESS_LENGTH]),
+                Some(evm::BEACON_ROOTS_ADDRESS),
+                user_input.to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+
+    let query = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::BEACON_ROOTS_ADDRESS),
+        word(block().timestamp).to_vec(),
+    );
+    assert_eq!(query.output, system_root);
 }
 
 #[test]

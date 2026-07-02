@@ -135,6 +135,8 @@ pub enum GenesisError {
     MissingGenesisAccounts,
     /// A tracking copy error.
     TrackingCopy(TrackingCopyError),
+    /// Failed to install an EVM predeploy.
+    EvmPredeploy(String),
 }
 
 impl fmt::Display for GenesisError {
