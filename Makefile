@@ -75,7 +75,7 @@ build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))
 
 .PHONY: test-contracts-evm
 test-contracts-evm: build-contracts-evm
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-executor-evm
+	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features $(CARGO_FLAGS) -p casper-executor-evm
 
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<

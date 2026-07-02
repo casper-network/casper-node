@@ -240,6 +240,42 @@ jobs:
       - name: test-contracts
         run: make test-contracts-rs CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
 
+  test_contracts_evm:
+    name: test-contracts-evm
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: setup ubuntu
+        run: |
+          sudo apt-get -y install wabt
+          sudo curl -L https://github.com/ethereum/solidity/releases/download/v0.8.34/solc-static-linux -o /usr/local/bin/solc
+          sudo chmod +x /usr/local/bin/solc
+
+      - name: cache setup tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            ~/.cargo/bin/cargo-audit
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          restore-keys: |
+            setup-tools-${{ runner.os }}-
+
+      - name: setup
+        run: make setup
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: test-contracts-evm
+        run: make test-contracts-evm CARGO_FLAGS=--release CARGO_TEST_PROFILE_ENV='CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16'
+
   tests:
     name: tests
     runs-on: ubuntu-latest
@@ -249,6 +285,7 @@ jobs:
       - test
       - test_no_default_features
       - test_contracts
+      - test_contracts_evm
     if: ${{ always() }}
     steps:
       - name: check required jobs
@@ -258,3 +295,4 @@ jobs:
           test "${{ needs.test.result }}" = "success"
           test "${{ needs.test_no_default_features.result }}" = "success"
           test "${{ needs.test_contracts.result }}" = "success"
+          test "${{ needs.test_contracts_evm.result }}" = "success"

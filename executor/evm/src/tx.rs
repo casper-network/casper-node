@@ -30,7 +30,12 @@ pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxE
                 ),
                 EvmTransactionKind::Eip1559 => {
                     let max_priority_fee_per_gas =
-                        Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
+                        transaction.max_priority_fee_per_gas().ok_or_else(|| {
+                            Error::Transaction(
+                                "dynamic-fee transaction missing max priority fee per gas"
+                                    .to_string(),
+                            )
+                        })?;
                     // Preserve the EIP-1559 fields when translating into
                     // revm. Node config compliance currently only admits
                     // zero-priority-fee EIP-1559 transactions because Casper
@@ -39,14 +44,19 @@ pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxE
                     // typed-transaction adapter.
                     builder
                         .max_fee_per_gas(transaction.max_fee_per_gas())
-                        .gas_priority_fee(max_priority_fee_per_gas)
+                        .gas_priority_fee(Some(max_priority_fee_per_gas))
                 }
                 EvmTransactionKind::Eip7702 => {
                     let max_priority_fee_per_gas =
-                        Some(transaction.max_priority_fee_per_gas().unwrap_or(0));
+                        transaction.max_priority_fee_per_gas().ok_or_else(|| {
+                            Error::Transaction(
+                                "dynamic-fee transaction missing max priority fee per gas"
+                                    .to_string(),
+                            )
+                        })?;
                     builder
                         .max_fee_per_gas(transaction.max_fee_per_gas())
-                        .gas_priority_fee(max_priority_fee_per_gas)
+                        .gas_priority_fee(Some(max_priority_fee_per_gas))
                         .tx_type(Some(evm::EIP7702_TRANSACTION_TYPE_ID))
                         .authorization_list_signed(
                             transaction
