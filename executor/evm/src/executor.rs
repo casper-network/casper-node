@@ -6,6 +6,7 @@ use casper_storage::{
 };
 use casper_types::{EvmConfig, EvmSpec, Key, StoredValue};
 use revm::{
+    context::CfgEnv,
     context_interface::result::{EVMError, ExecutionResult as RevmExecutionResult, ResultGas},
     primitives::{hardfork::SpecId, Bytes, U256},
     Context, ExecuteEvm, MainBuilder, MainContext, SystemCallEvm,
@@ -24,6 +25,13 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct EvmExecutor {
     config: EvmConfig,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EvmExecutionMode {
+    Checked,
+    UncheckedSimulation,
+    SystemCall,
 }
 
 impl EvmExecutor {
@@ -98,12 +106,14 @@ impl EvmExecutor {
             }
         }
 
-        let spec = spec_id(self.config.spec);
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
         let block = request.block.to_revm_block(&self.config)?;
-        let skip_validation = match &request.kind {
-            ExecuteKind::Transaction(_) => false,
-            ExecuteKind::Call(call) => call.validation.is_unchecked_simulation(),
+        let execution_mode = match &request.kind {
+            ExecuteKind::Transaction(_) => EvmExecutionMode::Checked,
+            ExecuteKind::Call(call) if call.validation.is_unchecked_simulation() => {
+                EvmExecutionMode::UncheckedSimulation
+            }
+            ExecuteKind::Call(_) => EvmExecutionMode::Checked,
         };
 
         let result_and_state = {
@@ -112,14 +122,7 @@ impl EvmExecutor {
                 .with_db(db)
                 .with_block(block)
                 .modify_cfg_chained(|cfg| {
-                    cfg.spec = spec;
-                    cfg.chain_id = self.config.chain_id;
-                    cfg.tx_chain_id_check = !skip_validation;
-                    cfg.disable_block_gas_limit = false;
-                    cfg.disable_base_fee = skip_validation;
-                    cfg.disable_balance_check = skip_validation;
-                    cfg.disable_nonce_check = skip_validation;
-                    cfg.disable_fee_charge = true;
+                    configure_evm_cfg(cfg, &self.config, execution_mode);
                 })
                 .build_mainnet();
 
@@ -152,7 +155,6 @@ impl EvmExecutor {
             return Err(Error::Disabled);
         }
 
-        let spec = spec_id(self.config.spec);
         let block = request.block.to_revm_block(&self.config)?;
         let result_and_state = {
             let db = CasperDb::new(tracking_copy, block_hash_provider);
@@ -160,14 +162,7 @@ impl EvmExecutor {
                 .with_db(db)
                 .with_block(block)
                 .modify_cfg_chained(|cfg| {
-                    cfg.spec = spec;
-                    cfg.chain_id = self.config.chain_id;
-                    cfg.tx_chain_id_check = false;
-                    cfg.disable_block_gas_limit = true;
-                    cfg.disable_base_fee = true;
-                    cfg.disable_balance_check = true;
-                    cfg.disable_nonce_check = true;
-                    cfg.disable_fee_charge = true;
+                    configure_evm_cfg(cfg, &self.config, EvmExecutionMode::SystemCall);
                 })
                 .build_mainnet();
 
@@ -182,6 +177,22 @@ impl EvmExecutor {
         state::apply(tracking_copy, result_and_state.state)?;
         Ok(outcome)
     }
+}
+
+fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmExecutionMode) {
+    let skip_validation = matches!(
+        execution_mode,
+        EvmExecutionMode::UncheckedSimulation | EvmExecutionMode::SystemCall
+    );
+
+    cfg.spec = spec_id(config.spec);
+    cfg.chain_id = config.chain_id;
+    cfg.tx_chain_id_check = matches!(execution_mode, EvmExecutionMode::Checked);
+    cfg.disable_block_gas_limit = matches!(execution_mode, EvmExecutionMode::SystemCall);
+    cfg.disable_base_fee = skip_validation;
+    cfg.disable_balance_check = skip_validation;
+    cfg.disable_nonce_check = skip_validation;
+    cfg.disable_fee_charge = true;
 }
 
 fn disabled_fee_transfers(
