@@ -20,10 +20,28 @@ Only EIPs referenced by this document or the current code are listed here.
 | [EIP-2718][eip-2718] | <https://eips.ethereum.org/EIPS/eip-2718> | Typed transaction envelope format used by post-legacy Ethereum transaction types. The decoder accepts typed envelopes through Alloy. |
 | [EIP-2930][eip-2930] | <https://eips.ethereum.org/EIPS/eip-2930> | Optional access-list transaction type. Empty access-list transactions decode; non-empty access lists are rejected for now. |
 | [EIP-1559][eip-1559] | <https://eips.ethereum.org/EIPS/eip-1559> | Dynamic-fee transaction type with max fee and priority fee. Casper accepts this envelope for tooling compatibility only when the priority fee is zero. |
+| [EIP-1153][eip-1153] | <https://eips.ethereum.org/EIPS/eip-1153> | Cancun transient storage opcodes, `TLOAD` and `TSTORE`. |
 | [EIP-4844][eip-4844] | <https://eips.ethereum.org/EIPS/eip-4844> | Blob transaction support. Rejected because blob sidecars, blob gas, and KZG data are not modeled. |
+| [EIP-5656][eip-5656] | <https://eips.ethereum.org/EIPS/eip-5656> | Cancun `MCOPY` memory-copying opcode. |
+| [EIP-6780][eip-6780] | <https://eips.ethereum.org/EIPS/eip-6780> | Cancun `SELFDESTRUCT` behavior, deleting only contracts created in the same transaction. |
+| [EIP-7516][eip-7516] | <https://eips.ethereum.org/EIPS/eip-7516> | Cancun `BLOBBASEFEE` opcode. |
+| [EIP-2537][eip-2537] | <https://eips.ethereum.org/EIPS/eip-2537> | Prague BLS12-381 precompiles at `0x0b` through `0x11`. |
+| [EIP-2935][eip-2935] | <https://eips.ethereum.org/EIPS/eip-2935> | Prague block-hash history system contract. |
+| [EIP-4788][eip-4788] | <https://eips.ethereum.org/EIPS/eip-4788> | Beacon roots system contract. This is a Cancun/Dencun EIP, but current Ethereum-compatible Prague environments include it. |
+| [EIP-6110][eip-6110] | <https://eips.ethereum.org/EIPS/eip-6110> | Prague execution-layer deposit requests derived from deposit contract logs. |
+| [EIP-7002][eip-7002] | <https://eips.ethereum.org/EIPS/eip-7002> | Prague execution-layer triggerable withdrawal request contract. |
+| [EIP-7251][eip-7251] | <https://eips.ethereum.org/EIPS/eip-7251> | Prague validator consolidation request contract and consensus changes. |
+| [EIP-7549][eip-7549] | <https://eips.ethereum.org/EIPS/eip-7549> | Prague/Electra consensus-layer attestation change. |
+| [EIP-7569][eip-7569] | <https://eips.ethereum.org/EIPS/eip-7569> | Dencun hardfork meta EIP. Prague compatibility inherits its execution-layer surface. |
+| [EIP-7600][eip-7600] | <https://eips.ethereum.org/EIPS/eip-7600> | Prague/Electra hardfork meta EIP. |
+| [EIP-7623][eip-7623] | <https://eips.ethereum.org/EIPS/eip-7623> | Prague calldata floor cost. |
+| [EIP-7642][eip-7642] | <https://eips.ethereum.org/EIPS/eip-7642> | `eth/69` networking cleanup. Not contract-visible for Casper EVM. |
+| [EIP-7685][eip-7685] | <https://eips.ethereum.org/EIPS/eip-7685> | Prague execution-layer requests and `requests_hash` commitment. |
+| [EIP-7691][eip-7691] | <https://eips.ethereum.org/EIPS/eip-7691> | Prague blob throughput increase. |
 | [EIP-7702][eip-7702] | <https://eips.ethereum.org/EIPS/eip-7702> | Set-code transactions for EOAs. Type `0x04` transactions are accepted with non-empty authorization lists; Casper still rejects non-empty access lists and non-zero priority fees. |
+| [EIP-7840][eip-7840] | <https://eips.ethereum.org/EIPS/eip-7840> | Blob schedule in execution-layer config files. |
 
-## Current Scope
+## Current Status
 
 Implemented in this workspace:
 
@@ -43,30 +61,136 @@ Implemented in this workspace:
   creating or funding the corresponding EVM-native purse identity.
 - [EIP-7702][eip-7702] type `0x04` set-code transactions, with authorization
   lists passed through to `revm` for Prague execution.
+- [EIP-4788][eip-4788] beacon roots predeploy and pre-block system-call update.
+  Casper stores the parent Casper block hash as the root value.
 
 Implemented in the sidecar workspace for validation:
 
 - Minimal Ethereum JSON-RPC methods on the existing `/rpc` endpoint:
   `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`,
   `eth_getTransactionCount`, `eth_sendRawTransaction`,
-  `eth_getTransactionReceipt`, and `eth_call`.
+  `eth_getTransactionReceipt`, `eth_getLogs`, `eth_call`,
+  `eth_newFilter`, `eth_getFilterChanges`, `eth_getFilterLogs`,
+  `eth_uninstallFilter`, and `eth_subscribe`.
 - `eth_getTransactionReceipt` projects logs stored in
   `ExecutionResult::Evm` as Ethereum receipt log entries.
+- `eth_getBlockByNumber` projects `parentBeaconBlockRoot` as the parent Casper
+  block hash, matching Casper's [EIP-4788][eip-4788] system-contract value.
 - Development-only Cargo patches pointing sidecar at this node workspace for
   unreleased `casper-types` and `casper-binary-port` changes.
 
 Not implemented yet:
 
 - Native Ethereum JSON-RPC in node.
-- `eth_estimateGas`, `eth_getBalance`, `eth_getCode`, historical `eth_call`,
-  `eth_getLogs`, or `eth_getTransactionByHash`.
-- Ethereum filter and subscription methods, including `eth_newFilter`,
-  `eth_getFilterChanges`, `eth_getFilterLogs`, `eth_uninstallFilter`, and
-  `eth_subscribe`.
+- `eth_estimateGas`, `eth_getBalance`, `eth_getCode`, `eth_getStorageAt`,
+  `eth_getBlockByHash`, `eth_getTransactionByHash`, `eth_gasPrice`,
+  `eth_feeHistory`, `eth_maxPriorityFeePerGas`, `eth_blobBaseFee`,
+  historical `eth_call`, and full transaction objects in block responses.
 - [EIP-4844][eip-4844] blob transactions.
 - Non-empty [EIP-2930][eip-2930]/[EIP-1559][eip-1559] access lists.
 - Non-empty [EIP-7702][eip-7702] access lists and non-zero priority fees.
 - EVM log indexing optimized for historical queries.
+
+### Prague Compatibility Matrix
+
+This matrix treats [EIP-7600][eip-7600] as the Prague/Pectra scope and
+[EIP-7569][eip-7569] as the inherited Dencun/Cancun execution-layer baseline.
+Ethereum JSON-RPC method names below refer to the Ethereum
+[Execution APIs][execution-apis] specification.
+
+| Feature | Current status | Casper-specific gotchas / limitations |
+| --- | --- | --- |
+| `EvmSpec::Prague` / `revm::SpecId::PRAGUE` | Implemented. | Execution behavior is delegated to `revm`; Casper does not maintain its own EVM interpreter. |
+| [EIP-2537][eip-2537] BLS12-381 precompiles | Delegated to `revm`. | Expected at `0x0b` through `0x11`, but Casper-owned conformance tests are still needed for gas costs, malformed input, subgroup checks, and failure behavior. |
+| [EIP-2935][eip-2935] block-hash history contract | Missing. | Current `BLOCKHASH` uses a recent Casper block-hash provider only. Full compatibility needs the history contract at `0x0000F90827F1C53a10cb7A02335B175320002935`, a pre-block system call, and the 8191-entry ring buffer. |
+| [EIP-4788][eip-4788] beacon roots contract | Implemented. | Standard address, bytecode, interface, and system-call update path are present, but `parentBeaconBlockRoot := parent Casper block hash`, not an Ethereum beacon block root. |
+| [EIP-6110][eip-6110] validator deposit requests | Missing / decision needed. | Ethereum-specific deposit-log-to-request flow. Full support requires [EIP-7685][eip-7685] request construction and commitment. |
+| [EIP-7002][eip-7002] withdrawal request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x00000961Ef480Eb55e80D19ad83579A64c007002` is absent. Full support requires queue/fee state, post-block extraction, and [EIP-7685][eip-7685] request output. |
+| [EIP-7251][eip-7251] consolidation request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x0000BBdDc7CE488642fb579F8B00f3a590007251` is absent. Full support has the same request-output dependency as EIP-7002. |
+| [EIP-7549][eip-7549] consensus attestation change | Not applicable. | Consensus-layer attestation layout is not contract-visible for Casper EVM execution. |
+| [EIP-7623][eip-7623] calldata floor cost | Partial. | `revm` Prague should enforce checked execution semantics, but Casper needs acceptor/max-cost tests and pre-inclusion validation coverage for calldata-heavy transactions. |
+| [EIP-7685][eip-7685] execution-layer requests | Missing / decision needed. | Casper block headers do not carry Ethereum `requests_hash`; needed if EIP-6110, EIP-7002, or EIP-7251 are implemented with Ethereum semantics. |
+| [EIP-7691][eip-7691] blob throughput | Missing / blocked. | Blob throughput is moot while [EIP-4844][eip-4844] blob transactions are rejected. |
+| [EIP-7702][eip-7702] set-code transactions | Partial. | Type `0x04` decode, authorization-list storage, and `revm` execution are implemented. Non-empty access lists and non-zero priority fees are rejected by Casper policy. |
+| [EIP-7840][eip-7840] blob schedule config | Missing / blocked. | Requires blob support and Prague blob schedule configuration. |
+| [EIP-7642][eip-7642] `eth/69` networking | Not applicable. | Ethereum devp2p execution-layer networking is outside Casper EVM smart-contract compatibility. |
+| [EIP-1153][eip-1153] transient storage | Delegated to `revm`. | Expected to work under Prague; add Casper-owned tests for `TLOAD`, `TSTORE`, revert behavior, and static-call restrictions. |
+| [EIP-4844][eip-4844] blob transactions and blob fields | Missing. | Type `0x03` blob transactions are rejected. No blob sidecars, blob gas accounting, blob hashes, `blobGasUsed`, or `excessBlobGas` are modeled. |
+| [EIP-5656][eip-5656] `MCOPY` | Delegated to `revm`. | Expected to work under Prague; add explicit tests if Casper wants owned coverage. |
+| [EIP-6780][eip-6780] `SELFDESTRUCT` behavior | Delegated to `revm`; covered by local Prague tests. | Semantics are Prague/Cancun EVM semantics, not a Casper-specific storage rule. |
+| [EIP-7516][eip-7516] `BLOBBASEFEE` | Weak / incomplete. | Opcode may execute through `revm`, but Casper has no blob fee market, so the value is not Ethereum-meaningful. |
+
+| Non-EIP execution surface | Current status | Casper-specific gotchas / limitations |
+| --- | --- | --- |
+| Standard precompiles `0x01` through `0x09` | Delegated to `revm`. | Casper has no local precompile table; compatibility depends on the selected `revm` mainnet provider. |
+| [EIP-4844][eip-4844] KZG point-evaluation precompile `0x0a` | Delegated to `revm`, but incomplete as an environment. | The precompile may exist, but blob transactions and blob block fields are missing. |
+| EVM account model | Implemented. | Accounts are represented as split Casper global-state records for identity, nonce, code hash, bytecode, storage, and purse backing, not as one Ethereum account object. |
+| EVM bytecode storage | Implemented. | Runtime bytecode is stored as `ByteCodeKind::EvmPrague`; future bytecode-affecting forks should add new bytecode kinds. |
+| EVM storage slots | Implemented. | Slots are Casper `U256` values under `Key::Evm(EvmAddr::Storage(..))`; zero writes prune state. |
+| Logs and receipts | Implemented. | Node stores EVM receipts/logs; sidecar computes Ethereum-style blooms and receipt roots from stored EVM receipts. Blob receipts are absent. |
+| `BLOCKHASH` opcode | Partial. | Recent Casper block hashes are available through a node-supplied provider. This is not [EIP-2935][eip-2935] history-contract state. |
+| `NUMBER`, `TIMESTAMP`, `GASLIMIT`, `BASEFEE` | Implemented. | Timestamp is Casper block time in seconds. Base fee is chainspec-configured and wei-denominated through `wei_per_mote`, not Ethereum's dynamic base-fee adjustment. |
+| `COINBASE` | Implemented with Casper semantics. | The address is derived from the Casper block proposer public key. |
+| `CHAINID` | Implemented. | Transaction chain ID is enforced against chainspec `[evm].chain_id`. |
+| `PREVRANDAO` | Weak / missing semantic mapping. | Casper does not plumb a randomness field into the EVM block context, so contracts should not treat it as Ethereum beacon randomness. |
+| `BLOBHASH` and blob-related block context | Missing / misleading. | No accepted blob transactions means no meaningful blob versioned hashes, blob gas, or blob fee context. |
+| Fee charging | Casper-specific. | `revm` fee charging is disabled; Casper hold, refund, and fee accounting owns balance effects. |
+
+| Transaction / admission surface | Current status | Casper-specific gotchas / limitations |
+| --- | --- | --- |
+| Legacy transactions | Implemented. | Casper requires a chain ID; unprotected legacy transactions are rejected. Gas price must cover configured EVM base fee. |
+| [EIP-2930][eip-2930] access-list transactions | Partial. | Empty access-list envelopes work; non-empty access lists are rejected. |
+| [EIP-1559][eip-1559] dynamic-fee transactions | Partial. | Accepted only when `max_priority_fee_per_gas == 0`; Casper does not order transactions by EVM priority fee. |
+| [EIP-7702][eip-7702] set-code transactions | Partial. | Authorization-list behavior is implemented, but access lists and non-zero priority fees are rejected. |
+| [EIP-4844][eip-4844] blob transactions | Missing. | Type `0x03` transactions are rejected before execution. |
+| Non-empty access lists | Missing. | This affects EIP-2930, EIP-1559, and EIP-7702 tooling compatibility. |
+| Non-zero priority fees | Casper policy limitation. | Rejecting non-zero tips avoids charging users for a priority signal the node does not honor, but it differs from Ethereum admission policy. |
+
+| Sidecar / JSON-RPC surface | Current status | Casper-specific gotchas / limitations |
+| --- | --- | --- |
+| [`eth_getBlockByNumber`][execution-apis] | Partial. | Projects `parentBeaconBlockRoot` as the parent Casper block hash. `fullTransactions=true` is unsupported, several fields are placeholders or Casper-derived, and blob fields are absent. |
+| [`eth_call`][execution-apis] | Partial. | Uses binary-port speculative execution. Historical state, state overrides, block overrides, access lists, and EIP-1559 fee fields are missing. |
+| [`eth_getTransactionReceipt`][execution-apis] | Implemented / partial. | Projects stored EVM receipts for transaction types `0`, `1`, `2`, and `4`; no blob transaction receipts. |
+| [`eth_getLogs`][execution-apis], [`eth_newFilter`][execution-apis], [`eth_getFilterChanges`][execution-apis], [`eth_getFilterLogs`][execution-apis], [`eth_uninstallFilter`][execution-apis], [`eth_subscribe`][geth-pubsub] | Implemented / partial. | Filters are process-local and range-limited; log scans are not optimized for large historical ranges; `removed` is always `false`. |
+| [`eth_getTransactionCount`][execution-apis] | Partial. | Reads latest EVM nonce; block selectors are not historical. |
+| [`eth_getBalance`][execution-apis], [`eth_getCode`][execution-apis], [`eth_getStorageAt`][execution-apis] | Missing. | These are required by common wallets, explorers, and contract tooling, including inspection of EVM predeploy state. |
+| [`eth_estimateGas`][execution-apis] | Missing. | Needs execution simulation plus [EIP-7623][eip-7623] calldata floor behavior. |
+| [`eth_gasPrice`][execution-apis], [`eth_feeHistory`][execution-apis], [`eth_maxPriorityFeePerGas`][execution-apis], [`eth_blobBaseFee`][execution-apis] | Missing / placeholder. | Casper fee policy is not Ethereum's priority-fee market; blob fee RPC is blocked on blob support. |
+| [`eth_getBlockByHash`][execution-apis], [`eth_getTransactionByHash`][execution-apis] | Missing. | Expected by ordinary Ethereum tooling. |
+
+## Prague Compatibility
+
+[EIP-7600][eip-7600] defines Prague/Pectra as a combined execution-layer and
+consensus-layer upgrade. Casper's EVM mode is not an Ethereum consensus client,
+so the compatibility target is the EVM execution behavior, precompiles,
+predeploys, transaction envelopes, observable block context, and JSON-RPC
+projection that Ethereum smart contracts and tooling expect.
+
+`EvmSpec::Prague` maps to `revm::SpecId::PRAGUE`. That activates Prague
+interpreter, gas, transaction, and precompile behavior inside `revm`. Casper
+still has to provide the system-contract state, block hooks, block/request
+metadata, transaction admission rules, and sidecar projection around that
+executor.
+
+[EIP-4788][eip-4788] is not a Prague core EIP; it was introduced in the
+previous Cancun/Dencun upgrade. It is included in this review because a Prague
+Ethereum-compatible environment has this contract. In this branch, Casper
+installs the exact EIP-4788 runtime bytecode at
+`0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`, runs the pre-block system call
+before user transactions, and uses:
+
+```text
+parentBeaconBlockRoot := parent Casper block hash
+```
+
+This gives contracts a deterministic consensus-root oracle for Casper. It is
+not strict Ethereum beacon-chain semantics. The detailed, audited compatibility
+matrix is in [Current Status](#current-status).
+
+The highest-priority smart-contract-visible gaps after EIP-4788 are
+[EIP-2935][eip-2935], request predeploy decisions for [EIP-7002][eip-7002] and
+[EIP-7251][eip-7251], and explicit Prague conformance coverage for
+[EIP-2537][eip-2537], [EIP-7623][eip-7623], and [EIP-7702][eip-7702].
 
 ## Transaction Shape
 
@@ -966,15 +1090,15 @@ cargo build -p casper-sidecar
 ## Current Caveats
 
 - `casper-devnet` SSE parsing is not yet updated for new EVM variants.
-- `eth_getBlockByNumber` currently returns enough typed fields for Foundry
-  polling, but it is not a complete Ethereum block projection.
-- `eth_getBlockByNumber` currently returns placeholder block-level
-  `logsBloom`, `receiptsRoot`, and `gasUsed` values. Receipt-level log data is
-  available through `eth_getTransactionReceipt`, but block-level receipt-root
-  verification is not implemented.
+- `eth_getBlockByNumber` is not a complete Ethereum block projection: full
+  transaction objects, blob fields, and several Ethereum consensus-derived
+  fields are missing or Casper-specific.
 - Sidecar derives receipt fields from stored `ExecutionResult::Evm` and block
-  metadata; efficient historical log queries are not implemented.
-- EVM call support is latest/pending only in sidecar.
+  metadata; efficient historical log indexing is not implemented.
+- EVM call and nonce support are latest/pending only in sidecar.
+- State inspection and fee-estimation RPCs such as `eth_getBalance`,
+  `eth_getCode`, `eth_getStorageAt`, `eth_estimateGas`, and `eth_feeHistory`
+  are not implemented yet.
 - EVM support is currently a prototype path and still uses local sidecar
   patches for unreleased node types.
 
@@ -983,5 +1107,25 @@ cargo build -p casper-sidecar
 [eip-2718]: https://eips.ethereum.org/EIPS/eip-2718
 [eip-2930]: https://eips.ethereum.org/EIPS/eip-2930
 [eip-1559]: https://eips.ethereum.org/EIPS/eip-1559
+[eip-1153]: https://eips.ethereum.org/EIPS/eip-1153
 [eip-4844]: https://eips.ethereum.org/EIPS/eip-4844
+[eip-5656]: https://eips.ethereum.org/EIPS/eip-5656
+[eip-6780]: https://eips.ethereum.org/EIPS/eip-6780
+[eip-7516]: https://eips.ethereum.org/EIPS/eip-7516
+[eip-2537]: https://eips.ethereum.org/EIPS/eip-2537
+[eip-2935]: https://eips.ethereum.org/EIPS/eip-2935
+[eip-4788]: https://eips.ethereum.org/EIPS/eip-4788
+[eip-6110]: https://eips.ethereum.org/EIPS/eip-6110
+[eip-7002]: https://eips.ethereum.org/EIPS/eip-7002
+[eip-7251]: https://eips.ethereum.org/EIPS/eip-7251
+[eip-7549]: https://eips.ethereum.org/EIPS/eip-7549
+[eip-7569]: https://eips.ethereum.org/EIPS/eip-7569
+[eip-7600]: https://eips.ethereum.org/EIPS/eip-7600
+[eip-7623]: https://eips.ethereum.org/EIPS/eip-7623
+[eip-7642]: https://eips.ethereum.org/EIPS/eip-7642
+[eip-7685]: https://eips.ethereum.org/EIPS/eip-7685
+[eip-7691]: https://eips.ethereum.org/EIPS/eip-7691
 [eip-7702]: https://eips.ethereum.org/EIPS/eip-7702
+[eip-7840]: https://eips.ethereum.org/EIPS/eip-7840
+[execution-apis]: https://ethereum.github.io/execution-apis/
+[geth-pubsub]: https://geth.ethereum.org/docs/interacting-with-geth/rpc/pubsub
