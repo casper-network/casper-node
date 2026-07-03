@@ -92,12 +92,62 @@ fn evm_block_context(
     }
 }
 
+struct PragueEvmSystemCall {
+    target: EvmAddress,
+    input: Vec<u8>,
+    name: &'static str,
+}
+
 fn execute_eip4788_beacon_roots_update(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
     chainspec: &Chainspec,
     block_context: EvmBlockContext,
     parent_hash: BlockHash,
+    evm_block_hash_provider: &dyn EvmBlockHashProvider,
+) -> Result<Digest, BlockExecutionError> {
+    execute_prague_evm_system_call(
+        scratch_state,
+        state_root_hash,
+        chainspec,
+        block_context,
+        PragueEvmSystemCall {
+            target: casper_types::evm::BEACON_ROOTS_ADDRESS,
+            input: parent_hash.as_ref().to_vec(),
+            name: "EIP-4788 beacon roots",
+        },
+        evm_block_hash_provider,
+    )
+}
+
+fn execute_eip2935_block_hash_history_update(
+    scratch_state: &ScratchGlobalState,
+    state_root_hash: Digest,
+    chainspec: &Chainspec,
+    block_context: EvmBlockContext,
+    parent_hash: BlockHash,
+    evm_block_hash_provider: &dyn EvmBlockHashProvider,
+) -> Result<Digest, BlockExecutionError> {
+    execute_prague_evm_system_call(
+        scratch_state,
+        state_root_hash,
+        chainspec,
+        block_context,
+        PragueEvmSystemCall {
+            target: casper_types::evm::BLOCK_HASH_HISTORY_ADDRESS,
+            input: parent_hash.as_ref().to_vec(),
+            name: "EIP-2935 block hash history",
+        },
+        evm_block_hash_provider,
+    )
+}
+
+fn execute_prague_evm_system_call(
+    scratch_state: &ScratchGlobalState,
+    state_root_hash: Digest,
+    chainspec: &Chainspec,
+    block_context: EvmBlockContext,
+    system_call: PragueEvmSystemCall,
     evm_block_hash_provider: &dyn EvmBlockHashProvider,
 ) -> Result<Digest, BlockExecutionError> {
     if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
@@ -113,8 +163,8 @@ fn execute_eip4788_beacon_roots_update(
         .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
     let request = EvmSystemCallRequest {
         block: block_context,
-        target: casper_types::evm::BEACON_ROOTS_ADDRESS,
-        input: parent_hash.as_ref().to_vec(),
+        target: system_call.target,
+        input: system_call.input,
     };
     let outcome = EvmExecutor::new(chainspec.evm_config)
         .execute_system_call_with_block_hash_provider(
@@ -126,8 +176,8 @@ fn execute_eip4788_beacon_roots_update(
 
     if !matches!(outcome.status, EvmExecutionStatus::Success) {
         return Err(BlockExecutionError::TransactionConversion(format!(
-            "EIP-4788 beacon roots system call failed with status {:?}",
-            outcome.status
+            "{} system call failed with status {:?}",
+            system_call.name, outcome.status
         )));
     }
 
@@ -755,11 +805,20 @@ pub fn execute_finalized_block(
         }
     }
 
+    let evm_context = evm_block_context(chainspec, block_height, block_time, &proposer);
     state_root_hash = execute_eip4788_beacon_roots_update(
         &scratch_state,
         state_root_hash,
         chainspec,
-        evm_block_context(chainspec, block_height, block_time, &proposer),
+        evm_context.clone(),
+        parent_hash,
+        evm_block_hash_provider,
+    )?;
+    state_root_hash = execute_eip2935_block_hash_history_update(
+        &scratch_state,
+        state_root_hash,
+        chainspec,
+        evm_context,
         parent_hash,
         evm_block_hash_provider,
     )?;
@@ -2405,6 +2464,20 @@ mod tests {
         bytes
     }
 
+    fn enabled_prague_evm_chainspec() -> Chainspec {
+        Chainspec {
+            evm_config: EvmConfig {
+                enabled: true,
+                chain_id: 7,
+                spec: EvmSpec::Prague,
+                block_gas_limit: 30_000_000,
+                base_fee: 0,
+                wei_per_mote: DEFAULT_WEI_PER_MOTE,
+            },
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
         let gas_limit = Gas::new(21_000);
@@ -2431,17 +2504,7 @@ mod tests {
 
     #[test]
     fn eip4788_hook_updates_beacon_roots_without_transactions() {
-        let chainspec = Chainspec {
-            evm_config: EvmConfig {
-                enabled: true,
-                chain_id: 7,
-                spec: EvmSpec::Prague,
-                block_gas_limit: 30_000_000,
-                base_fee: 0,
-                wei_per_mote: DEFAULT_WEI_PER_MOTE,
-            },
-            ..Default::default()
-        };
+        let chainspec = enabled_prague_evm_chainspec();
         let (global_state, state_root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
             (
                 Key::Evm(EvmAddr::CodeHash(evm::BEACON_ROOTS_ADDRESS)),
@@ -2486,6 +2549,66 @@ mod tests {
                         to: Some(evm::BEACON_ROOTS_ADDRESS),
                         value: casper_types::U256::from(0u8),
                         input: evm_word(block_time.value() / 1_000),
+                        gas_limit: 5_000_000,
+                        gas_price: 0,
+                        nonce: 0,
+                        validation: EvmCallValidation::UncheckedSimulation,
+                    }),
+                },
+            )
+            .expect("EVM call should execute");
+
+        assert_eq!(outcome.status, EvmExecutionStatus::Success);
+        assert_eq!(outcome.output, parent_hash.as_ref());
+    }
+
+    #[test]
+    fn eip2935_hook_updates_block_hash_history_without_transactions() {
+        let chainspec = enabled_prague_evm_chainspec();
+        let (global_state, state_root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
+            (
+                Key::Evm(EvmAddr::CodeHash(evm::BLOCK_HASH_HISTORY_ADDRESS)),
+                StoredValue::CLValue(
+                    CLValue::from_t(evm::block_hash_history_code_hash())
+                        .expect("code hash should encode"),
+                ),
+            ),
+            (
+                Key::Evm(EvmAddr::ByteCode(evm::block_hash_history_code_hash())),
+                StoredValue::ByteCode(ByteCode::new(
+                    ByteCodeKind::EvmPrague,
+                    evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
+                )),
+            ),
+        ]);
+        let scratch_state = global_state.create_scratch();
+        let block_time = BlockTime::new(2_000);
+        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
+        let parent_hash = BlockHash::new(Digest::from_raw([0x55; 32]));
+
+        let updated_state_root_hash = execute_eip2935_block_hash_history_update(
+            &scratch_state,
+            state_root_hash,
+            &chainspec,
+            block_context.clone(),
+            parent_hash,
+            &StaticEvmBlockHashProvider::default(),
+        )
+        .expect("EIP-2935 hook should succeed");
+        let mut tracking_copy = scratch_state
+            .tracking_copy(updated_state_root_hash)
+            .expect("tracking copy should not fail")
+            .expect("state root should exist");
+        let outcome = EvmExecutor::new(chainspec.evm_config)
+            .execute(
+                &mut tracking_copy,
+                EvmExecuteRequest {
+                    block: block_context,
+                    kind: EvmExecuteKind::Call(EvmExecutorCallRequest {
+                        from: EvmAddress::ZERO,
+                        to: Some(evm::BLOCK_HASH_HISTORY_ADDRESS),
+                        value: casper_types::U256::from(0u8),
+                        input: evm_word(0),
                         gas_limit: 5_000_000,
                         gas_price: 0,
                         nonce: 0,

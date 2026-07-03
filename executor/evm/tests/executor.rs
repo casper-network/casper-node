@@ -801,6 +801,117 @@ fn user_call_does_not_update_eip4788_beacon_roots() {
 }
 
 #[test]
+fn system_call_updates_eip2935_block_hash_history() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let parent_hash = [0xab; evm::HASH_LENGTH];
+
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BLOCK_HASH_HISTORY_ADDRESS,
+        evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BLOCK_HASH_HISTORY_ADDRESS,
+                input: parent_hash.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    let query = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::BLOCK_HASH_HISTORY_ADDRESS),
+        word(0).to_vec(),
+    );
+    assert_eq!(query.output, parent_hash);
+}
+
+#[test]
+fn eip2935_current_or_future_block_reverts() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BLOCK_HASH_HISTORY_ADDRESS,
+        evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(evm::BLOCK_HASH_HISTORY_ADDRESS),
+                word(block().number).to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+}
+
+#[test]
+fn eip2935_too_old_block_reverts() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BLOCK_HASH_HISTORY_ADDRESS,
+        evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let mut request = call_request(
+        evm::Address::ZERO,
+        Some(evm::BLOCK_HASH_HISTORY_ADDRESS),
+        word(0).to_vec(),
+        CasperU256::zero(),
+    );
+    request.block.number = 8_192;
+    let outcome = executor
+        .execute(&mut tracking_copy, request)
+        .expect("EVM call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+}
+
+#[test]
+fn eip2935_invalid_calldata_length_reverts() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BLOCK_HASH_HISTORY_ADDRESS,
+        evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(evm::BLOCK_HASH_HISTORY_ADDRESS),
+                vec![0; evm::HASH_LENGTH - 1],
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+}
+
+#[test]
 fn blockhash_uses_supplied_provider() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);

@@ -8,6 +8,7 @@
 mod account;
 mod address;
 mod config;
+mod eip2935;
 mod eip4788;
 mod evm_addr;
 mod hash;
@@ -17,6 +18,9 @@ mod transaction;
 
 pub use account::{deterministic_purse, StorageAddr, EMPTY_CODE_HASH};
 pub use address::{Address, ADDRESS_LENGTH};
+pub use eip2935::{
+    block_hash_history_code_hash, BLOCK_HASH_HISTORY_ADDRESS, BLOCK_HASH_HISTORY_CODE,
+};
 pub use eip4788::{beacon_roots_code_hash, BEACON_ROOTS_ADDRESS, BEACON_ROOTS_CODE};
 pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};

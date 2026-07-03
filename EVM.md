@@ -63,6 +63,9 @@ Implemented in this workspace:
   lists passed through to `revm` for Prague execution.
 - [EIP-4788][eip-4788] beacon roots predeploy and pre-block system-call update.
   Casper stores the parent Casper block hash as the root value.
+- [EIP-2935][eip-2935] block-hash history predeploy and pre-block
+  system-call update. Casper stores parent Casper block hashes in the
+  8191-slot history ring buffer.
 
 Implemented in the sidecar workspace for validation:
 
@@ -102,7 +105,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | --- | --- | --- |
 | `EvmSpec::Prague` / `revm::SpecId::PRAGUE` | Implemented. | Execution behavior is delegated to `revm`; Casper does not maintain its own EVM interpreter. |
 | [EIP-2537][eip-2537] BLS12-381 precompiles | Delegated to `revm`. | Expected at `0x0b` through `0x11`, but Casper-owned conformance tests are still needed for gas costs, malformed input, subgroup checks, and failure behavior. |
-| [EIP-2935][eip-2935] block-hash history contract | Missing. | Current `BLOCKHASH` uses a recent Casper block-hash provider only. Full compatibility needs the history contract at `0x0000F90827F1C53a10cb7A02335B175320002935`, a pre-block system call, and the 8191-entry ring buffer. |
+| [EIP-2935][eip-2935] block-hash history contract | Implemented. | Standard address, bytecode, interface, and system-call update path are present. Casper stores parent Casper block hashes; `BLOCKHASH` opcode semantics remain unchanged. |
 | [EIP-4788][eip-4788] beacon roots contract | Implemented. | Standard address, bytecode, interface, and system-call update path are present, but `parentBeaconBlockRoot := parent Casper block hash`, not an Ethereum beacon block root. |
 | [EIP-6110][eip-6110] validator deposit requests | Missing / decision needed. | Ethereum-specific deposit-log-to-request flow. Full support requires [EIP-7685][eip-7685] request construction and commitment. |
 | [EIP-7002][eip-7002] withdrawal request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x00000961Ef480Eb55e80D19ad83579A64c007002` is absent. Full support requires queue/fee state, post-block extraction, and [EIP-7685][eip-7685] request output. |
@@ -128,7 +131,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | EVM bytecode storage | Implemented. | Runtime bytecode is stored as `ByteCodeKind::EvmPrague`; future bytecode-affecting forks should add new bytecode kinds. |
 | EVM storage slots | Implemented. | Slots are Casper `U256` values under `Key::Evm(EvmAddr::Storage(..))`; zero writes prune state. |
 | Logs and receipts | Implemented. | Node stores EVM receipts/logs; sidecar computes Ethereum-style blooms and receipt roots from stored EVM receipts. Blob receipts are absent. |
-| `BLOCKHASH` opcode | Partial. | Recent Casper block hashes are available through a node-supplied provider. This is not [EIP-2935][eip-2935] history-contract state. |
+| `BLOCKHASH` opcode | Implemented with Casper semantics. | Recent Casper block hashes are available through a node-supplied provider. This remains separate from [EIP-2935][eip-2935] history-contract state. |
 | `NUMBER`, `TIMESTAMP`, `GASLIMIT`, `BASEFEE` | Implemented. | Timestamp is Casper block time in seconds. Base fee is chainspec-configured and wei-denominated through `wei_per_mote`, not Ethereum's dynamic base-fee adjustment. |
 | `COINBASE` | Implemented with Casper semantics. | The address is derived from the Casper block proposer public key. |
 | `CHAINID` | Implemented. | Transaction chain ID is enforced against chainspec `[evm].chain_id`. |
@@ -187,8 +190,8 @@ This gives contracts a deterministic consensus-root oracle for Casper. It is
 not strict Ethereum beacon-chain semantics. The detailed, audited compatibility
 matrix is in [Current Status](#current-status).
 
-The highest-priority smart-contract-visible gaps after EIP-4788 are
-[EIP-2935][eip-2935], request predeploy decisions for [EIP-7002][eip-7002] and
+The highest-priority smart-contract-visible gaps after EIP-4788 and
+EIP-2935 are request predeploy decisions for [EIP-7002][eip-7002] and
 [EIP-7251][eip-7251], and explicit Prague conformance coverage for
 [EIP-2537][eip-2537], [EIP-7623][eip-7623], and [EIP-7702][eip-7702].
 
