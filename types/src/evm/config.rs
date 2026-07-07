@@ -19,6 +19,9 @@ pub const DEFAULT_WEI_PER_MOTE: u64 = 1_000_000_000;
 pub const MINIMUM_WEI_PER_MOTE: u64 = DEFAULT_WEI_PER_MOTE;
 
 /// Supported EVM hardfork specifications for chainspec configuration.
+///
+/// Variants are ordered by fork chronology; feature gates use ordinal
+/// comparisons to apply functionality from a fork onward.
 #[derive(
     Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
 )]

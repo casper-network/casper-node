@@ -54,7 +54,7 @@ impl From<CLValueError> for EvmPredeployError {
 
 /// Returns whether EIP-4788 should be installed for the supplied EVM config.
 pub(crate) fn should_upsert_eip4788_predeploy(config: &EvmConfig) -> bool {
-    config.enabled && config.spec == EvmSpec::Prague
+    config.enabled && config.spec >= EvmSpec::Prague
 }
 
 /// Idempotently installs the EIP-4788 beacon roots predeploy.
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn should_only_upsert_for_enabled_prague_evm() {
+    fn should_upsert_for_enabled_prague_or_later_evm() {
         assert!(!should_upsert_eip4788_predeploy(&EvmConfig::default()));
 
         let config = EvmConfig {

@@ -100,7 +100,7 @@ fn execute_eip4788_beacon_roots_update(
     parent_hash: BlockHash,
     evm_block_hash_provider: &dyn EvmBlockHashProvider,
 ) -> Result<Digest, BlockExecutionError> {
-    if !chainspec.evm_config.enabled || chainspec.evm_config.spec != EvmSpec::Prague {
+    if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
         return Ok(state_root_hash);
     }
 
