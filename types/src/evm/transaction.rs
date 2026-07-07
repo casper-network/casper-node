@@ -1188,9 +1188,9 @@ impl EvmTransaction {
     /// wei-denominated base fee.
     ///
     /// Legacy and EIP-2930 transactions use their signed gas price directly.
-    /// For EIP-1559, the calculation follows Ethereum's effective price
-    /// formula: the lower of `max_fee_per_gas` and block base fee plus
-    /// `max_priority_fee_per_gas`.
+    /// For dynamic-fee transactions, the calculation follows Ethereum's
+    /// effective price formula: the lower of `max_fee_per_gas` and block base
+    /// fee plus `max_priority_fee_per_gas`.
     ///
     /// The node execution path currently rejects non-zero EIP-1559 priority
     /// fees during chainspec compliance checks because Casper does not
@@ -1203,9 +1203,10 @@ impl EvmTransaction {
                 self.gas_price.unwrap_or(self.max_fee_per_gas)
             }
             EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
-                let max_priority_fee_per_gas = self
-                    .max_priority_fee_per_gas
-                    .expect("dynamic-fee transaction priority fee invariant");
+                // Accepted node transactions are validated before reaching this helper.
+                // This fallback only avoids panicking if malformed bytesrepr data is
+                // materialized and then fee-calculated directly.
+                let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or_default();
                 let priority_fee = self.max_fee_per_gas.saturating_sub(base_fee);
                 if priority_fee > max_priority_fee_per_gas {
                     base_fee.saturating_add(max_priority_fee_per_gas)
