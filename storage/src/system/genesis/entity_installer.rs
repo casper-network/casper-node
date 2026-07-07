@@ -867,6 +867,14 @@ where
         Ok(())
     }
 
+    fn create_evm_predeploys(&self) -> Result<(), Box<GenesisError>> {
+        if should_upsert_eip4788_predeploy(self.config.evm_config()) {
+            upsert_eip4788_predeploy(&mut self.tracking_copy.borrow_mut())
+                .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
+        }
+        Ok(())
+    }
+
     /// Performs a complete system installation.
     pub fn install(
         &mut self,
@@ -890,13 +898,11 @@ where
         // Write chainspec registry.
         self.store_chainspec_registry(chainspec_registry)?;
 
+        // Create EVM predeploys.
+        self.create_evm_predeploys()?;
+
         // Write block time to global state
         self.store_block_time()?;
-
-        if should_upsert_eip4788_predeploy(self.config.evm_config()) {
-            upsert_eip4788_predeploy(&mut self.tracking_copy.borrow_mut())
-                .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
-        }
 
         Ok(())
     }
