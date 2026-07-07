@@ -2431,14 +2431,16 @@ mod tests {
 
     #[test]
     fn eip4788_hook_updates_beacon_roots_without_transactions() {
-        let mut chainspec = Chainspec::default();
-        chainspec.evm_config = EvmConfig {
-            enabled: true,
-            chain_id: 7,
-            spec: EvmSpec::Prague,
-            block_gas_limit: 30_000_000,
-            base_fee: 0,
-            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        let chainspec = Chainspec {
+            evm_config: EvmConfig {
+                enabled: true,
+                chain_id: 7,
+                spec: EvmSpec::Prague,
+                block_gas_limit: 30_000_000,
+                base_fee: 0,
+                wei_per_mote: DEFAULT_WEI_PER_MOTE,
+            },
+            ..Default::default()
         };
         let (global_state, state_root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
             (

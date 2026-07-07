@@ -622,7 +622,7 @@ impl ContractRuntime {
                         effect_builder,
                         data_access_layer,
                         metrics,
-                        protocol_upgrade_config,
+                        *protocol_upgrade_config,
                         next_block_height,
                         parent_hash,
                         parent_seed,

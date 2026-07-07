@@ -30,7 +30,7 @@ pub(crate) enum EvmPredeployError {
     #[error("EVM predeploy bytecode conflict at {key}: {details}")]
     ConflictingByteCode {
         /// Global-state key where the conflict was found.
-        key: Key,
+        key: Box<Key>,
         /// Conflict details.
         details: String,
     },
@@ -38,7 +38,7 @@ pub(crate) enum EvmPredeployError {
     #[error("unexpected stored value at {key}: expected {expected}, found {found}")]
     UnexpectedStoredValue {
         /// Global-state key that was read.
-        key: Key,
+        key: Box<Key>,
         /// Expected stored-value variant.
         expected: &'static str,
         /// Actual stored-value variant.
@@ -126,7 +126,7 @@ where
         }
         Some(stored_value) => {
             return Err(EvmPredeployError::UnexpectedStoredValue {
-                key,
+                key: Box::new(key),
                 expected: "StoredValue::CLValue(evm::Hash)",
                 found: stored_value.type_name(),
             });
@@ -153,7 +153,7 @@ where
                 return Ok(());
             }
             return Err(EvmPredeployError::ConflictingByteCode {
-                key,
+                key: Box::new(key),
                 details: format!(
                     "expected Prague EIP-4788 bytecode, found kind {} with {} bytes",
                     byte_code.kind(),
@@ -163,7 +163,7 @@ where
         }
         Some(stored_value) => {
             return Err(EvmPredeployError::UnexpectedStoredValue {
-                key,
+                key: Box::new(key),
                 expected: "StoredValue::ByteCode(EvmPrague)",
                 found: stored_value.type_name(),
             });

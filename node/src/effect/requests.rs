@@ -891,7 +891,7 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<Option<u8>>,
     },
     DoProtocolUpgrade {
-        protocol_upgrade_config: ProtocolUpgradeConfig,
+        protocol_upgrade_config: Box<ProtocolUpgradeConfig>,
         next_block_height: u64,
         parent_hash: BlockHash,
         parent_seed: Digest,
