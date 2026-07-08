@@ -4,6 +4,7 @@ pub mod auction;
 pub mod burn;
 /// Error definition.
 pub mod error;
+pub(crate) mod evm;
 /// Genesis logic.
 pub mod genesis;
 /// Handle payment logic.

@@ -11,6 +11,7 @@ use std::{
 use crate::{
     global_state::state::StateProvider,
     system::{
+        evm::{should_upsert_eip4788_predeploy, upsert_eip4788_predeploy},
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::ProtocolUpgradeError,
     },
@@ -797,6 +798,14 @@ where
         Ok(())
     }
 
+    fn create_evm_predeploys(&self) -> Result<(), Box<GenesisError>> {
+        if should_upsert_eip4788_predeploy(self.config.evm_config()) {
+            upsert_eip4788_predeploy(&mut self.tracking_copy.borrow_mut())
+                .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn handle_sustain_purse(
         &mut self,
         sustain_purse: Option<URef>,
@@ -853,8 +862,12 @@ where
         // Write chainspec registry.
         self.store_chainspec_registry(chainspec_registry)?;
 
+        // Create EVM predeploys.
+        self.create_evm_predeploys()?;
+
         // Write block time to global state
         self.store_block_time()?;
+
         Ok(())
     }
 }

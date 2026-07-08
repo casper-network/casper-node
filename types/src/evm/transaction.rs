@@ -439,6 +439,13 @@ pub enum EvmTransactionError {
     MissingChainId,
     /// A gas price was required by the transaction envelope but was missing.
     MissingGasPrice,
+    /// A dynamic-fee transaction was missing its maximum priority fee per gas.
+    MissingMaxPriorityFeePerGas,
+    /// A legacy-style transaction carried a dynamic-fee priority fee.
+    UnexpectedMaxPriorityFeePerGas {
+        /// EvmTransaction maximum priority fee per gas.
+        max_priority_fee_per_gas: u128,
+    },
     /// No transaction lane is available for packing EVM transactions.
     MissingTransactionLane,
     /// The transaction chain ID does not match the active chainspec EVM chain ID.
@@ -522,6 +529,17 @@ impl Display for EvmTransactionError {
             }
             EvmTransactionError::MissingChainId => formatter.write_str("missing EVM chain ID"),
             EvmTransactionError::MissingGasPrice => formatter.write_str("missing EVM gas price"),
+            EvmTransactionError::MissingMaxPriorityFeePerGas => {
+                formatter.write_str("missing EVM max priority fee per gas")
+            }
+            EvmTransactionError::UnexpectedMaxPriorityFeePerGas {
+                max_priority_fee_per_gas,
+            } => {
+                write!(
+                    formatter,
+                    "unexpected EVM max priority fee per gas {max_priority_fee_per_gas}"
+                )
+            }
             EvmTransactionError::MissingTransactionLane => {
                 formatter.write_str("missing EVM transaction lane")
             }
@@ -620,7 +638,8 @@ pub struct EvmTransaction {
     max_fee_per_gas: u128,
     // EIP-1559 maximum proposer tip per gas. Casper currently does not
     // prioritize transactions based on transaction gas parameters, so node
-    // config compliance rejects non-zero values.
+    // config compliance rejects non-zero values. This is `None` only for
+    // legacy-style transactions that do not carry a priority-fee field.
     max_priority_fee_per_gas: Option<u128>,
     value: U256,
     input: Vec<u8>,
@@ -1169,9 +1188,9 @@ impl EvmTransaction {
     /// wei-denominated base fee.
     ///
     /// Legacy and EIP-2930 transactions use their signed gas price directly.
-    /// For EIP-1559, the calculation follows Ethereum's effective price
-    /// formula: the lower of `max_fee_per_gas` and block base fee plus
-    /// `max_priority_fee_per_gas`.
+    /// For dynamic-fee transactions, the calculation follows Ethereum's
+    /// effective price formula: the lower of `max_fee_per_gas` and block base
+    /// fee plus `max_priority_fee_per_gas`.
     ///
     /// The node execution path currently rejects non-zero EIP-1559 priority
     /// fees during chainspec compliance checks because Casper does not
@@ -1184,7 +1203,10 @@ impl EvmTransaction {
                 self.gas_price.unwrap_or(self.max_fee_per_gas)
             }
             EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
-                let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or(0);
+                // Accepted node transactions are validated before reaching this helper.
+                // This fallback only avoids panicking if malformed bytesrepr data is
+                // materialized and then fee-calculated directly.
+                let max_priority_fee_per_gas = self.max_priority_fee_per_gas.unwrap_or_default();
                 let priority_fee = self.max_fee_per_gas.saturating_sub(base_fee);
                 if priority_fee > max_priority_fee_per_gas {
                     base_fee.saturating_add(max_priority_fee_per_gas)
@@ -1285,7 +1307,9 @@ impl EvmTransaction {
                 nonce: self.nonce,
                 gas_limit: self.gas_limit,
                 max_fee_per_gas: self.max_fee_per_gas,
-                max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(0),
+                max_priority_fee_per_gas: self
+                    .max_priority_fee_per_gas
+                    .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?,
                 to,
                 value,
                 access_list: AccessList::default(),
@@ -1298,7 +1322,9 @@ impl EvmTransaction {
                     nonce: self.nonce,
                     gas_limit: self.gas_limit,
                     max_fee_per_gas: self.max_fee_per_gas,
-                    max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(0),
+                    max_priority_fee_per_gas: self
+                        .max_priority_fee_per_gas
+                        .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?,
                     to: to_alloy_address(address),
                     value,
                     access_list: AccessList::default(),
@@ -1743,6 +1769,34 @@ mod tests {
         assert!(error
             .to_string()
             .contains("unexpected EVM set-code authorization list"));
+    }
+
+    #[test]
+    fn dynamic_fee_transaction_serde_rejects_missing_priority_fee() {
+        let transaction = signed_eip7702_transaction();
+        let mut serialized =
+            serde_json::to_value(&transaction).expect("transaction should serialize");
+        serialized["max_priority_fee_per_gas"] = serde_json::Value::Null;
+
+        let error = serde_json::from_value::<EvmTransaction>(serialized)
+            .expect_err("transaction should fail");
+
+        assert!(error
+            .to_string()
+            .contains("missing EVM max priority fee per gas"));
+    }
+
+    #[test]
+    fn legacy_transaction_serde_preserves_priority_fee() {
+        let transaction = signed_legacy_transaction();
+        let mut serialized =
+            serde_json::to_value(&transaction).expect("transaction should serialize");
+        serialized["max_priority_fee_per_gas"] = serde_json::Value::from(1);
+
+        let deserialized =
+            serde_json::from_value::<EvmTransaction>(serialized).expect("transaction should pass");
+
+        assert_eq!(deserialized.max_priority_fee_per_gas(), Some(1));
     }
 
     #[test]

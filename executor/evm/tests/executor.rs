@@ -10,7 +10,7 @@ use alloy_eips::{
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
-    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
+    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, SystemCallRequest, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -22,12 +22,10 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
-    evm, AccessRights, Account, BlockHash, ByteCode, ByteCodeKind, CLValue, ChainspecRegistry,
-    Digest, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig,
-    HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts,
-    StoredValue, SystemConfig, Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE,
+    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, ByteCode, ByteCodeKind, CLValue,
+    ChainspecRegistry, Digest, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, GenesisAccount,
+    GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
+    StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE,
     U256 as CasperU256, U512,
 };
 use revm::bytecode::opcode;
@@ -52,6 +50,7 @@ fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
         global_state::state::lmdb::make_temporary_global_state([]);
     let genesis_config = GenesisConfig::new(
         accounts,
+        EvmConfig::default(),
         WasmConfig::default(),
         SystemConfig::default(),
         10,
@@ -455,37 +454,6 @@ fn eip7702_transaction(
     (transaction, authority)
 }
 
-fn eip7702_transaction_without_priority_fee(transaction: EvmTransaction) -> EvmTransaction {
-    assert_eq!(transaction.max_priority_fee_per_gas(), Some(0));
-    let mut bytes = transaction
-        .to_bytes()
-        .expect("transaction should serialize");
-    let mut offset = 0;
-    offset += transaction.timestamp().serialized_length();
-    offset += transaction.ttl().serialized_length();
-    offset += transaction.hash().serialized_length();
-    offset += transaction.from().serialized_length();
-    offset += transaction.kind().serialized_length();
-    offset += transaction.to().serialized_length();
-    offset += transaction.nonce().serialized_length();
-    offset += transaction.gas_limit().serialized_length();
-    offset += transaction.gas_price().serialized_length();
-    offset += transaction.max_fee_per_gas().serialized_length();
-
-    assert_eq!(bytes[offset], 1);
-    let some_priority_length = transaction.max_priority_fee_per_gas().serialized_length();
-    let none_priority = Option::<u128>::None
-        .to_bytes()
-        .expect("none priority fee should serialize");
-    bytes.splice(offset..offset + some_priority_length, none_priority);
-
-    let (transaction, remainder) =
-        EvmTransaction::from_bytes(&bytes).expect("transaction should deserialize");
-    assert!(remainder.is_empty());
-    assert_eq!(transaction.max_priority_fee_per_gas(), None);
-    transaction
-}
-
 fn signed_authorization(delegate: evm::Address, nonce: u64) -> AlloySignedAuthorization {
     let authorization = AlloyAuthorization {
         chain_id: U256::from(7),
@@ -706,6 +674,133 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 }
 
 #[test]
+fn system_call_updates_eip4788_beacon_roots() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let root = [0xab; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    let query = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::BEACON_ROOTS_ADDRESS),
+        word(block().timestamp).to_vec(),
+    );
+    assert_eq!(query.output, root);
+}
+
+#[test]
+fn eip4788_unknown_timestamp_reverts() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let root = [0xcd; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let system_outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+    assert_eq!(system_outcome.status, ExecutionStatus::Success);
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(evm::BEACON_ROOTS_ADDRESS),
+                word(block().timestamp + 1).to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+}
+
+#[test]
+fn user_call_does_not_update_eip4788_beacon_roots() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let system_root = [0x11; evm::HASH_LENGTH];
+    let user_input = [0x22; evm::HASH_LENGTH];
+
+    // Install beacon roots predeploy for this executor fixture.
+    seed_evm_code(
+        &mut tracking_copy,
+        evm::BEACON_ROOTS_ADDRESS,
+        evm::BEACON_ROOTS_CODE.to_vec(),
+    );
+
+    // Execute the EIP-4788 update through revm's system-call path.
+    let system_outcome = executor
+        .execute_system_call(
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target: evm::BEACON_ROOTS_ADDRESS,
+                input: system_root.to_vec(),
+            },
+        )
+        .expect("EVM system call should execute");
+    assert_eq!(system_outcome.status, ExecutionStatus::Success);
+
+    let outcome = executor
+        .execute(
+            &mut tracking_copy,
+            call_request(
+                evm::Address::new([3; evm::ADDRESS_LENGTH]),
+                Some(evm::BEACON_ROOTS_ADDRESS),
+                user_input.to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("EVM call should execute");
+    assert_eq!(outcome.status, ExecutionStatus::Revert);
+
+    let query = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::BEACON_ROOTS_ADDRESS),
+        word(block().timestamp).to_vec(),
+    );
+    assert_eq!(query.output, system_root);
+}
+
+#[test]
 fn blockhash_uses_supplied_provider() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
@@ -785,33 +880,6 @@ fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
         read_code(&mut tracking_copy, code_hash),
         Some(delegation_code(delegate))
     );
-}
-
-#[test]
-fn eip7702_missing_priority_fee_defaults_to_zero_for_execution() {
-    let executor = executor(EvmSpec::Prague);
-    let deployer = evm::Address::new([1; 20]);
-    let authority = authorization_authority();
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let delegate = deploy_code(
-        &executor,
-        &mut tracking_copy,
-        deployer,
-        return_word_contract_init_code(42),
-    );
-    let (transaction, _) = eip7702_transaction(authority, delegate, 0, 0, Vec::new());
-    let transaction = eip7702_transaction_without_priority_fee(transaction);
-    seed_evm_balance(
-        &mut tracking_copy,
-        transaction.from(),
-        U512::from(1_000_000_000u64),
-    );
-    seed_evm_balance(&mut tracking_copy, authority, U512::zero());
-
-    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
-
-    assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(decode_word(&outcome.output), 42);
 }
 
 #[test]

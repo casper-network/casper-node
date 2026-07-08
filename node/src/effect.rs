@@ -1827,7 +1827,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::DoProtocolUpgrade {
-                    protocol_upgrade_config: upgrade_config,
+                    protocol_upgrade_config: Box::new(upgrade_config),
                     next_block_height,
                     parent_hash,
                     parent_seed,

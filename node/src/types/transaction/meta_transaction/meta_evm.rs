@@ -117,6 +117,11 @@ impl MetaEvmTransaction {
         let base_fee = evm_config.base_fee_wei();
         match transaction.kind() {
             EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+                if let Some(max_priority_fee_per_gas) = transaction.max_priority_fee_per_gas() {
+                    return Err(EvmTransactionError::UnexpectedMaxPriorityFeePerGas {
+                        max_priority_fee_per_gas,
+                    });
+                }
                 let gas_price = transaction
                     .gas_price()
                     .ok_or(EvmTransactionError::MissingGasPrice)?;
@@ -141,7 +146,9 @@ impl MetaEvmTransaction {
                         base_fee,
                     });
                 }
-                let max_priority_fee_per_gas = transaction.max_priority_fee_per_gas().unwrap_or(0);
+                let max_priority_fee_per_gas = transaction
+                    .max_priority_fee_per_gas()
+                    .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?;
                 if max_priority_fee_per_gas != 0 {
                     // Casper does not currently prioritize transactions based
                     // on transaction gas parameters. Accepting a non-zero

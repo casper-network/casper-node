@@ -688,6 +688,27 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_rejects_legacy_priority_fee() {
+        let chainspec = chainspec();
+        let transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
+        let mut transaction =
+            serde_json::to_value(transaction).expect("transaction should serialize");
+        transaction["max_priority_fee_per_gas"] = serde_json::Value::from(1);
+        let transaction =
+            serde_json::from_value(transaction).expect("transaction should deserialize");
+        let meta = evm_meta(&chainspec, transaction);
+
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::UnexpectedMaxPriorityFeePerGas {
+                    max_priority_fee_per_gas
+                }
+            )) if max_priority_fee_per_gas == 1
+        ));
+    }
+
+    #[test]
     fn evm_config_compliance_accepts_unsigned_call() {
         let chainspec = chainspec();
         let meta = evm_meta(&chainspec, unsigned_call(CHAIN_ID, BASE_FEE_WEI, 21_000));

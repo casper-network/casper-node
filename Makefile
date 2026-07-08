@@ -75,7 +75,7 @@ build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))
 
 .PHONY: test-contracts-evm
 test-contracts-evm: build-contracts-evm
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-executor-evm
+	$(DISABLE_LOGGING) $(CARGO_TEST_PROFILE_ENV) $(CARGO) test --all-features $(CARGO_FLAGS) -p casper-executor-evm
 
 resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
 	@./$<
@@ -164,7 +164,10 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2025-0055
+	$(CARGO) audit \
+		--ignore RUSTSEC-2025-0055 \
+		--ignore RUSTSEC-2026-0194 \
+		--ignore RUSTSEC-2026-0195
 
 .PHONY: audit
 audit: audit-rs

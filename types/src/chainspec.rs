@@ -218,6 +218,7 @@ impl Chainspec {
             Some(self.core_config.unbonding_delay),
             global_state_update,
             chainspec_registry,
+            self.evm_config,
             fee_handling,
             validator_minimum_bid_amount,
             maximum_delegation_amount,

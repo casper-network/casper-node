@@ -11,6 +11,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     global_state::state::StateProvider,
+    system::evm::{should_upsert_eip4788_predeploy, upsert_eip4788_predeploy},
     tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
@@ -90,6 +91,9 @@ pub enum ProtocolUpgradeError {
     /// Missing stored value expected to be in global state.
     #[error("Missing expected stored value: {0}")]
     MissingStoredValue(String),
+    /// Failed to install an EVM predeploy.
+    #[error("EVM predeploy error: {0}")]
+    EvmPredeploy(String),
 }
 
 impl From<CLValueError> for ProtocolUpgradeError {
@@ -183,6 +187,7 @@ where
     ) -> Result<TrackingCopy<<S as StateProvider>::Reader>, ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
+        self.handle_evm_predeploys()?;
         let system_entity_addresses = self.handle_system_hashes()?;
 
         self.read_only_system_purse(system_entity_addresses.mint)?;
@@ -1696,6 +1701,15 @@ where
         for (key, value) in self.config.global_state_update() {
             self.tracking_copy.write(*key, value.clone());
         }
+    }
+
+    /// Handle EVM predeploy setup.
+    pub fn handle_evm_predeploys(&mut self) -> Result<(), ProtocolUpgradeError> {
+        if should_upsert_eip4788_predeploy(self.config.evm_config()) {
+            upsert_eip4788_predeploy(&mut self.tracking_copy)
+                .map_err(|error| ProtocolUpgradeError::EvmPredeploy(error.to_string()))?;
+        }
+        Ok(())
     }
 
     /// Handle setting up minimum_delegation_rate
