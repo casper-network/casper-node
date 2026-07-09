@@ -2455,8 +2455,16 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::global_state::state;
-    use casper_types::{evm, ByteCode, ByteCodeKind, EvmAddr, EvmConfig, DEFAULT_WEI_PER_MOTE};
+    use casper_executor_wasm::{ExecutorConfigBuilder, ExecutorKind};
+    use casper_storage::{
+        data_access_layer::{BlockStore, GenesisRequest, GenesisResult},
+        global_state::{state, state::lmdb::LmdbGlobalState},
+    };
+    use casper_types::{
+        evm, ByteCode, ByteCodeKind, ChainspecRegistry, EvmAddr, EvmConfig, GenesisAccount,
+        GenesisConfig, HoldBalanceHandling, Motes, SecretKey, StorageCosts, SystemConfig,
+        Timestamp, WasmConfig, DEFAULT_WEI_PER_MOTE,
+    };
 
     fn evm_word(value: u64) -> Vec<u8> {
         let mut bytes = vec![0u8; evm::HASH_LENGTH];
@@ -2476,6 +2484,71 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    fn prague_evm_genesis(
+        chainspec: &Chainspec,
+    ) -> (DataAccessLayer<LmdbGlobalState>, Digest, impl Send) {
+        let (global_state, _empty_root_hash, tempdir) =
+            state::lmdb::make_temporary_global_state([]);
+        let secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
+        let genesis_config = GenesisConfig::new(
+            vec![GenesisAccount::Account {
+                public_key: PublicKey::from(&secret_key),
+                balance: Motes::new(U512::from(1_000_000_000_000u64)),
+                validator: None,
+            }],
+            chainspec.evm_config,
+            WasmConfig::default(),
+            SystemConfig::default(),
+            10,
+            10,
+            0,
+            Default::default(),
+            14,
+            0,
+            HoldBalanceHandling::Accrued,
+            0,
+            chainspec.core_config.enable_addressable_entity(),
+            None,
+            StorageCosts::default(),
+            0,
+        );
+        let genesis_request = GenesisRequest::new(
+            Digest::hash("eip2935-block-execution-test-genesis"),
+            ProtocolVersion::V2_0_0,
+            genesis_config,
+            ChainspecRegistry::new_with_genesis(b"", b""),
+        );
+        let post_state_hash = match global_state.genesis(genesis_request) {
+            GenesisResult::Failure(failure) => panic!("failed to run genesis: {failure:?}"),
+            GenesisResult::Fatal(fatal) => panic!("fatal error while running genesis: {fatal}"),
+            GenesisResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
+        };
+        let data_access_layer = DataAccessLayer {
+            block_store: BlockStore::new(),
+            state: global_state,
+            max_query_depth: 5,
+            enable_addressable_entity: chainspec.core_config.enable_addressable_entity(),
+        };
+        (data_access_layer, post_state_hash, tempdir)
+    }
+
+    fn executor_v2(
+        chainspec: &Chainspec,
+        execution_engine_v1: Arc<ExecutionEngineV1>,
+    ) -> ExecutorV2 {
+        let executor_config = ExecutorConfigBuilder::default()
+            .with_memory_limit(chainspec.wasm_config.v2().max_memory())
+            .with_executor_kind(ExecutorKind::Compiled)
+            .with_wasm_config(*chainspec.wasm_config.v2())
+            .with_storage_costs(chainspec.storage_costs)
+            .with_message_limits(chainspec.wasm_config.messages_limits())
+            .build()
+            .expect("executor config should build");
+        ExecutorV2::new(executor_config, execution_engine_v1)
     }
 
     #[test]
@@ -2565,38 +2638,48 @@ mod tests {
     #[test]
     fn eip2935_hook_updates_block_hash_history_without_transactions() {
         let chainspec = enabled_prague_evm_chainspec();
-        let (global_state, state_root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
-            (
-                Key::Evm(EvmAddr::CodeHash(evm::BLOCK_HASH_HISTORY_ADDRESS)),
-                StoredValue::CLValue(
-                    CLValue::from_t(evm::block_hash_history_code_hash())
-                        .expect("code hash should encode"),
-                ),
-            ),
-            (
-                Key::Evm(EvmAddr::ByteCode(evm::block_hash_history_code_hash())),
-                StoredValue::ByteCode(ByteCode::new(
-                    ByteCodeKind::EvmPrague,
-                    evm::BLOCK_HASH_HISTORY_CODE.to_vec(),
-                )),
-            ),
-        ]);
-        let scratch_state = global_state.create_scratch();
-        let block_time = BlockTime::new(2_000);
-        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
+        let (data_access_layer, state_root_hash, _tempdir) = prague_evm_genesis(&chainspec);
+        let execution_engine_v1 = Arc::new(ExecutionEngineV1::default());
+        let execution_engine_v2 = executor_v2(&chainspec, Arc::clone(&execution_engine_v1));
+        let timestamp = Timestamp::from(2_000);
         let parent_hash = BlockHash::new(Digest::from_raw([0x55; 32]));
+        let execution_pre_state =
+            ExecutionPreState::new(1, state_root_hash, parent_hash, Digest::default());
+        let executable_block = ExecutableBlock::from_finalized_block_and_transactions(
+            types::FinalizedBlock::new(
+                types::BlockPayload::default(),
+                None,
+                timestamp,
+                EraId::new(1),
+                1,
+                PublicKey::System,
+            ),
+            vec![],
+        );
 
-        let updated_state_root_hash = execute_eip2935_block_hash_history_update(
-            &scratch_state,
-            state_root_hash,
+        let artifacts = execute_finalized_block(
+            &data_access_layer,
+            execution_engine_v1.as_ref(),
+            execution_engine_v2,
             &chainspec,
-            block_context.clone(),
-            parent_hash,
+            None,
+            execution_pre_state,
             &StaticEvmBlockHashProvider::default(),
+            executable_block,
+            0,
+            1,
+            None,
+            None,
         )
-        .expect("EIP-2935 hook should succeed");
-        let mut tracking_copy = scratch_state
-            .tracking_copy(updated_state_root_hash)
+        .expect("finalized block execution should succeed");
+        let block_context = evm_block_context(
+            &chainspec,
+            artifacts.block.height(),
+            BlockTime::new(timestamp.millis()),
+            artifacts.block.proposer(),
+        );
+        let mut tracking_copy = data_access_layer
+            .tracking_copy(*artifacts.block.state_root_hash())
             .expect("tracking copy should not fail")
             .expect("state root should exist");
         let outcome = EvmExecutor::new(chainspec.evm_config)
