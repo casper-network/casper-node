@@ -541,6 +541,29 @@ where
         Ok(ret)
     }
 
+    /// Returns all keys with `byte_prefix`, merging the backing state reader with the local cache:
+    /// keys marked for pruning in this execution are filtered out and cached writes are included.
+    /// Use this instead of `reader().keys_with_prefix(...)` whenever auction or other validation
+    /// must reflect the *current* in-execution state.
+    pub fn keys_with_prefix_cached(
+        &self,
+        byte_prefix: &[u8],
+    ) -> Result<Vec<Key>, TrackingCopyError> {
+        let keys = StateReader::<Key, StoredValue>::keys_with_prefix(&self, byte_prefix)
+            .map_err(TrackingCopyError::Storage)?;
+        // The cache-aware `keys_with_prefix` chains backing-state keys with cached writes, so a
+        // key that was both read from state and re-written in the current execution would appear
+        // twice. Dedup via the normalized form before returning.
+        let mut seen: BTreeSet<Key> = BTreeSet::new();
+        let mut deduped = Vec::with_capacity(keys.len());
+        for key in keys {
+            if seen.insert(key.normalize()) {
+                deduped.push(key);
+            }
+        }
+        Ok(deduped)
+    }
+
     /// Reads the value stored under `key`.
     pub fn read(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
         let normalized_key = key.normalize();

@@ -1,3 +1,4 @@
+mod accepted_transaction_provider;
 mod address_provider;
 mod block_provider;
 mod finality_signature_provider;

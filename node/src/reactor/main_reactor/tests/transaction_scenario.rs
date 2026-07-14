@@ -17,7 +17,7 @@ use crate::{
         transaction_scenario::asertions::BalanceChange,
         transactions::{
             invalid_wasm_txn, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY, BOB_SECRET_KEY,
-            CHARLIE_PUBLIC_KEY, MIN_GAS_PRICE,
+            CHARLIE_PUBLIC_KEY, CHARLIE_SECRET_KEY, MIN_GAS_PRICE,
         },
         ONE_MIN,
     },
@@ -183,7 +183,7 @@ async fn erroneous_native_transfer_nofee_norefund_fixed() {
         .build()
         .unwrap(),
     );
-    txn.sign(&ALICE_SECRET_KEY);
+    txn.sign(&CHARLIE_SECRET_KEY);
     let hash = txn.hash();
     test_scenario.run(vec![txn]).await.unwrap();
     test_scenario.assert(TransactionFailure::new(hash)).await; // transaction should have failed.

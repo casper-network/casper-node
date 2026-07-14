@@ -370,6 +370,8 @@ pub enum ErrorCode {
     InvalidDelegationAmount = 116,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget = 117,
+    #[error("the transaction contained an invalid initiator")]
+    InvalidInitiator,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -454,6 +456,7 @@ impl From<InvalidDeploy> for ErrorCode {
             }
             InvalidDeploy::InvalidPaymentAmount => ErrorCode::InvalidDeployInvalidPaymentAmount,
             InvalidDeploy::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
+            InvalidDeploy::InvalidInitiator => ErrorCode::InvalidInitiator,
             _ => ErrorCode::InvalidDeployUnspecified,
         }
     }
@@ -571,6 +574,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
                 ErrorCode::UnsupportedInvocationTarget
             }
+            InvalidTransactionV1::InvalidInitiator => ErrorCode::InvalidInitiator,
             _other => ErrorCode::InvalidTransactionUnspecified,
         }
     }

@@ -161,6 +161,9 @@ pub enum InvalidDeploy {
 
     /// Pricing mode not supported
     PricingModeNotSupported,
+
+    /// Invalid initiator for the deploy
+    InvalidInitiator,
 }
 
 impl Display for InvalidDeploy {
@@ -302,6 +305,7 @@ impl Display for InvalidDeploy {
                             }
             InvalidDeploy::InvalidPaymentAmount => write!(formatter, "invalid payment amount",),
             InvalidDeploy::PricingModeNotSupported => write!(formatter, "pricing mode not supported",),
+            InvalidDeploy::InvalidInitiator => write!(formatter, "invalid initiator")
         }
     }
 }
@@ -342,7 +346,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::NoLaneMatch
             | InvalidDeploy::ExceededLaneGasLimit { .. }
             | InvalidDeploy::InvalidPaymentAmount
-            | InvalidDeploy::PricingModeNotSupported => None,
+            | InvalidDeploy::PricingModeNotSupported
+            | InvalidDeploy::InvalidInitiator => None,
         }
     }
 }

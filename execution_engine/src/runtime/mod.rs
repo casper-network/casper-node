@@ -1372,6 +1372,12 @@ where
             let transfers = self.context.transfers_mut();
             runtime.context.transfers().clone_into(transfers);
         }
+        // Propagate the child auction runtime's reduced remaining spending limit back to the
+        // parent context (mirroring `call_host_mint` and `execute_contract`). Without this a
+        // session that calls auction `add_bid` / `delegate` multiple times would receive the
+        // original approved amount on every call, letting it spend more than `amount` approved.
+        self.context
+            .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
 
         Ok(ret)
     }
@@ -2190,6 +2196,15 @@ where
             .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
         runtime.context.transfers().clone_into(transfers);
+        // Propagate the payment-purse marker from the child context back to the parent.
+        // Without this a stored helper subcall can resolve `handle_payment.get_payment_purse`,
+        // mark only its own context, and then return the URef so the parent runtime persists
+        // it under a named key (the put_key guard in the parent never sees the marker).
+        if self.context.maybe_payment_purse().is_none() {
+            if let Some(payment_purse) = runtime.context.maybe_payment_purse() {
+                self.context.set_payment_purse(payment_purse);
+            }
+        }
 
         match result {
             Ok(_) => {
@@ -3775,6 +3790,7 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, ExecError> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+        self.context.validate_uref(&source)?;
         let target_key = Key::Account(target);
 
         // Look up the account at the given key
@@ -3929,6 +3945,7 @@ where
                 Err(error) => return Ok(Err(error.into())),
             }
         };
+        self.context.validate_uref(&purse)?;
 
         let balance = match self.available_balance(purse)? {
             Some(balance) => balance,
@@ -4093,14 +4110,12 @@ where
             None => return Ok(Err(ApiError::MissingArgument)),
         };
 
-        if arg.inner_bytes().len() > output_size {
+        let arg_bytes = arg.inner_bytes();
+        if arg_bytes.len() > output_size {
             return Ok(Err(ApiError::OutOfMemory));
         }
 
-        if let Err(error) = self
-            .try_get_memory()?
-            .set(output_ptr, &arg.inner_bytes()[..output_size])
-        {
+        if let Err(error) = self.try_get_memory()?.set(output_ptr, arg_bytes) {
             return Err(ExecError::Interpreter(error.into()).into());
         }
 
@@ -4510,6 +4525,10 @@ where
         }
 
         let dictionary_key = self.key_from_mem(key_ptr, key_size)?;
+        if !dictionary_key.is_dictionary_key() {
+            return Ok(Err(ApiError::UnexpectedKeyVariant));
+        }
+
         let cl_value = match self.context.dictionary_read(dictionary_key)? {
             Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),

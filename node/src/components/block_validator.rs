@@ -23,8 +23,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionHash,
-    TransactionId,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -40,7 +39,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, InvalidProposalError, NodeId, TransactionFootprint, ValidatorMatrix,
+        transaction::ProposedTransaction, BlockWithMetadata, InvalidProposalError, NodeId,
+        TransactionFootprint, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -120,7 +120,7 @@ impl BlockValidator {
     ) -> MaybeHandled
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
     {
@@ -189,7 +189,7 @@ impl BlockValidator {
     ) -> Effects<Event>
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<StorageRequest>
             + From<FatalAnnouncement>
@@ -197,6 +197,13 @@ impl BlockValidator {
     {
         debug!(sender = %request.sender, block = %request.block, "validating new proposed block");
         debug_assert!(!self.validation_states.contains_key(&request.block));
+
+        let signature_rewards_max_delay = self.chainspec.core_config.signature_rewards_max_delay;
+        if request.block.value().rewarded_signatures().len() > signature_rewards_max_delay as usize
+        {
+            let error = Box::new(InvalidProposalError::ExceedsSignatureMaxDelay);
+            return respond_invalid(error, Some(request.responder));
+        }
 
         if request.block.value().rewarded_signatures().has_some() {
             // The block contains cited signatures - we have to read the relevant blocks and find
@@ -337,7 +344,7 @@ impl BlockValidator {
     ) -> Effects<Event>
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<FatalAnnouncement>
             + Send,
@@ -384,7 +391,6 @@ impl BlockValidator {
                     ?missing_sigs,
                     "handle_got_past_blocks_with_metadata missing_sigs"
                 );
-
                 self.handle_new_request_with_signatures(effect_builder, request, missing_sigs)
             }
             Err(error) => {
@@ -415,7 +421,7 @@ impl BlockValidator {
     where
         REv: From<Event>
             + From<StorageRequest>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<FatalAnnouncement>
             + Send,
@@ -450,7 +456,7 @@ impl BlockValidator {
     ) -> Effects<Event>
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<FatalAnnouncement>
             + Send,
@@ -563,11 +569,11 @@ impl BlockValidator {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         transaction_hash: TransactionHash,
-        result: FetchResult<Transaction>,
+        result: FetchResult<ProposedTransaction>,
     ) -> Effects<Event>
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
     {
@@ -582,6 +588,7 @@ impl BlockValidator {
         }
         match result {
             Ok(FetchedData::FromStorage { item } | FetchedData::FromPeer { item, .. }) => {
+                let item = item.transaction();
                 let item_hash = item.hash();
                 if item_hash != transaction_hash {
                     // Hard failure - change state to Invalid.
@@ -598,8 +605,7 @@ impl BlockValidator {
                         responders,
                     );
                 }
-                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, &item)
-                {
+                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, item) {
                     Ok(footprint) => footprint,
                     Err(invalid_transaction_error) => {
                         warn!(
@@ -711,7 +717,7 @@ impl BlockValidator {
     ) -> Effects<Event>
     where
         REv: From<Event>
-            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<ProposedTransaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
     {
@@ -822,7 +828,7 @@ fn fetch_transactions_and_signatures<REv>(
 ) -> Effects<Event>
 where
     REv: From<Event>
-        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<ProposedTransaction>>
         + From<FetcherRequest<FinalitySignature>>
         + Send,
 {
@@ -836,7 +842,11 @@ where
         };
         effects.extend(
             effect_builder
-                .fetch::<Transaction>(transaction_id, holder, Box::new(EmptyValidationMetadata))
+                .fetch::<ProposedTransaction>(
+                    transaction_id,
+                    holder,
+                    Box::new(EmptyValidationMetadata),
+                )
                 .event(move |result| Event::TransactionFetched {
                     transaction_hash,
                     result,
@@ -885,7 +895,7 @@ impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
         + From<BlockValidationRequest>
-        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<ProposedTransaction>>
         + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>
         + From<FatalAnnouncement>

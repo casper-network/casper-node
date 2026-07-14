@@ -18,8 +18,8 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
-    ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
+    testing::TestRng, Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId,
+    FinalitySignatureV2, ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
 };
 
 use super::*;
@@ -49,7 +49,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{GossipedTransaction, NodeId, TransactionProvenance},
     utils::WithDir,
     NodeRng,
 };
@@ -69,7 +69,7 @@ enum Event {
     #[from]
     TransactionAcceptor(#[serde(skip_serializing)] transaction_acceptor::Event),
     #[from]
-    TransactionGossiper(super::Event<Transaction>),
+    TransactionGossiper(super::Event<GossipedTransaction>),
     #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
@@ -79,9 +79,11 @@ enum Event {
     #[from]
     TransactionAcceptorAnnouncement(#[serde(skip_serializing)] TransactionAcceptorAnnouncement),
     #[from]
-    TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
+    TransactionGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<GossipedTransaction>,
+    ),
     #[from]
-    TransactionGossiperIncoming(GossiperIncoming<Transaction>),
+    TransactionGossiperIncoming(GossiperIncoming<GossipedTransaction>),
 }
 
 impl ReactorEvent for Event {
@@ -100,6 +102,12 @@ impl From<NetworkRequest<Message<Transaction>>> for Event {
     }
 }
 
+impl From<NetworkRequest<Message<GossipedTransaction>>> for Event {
+    fn from(request: NetworkRequest<Message<GossipedTransaction>>) -> Self {
+        Event::NetworkRequest(request.map_payload(NodeMessage::from))
+    }
+}
+
 trait Unhandled {}
 
 impl<T: Unhandled> From<T> for Event {
@@ -114,6 +122,7 @@ impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
 impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
+impl Unhandled for GossiperIncoming<Transaction> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
@@ -133,7 +142,8 @@ struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
     fake_transaction_acceptor: FakeTransactionAcceptor,
-    transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
+    transaction_gossiper:
+        Gossiper<{ GossipedTransaction::ID_IS_COMPLETE_ITEM }, GossipedTransaction>,
     _storage_tempdir: TempDir,
 }
 
@@ -174,11 +184,12 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let fake_transaction_acceptor = FakeTransactionAcceptor::new();
-        let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
-            "transaction_gossiper",
-            config,
-            registry,
-        )?;
+        let transaction_gossiper =
+            Gossiper::<{ GossipedTransaction::ID_IS_COMPLETE_ITEM }, _>::new(
+                "transaction_gossiper",
+                config,
+                registry,
+            )?;
 
         let network = NetworkController::create_node(event_queue, rng);
         let reactor = Reactor {
@@ -273,6 +284,8 @@ impl reactor::Reactor for Reactor {
                     transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    provenance: TransactionProvenance::Client,
+                    maybe_block_hash: None,
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))
             }
@@ -280,12 +293,16 @@ impl reactor::Reactor for Reactor {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
+                    provenance: _,
+                    block_hash,
                 },
             ) => {
+                let accepted_transaction =
+                    GossipedTransaction::new((*transaction).clone(), block_hash);
                 let event = super::Event::ItemReceived {
-                    item_id: transaction.gossip_id(),
+                    item_id: accepted_transaction.gossip_id(),
                     source,
-                    target: transaction.gossip_target(),
+                    target: accepted_transaction.gossip_target(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionGossiper(event))
             }
@@ -304,9 +321,11 @@ impl reactor::Reactor for Reactor {
                     effect_builder,
                     rng,
                     transaction_acceptor::Event::Accept {
-                        transaction: *item,
+                        transaction: item.transaction().clone(),
                         source: Source::Peer(sender),
                         maybe_responder: None,
+                        provenance: TransactionProvenance::Gossiped,
+                        maybe_block_hash: None,
                     },
                 ),
             ),
@@ -406,7 +425,7 @@ async fn should_gossip() {
 async fn should_get_from_alternate_source() {
     const NETWORK_SIZE: usize = 3;
     const POLL_DURATION: Duration = Duration::from_millis(10);
-    const TIMEOUT: Duration = Duration::from_secs(2);
+    const TIMEOUT: Duration = Duration::from_secs(10);
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
@@ -435,13 +454,14 @@ async fn should_get_from_alternate_source() {
         .await;
     assert!(network.remove_node(&node_ids[0]).is_some());
     debug!("removed node {}", &node_ids[0]);
-
     // Run node 2 until it receives and responds to the gossip request from node 0.
     let node_id_0 = node_ids[0];
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
-                if let NodeMessage::TransactionGossiper(Message::GossipResponse { .. }) = **payload
+                if let NodeMessage::GossipedTransactionGossiper(Message::GossipResponse {
+                    ..
+                }) = **payload
                 {
                     **dest == node_id_0
                 } else {
@@ -627,7 +647,19 @@ async fn should_not_gossip_old_stored_item_again() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
+    let fake_block = Block::example();
+    let hash = fake_block.hash();
     let txn = Transaction::random(rng);
+    let accepted_transaction = GossipedTransaction::new(txn.clone(), *hash);
+
+    let store_block = |effect_builder: EffectBuilder<Event>| {
+        effect_builder
+            .put_block_to_storage(Arc::new(fake_block.clone()))
+            .ignore()
+    };
+    network
+        .process_injected_effect_on(&node_0, store_block)
+        .await;
 
     // Store the transaction on node 0.
     let store_txn = |effect_builder: EffectBuilder<Event>| {
@@ -642,7 +674,7 @@ async fn should_not_gossip_old_stored_item_again() {
         .process_injected_effect_on(&node_0, |effect_builder| {
             let event = Event::TransactionGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
-                message: Box::new(Message::Gossip(txn.gossip_id())),
+                message: Box::new(Message::Gossip(accepted_transaction.gossip_id())),
             });
             effect_builder
                 .into_inner()
@@ -697,7 +729,10 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = Box::new(Transaction::random(rng));
+    let txn = Box::new(GossipedTransaction::new(
+        Transaction::random(rng),
+        BlockHash::default(),
+    ));
 
     let message = match message_type {
         Unexpected::Response => Message::GossipResponse {

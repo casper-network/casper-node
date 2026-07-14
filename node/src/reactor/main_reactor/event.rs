@@ -45,7 +45,10 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, GossipedTransaction,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
+    },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 
@@ -194,6 +197,14 @@ pub(crate) enum MainEvent {
     #[from]
     TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
+    GossipedTransactionGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedTransaction>),
+    #[from]
+    GossipedTransactionGossiperIncoming(GossiperIncoming<GossipedTransaction>),
+    #[from]
+    GossipedTransactionGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<GossipedTransaction>,
+    ),
+    #[from]
     TransactionBuffer(#[serde(skip_serializing)] transaction_buffer::Event),
     #[from]
     TransactionBufferAnnouncement(#[serde(skip_serializing)] TransactionBufferAnnouncement),
@@ -245,6 +256,12 @@ pub(crate) enum MainEvent {
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
     #[from]
     NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement),
+    #[from]
+    ProposedTransactionFetcher(#[serde(skip_serializing)] fetcher::Event<ProposedTransaction>),
+    #[from]
+    ProposedTransactionFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<ProposedTransaction>,
+    ),
 
     // Event related to figuring out validators for blocks after upgrades.
     GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
@@ -279,6 +296,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AcceptTransactionRequest(_) => "AcceptTransactionRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::TransactionFetcher(_) => "TransactionFetcher",
+            MainEvent::ProposedTransactionFetcher(_) => "ProposedTransactionFetcher",
             MainEvent::TransactionGossiper(_) => "TransactionGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
@@ -303,6 +321,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::LegacyDeployFetcherRequest(_) => "LegacyDeployFetcherRequest",
             MainEvent::TransactionFetcherRequest(_) => "TransactionFetcherRequest",
+            MainEvent::ProposedTransactionFetcherRequest(_) => "ProposedTransactionFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
@@ -364,6 +383,13 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::BinaryPort(_) => "BinaryPort",
             MainEvent::NonExecutableBlockAnnouncement(_) => "NonExecutableBlockAnnouncement",
+            MainEvent::GossipedTransactionGossiper(_) => "GossipedTransactionGossiper",
+            MainEvent::GossipedTransactionGossiperIncoming(_) => {
+                "AcceptedTransactionGossiperIncoming"
+            }
+            MainEvent::GossipedTransactionGossiperAnnouncement(_) => {
+                "AcceptedTransactionGossiperAnnouncement"
+            }
         }
     }
 }
@@ -386,7 +412,13 @@ impl Display for MainEvent {
             MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::TransactionFetcher(event) => write!(f, "transaction fetcher: {}", event),
+            MainEvent::ProposedTransactionFetcher(event) => {
+                write!(f, "proposed transaction fetcher: {}", event)
+            }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
+            MainEvent::GossipedTransactionGossiper(event) => {
+                write!(f, "accepted transaction gossiper: {}", event)
+            }
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -463,6 +495,9 @@ impl Display for MainEvent {
             MainEvent::TransactionFetcherRequest(request) => {
                 write!(f, "transaction fetcher request: {}", request)
             }
+            MainEvent::ProposedTransactionFetcherRequest(request) => {
+                write!(f, "proposed transaction fetcher request: {}", request)
+            }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
                 write!(f, "finality signature fetcher request: {}", request)
             }
@@ -499,6 +534,9 @@ impl Display for MainEvent {
             MainEvent::TransactionGossiperAnnouncement(ann) => {
                 write!(f, "transaction gossiper announcement: {}", ann)
             }
+            MainEvent::GossipedTransactionGossiperAnnouncement(ann) => {
+                write!(f, "accepted transaction gossiper announcement: {}", ann)
+            }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
                 write!(f, "block signature gossiper announcement: {}", ann)
             }
@@ -520,6 +558,7 @@ impl Display for MainEvent {
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
             MainEvent::TransactionGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::GossipedTransactionGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -597,6 +636,12 @@ impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
 
 impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
     fn from(request: NetworkRequest<gossiper::Message<Transaction>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<GossipedTransaction>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedTransaction>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
