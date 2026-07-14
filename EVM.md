@@ -206,6 +206,12 @@ a raw signed RLP blob. The EVM transaction is stored as:
 - Ethereum signed transaction hash: `hash`.
 - Exactly one Casper `Approval` containing the Ethereum secp256k1 signature.
 
+The generic transaction initiator is not stored as another EVM transaction
+field. `EvmTransaction::initiator_addr()` derives
+`InitiatorAddr::Eoa(transaction.from())` on demand. This keeps the 20-byte EVM
+identity intact and avoids requiring callers such as sidecar's `eth_call` path
+to fabricate a Casper `AccountHash` for an Ethereum address.
+
 `evm::Hash`, `evm::Topic`, and `evm::TransactionHash` are `Digest`-backed
 wrappers, but their constructors preserve the supplied 32 bytes as raw
 Ethereum values. They do not hash the bytes again. `evm::Hash` is used for
@@ -374,7 +380,7 @@ meta_transaction = MetaTransaction::from_transaction(stored_transaction, ...)
 Common metadata such as hash, authorization keys, size estimate, gas limit, and
 cost is derived directly from `Transaction`. For EVM:
 
-- the initiator is the EVM sender address, `transaction.from()`,
+- the initiator is `InitiatorAddr::Eoa(transaction.from())`, derived on demand,
 - the transaction lane is currently the last configured Wasm lane,
 - the gas limit is the Ethereum transaction gas limit,
 - the maximum cost is

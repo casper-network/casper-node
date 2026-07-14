@@ -75,7 +75,6 @@ pub(crate) struct ExecutionArtifactBuilder {
     messages: Messages,
     transfers: Vec<Transfer>,
     initiator: InitiatorAddr,
-    evm_initiator: Option<evm::Address>,
     current_price: u8,
     cost: U512,
     limit: Gas,
@@ -103,7 +102,6 @@ impl ExecutionArtifactBuilder {
             transfers: vec![],
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
-            evm_initiator: transaction.evm_initiator_addr(),
             current_price,
             cost: initial_cost,
             limit,
@@ -129,7 +127,6 @@ impl ExecutionArtifactBuilder {
             transfers: vec![],
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
-            evm_initiator: transaction.evm_initiator_addr(),
             current_price,
             cost: U512::zero(),
             limit: Gas::zero(),
@@ -494,7 +491,8 @@ impl ExecutionArtifactBuilder {
         let execution_result = if let Some(receipt) = self.evm_receipt {
             let result = EvmExecutionResult {
                 initiator: self
-                    .evm_initiator
+                    .initiator
+                    .evm_address()
                     .expect("EVM execution result requires an EVM initiator"),
                 current_price: self.current_price,
                 limit: self.limit,

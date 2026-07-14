@@ -7,6 +7,7 @@ use crate::{
         Error::{self, Formatting},
         FromBytes, ToBytes,
     },
+    evm::Address,
     transaction::serialization::CalltableSerializationEnvelopeBuilder,
     AsymmetricType, PublicKey,
 };
@@ -28,6 +29,9 @@ const PUBLIC_KEY_FIELD_INDEX: u16 = 1;
 const ACCOUNT_HASH_VARIANT_TAG: u8 = 1;
 const ACCOUNT_HASH_FIELD_INDEX: u16 = 1;
 
+const EOA_VARIANT_TAG: u8 = 2;
+const EOA_FIELD_INDEX: u16 = 1;
+
 /// The address of the initiator of a [`crate::Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -42,23 +46,35 @@ pub enum InitiatorAddr {
     PublicKey(PublicKey),
     /// The account hash derived from the public key of the initiator.
     AccountHash(AccountHash),
+    /// An externally-owned Ethereum account address.
+    Eoa(Address),
 }
 
 impl InitiatorAddr {
-    /// Returns the Casper account hash carried by this initiator.
-    pub fn account_hash(&self) -> AccountHash {
+    /// Returns the Casper account hash carried by this initiator, if any.
+    pub fn account_hash(&self) -> Option<AccountHash> {
         match self {
-            InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
-            InitiatorAddr::AccountHash(hash) => *hash,
+            InitiatorAddr::PublicKey(public_key) => Some(public_key.to_account_hash()),
+            InitiatorAddr::AccountHash(hash) => Some(*hash),
+            InitiatorAddr::Eoa(_) => None,
+        }
+    }
+
+    /// Returns the EVM address carried by this initiator, if any.
+    pub fn evm_address(&self) -> Option<Address> {
+        match self {
+            InitiatorAddr::Eoa(address) => Some(*address),
+            InitiatorAddr::PublicKey(_) | InitiatorAddr::AccountHash(_) => None,
         }
     }
 
     /// Returns a random `InitiatorAddr`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=1) {
+        match rng.gen_range(0..=2) {
             0 => InitiatorAddr::PublicKey(PublicKey::random(rng)),
             1 => InitiatorAddr::AccountHash(rng.gen()),
+            2 => InitiatorAddr::Eoa(Address::new(rng.gen())),
             _ => unreachable!(),
         }
     }
@@ -75,6 +91,12 @@ impl InitiatorAddr {
                 vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     hash.serialized_length(),
+                ]
+            }
+            InitiatorAddr::Eoa(address) => {
+                vec![
+                    crate::bytesrepr::U8_SERIALIZED_LENGTH,
+                    address.serialized_length(),
                 ]
             }
         }
@@ -94,6 +116,12 @@ impl ToBytes for InitiatorAddr {
                 CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                     .add_field(TAG_FIELD_INDEX, &ACCOUNT_HASH_VARIANT_TAG)?
                     .add_field(ACCOUNT_HASH_FIELD_INDEX, &hash)?
+                    .binary_payload_bytes()
+            }
+            InitiatorAddr::Eoa(address) => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &EOA_VARIANT_TAG)?
+                    .add_field(EOA_FIELD_INDEX, &address)?
                     .binary_payload_bytes()
             }
         }
@@ -128,6 +156,15 @@ impl FromBytes for InitiatorAddr {
                 }
                 Ok(InitiatorAddr::AccountHash(hash))
             }
+            EOA_VARIANT_TAG => {
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(EOA_FIELD_INDEX)?;
+                let (address, window) = window.deserialize_and_maybe_next::<Address>()?;
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(InitiatorAddr::Eoa(address))
+            }
             _ => Err(Formatting),
         };
         to_ret.map(|endpoint| (endpoint, remainder))
@@ -146,6 +183,12 @@ impl From<AccountHash> for InitiatorAddr {
     }
 }
 
+impl From<Address> for InitiatorAddr {
+    fn from(address: Address) -> Self {
+        InitiatorAddr::Eoa(address)
+    }
+}
+
 impl Display for InitiatorAddr {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
@@ -155,6 +198,7 @@ impl Display for InitiatorAddr {
             InitiatorAddr::AccountHash(account_hash) => {
                 write!(formatter, "account hash {}", account_hash)
             }
+            InitiatorAddr::Eoa(address) => write!(formatter, "EOA {}", address),
         }
     }
 }
@@ -170,6 +214,7 @@ impl Debug for InitiatorAddr {
                 .debug_tuple("AccountHash")
                 .field(account_hash)
                 .finish(),
+            InitiatorAddr::Eoa(address) => formatter.debug_tuple("Eoa").field(address).finish(),
         }
     }
 }
@@ -186,6 +231,61 @@ mod tests {
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&InitiatorAddr::random(rng));
         }
+    }
+
+    #[test]
+    fn variant_tags_are_stable() {
+        let rng = &mut TestRng::new();
+        let public_key = InitiatorAddr::PublicKey(PublicKey::random(rng));
+        let account_hash = InitiatorAddr::AccountHash(AccountHash::new([1; 32]));
+        let eoa = InitiatorAddr::Eoa(Address::new([2; crate::evm::ADDRESS_LENGTH]));
+
+        assert_eq!(serialized_tag(&public_key), 0);
+        assert_eq!(serialized_tag(&account_hash), 1);
+        assert_eq!(serialized_tag(&eoa), 2);
+    }
+
+    #[test]
+    fn eoa_accessors_do_not_fabricate_an_account_hash() {
+        let address = Address::new([3; crate::evm::ADDRESS_LENGTH]);
+        let initiator = InitiatorAddr::from(address);
+
+        assert_eq!(initiator.account_hash(), None);
+        assert_eq!(initiator.evm_address(), Some(address));
+        assert_eq!(
+            InitiatorAddr::AccountHash(AccountHash::new([4; 32])).evm_address(),
+            None
+        );
+    }
+
+    #[test]
+    fn eoa_serde_roundtrip() {
+        let initiator = InitiatorAddr::Eoa(Address::new([5; crate::evm::ADDRESS_LENGTH]));
+        let json = serde_json::to_string(&initiator).expect("should serialize EOA initiator");
+        assert_eq!(
+            json,
+            r#"{"Eoa":"0x0505050505050505050505050505050505050505"}"#
+        );
+        let decoded =
+            serde_json::from_str::<InitiatorAddr>(&json).expect("should deserialize EOA initiator");
+
+        assert_eq!(decoded, initiator);
+    }
+
+    fn serialized_tag(initiator: &InitiatorAddr) -> u8 {
+        let bytes = initiator.to_bytes().expect("initiator should serialize");
+        let (payload, remainder) =
+            CalltableSerializationEnvelope::from_bytes(2, &bytes).expect("valid calltable");
+        assert!(remainder.is_empty());
+        let window = payload
+            .start_consuming()
+            .expect("valid fields")
+            .expect("tag field");
+        window.verify_index(TAG_FIELD_INDEX).expect("tag index");
+        window
+            .deserialize_and_maybe_next::<u8>()
+            .expect("tag should deserialize")
+            .0
     }
 
     proptest! {

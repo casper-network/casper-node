@@ -95,7 +95,7 @@ impl From<&TransactionV1> for TransactionHeader {
 impl From<&EvmTransaction> for TransactionHeader {
     fn from(transaction: &EvmTransaction) -> Self {
         let meta = EvmTransactionMetadata {
-            initiator_addr: transaction.initiator_addr().clone(),
+            initiator_addr: transaction.initiator_addr(),
             timestamp: transaction.timestamp(),
             ttl: transaction.ttl(),
         };

@@ -8,7 +8,7 @@ use core::{
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use alloy_primitives::keccak256;
 
@@ -23,9 +23,7 @@ pub const ADDRESS_LENGTH: usize = 20;
 const ADDRESS_SERIALIZED_LENGTH: usize = ADDRESS_LENGTH;
 
 /// A 20-byte Ethereum account or contract address.
-#[derive(
-    Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
-)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Address([u8; ADDRESS_LENGTH]);
 
@@ -103,6 +101,33 @@ impl Display for Address {
     }
 }
 
+impl Serialize for Address {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.collect_str(self)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Address {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let value = String::deserialize(deserializer)?;
+            let hex = value
+                .strip_prefix("0x")
+                .ok_or_else(|| D::Error::custom("address must start with 0x"))?;
+            let bytes = base16::decode(hex.as_bytes()).map_err(SerdeError::custom)?;
+            let bytes =
+                <[u8; ADDRESS_LENGTH]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?;
+            Ok(Address::new(bytes))
+        } else {
+            <[u8; ADDRESS_LENGTH]>::deserialize(deserializer).map(Address::new)
+        }
+    }
+}
+
 #[cfg(feature = "json-schema")]
 impl JsonSchema for Address {
     fn schema_name() -> String {
@@ -112,8 +137,10 @@ impl JsonSchema for Address {
     fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("A 20-byte Ethereum account or contract address encoded as hexadecimal.".into());
+        schema_object.metadata().description = Some(
+            "A 20-byte Ethereum account or contract address encoded as 0x-prefixed hexadecimal."
+                .into(),
+        );
         schema_object.into()
     }
 }
@@ -155,6 +182,30 @@ impl FromBytes for Address {
 mod tests {
     use super::*;
     use crate::{CLValue, SecretKey};
+
+    #[test]
+    fn human_readable_serde_uses_0x_prefixed_hex() {
+        let address = Address::new([0xab; ADDRESS_LENGTH]);
+        let expected_hex = "ab".repeat(ADDRESS_LENGTH);
+
+        let encoded = serde_json::to_value(address).expect("address should serialize");
+        assert_eq!(encoded, serde_json::json!(format!("0x{expected_hex}")));
+
+        let decoded: Address = serde_json::from_value(encoded).expect("address should deserialize");
+        assert_eq!(decoded, address);
+
+        assert!(serde_json::from_value::<Address>(serde_json::json!(expected_hex)).is_err());
+        assert!(serde_json::from_value::<Address>(serde_json::json!("0xab")).is_err());
+    }
+
+    #[test]
+    fn non_human_readable_serde_roundtrip() {
+        let address = Address::new([0xcd; ADDRESS_LENGTH]);
+        let encoded = bincode::serialize(&address).expect("address should serialize");
+        let decoded: Address = bincode::deserialize(&encoded).expect("address should deserialize");
+
+        assert_eq!(decoded, address);
+    }
 
     #[test]
     fn evm_address_cl_value_roundtrip() {

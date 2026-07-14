@@ -89,6 +89,8 @@ pub(crate) enum InvalidRequest {
     ExpectedTransferredValue,
     #[error("Expected V2 runtime")]
     ExpectedV2Runtime,
+    #[error("Invalid initiator address")]
+    InvalidInitiatorAddr,
 }
 
 impl WasmV2Request {
@@ -102,6 +104,9 @@ impl WasmV2Request {
     ) -> Result<Self, InvalidRequest> {
         let transaction_hash = transaction.hash();
         let initiator_addr = transaction.initiator_addr();
+        let initiator_account_hash = initiator_addr
+            .account_hash()
+            .ok_or(InvalidRequest::InvalidInitiatorAddr)?;
 
         let gas_limit: u64 = gas_limit
             .value()
@@ -213,7 +218,6 @@ impl WasmV2Request {
                 // different API.
                 debug_assert_eq!(transferred_value, value);
 
-                let initiator_account_hash = initiator_addr.account_hash();
                 let install_request = builder
                     .with_initiator(initiator_account_hash)
                     .with_gas_limit(gas_limit)
@@ -233,8 +237,6 @@ impl WasmV2Request {
             }
             Target::Session { .. } | Target::Stored { .. } => {
                 let mut builder = ExecuteRequestBuilder::default();
-
-                let initiator_account_hash = initiator_addr.account_hash();
 
                 let initiator_key = Key::Account(initiator_account_hash);
 

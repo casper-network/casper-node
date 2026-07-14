@@ -813,7 +813,11 @@ where
             .expect("builder must have a post-state hash");
 
         let transaction_hash = TransactionHash::V1(TransactionV1Hash::default());
-        let authorization_keys = BTreeSet::from_iter(iter::once(initiator.account_hash()));
+        let authorization_keys = BTreeSet::from_iter(iter::once(
+            initiator
+                .account_hash()
+                .expect("test bidding initiator must be a Casper account"),
+        ));
 
         let config = &self.chainspec;
         let fee_handling = config.core_config.fee_handling;

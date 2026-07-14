@@ -48,6 +48,12 @@ impl MetaTransactionV1 {
         v1: &TransactionV1,
         transaction_v1_config: &TransactionV1Config,
     ) -> Result<MetaTransactionV1, InvalidTransaction> {
+        if matches!(v1.initiator_addr(), InitiatorAddr::Eoa(_)) {
+            return Err(InvalidTransaction::V1(
+                InvalidTransactionV1::InvalidInitiatorAddr,
+            ));
+        }
+
         let args_binary_len = v1
             .payload()
             .fields()
@@ -864,10 +870,33 @@ mod tests {
     use super::MetaTransactionV1;
     use crate::types::transaction::transaction_v1_builder::TransactionV1Builder;
     use casper_types::{
-        testing::TestRng, InvalidTransaction, InvalidTransactionV1, PricingMode, SecretKey,
-        TransactionInvocationTarget, TransactionLaneDefinition, TransactionRuntimeParams,
-        TransactionV1Config,
+        evm::Address, testing::TestRng, InvalidTransaction, InvalidTransactionV1, PricingMode,
+        SecretKey, TransactionInvocationTarget, TransactionLaneDefinition,
+        TransactionRuntimeParams, TransactionV1Config,
     };
+
+    #[test]
+    fn eoa_initiator_should_be_rejected() {
+        let rng = &mut TestRng::new();
+        let secret_key = SecretKey::random(rng);
+        let transaction_v1 = TransactionV1Builder::new_session(
+            false,
+            vec![1; 30].into(),
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_chain_name("x".to_string())
+        .with_initiator_addr(Address::new([7; 20]))
+        .with_secret_key(&secret_key)
+        .build()
+        .unwrap();
+
+        assert!(matches!(
+            MetaTransactionV1::from_transaction_v1(&transaction_v1, &build_v1_config()),
+            Err(InvalidTransaction::V1(
+                InvalidTransactionV1::InvalidInitiatorAddr
+            ))
+        ));
+    }
 
     #[test]
     fn limited_amount_should_determine_transaction_lane_for_session() {

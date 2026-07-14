@@ -46,7 +46,7 @@ use crate::{
 };
 
 const TRANSACTION_KIND_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
-const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 16;
+const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 15;
 
 const TIMESTAMP_FIELD_INDEX: u16 = 0;
 const TTL_FIELD_INDEX: u16 = 1;
@@ -76,7 +76,6 @@ const DYNAMIC_APPROVAL_FIELD_INDEX: u16 = 13;
 
 const EIP7702_AUTHORIZATION_LIST_FIELD_INDEX: u16 = 13;
 const EIP7702_APPROVAL_FIELD_INDEX: u16 = 14;
-const INITIATOR_ADDR_FIELD_INDEX: u16 = 15;
 
 /// Ethereum transaction type ID for legacy transactions.
 pub const LEGACY_TRANSACTION_TYPE_ID: u8 = 0;
@@ -623,7 +622,6 @@ impl std::error::Error for EvmTransactionError {}
 pub struct EvmTransaction {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    initiator_addr: InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -653,7 +651,6 @@ pub struct EvmTransaction {
 struct EvmTransactionSerHelper<'a> {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    initiator_addr: &'a InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -675,7 +672,6 @@ struct EvmTransactionSerHelper<'a> {
 struct EvmTransactionDeserHelper {
     timestamp: Timestamp,
     ttl: TimeDiff,
-    initiator_addr: InitiatorAddr,
     hash: EvmTransactionHash,
     from: Address,
     kind: EvmTransactionKind,
@@ -698,7 +694,6 @@ impl Serialize for EvmTransaction {
         EvmTransactionSerHelper {
             timestamp: self.timestamp,
             ttl: self.ttl,
-            initiator_addr: &self.initiator_addr,
             hash: self.hash,
             from: self.from,
             kind: self.kind,
@@ -725,7 +720,6 @@ impl<'de> Deserialize<'de> for EvmTransaction {
         let transaction = EvmTransaction {
             timestamp: helper.timestamp,
             ttl: helper.ttl,
-            initiator_addr: helper.initiator_addr,
             hash: helper.hash,
             from: helper.from,
             kind: helper.kind,
@@ -758,7 +752,6 @@ impl EvmTransaction {
     pub fn new_unsigned_call(
         timestamp: Timestamp,
         ttl: TimeDiff,
-        initiator_addr: InitiatorAddr,
         chain_id: u64,
         from: Address,
         to: Option<Address>,
@@ -770,7 +763,6 @@ impl EvmTransaction {
         let mut transaction = EvmTransaction {
             timestamp,
             ttl,
-            initiator_addr,
             hash: EvmTransactionHash::default(),
             from,
             kind: EvmTransactionKind::Legacy,
@@ -799,9 +791,6 @@ impl EvmTransaction {
         self.ttl
             .write_bytes(&mut bytes)
             .expect("ttl should serialize");
-        self.initiator_addr
-            .write_bytes(&mut bytes)
-            .expect("initiator address should serialize");
         self.from
             .write_bytes(&mut bytes)
             .expect("from address should serialize");
@@ -846,7 +835,6 @@ impl EvmTransaction {
                     input_length,
                     self.chain_id.serialized_length(),
                     self.approval.serialized_length(),
-                    self.initiator_addr.serialized_length(),
                 ]);
             }
             EvmTransactionKind::Eip1559 => {
@@ -857,7 +845,6 @@ impl EvmTransaction {
                     input_length,
                     self.chain_id.serialized_length(),
                     self.approval.serialized_length(),
-                    self.initiator_addr.serialized_length(),
                 ]);
             }
             EvmTransactionKind::Eip7702 => {
@@ -869,7 +856,6 @@ impl EvmTransaction {
                     self.chain_id.serialized_length(),
                     self.authorization_list.serialized_length(),
                     self.approval.serialized_length(),
-                    self.initiator_addr.serialized_length(),
                 ]);
             }
         }
@@ -943,8 +929,6 @@ impl EvmTransaction {
         };
         let signature_hash = envelope.signature_hash();
         let approval = evm_approval_from_alloy_signature(envelope.signature(), &signature_hash)?;
-        let initiator_addr = InitiatorAddr::AccountHash(approval.signer().to_account_hash());
-
         let from = envelope
             .recover_signer()
             .map_err(|error| EvmTransactionError::SenderRecovery(format!("{error:?}")))?;
@@ -967,7 +951,6 @@ impl EvmTransaction {
         Ok(EvmTransaction {
             timestamp,
             ttl,
-            initiator_addr,
             hash: b256_to_transaction_hash(*envelope.tx_hash()),
             from: alloy_address_to_address(from),
             kind,
@@ -1024,7 +1007,6 @@ impl EvmTransaction {
         let signature = Signature::secp256k1(signature_bytes)
             .map_err(|_| EvmTransactionError::InvalidApprovalSignature)?;
         let signer = PublicKey::from(secret_key);
-        let initiator_addr = InitiatorAddr::AccountHash(signer.to_account_hash());
         let y_parity = recovery_id.is_y_odd();
         let approval = EvmApproval::new(Approval::new(signer, signature), y_parity);
 
@@ -1033,7 +1015,6 @@ impl EvmTransaction {
         let signed = unsigned.into_envelope(alloy_signature);
 
         self.approval = Some(approval);
-        self.initiator_addr = initiator_addr;
         self.from = evm_address_from_verifying_key(&recovered_key);
         self.hash = b256_to_transaction_hash(*signed.tx_hash());
         self.verify()
@@ -1079,9 +1060,9 @@ impl EvmTransaction {
             .signer())
     }
 
-    /// Returns the Casper initiator address attached to this EVM transaction.
-    pub fn initiator_addr(&self) -> &InitiatorAddr {
-        &self.initiator_addr
+    /// Returns the initiator address derived from this EVM transaction's sender.
+    pub fn initiator_addr(&self) -> InitiatorAddr {
+        InitiatorAddr::Eoa(self.from)
     }
 
     /// Returns this transaction with a replacement EVM approval.
@@ -1356,10 +1337,6 @@ impl EvmTransaction {
         if &recovered_public_key != expected_signer {
             return Err(EvmTransactionError::InvalidApprovalSignature);
         }
-        let expected_initiator_addr = InitiatorAddr::AccountHash(expected_signer.to_account_hash());
-        if self.initiator_addr != expected_initiator_addr {
-            return Err(EvmTransactionError::InvalidApprovalSignature);
-        }
         Ok((
             alloy_signature,
             evm_address_from_verifying_key(&recovered_key),
@@ -1399,7 +1376,6 @@ impl ToBytes for EvmTransaction {
                     .add_field(LEGACY_INPUT_FIELD_INDEX, &input)?
                     .add_field(LEGACY_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
                     .add_field(LEGACY_APPROVAL_FIELD_INDEX, &self.approval)?
-                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
                     .binary_payload_bytes()
             }
             EvmTransactionKind::Eip1559 => {
@@ -1414,7 +1390,6 @@ impl ToBytes for EvmTransaction {
                     .add_field(DYNAMIC_INPUT_FIELD_INDEX, &input)?
                     .add_field(DYNAMIC_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
                     .add_field(DYNAMIC_APPROVAL_FIELD_INDEX, &self.approval)?
-                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
                     .binary_payload_bytes()
             }
             EvmTransactionKind::Eip7702 => {
@@ -1433,7 +1408,6 @@ impl ToBytes for EvmTransaction {
                         &self.authorization_list,
                     )?
                     .add_field(EIP7702_APPROVAL_FIELD_INDEX, &self.approval)?
-                    .add_field(INITIATOR_ADDR_FIELD_INDEX, &self.initiator_addr)?
                     .binary_payload_bytes()
             }
         }
@@ -1499,10 +1473,6 @@ impl EvmTransaction {
                 window.verify_index(LEGACY_APPROVAL_FIELD_INDEX)?;
                 let (approval, window) =
                     window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
-                let window = window.ok_or(bytesrepr::Error::Formatting)?;
-                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
-                let (initiator_addr, window) =
-                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
                 if window.is_some() {
                     return Err(bytesrepr::Error::Formatting);
                 }
@@ -1514,7 +1484,6 @@ impl EvmTransaction {
                 EvmTransaction {
                     timestamp,
                     ttl,
-                    initiator_addr,
                     hash,
                     from,
                     kind,
@@ -1552,17 +1521,12 @@ impl EvmTransaction {
                 window.verify_index(DYNAMIC_APPROVAL_FIELD_INDEX)?;
                 let (approval, window) =
                     window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
-                let window = window.ok_or(bytesrepr::Error::Formatting)?;
-                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
-                let (initiator_addr, window) =
-                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
                 if window.is_some() {
                     return Err(bytesrepr::Error::Formatting);
                 }
                 EvmTransaction {
                     timestamp,
                     ttl,
-                    initiator_addr,
                     hash,
                     from,
                     kind,
@@ -1604,17 +1568,12 @@ impl EvmTransaction {
                 window.verify_index(EIP7702_APPROVAL_FIELD_INDEX)?;
                 let (approval, window) =
                     window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
-                let window = window.ok_or(bytesrepr::Error::Formatting)?;
-                window.verify_index(INITIATOR_ADDR_FIELD_INDEX)?;
-                let (initiator_addr, window) =
-                    window.deserialize_and_maybe_next::<InitiatorAddr>()?;
                 if window.is_some() {
                     return Err(bytesrepr::Error::Formatting);
                 }
                 EvmTransaction {
                     timestamp,
                     ttl,
-                    initiator_addr,
                     hash,
                     from,
                     kind,
@@ -1801,12 +1760,12 @@ mod tests {
 
     #[test]
     fn unsigned_call_transaction_bytesrepr_roundtrips_without_approvals() {
+        let from = Address::new([1; crate::evm::ADDRESS_LENGTH]);
         let transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
-            test_initiator_addr(),
             7,
-            Address::new([1; crate::evm::ADDRESS_LENGTH]),
+            from,
             Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
             U256::from(3),
             vec![0xde, 0xad],
@@ -1815,6 +1774,7 @@ mod tests {
         );
 
         assert!(transaction.approval().is_none());
+        assert_eq!(transaction.initiator_addr(), InitiatorAddr::Eoa(from));
         assert!(transaction.is_unsigned_call());
         assert!(matches!(
             transaction.verify(),
@@ -1827,6 +1787,10 @@ mod tests {
     fn signed_legacy_transaction_bytesrepr_roundtrips() {
         let transaction = signed_legacy_transaction();
 
+        assert_eq!(
+            transaction.initiator_addr(),
+            InitiatorAddr::Eoa(transaction.from())
+        );
         assert_eq!(
             transaction.max_fee_per_gas(),
             transaction
@@ -1841,7 +1805,6 @@ mod tests {
         let mut transaction = EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(300),
-            test_initiator_addr(),
             7,
             Address::new([1; crate::evm::ADDRESS_LENGTH]),
             Some(Address::new([2; crate::evm::ADDRESS_LENGTH])),
@@ -1883,10 +1846,6 @@ mod tests {
             TimeDiff::from_seconds(60),
         )
         .expect("transaction should decode")
-    }
-
-    fn test_initiator_addr() -> InitiatorAddr {
-        InitiatorAddr::AccountHash(crate::account::AccountHash::new([9; 32]))
     }
 
     fn signed_eip7702_transaction() -> EvmTransaction {
