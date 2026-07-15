@@ -315,6 +315,14 @@ impl BidAddr {
         }
     }
 
+    /// Create a new reservation [`BidAddr`] from a [`DelegatorKind`].
+    pub fn new_reservation_kind(validator: &PublicKey, delegator_kind: &DelegatorKind) -> Self {
+        match delegator_kind {
+            DelegatorKind::PublicKey(pk) => BidAddr::new_reservation_account(validator, pk),
+            DelegatorKind::Purse(addr) => BidAddr::new_reservation_purse(validator, *addr),
+        }
+    }
+
     /// Create a new instance of a [`BidAddr`].
     pub fn new_reservation_account(validator: &PublicKey, delegator: &PublicKey) -> Self {
         BidAddr::ReservedDelegationAccount {

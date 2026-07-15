@@ -22,7 +22,7 @@ use tracing::{debug, error, warn};
 
 /// Maximum length of bridge records chain.
 /// Used when looking for the most recent bid record to avoid unbounded computations.
-const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
+pub(super) const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
@@ -630,27 +630,30 @@ impl DistributeTarget {
 pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
     provider: &mut P,
     bid_addr: BidAddr,
-) -> Result<DistributeTarget, Error> {
+) -> Result<(Vec<BidAddr>, DistributeTarget), Error> {
     let mut bridged_addrs = vec![];
     let mut current_validator_bid_addr = bid_addr;
     for _ in 0..MAX_BRIDGE_CHAIN_LENGTH {
         match provider.read_bid(&current_validator_bid_addr.into())? {
             Some(BidKind::Validator(validator_bid)) => {
                 if !bridged_addrs.is_empty() {
-                    return Ok(DistributeTarget::BridgedValidator {
-                        requested_validator_bid_addr: bid_addr,
-                        current_validator_bid_addr,
-                        bridged_validator_addrs: bridged_addrs,
-                        validator_bid,
-                    });
+                    return Ok((
+                        bridged_addrs.clone(),
+                        DistributeTarget::BridgedValidator {
+                            requested_validator_bid_addr: bid_addr,
+                            current_validator_bid_addr,
+                            bridged_validator_addrs: bridged_addrs,
+                            validator_bid,
+                        },
+                    ));
                 }
-                return Ok(DistributeTarget::Validator(validator_bid));
+                return Ok((bridged_addrs, DistributeTarget::Validator(validator_bid)));
             }
             Some(BidKind::Delegator(delegator_bid)) => {
-                return Ok(DistributeTarget::Delegator(delegator_bid));
+                return Ok((bridged_addrs, DistributeTarget::Delegator(delegator_bid)));
             }
             Some(BidKind::Unbond(unbond)) => {
-                return Ok(DistributeTarget::Unbond(unbond));
+                return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
             }
             Some(BidKind::Bridge(bridge)) => {
                 current_validator_bid_addr =
@@ -659,7 +662,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
             }
             None => {
                 // in the case of missing validator or delegator bids, check unbonds
-                if let BidAddr::Validator(account_hash) = bid_addr {
+                if let BidAddr::Validator(account_hash) = current_validator_bid_addr {
                     let validator_unbond_key = BidAddr::UnbondAccount {
                         validator: account_hash,
                         unbonder: account_hash,
@@ -668,7 +671,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&validator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::ValidatorNotFound);
                 }
@@ -676,6 +679,8 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                 if let BidAddr::DelegatedAccount {
                     validator,
                     delegator,
+                    // This fine to be the original bid addr for the delegator since
+                    // we fetch those of the validator bid
                 } = bid_addr
                 {
                     let delegator_unbond_key = BidAddr::UnbondAccount {
@@ -686,7 +691,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&delegator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::DelegatorNotFound);
                 }
@@ -704,7 +709,7 @@ pub fn get_distribution_target<P: RuntimeProvider + StorageProvider>(
                     if let Some(BidKind::Unbond(unbond)) =
                         provider.read_bid(&delegator_unbond_key)?
                     {
-                        return Ok(DistributeTarget::Unbond(unbond));
+                        return Ok((bridged_addrs, DistributeTarget::Unbond(unbond)));
                     }
                     return Err(Error::DelegatorNotFound);
                 }
@@ -1423,6 +1428,19 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
             continue;
         }
 
+        // Reduce the delegator's active stake *before* writing the unbond record. Otherwise a
+        // locked delegator (vesting table uninitialized but era past validator lockout) leaves
+        // an unbond pending against unchanged active stake - the same motes are both still
+        // counted as delegated and queued for release once the unbond matures.
+        let updated_stake = match delegator.decrease_stake(unbond_amount, era_end_timestamp_millis)
+        {
+            Ok(updated_stake) => updated_stake,
+            // Work around the case when the locked amounts table has yet to be
+            // initialized (likely pre-90 day mark).
+            Err(Error::DelegatorFundsLocked) => continue,
+            Err(err) => return Err(err),
+        };
+
         let unbond_kind = delegator.unbond_kind();
         create_unbonding_purse(
             provider,
@@ -1432,15 +1450,6 @@ pub fn process_updated_delegator_stake_boundaries<P: Auction>(
             unbond_amount,
             None,
         )?;
-
-        let updated_stake = match delegator.decrease_stake(unbond_amount, era_end_timestamp_millis)
-        {
-            Ok(updated_stake) => updated_stake,
-            // Work around the case when the locked amounts table has yet to be
-            // initialized (likely pre-90 day mark).
-            Err(Error::DelegatorFundsLocked) => continue,
-            Err(err) => return Err(err),
-        };
 
         let delegator_bid_addr = delegator.bid_addr();
         if updated_stake.is_zero() {
