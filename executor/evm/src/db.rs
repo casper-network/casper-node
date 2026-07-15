@@ -46,28 +46,6 @@ where
             None => Ok(U256::ZERO),
         }
     }
-
-    pub(crate) fn get_block_time(&mut self) -> Result<u64, DbError> {
-        let key = Key::BlockGlobal(casper_types::BlockGlobalAddr::BlockTime);
-        match self.tracking_copy.read(&key) {
-            Ok(Some(StoredValue::CLValue(cl_value))) => {
-                cl_value
-                    .into_t::<u64>()
-                    .map_err(|error| DbError::ValueDecode {
-                        key: Box::new(key),
-                        expected: "u64",
-                        error: error.to_string(),
-                    })
-            }
-            Ok(Some(stored_value)) => Err(DbError::TypeMismatch {
-                key: Box::new(key),
-                expected: "StoredValue::CLValue(u64)",
-                found: stored_value.type_name(),
-            }),
-            Ok(None) => Err(DbError::KeyNotFound { key: Box::new(key) }),
-            Err(error) => Err(DbError::TrackingCopy(error)),
-        }
-    }
 }
 
 impl<R, B> Database for CasperDb<'_, R, B>

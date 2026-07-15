@@ -39,12 +39,6 @@ where
         context: &mut CTX,
         inputs: &CallInputs,
     ) -> Result<Option<Self::Output>, String> {
-        // Placeholder
-        let _block_time = context
-            .db_mut()
-            .get_block_time()
-            .map_err(|e| e.to_string())?;
-
         <EthPrecompiles as PrecompileProvider<CTX>>::run(&mut self.0, context, inputs)
     }
 

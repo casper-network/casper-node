@@ -87,8 +87,6 @@ pub enum DbError {
         /// Provider error.
         error: BlockHashProviderError,
     },
-    #[error("failed to read block time from global state at {key:?}")]
-    KeyNotFound { key: Box<Key> },
 }
 
 impl From<AccountStorageError> for DbError {
