@@ -3182,7 +3182,7 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_peer() {
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            failure: ParameterFailure::InvalidAssociatedKeys,
             ..
         })
     ))
@@ -3196,7 +3196,7 @@ async fn should_reject_txn_with_system_public_key_as_initiator_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            failure: ParameterFailure::InvalidAssociatedKeys,
             ..
         })
     ))
@@ -3210,7 +3210,7 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_peer() {
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            failure: ParameterFailure::InvalidAssociatedKeys,
             ..
         })
     ))
@@ -3224,7 +3224,7 @@ async fn should_reject_txn_with_system_account_hash_as_initiator_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidAssociatedKeys { .. },
+            failure: ParameterFailure::InvalidAssociatedKeys,
             ..
         })
     ))
