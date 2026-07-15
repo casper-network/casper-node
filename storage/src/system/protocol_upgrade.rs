@@ -1887,6 +1887,10 @@ where
             ))
         }
     }
+
+    fn handle_accounts_migration() {}
+
+    fn handle_contracts_migration() {}
 }
 
 enum AccountRepr {
