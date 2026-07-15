@@ -674,6 +674,24 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 }
 
 #[test]
+fn prague_bls12_g1_add_precompile_delegates_to_revm() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let mut precompile_address = [0; evm::ADDRESS_LENGTH];
+    precompile_address[evm::ADDRESS_LENGTH - 1] = 0x0b;
+
+    let outcome = execute_call(
+        &executor,
+        &mut tracking_copy,
+        evm::Address::ZERO,
+        Some(evm::Address::new(precompile_address)),
+        vec![0; 256],
+    );
+
+    assert_eq!(outcome.output, vec![0; 128]);
+}
+
+#[test]
 fn system_call_updates_eip4788_beacon_roots() {
     let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, _tempdir) = tracking_copy();
