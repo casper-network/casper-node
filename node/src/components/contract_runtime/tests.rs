@@ -8,13 +8,6 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_types::{
-    bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
-    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
-    PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
-};
-
 use super::*;
 use crate::{
     components::{
@@ -34,6 +27,12 @@ use crate::{
     },
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
+};
+use casper_types::{
+    addressable_entity::NamedKeyAddr, bytesrepr::Bytes, contracts::ProtocolVersionMajor,
+    runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId,
+    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
+    Timestamp, Transaction, TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
 };
 
 const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
@@ -657,7 +656,14 @@ async fn should_correctly_manage_entity_version_calls() {
         prestate.pre_state_root_hash()
     };
 
-    let key = Key::Account(node_1_public_key.to_account_hash());
+    let named_key_addr = NamedKeyAddr::new_from_string(
+        EntityAddr::Account(node_1_public_key.to_account_hash().value()),
+        "purse_holder".to_string(),
+    )
+    .expect("must get named_key addr");
+
+    let key = Key::NamedKey(named_key_addr);
+
     let query_request = QueryRequest::new(pre_state_hash, key, vec![]);
 
     let package_key = if let QueryResult::Success { value, .. } = runner
@@ -667,15 +673,15 @@ async fn should_correctly_manage_entity_version_calls() {
         .data_access_layer
         .query(query_request)
     {
-        *value
-            .as_account()
-            .expect("must get account")
-            .named_keys()
-            .get("purse_holder")
+        value
+            .as_named_key_value()
+            .expect("must get named key")
+            .get_key()
             .expect("must get package key")
     } else {
         panic!("query failed");
     };
+    println!("{package_key}");
 
     let package_hash = package_key
         .into_hash_addr()
@@ -737,16 +743,21 @@ async fn should_correctly_manage_entity_version_calls() {
         prestate.pre_state_root_hash()
     };
 
-    let query_request = QueryRequest::new(pre_state_hash, package_key, vec![]);
-    if let QueryResult::Success { value, .. } = runner
+    let query_request = QueryRequest::new(
+        pre_state_hash,
+        Key::SmartContract(package_hash.value()),
+        vec![],
+    );
+    let query_result = runner
         .reactor()
         .inner()
         .contract_runtime
         .data_access_layer
-        .query(query_request)
-    {
+        .query(query_request);
+    println!("{:?}", query_result);
+    if let QueryResult::Success { value, .. } = query_result {
         let versions = value
-            .as_contract_package()
+            .as_package()
             .expect("must get account")
             .versions();
 

@@ -199,6 +199,9 @@ where
                 self.config.fee_handling(),
             )?;
             self.migrate_or_refresh_system_entities(&system_entity_addresses)?;
+
+            self.handle_accounts_migration()?;
+            self.handle_contracts_migration()?;
         } else {
             self.create_accumulation_purse_if_required_by_contract(
                 &system_entity_addresses.handle_payment(),
@@ -1888,9 +1891,52 @@ where
         }
     }
 
-    fn handle_accounts_migration() {}
+    fn handle_accounts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
+        let account_keys = self.tracking_copy.get_keys(&KeyTag::Account)?;
 
-    fn handle_contracts_migration() {}
+        let protocol_version = self.config.new_protocol_version();
+        for account_key in account_keys.iter() {
+            if let Key::Account(account_hash) = account_key {
+                match self
+                    .tracking_copy
+                    .migrate_account(*account_hash, protocol_version)
+                {
+                    Ok(()) => {
+                        debug!("successfully migrated account {}", account_hash)
+                    }
+                    Err(tc_error) => {
+                        error!("failed to migrate userland account {}", tc_error)
+                    }
+                };
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_contracts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
+        let hash_keys = self.tracking_copy.get_keys(&KeyTag::Hash)?;
+
+        let protocol_version = self.config.new_protocol_version();
+        for account_key in hash_keys.iter() {
+            if let Ok(Some(StoredValue::ContractPackage(_))) = self.tracking_copy.read(account_key)
+            {
+                match self
+                    .tracking_copy
+                    .migrate_package(*account_key, protocol_version)
+                {
+                    Ok(()) => {
+                        debug!("successfully migrated package")
+                    }
+                    Err(tc_error) => {
+                        error!("unable to migrate package {}", tc_error)
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 enum AccountRepr {

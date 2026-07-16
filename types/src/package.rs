@@ -243,6 +243,10 @@ impl EntityVersions {
     pub fn iter_entries(&self) -> impl Iterator<Item = (&EntityVersionKey, &EntityAddr)> {
         self.0.iter()
     }
+    
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 impl ToBytes for EntityVersions {

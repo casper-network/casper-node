@@ -145,6 +145,12 @@ impl Cache {
 
     /// Returns true if the pruned and cached values are both empty.
     pub fn is_empty(&self) -> bool {
+        println!(
+            "{} {}",
+            self.cached_values.is_empty(),
+            self.pruned.is_empty()
+        );
+        println!("{:?}", self.cached_values);
         self.cached_values.is_empty() && self.pruned.is_empty()
     }
 

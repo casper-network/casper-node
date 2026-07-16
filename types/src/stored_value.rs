@@ -308,6 +308,15 @@ impl StoredValue {
         }
     }
 
+    /// Returns a reference to the wrapped `NamedKeyValue` if this is a `NamedKeyValue` variant.
+    pub fn as_named_key_value(&self) -> Option<&NamedKeyValue> {
+        match self {
+            StoredValue::NamedKey(named_key_value) => Some(named_key_value),
+            _ => None,
+        }
+    }
+
+
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
