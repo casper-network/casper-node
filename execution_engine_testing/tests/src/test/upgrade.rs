@@ -1316,11 +1316,12 @@ fn setup_state_for_version_tests(
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_enable_addressable_entity(true)
         .build();
 
     let config = EngineConfigBuilder::new()
         .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
+        .with_enable_entity(true)
         .build();
 
     builder
@@ -1667,7 +1668,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_enable_addressable_entity(true)
         .with_rewards_handling(rewards_handling)
         .build();
 
@@ -1703,6 +1704,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
 
     let config = EngineConfigBuilder::new()
         .with_protocol_version(new_protocol_version)
+        .with_enable_entity(true)
         .with_trap_on_ambiguous_entity_version(trap)
         .build();
 
@@ -1724,12 +1726,12 @@ fn should_not_require_subsequent_cases(trap: bool) {
     builder.exec(exec_request).expect_success().commit();
 
     let contract_package = builder
-        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .query(None, Key::SmartContract(contract_package_hash.value()), &[])
         .expect("must get package as stored value")
-        .into_contract_package()
+        .into_package()
         .expect("must get package");
     let current_version = contract_package
-        .current_contract_version()
+        .current_entity_version()
         .expect("must have the latest current version");
 
     assert_eq!(current_version.protocol_version_major(), 3);

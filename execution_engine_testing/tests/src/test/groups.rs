@@ -4,18 +4,14 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
-use casper_types::{
-    account::AccountHash,
-    contracts::{ContractPackageHash, CONTRACT_INITIAL_VERSION},
-    runtime_args, Key, PackageHash, RuntimeArgs, U512,
-};
+use casper_types::{account::AccountHash, contracts::{ContractPackageHash, CONTRACT_INITIAL_VERSION}, runtime_args, HoldBalanceHandling, Key, PackageHash, RuntimeArgs, Timestamp, U512};
 
-use crate::wasm_utils;
+use crate::{lmdb_fixture, wasm_utils};
 
 const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -38,19 +34,10 @@ static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 
 fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
-    // let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);
-    // builder.with_block_time(Timestamp::now().into());
-    // builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
-
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-    builder.exec(exec_request_1).expect_success().commit();
+    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture("groups");
+    builder.with_block_time(Timestamp::now().into());
+    builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
+    
     builder
 }
 
@@ -249,7 +236,7 @@ fn should_call_group_restricted_contract() {
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_new_protocol_version(DEFAULT_PROTOCOL_VERSION)
-            .with_enable_addressable_entity(false)
+            .with_enable_addressable_entity(true)
             .build()
     };
 

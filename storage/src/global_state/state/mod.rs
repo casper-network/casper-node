@@ -229,8 +229,11 @@ pub trait CommitProvider: StateProvider {
 
         let (writes, prunes, effects) = post_upgrade_tc.destructure();
 
+        println!("upgrade complete");
+        let result = self.commit_values(pre_state_hash, writes, prunes);
+        println!("commit result: {:?}", result);
         // commit
-        match self.commit_values(pre_state_hash, writes, prunes) {
+        match result {
             Ok(post_state_hash) => ProtocolUpgradeResult::Success {
                 post_state_hash,
                 effects,
@@ -1101,7 +1104,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
+        let enable_addressable_entity = match tc.enable_addressable_entity() {
+            Ok(ae_flag) => ae_flag,
+            Err(err) => return SeigniorageRecipientsResult::Failure(err),
+        };
         match get_snapshot_data(self, &scr, state_hash, enable_addressable_entity) {
             not_found @ SeigniorageRecipientsResult::ValueNotFound(_) => {
                 if enable_addressable_entity {
@@ -1926,8 +1932,7 @@ pub trait StateProvider: Send + Sync + Sized {
         };
         let contract_hash = request.contract_hash();
         let entry_point_name = request.entry_point_name();
-        let runtime_footprint =
-            tc.entry_points(EntityAddr::SmartContract(contract_hash));
+        let runtime_footprint = tc.entry_points(EntityAddr::SmartContract(contract_hash));
         match runtime_footprint {
             Ok(entry_points) => match entry_points.get(entry_point_name) {
                 Some(entry_point) => EntryPointResult::Success {
@@ -1983,7 +1988,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return TotalSupplyResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
+        let enable_addressable_entity = match tc.enable_addressable_entity() {
+            Ok(ae_flag) => ae_flag,
+            Err(err) => return TotalSupplyResult::Failure(err),
+        };
         match get_total_supply_data(self, &scr, state_hash, enable_addressable_entity) {
             not_found @ TotalSupplyResult::ValueNotFound(_) => {
                 if enable_addressable_entity {
@@ -2021,7 +2029,10 @@ pub trait StateProvider: Send + Sync + Sized {
             Ok(scr) => scr,
             Err(err) => return RoundSeigniorageRateResult::Failure(err),
         };
-        let enable_addressable_entity = tc.enable_addressable_entity();
+        let enable_addressable_entity = match tc.enable_addressable_entity() {
+            Ok(ae_flag) => ae_flag,
+            Err(err) => return RoundSeigniorageRateResult::Failure(err),
+        };
         match get_round_seigniorage_rate_data(self, &scr, state_hash, enable_addressable_entity) {
             not_found @ RoundSeigniorageRateResult::ValueNotFound(_) => {
                 if enable_addressable_entity {

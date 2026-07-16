@@ -1792,6 +1792,7 @@ where
                 version,
                 protocol_version_major,
             } => {
+                println!("in package flow");
                 let package = self.context.get_package(contract_package_hash)?;
                 let entity_version_key = match (version, protocol_version_major) {
                     (Some(entity_version), Some(major)) => {
@@ -1837,8 +1838,11 @@ where
                     EntityAddr::new_smart_contract(hash_addr)
                 };
 
+                println!("found the addr from package");
+
                 let footprint = match self.context.read_gs(&Key::Hash(hash_addr))? {
                     Some(StoredValue::Contract(contract)) => {
+                        println!("found contract?");
                         if self.context.engine_config().enable_entity {
                             self.migrate_contract_and_contract_package(hash_addr)?;
                         };
@@ -2674,6 +2678,7 @@ where
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        println!("adding version");
         if self.context.engine_config().enable_entity {
             self.add_contract_version_by_package(
                 package_hash,
@@ -2684,6 +2689,7 @@ where
                 output_ptr,
             )
         } else {
+            println!("in cp");
             self.add_contract_version_by_contract_package(
                 package_hash.value(),
                 version_ptr,
@@ -2913,6 +2919,7 @@ where
         );
         let entity_key = Key::AddressableEntity(entity_addr);
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
+        println!("wrote in entity in package flow");
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 

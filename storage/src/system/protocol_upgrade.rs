@@ -17,7 +17,7 @@ use crate::{
 };
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue,
+        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, Weight,
     },
     bytesrepr::{self, Bytes, ToBytes},
     contracts::{ContractHash, ContractPackageStatus, NamedKeys},
@@ -38,8 +38,8 @@ use casper_types::{
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, ByteCode,
+    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
     EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
     FeeHandling, Groups, HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, StoredValue,
@@ -188,18 +188,18 @@ where
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
         self.handle_evm_predeploys()?;
+        self.handle_block_global_addressable_entity(self.config.enable_addressable_entity())?;
         let system_entity_addresses = self.handle_system_hashes()?;
 
         self.read_only_system_purse(system_entity_addresses.mint)?;
 
         if self.config.enable_addressable_entity() {
-            self.migrate_system_account(system_entity_addresses.mint())?;
             self.create_accumulation_purse_if_required(
                 &system_entity_addresses.handle_payment(),
                 self.config.fee_handling(),
             )?;
+            self.migrate_system_account(system_entity_addresses.mint())?;
             self.migrate_or_refresh_system_entities(&system_entity_addresses)?;
-
             self.handle_accounts_migration()?;
             self.handle_contracts_migration()?;
         } else {
@@ -565,6 +565,18 @@ where
         system_contract_type: SystemEntityType,
     ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
+        if let Some(StoredValue::AddressableEntity(system_entity)) = self
+            .tracking_copy
+            .read(&Key::AddressableEntity(EntityAddr::new_system(hash_addr)))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
+            })?
+        {
+            return Ok((system_entity, None, NO_CARRY_FORWARD));
+        }
+
         if let Some(StoredValue::Contract(system_contract)) = self
             .tracking_copy
             .read(&Key::Hash(hash_addr))
@@ -576,18 +588,6 @@ where
         {
             let named_keys = system_contract.named_keys().clone();
             return Ok((system_contract.into(), Some(named_keys), CARRY_FORWARD));
-        }
-
-        if let Some(StoredValue::AddressableEntity(system_entity)) = self
-            .tracking_copy
-            .read(&Key::AddressableEntity(EntityAddr::new_system(hash_addr)))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                    system_contract_type.to_string(),
-                )
-            })?
-        {
-            return Ok((system_entity, None, NO_CARRY_FORWARD));
         }
 
         Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
@@ -871,6 +871,10 @@ where
         handle_payment_hash: &HashAddr,
         fee_handling: FeeHandling,
     ) -> Result<(), ProtocolUpgradeError> {
+        if self.config.enable_addressable_entity() {
+            return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
+        }
+
         match fee_handling {
             FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
             FeeHandling::Accumulate | FeeHandling::NoFee => {}
@@ -1662,20 +1666,39 @@ where
                         })?,
                 );
 
-                let mint_key = if self.config.enable_addressable_entity() {
-                    Key::AddressableEntity(EntityAddr::System(mint))
+                if self.config.enable_addressable_entity() {
+                    let named_key_addr = NamedKeyAddr::new_from_string(
+                        EntityAddr::System(mint),
+                        MINT_SUSTAIN_PURSE_KEY.to_string(),
+                    )
+                    .map_err(|_| {
+                        ProtocolUpgradeError::CLValue(
+                            "unable to add sustain purse as named key addr".to_string(),
+                        )
+                    })?;
+
+                    let named_key_value = NamedKeyValue::from_concrete_values(
+                        Key::URef(sustain_purse),
+                        MINT_SUSTAIN_PURSE_KEY.to_string(),
+                    )
+                    .map_err(|cl_err| ProtocolUpgradeError::CLValue(cl_err.to_string()))?;
+
+                    self.tracking_copy.write(
+                        Key::NamedKey(named_key_addr),
+                        StoredValue::NamedKey(named_key_value),
+                    );
                 } else {
-                    Key::Hash(mint)
-                };
-                match self.tracking_copy.add(mint_key, value) {
-                    Ok(AddResult::Success) => {
-                        info!("Successfully added sustain purse to mint named keys")
-                    }
-                    Ok(_) | Err(_) => {
-                        return Err(ProtocolUpgradeError::CLValue(
-                            "Unable to add sustain purse".to_string(),
-                        ))
-                    }
+                    let result = self.tracking_copy.add(Key::Hash(mint), value);
+                    match result {
+                        Ok(AddResult::Success) => {
+                            info!("Successfully added sustain purse to mint named keys")
+                        }
+                        Ok(_) | Err(_) => {
+                            return Err(ProtocolUpgradeError::CLValue(
+                                "Unable to add sustain purse".to_string(),
+                            ))
+                        }
+                    };
                 };
 
                 let rewards_ratio: Bytes = ratio
@@ -1712,6 +1735,49 @@ where
             upsert_eip4788_predeploy(&mut self.tracking_copy)
                 .map_err(|error| ProtocolUpgradeError::EvmPredeploy(error.to_string()))?;
         }
+        Ok(())
+    }
+
+    pub fn handle_block_global_addressable_entity(
+        &mut self,
+        new_addressable_entity: bool,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let key = Key::BlockGlobal(BlockGlobalAddr::AddressableEntity);
+        match self
+            .tracking_copy
+            .read(&key)
+            .map_err(|tce| ProtocolUpgradeError::TrackingCopy(tce))?
+        {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let previous_flag: bool = cl_value
+                    .to_t()
+                    .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?;
+                // AE cannot be enable then disabled
+                if previous_flag && !new_addressable_entity {
+                    return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
+                }
+
+                if previous_flag == new_addressable_entity {
+                    return Ok(());
+                }
+
+                let new_ae_flag = CLValue::from_t(new_addressable_entity)
+                    .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?;
+                self.tracking_copy.write(
+                    Key::BlockGlobal(BlockGlobalAddr::AddressableEntity),
+                    StoredValue::CLValue(new_ae_flag),
+                );
+            }
+            Some(_) | None => {
+                let new_ae_flag = CLValue::from_t(new_addressable_entity)
+                    .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?;
+                self.tracking_copy.write(
+                    Key::BlockGlobal(BlockGlobalAddr::AddressableEntity),
+                    StoredValue::CLValue(new_ae_flag),
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -1921,6 +1987,7 @@ where
         for account_key in hash_keys.iter() {
             if let Ok(Some(StoredValue::ContractPackage(_))) = self.tracking_copy.read(account_key)
             {
+                println!("migrating {account_key}");
                 match self
                     .tracking_copy
                     .migrate_package(*account_key, protocol_version)

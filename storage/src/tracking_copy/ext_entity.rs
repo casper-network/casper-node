@@ -1,6 +1,11 @@
 use std::collections::BTreeSet;
 use tracing::{debug, error};
 
+use crate::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
+    AddressGenerator, KeyPrefix,
+};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue, Weight},
@@ -8,17 +13,11 @@ use casper_types::{
     system::{
         handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
-    ByteCodeHash, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr, EntityKind,
-    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr, Key, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue,
-    StoredValueTypeMismatch, URef, U512,
-};
-
-use crate::{
-    global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
-    AddressGenerator, KeyPrefix,
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, ByteCode,
+    ByteCodeAddr, ByteCodeHash, CLValue, ContextAccessRights, ContractRuntimeTag, EntityAddr,
+    EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr,
+    Key, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RuntimeFootprint,
+    StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 /// Fees purse handling.
@@ -152,6 +151,9 @@ pub trait TrackingCopyEntityExt<R> {
         name: &str,
     ) -> Result<Option<Key>, Self::Error>;
 
+    /// Reads the current addressable entity flag from global state.
+    fn enable_addressable_entity(&self) -> Result<bool, Self::Error>;
+
     /// Returns entry points for a given entity addr.
     fn entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
 }
@@ -228,7 +230,6 @@ where
                         self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;
 
                     let mut named_keys = NamedKeys::new();
-
                     for entry_key in &keys {
                         match self.read(entry_key)? {
                             Some(StoredValue::NamedKey(named_key)) => {
@@ -302,7 +303,7 @@ where
 
         let entity_addr = match self.get(&account_key)? {
             Some(StoredValue::Account(account)) => {
-                if self.enable_addressable_entity {
+                if self.enable_addressable_entity()? {
                     self.create_addressable_entity_from_account(account.clone(), protocol_version)?;
                 }
 
@@ -480,7 +481,7 @@ where
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.enable_addressable_entity()? {
             return Err(Self::Error::AddressableEntityDisable);
         }
 
@@ -500,7 +501,7 @@ where
         entity_addr: EntityAddr,
         entry_points: EntryPoints,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.enable_addressable_entity()? {
             return Err(Self::Error::AddressableEntityDisable);
         }
 
@@ -538,7 +539,7 @@ where
                 let uref_key = Key::URef(uref).normalize();
                 self.write(uref_key, stored_value);
 
-                if self.enable_addressable_entity {
+                if self.enable_addressable_entity()? {
                     let entry_value = {
                         let named_key_value =
                             NamedKeyValue::from_concrete_values(uref_key, name.to_string())
@@ -573,10 +574,11 @@ where
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
+        if !self.enable_addressable_entity()? {
             debug!("ae is not enabled, skipping migration");
             return Ok(());
         }
+
         let key = Key::Account(account_hash);
         let maybe_stored_value = self.read(&key)?;
 
@@ -654,7 +656,7 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
-        if !self.enable_addressable_entity {
+        if !self.enable_addressable_entity()? {
             self.write(Key::Account(account_hash), StoredValue::Account(account));
             return Ok(());
         }
@@ -734,9 +736,19 @@ where
         legacy_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        if !self.enable_addressable_entity {
-            return Err(Self::Error::AddressableEntityDisable);
-        }
+        // if !self.enable_addressable_entity {
+        //     println!("package");
+        //     return Err(Self::Error::AddressableEntityDisable);
+        // }
+        let hash_addr = legacy_package_key
+            .into_hash_addr()
+            .ok_or_else(|| Self::Error::KeyNotFound(legacy_package_key))?;
+
+        let package_key = Key::SmartContract(hash_addr);
+        if let Some(StoredValue::SmartContract(_)) = self.read(&package_key)? {
+            println!("exiting early");
+            return Ok(());
+        };
 
         let legacy_package = match self.read(&legacy_package_key)? {
             Some(StoredValue::ContractPackage(legacy_package)) => legacy_package,
@@ -755,6 +767,7 @@ where
         let package: Package = legacy_package.into();
 
         for (_, contract_hash) in legacy_versions.into_iter() {
+            println!("migrating version in a package");
             let contract = match self.read(&Key::Hash(contract_hash.value()))? {
                 Some(StoredValue::Contract(legacy_contract)) => legacy_contract,
                 Some(_) | None => {
@@ -835,7 +848,7 @@ where
                 Key::Hash(contract_hash.value()),
                 StoredValue::CLValue(indirection),
             );
-
+            println!("writing {}", entity_key);
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
         }
 
@@ -922,6 +935,18 @@ where
         };
         let runtime_footprint = self.runtime_footprint_by_hash_addr(hash)?;
         Ok(runtime_footprint.take_named_keys().get(name).copied())
+    }
+
+    fn enable_addressable_entity(&self) -> Result<bool, Self::Error> {
+        let key = Key::BlockGlobal(BlockGlobalAddr::AddressableEntity);
+        match self.read(&key)? {
+            Some(StoredValue::CLValue(cl_value)) => {
+                cl_value.to_t().map_err(|cl| Self::Error::CLValue(cl))
+            }
+            Some(_) | None => Err(Self::Error::ValueNotFound(
+                "unable to get ae flag".to_string(),
+            )),
+        }
     }
 
     fn entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {

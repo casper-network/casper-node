@@ -10,9 +10,11 @@ use casper_types::{
     contracts::{ContractHash, ContractPackageHash},
     runtime_args,
     system::{Caller, CallerInfo},
-    CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageHash, StoredValue, U512,
+    CLValue, EntityAddr, EntryPointType, HashAddr, HoldBalanceHandling, Key, PackageHash,
+    StoredValue, Timestamp, U512,
 };
 
+use crate::lmdb_fixture;
 use get_call_stack_recursive_subcall::{
     Call, ContractAddress, ARG_CALLS, ARG_CURRENT_DEPTH, METHOD_FORWARDER_CONTRACT_NAME,
     METHOD_FORWARDER_SESSION_NAME,
@@ -305,8 +307,14 @@ impl BuilderExt for LmdbWasmTestBuilder {
 }
 
 fn setup() -> LmdbWasmTestBuilder {
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    // let mut builder = LmdbWasmTestBuilder::default();
+    // builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    //
+
+    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture("call_stack_fixture");
+    builder.with_block_time_ae_flag(false);
+    builder.with_block_time(Timestamp::now().into());
+    builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
     store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
     builder
 }

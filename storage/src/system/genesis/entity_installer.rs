@@ -864,6 +864,14 @@ where
             Key::BlockGlobal(BlockGlobalAddr::BlockTime),
             StoredValue::CLValue(cl_value),
         );
+
+        let cl_value = CLValue::from_t(self.config.enable_entity())
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::BlockGlobal(BlockGlobalAddr::AddressableEntity),
+            StoredValue::CLValue(cl_value),
+        );
         Ok(())
     }
 

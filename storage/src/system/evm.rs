@@ -188,7 +188,7 @@ mod tests {
             .checkout(root_hash)
             .expect("checkout should not fail")
             .expect("root should exist");
-        (TrackingCopy::new(reader, 5, false), tempdir)
+        (TrackingCopy::new(reader, 5), tempdir)
     }
 
     fn read(tracking_copy: &mut TrackingCopy<LmdbGlobalStateView>, key: &Key) -> StoredValue {

@@ -262,10 +262,12 @@ impl LmdbWasmTestBuilder {
         let result = {
             let result = scratch_state.protocol_upgrade(req);
             if let ProtocolUpgradeResult::Success { effects, .. } = result {
+                println!("scratch success");
                 let post_state_hash = self
                     .data_access_layer
                     .write_scratch_to_db(pre_state_hash, scratch_state)
                     .unwrap();
+                println!("write complete");
                 self.post_state_hash = Some(post_state_hash);
                 let mut engine_config = self.chainspec.engine_config();
                 let new_protocol_version = upgrade_config.new_protocol_version();
@@ -1337,6 +1339,26 @@ where
         self
     }
 
+    /// Sets blocktime into global state.
+    pub fn with_block_time_ae_flag(&mut self, ae_flag: bool) -> &mut Self {
+        if let Some(state_root_hash) = self.post_state_hash {
+            let mut tracking_copy = self
+                .data_access_layer
+                .tracking_copy(state_root_hash)
+                .expect("should not error on checkout")
+                .expect("should checkout tracking copy");
+
+            let cl_value = CLValue::from_t(ae_flag).expect("should get cl value");
+            tracking_copy.write(
+                Key::BlockGlobal(BlockGlobalAddr::AddressableEntity),
+                StoredValue::CLValue(cl_value),
+            );
+            self.commit_transforms(state_root_hash, tracking_copy.effects());
+        }
+
+        self
+    }
+
     /// Writes a set of keys and values to global state.
     pub fn write_data_and_commit(
         &mut self,
@@ -1638,35 +1660,45 @@ where
             .expect("account to exist")
     }
 
+    pub fn get_enable_addressable_entity_from_block_global(&self) -> bool {
+        let key = Key::BlockGlobal(BlockGlobalAddr::AddressableEntity);
+
+        self.query(None, key, &[])
+            .expect("must have stored value")
+            .as_cl_value()
+            .expect("must get cl_value")
+            .to_t()
+            .expect("must convert to bool")
+    }
+
     /// Queries for an addressable entity by `AddressableEntityHash`.
     pub fn get_addressable_entity(
         &self,
         entity_hash: AddressableEntityHash,
     ) -> Option<AddressableEntity> {
-        if !self.chainspec.core_config.enable_addressable_entity {
-            let contract_hash = ContractHash::new(entity_hash.value());
-            return self
-                .get_contract(contract_hash)
-                .map(AddressableEntity::from);
-        }
+        let enable_addressable_entity = self.get_enable_addressable_entity_from_block_global();
+        if enable_addressable_entity {
+            let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
 
-        let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
+            let value: StoredValue = match self.query(None, entity_key, &[]) {
+                Ok(stored_value) => stored_value,
+                Err(_) => self
+                    .query(
+                        None,
+                        Key::addressable_entity_key(EntityKindTag::System, entity_hash),
+                        &[],
+                    )
+                    .ok()?,
+            };
 
-        let value: StoredValue = match self.query(None, entity_key, &[]) {
-            Ok(stored_value) => stored_value,
-            Err(_) => self
-                .query(
-                    None,
-                    Key::addressable_entity_key(EntityKindTag::System, entity_hash),
-                    &[],
-                )
-                .ok()?,
-        };
-
-        if let StoredValue::AddressableEntity(entity) = value {
-            Some(entity)
+            if let StoredValue::AddressableEntity(entity) = value {
+                Some(entity)
+            } else {
+                None
+            }
         } else {
-            None
+            self.get_contract(ContractHash::new(entity_hash.value()))
+                .map(AddressableEntity::from)
         }
     }
 
