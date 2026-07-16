@@ -1164,13 +1164,8 @@ fn evm_account_at(
     let main_purse = match identity {
         Key::URef(uref) => uref,
         Key::Account(account_hash) => {
-            match query_global_state(fixture, state_root_hash, Key::Account(account_hash)) {
-                Some(value) => match *value {
-                    StoredValue::Account(account) => account.main_purse(),
-                    value => panic!("expected linked account, got {value:?}"),
-                },
-                value => panic!("expected linked account, got {value:?}"),
-            }
+            let entity = get_entity_by_account_hash(fixture, state_root_hash, account_hash);
+            entity.main_purse()
         }
         value => panic!("unexpected EVM identity key: {value:?}"),
     };

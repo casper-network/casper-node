@@ -8,9 +8,10 @@ use casper_storage::{
     global_state::state::StateProvider,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::Bytes, testing::TestRng, EraId, ExecutionInfo, FeeHandling,
-    KeyTag, PricingHandling, PricingMode, PublicKey, RefundHandling, SecretKey, TimeDiff,
-    Transaction, TransactionHash, TransactionRuntimeParams, U512,
+    account::AccountHash, bytesrepr::Bytes, testing::TestRng, AddressableEntity, EntityKind, EraId,
+    ExecutionInfo, FeeHandling, Key, KeyTag, PricingHandling, PricingMode, PublicKey,
+    RefundHandling, SecretKey, TimeDiff, Transaction, TransactionHash, TransactionRuntimeParams,
+    U512,
 };
 use once_cell::sync::OnceCell;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -232,7 +233,16 @@ impl TestScenario {
         {
             TaggedValuesResult::Success { values, .. } => values
                 .iter()
-                .filter_map(|el| el.as_account().map(|el| el.account_hash()))
+                .filter_map(|el| {
+                    el.as_cl_value().map(|el| {
+                        AccountHash::new(
+                            el.to_t::<Key>()
+                                .expect("must get key")
+                                .into_entity_hash_addr()
+                                .unwrap(),
+                        )
+                    })
+                })
                 .collect(),
             _ => panic!("Couldn't get all account hashes"),
         }

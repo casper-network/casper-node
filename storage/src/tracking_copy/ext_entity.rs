@@ -151,6 +151,9 @@ pub trait TrackingCopyEntityExt<R> {
         system_contract_name: &str,
         name: &str,
     ) -> Result<Option<Key>, Self::Error>;
+
+    /// Returns entry points for a given entity addr.
+    fn entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -262,46 +265,7 @@ where
 
                     named_keys
                 };
-                let entry_points = {
-                    let keys =
-                        self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
-
-                    let mut entry_points_v1 = EntryPoints::new();
-
-                    for entry_point_key in keys.iter() {
-                        match self.read(entry_point_key)? {
-                            Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
-                                entry_point,
-                            ))) => entry_points_v1.add_entry_point(entry_point),
-                            Some(other) => {
-                                return Err(TrackingCopyError::TypeMismatch(
-                                    StoredValueTypeMismatch::new(
-                                        "EntryPointsV1".to_string(),
-                                        other.type_name(),
-                                    ),
-                                ));
-                            }
-                            None => match self.cache.reads_cached.get(entry_point_key) {
-                                Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
-                                    entry_point,
-                                ))) => entry_points_v1.add_entry_point(entry_point.to_owned()),
-                                Some(other) => {
-                                    return Err(TrackingCopyError::TypeMismatch(
-                                        StoredValueTypeMismatch::new(
-                                            "EntryPointsV1".to_string(),
-                                            other.type_name(),
-                                        ),
-                                    ));
-                                }
-                                None => {
-                                    return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
-                                }
-                            },
-                        }
-                    }
-
-                    entry_points_v1
-                };
+                let entry_points = self.entry_points(entity_addr)?;
                 Ok(RuntimeFootprint::new_entity_footprint(
                     entity_addr,
                     entity,
@@ -958,5 +922,49 @@ where
         };
         let runtime_footprint = self.runtime_footprint_by_hash_addr(hash)?;
         Ok(runtime_footprint.take_named_keys().get(name).copied())
+    }
+
+    fn entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+        let entry_points = {
+            let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
+
+            let mut entry_points_v1 = EntryPoints::new();
+
+            for entry_point_key in keys.iter() {
+                match self.read(entry_point_key)? {
+                    Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                        entry_points_v1.add_entry_point(entry_point)
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "EntryPointsV1".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => match self.cache.reads_cached.get(entry_point_key) {
+                        Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                            entry_points_v1.add_entry_point(entry_point.to_owned())
+                        }
+                        Some(other) => {
+                            return Err(TrackingCopyError::TypeMismatch(
+                                StoredValueTypeMismatch::new(
+                                    "EntryPointsV1".to_string(),
+                                    other.type_name(),
+                                ),
+                            ));
+                        }
+                        None => {
+                            return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
+                        }
+                    },
+                }
+            }
+
+            entry_points_v1
+        };
+
+        Ok(entry_points)
     }
 }

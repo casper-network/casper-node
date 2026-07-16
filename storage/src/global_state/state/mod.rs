@@ -37,10 +37,9 @@ use casper_types::{
         },
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, EntityEntryPoint,
-    EntryPointAddr, EntryPointValue, EvmAddr, HoldsEpoch, Key, KeyTag, Phase, PublicKey,
-    RuntimeArgs, RuntimeFootprint, StoredValue, SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG,
-    U512,
+    Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, EntryPointValue,
+    EvmAddr, HoldsEpoch, Key, KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue,
+    SystemHashRegistry, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 #[cfg(test)]
@@ -1928,9 +1927,9 @@ pub trait StateProvider: Send + Sync + Sized {
         let contract_hash = request.contract_hash();
         let entry_point_name = request.entry_point_name();
         let runtime_footprint =
-            tc.runtime_footprint_by_entity_addr(EntityAddr::SmartContract(contract_hash));
+            tc.entry_points(EntityAddr::SmartContract(contract_hash));
         match runtime_footprint {
-            Ok(footprint) => match footprint.entry_points().get(entry_point_name) {
+            Ok(entry_points) => match entry_points.get(entry_point_name) {
                 Some(entry_point) => EntryPointResult::Success {
                     entry_point: EntryPointValue::new_v1_entry_point_value(entry_point.clone()),
                 },

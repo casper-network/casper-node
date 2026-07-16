@@ -756,10 +756,7 @@ async fn should_correctly_manage_entity_version_calls() {
         .query(query_request);
     println!("{:?}", query_result);
     if let QueryResult::Success { value, .. } = query_result {
-        let versions = value
-            .as_package()
-            .expect("must get account")
-            .versions();
+        let versions = value.as_package().expect("must get account").versions();
 
         assert_eq!(2, versions.len())
     } else {
@@ -897,8 +894,8 @@ mod test_mod {
         ActivationPoint, CLType, CLValue, Chainspec, ChunkWithProof, Contract, ContractWasmHash,
         CoreConfig, Digest, EntityAddr, EntryPointAccess, EntryPointAddr, EntryPointPayment,
         EntryPointType, EntryPointValue, EraId, HashAddr, Key, NamedKeys, ProtocolConfig,
-        ProtocolVersion, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_INTERVAL,
-        DEFAULT_REFUND_HANDLING,
+        ProtocolVersion, StoredValue, SystemHashRegistry, TimeDiff, DEFAULT_FEE_HANDLING,
+        DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_REFUND_HANDLING,
     };
 
     use super::{Config as ContractRuntimeConfig, ContractRuntime};
@@ -1047,6 +1044,10 @@ mod test_mod {
         for TestPair(key, value) in test_pair {
             effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         }
+        let key = Key::SystemEntityRegistry;
+        let value =
+            StoredValue::CLValue(CLValue::from_t(SystemHashRegistry::new()).expect("must convert"));
+        effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         let post_state_hash = &contract_runtime
             .data_access_layer()
             .as_ref()
@@ -1086,6 +1087,7 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
+        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::Success));
     }
 
@@ -1102,6 +1104,7 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
+        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::Success));
     }
 
