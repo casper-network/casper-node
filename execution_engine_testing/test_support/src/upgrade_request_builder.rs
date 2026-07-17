@@ -222,7 +222,7 @@ impl Default for UpgradeRequestBuilder {
             validator_minimum_bid_amount: 2_500_000_000_000u64,
             maximum_delegation_amount: u64::MAX,
             minimum_delegation_amount: 0,
-            enable_addressable_entity: false,
+            enable_addressable_entity: true,
             rewards_handling: RewardsHandling::Standard,
             new_minimum_delegation_rate: None,
         }

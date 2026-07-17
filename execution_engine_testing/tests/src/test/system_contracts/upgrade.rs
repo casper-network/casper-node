@@ -271,6 +271,7 @@ fn should_upgrade_only_validator_slots() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_new_validator_slots(new_validator_slots)
+            .with_enable_addressable_entity(true)
             .build()
     };
 

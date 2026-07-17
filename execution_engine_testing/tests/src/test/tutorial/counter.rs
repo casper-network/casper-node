@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{Key, RuntimeArgs, StoredValue};
+use casper_types::{AddressableEntityHash, Key, RuntimeArgs, StoredValue};
 
 const COUNT_KEY: &str = "count";
 const COUNTER_INSTALLER_WASM: &str = "counter_installer.wasm";
@@ -41,17 +41,34 @@ fn should_run_counter_example() {
     let binding = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("must have value");
-    let result = binding.as_account().unwrap().named_keys();
+
+    let binding = builder
+        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .expect("must have binding");
+    let result = binding.named_keys();
 
     println!("Named keys, {:?}", result);
 
-    let query_result = builder
-        .query(
-            None,
-            Key::Account(*DEFAULT_ACCOUNT_ADDR),
-            &[COUNTER_KEY.into(), COUNT_KEY.into()],
-        )
-        .expect("should query");
+    let counter_contract = result
+        .get(COUNTER_KEY)
+        .expect("must have key")
+        .into_hash_addr()
+        .expect("must get hash addr");
+
+    let binding = builder
+        .get_entity_with_named_keys_by_entity_hash(AddressableEntityHash::new(counter_contract))
+        .expect("must get counter entity");
+
+    let counter_entity = binding
+        .named_keys()
+        .get(COUNT_KEY)
+        .expect("must get count key");
+
+    let query_result = builder.query(None, *counter_entity, &[]);
+
+    println!("{:?}", query_result);
+
+    let query_result = query_result.expect("must query");
 
     let counter_before: i32 = if let StoredValue::CLValue(cl_value) = query_result {
         cl_value.into_t().unwrap()
@@ -61,13 +78,14 @@ fn should_run_counter_example() {
 
     builder.exec(inc_request_1).expect_success().commit();
 
+    let counter_entity = binding
+        .named_keys()
+        .get(COUNT_KEY)
+        .expect("must get count key");
+
     let query_result = builder
-        .query(
-            None,
-            Key::from(*DEFAULT_ACCOUNT_ADDR),
-            &[COUNTER_KEY.into(), COUNT_KEY.into()],
-        )
-        .expect("should query");
+        .query(None, *counter_entity, &[])
+        .expect("must query");
 
     let counter_after: i32 = if let StoredValue::CLValue(cl_value) = query_result {
         cl_value.into_t().unwrap()

@@ -539,7 +539,9 @@ fn builder_for_calling_entrypoint(
 }
 
 fn get_package_hash(builder: &mut LmdbWasmTestBuilder) -> [u8; 32] {
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
     let get = account.named_keys().get("package_name");
     let package_key = get.unwrap();
     let package_hash = match package_key {

@@ -379,6 +379,9 @@ where
             return Err(Self::Error::Authorization);
         }
 
+        println!("{:?}", authorization_keys);
+        println!("{:?}", footprint);
+
         // Check total key weight against deploy threshold
         if !footprint.can_deploy_with(authorization_keys) {
             return Err(Self::Error::DeploymentAuthorizationFailure);

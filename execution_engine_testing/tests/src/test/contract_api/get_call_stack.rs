@@ -4,7 +4,10 @@ use casper_engine_test_support::{
     ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
+use casper_execution_engine::{
+    engine_state::{EngineConfigBuilder, Error as CoreError},
+    execution::ExecError,
+};
 use casper_types::{
     account::{Account, AccountHash},
     contracts::{ContractHash, ContractPackageHash},
@@ -315,6 +318,8 @@ fn setup() -> LmdbWasmTestBuilder {
     builder.with_block_time_ae_flag(false);
     builder.with_block_time(Timestamp::now().into());
     builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
+    builder.with_engine_config(EngineConfigBuilder::new().with_enable_entity(false).build());
+
     store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
     builder
 }
@@ -1134,7 +1139,7 @@ mod session {
 
             let effects = builder.get_effects().last().unwrap().clone();
 
-            let key = if builder.chainspec().core_config.enable_addressable_entity {
+            let key = if builder.get_enable_addressable_entity_from_block_global() {
                 Key::SmartContract(current_contract_package_hash)
             } else {
                 Key::Hash(current_contract_package_hash)

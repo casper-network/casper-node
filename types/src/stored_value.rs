@@ -316,7 +316,6 @@ impl StoredValue {
         }
     }
 
-
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {

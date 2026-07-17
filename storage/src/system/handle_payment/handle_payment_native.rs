@@ -31,12 +31,15 @@ where
         amount: U512,
     ) -> Result<TransferredTo, Error> {
         let protocol_version = self.protocol_version();
-        let target_uref = match self.tracking_copy().borrow_mut().runtime_footprint_by_account_hash(protocol_version, target) {
+        let target_uref = match self
+            .tracking_copy()
+            .borrow_mut()
+            .runtime_footprint_by_account_hash(protocol_version, target)
+        {
             Ok((addr, footprint)) => footprint.main_purse().ok_or_else(|| Error::Transfer)?,
-            Err(_) => return Err(Error::Transfer)
+            Err(_) => return Err(Error::Transfer),
         };
-        
-        
+
         // source and target are the same, noop
         if source.with_access_rights(AccessRights::ADD) == target_uref {
             return Ok(TransferredTo::ExistingAccount);

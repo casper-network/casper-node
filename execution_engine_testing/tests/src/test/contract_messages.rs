@@ -60,17 +60,25 @@ fn install_messages_emitter_contract(
         .expect_success()
         .commit();
 
+    let entity = builder
+        .borrow_mut()
+        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .expect("must have entity");
+
+    let package_key = entity
+        .named_keys()
+        .get(MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME)
+        .expect("must have package key")
+        .into_hash_addr()
+        .expect("must have hash addr");
+
     // Get the contract package for the messages_emitter.
     let query_result = builder
         .borrow_mut()
-        .query(
-            None,
-            Key::from(*DEFAULT_ACCOUNT_ADDR),
-            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
-        )
+        .query(None, Key::SmartContract(package_key), &[])
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+    let message_emitter_package = if let StoredValue::SmartContract(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
@@ -79,9 +87,9 @@ fn install_messages_emitter_contract(
     // Get the contract hash of the messages_emitter contract.
     message_emitter_package
         .versions()
-        .values()
+        .iter_entries()
         .last()
-        .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
+        .map(|(_, entity_addr)| AddressableEntityHash::new(entity_addr.value()))
         .expect("Should have contract hash")
 }
 
@@ -123,16 +131,25 @@ fn upgrade_messages_emitter_contract(
     }
 
     // Get the contract package for the upgraded messages emitter contract.
+    let entity = builder
+        .borrow_mut()
+        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .expect("must have entity");
+
+    let package_key = entity
+        .named_keys()
+        .get(MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME)
+        .expect("must have package key")
+        .into_hash_addr()
+        .expect("must have hash addr");
+
+    // Get the contract package for the messages_emitter.
     let query_result = builder
         .borrow_mut()
-        .query(
-            None,
-            Key::from(*DEFAULT_ACCOUNT_ADDR),
-            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
-        )
+        .query(None, Key::SmartContract(package_key), &[])
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+    let message_emitter_package = if let StoredValue::SmartContract(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
@@ -141,9 +158,9 @@ fn upgrade_messages_emitter_contract(
     // Get the contract hash of the latest version of the messages emitter contract.
     message_emitter_package
         .versions()
-        .values()
+        .iter_entries()
         .last()
-        .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
+        .map(|(_, addr)| AddressableEntityHash::new(addr.value()))
         .expect("Should have contract hash")
 }
 
