@@ -39,7 +39,7 @@ use casper_types::{
         mint,
         mint::{
             ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY,
-            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+            MINT_SUSTAIN_PURSE_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
@@ -105,7 +105,7 @@ where
         Ok(())
     }
 
-    fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
+    fn create_mint(&mut self) -> Result<(Key, EntityAddr), Box<GenesisError>> {
         let round_seigniorage_rate_uref =
             {
                 let round_seigniorage_rate_uref = self
@@ -219,7 +219,10 @@ where
                 .write(Key::SystemEntityRegistry, StoredValue::CLValue(cl_registry));
         }
 
-        Ok(total_supply_uref.into())
+        Ok((
+            total_supply_uref.into(),
+            EntityAddr::System(contract_hash.value()),
+        ))
     }
 
     fn create_handle_payment(&self) -> Result<HashAddr, Box<GenesisError>> {
@@ -554,7 +557,11 @@ where
         Ok(contract_hash.value())
     }
 
-    pub fn create_accounts(&self, total_supply_key: Key) -> Result<(), Box<GenesisError>> {
+    pub fn create_accounts(
+        &self,
+        total_supply_key: Key,
+        mint_system_key: EntityAddr,
+    ) -> Result<(), Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.config.accounts_iter().cloned().collect();
             let system_account = GenesisAccount::system();
@@ -576,11 +583,34 @@ where
         }
 
         let mut total_supply = U512::zero();
-
         for account in accounts {
             let account_starting_balance = account.balance().value();
             let main_purse = match account {
                 GenesisAccount::System => self.create_purse(account_starting_balance)?.into_read(),
+                GenesisAccount::SustainAccount { .. } => {
+                    if let EntityAddr::System(hash_addr) = mint_system_key {
+                        let named_key_addr = NamedKeyAddr::new_from_string(
+                            EntityAddr::System(hash_addr),
+                            MINT_SUSTAIN_PURSE_KEY.to_string(),
+                        )
+                        .map_err(|cl| Box::new(GenesisError::CLValue(cl.to_string())))?;
+                        let purse = self.create_purse(account_starting_balance)?;
+                        let named_key_value = NamedKeyValue::from_concrete_values(
+                            Key::URef(purse),
+                            MINT_SUSTAIN_PURSE_KEY.to_string(),
+                        )
+                        .map_err(|cl| Box::new(GenesisError::CLValue(cl.to_string())))?;
+
+                        self.tracking_copy.borrow_mut().write(
+                            Key::NamedKey(named_key_addr),
+                            StoredValue::NamedKey(named_key_value),
+                        );
+
+                        purse
+                    } else {
+                        return Err(Box::new(GenesisError::InvalidMintKey));
+                    }
+                }
                 _ => self.create_purse(account_starting_balance)?,
             };
 
@@ -892,10 +922,10 @@ where
         self.setup_system_account()?;
 
         // Create mint
-        let total_supply_key = self.create_mint()?;
+        let (total_supply_key, mint_addr) = self.create_mint()?;
 
         // Create all genesis accounts
-        self.create_accounts(total_supply_key)?;
+        self.create_accounts(total_supply_key, mint_addr)?;
 
         // Create the auction and set up the stake of all genesis validators.
         self.create_auction(total_supply_key)?;

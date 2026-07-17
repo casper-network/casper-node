@@ -3,14 +3,19 @@ use std::collections::BTreeSet;
 use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
+use crate::lmdb_fixture;
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution::ExecError};
+use casper_execution_engine::{
+    engine_state::{EngineConfigBuilder, Error},
+    execution::ExecError,
+};
 use casper_types::{
     addressable_entity::{self, MAX_GROUPS},
-    runtime_args, Group, RuntimeArgs, ENTITY_INITIAL_VERSION,
+    runtime_args, Group, HoldBalanceHandling, ProtocolVersion, RuntimeArgs, Timestamp,
+    ENTITY_INITIAL_VERSION,
 };
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";
@@ -48,10 +53,7 @@ fn should_create_and_remove_group() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_1).expect_success().commit();
 
     let entity = builder
@@ -151,10 +153,7 @@ fn should_create_and_extend_user_group() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
@@ -259,10 +258,7 @@ fn should_create_and_remove_urefs_from_group() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
@@ -365,10 +361,7 @@ fn should_limit_max_urefs_while_extending() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
@@ -493,4 +486,29 @@ fn should_limit_max_urefs_while_extending() {
         error,
         &addressable_entity::Error::MaxTotalURefsExceeded.into()
     );
+}
+
+fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
+    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture("groups");
+    builder.with_block_time(Timestamp::now().into());
+    builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
+
+    let new_version = ProtocolVersion::from_parts(
+        builder.engine_config().protocol_version().value().major + 1,
+        builder.engine_config().protocol_version().value().minor,
+        builder.engine_config().protocol_version().value().patch,
+    );
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(builder.engine_config().protocol_version())
+        .with_new_protocol_version(new_version)
+        .with_enable_addressable_entity(false)
+        .build();
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success()
+        .commit();
+    builder.with_engine_config(EngineConfigBuilder::new().with_enable_entity(false).build());
+    builder
 }

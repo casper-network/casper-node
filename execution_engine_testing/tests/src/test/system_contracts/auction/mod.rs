@@ -8,7 +8,8 @@ use casper_types::{
         BidAddr, BidKind, BidsExt, DelegationRate, DelegatorBid, DelegatorKind, EraInfo,
         ValidatorBid, ARG_AMOUNT, ARG_NEW_VALIDATOR, ARG_VALIDATOR,
     },
-    GenesisAccount, GenesisValidator, Key, Motes, PublicKey, SecretKey, StoredValue, U512,
+    AddressableEntityHash, GenesisAccount, GenesisValidator, Key, Motes, PublicKey, SecretKey,
+    StoredValue, U512,
 };
 use num_traits::Zero;
 
@@ -74,7 +75,7 @@ fn should_support_contract_staking() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     let mut genesis_request = LOCAL_GENESIS_REQUEST.clone();
-    genesis_request.set_enable_entity(false);
+    genesis_request.set_enable_entity(true);
 
     genesis_request.push_genesis_validator(
         validator_pk,
@@ -121,21 +122,20 @@ fn should_support_contract_staking() {
         .commit()
         .expect_success();
 
-    let default_account = builder.get_account(account).expect("should have account");
+    let default_account = builder
+        .get_entity_with_named_keys_by_account_hash(account)
+        .expect("should have account");
     let named_keys = default_account.named_keys();
 
     let contract_key = named_keys
         .get(&contract_name)
         .expect("contract_name key should exist");
 
-    let stored_contract = builder
-        .query(None, *contract_key, &[])
-        .expect("should have stored value at contract key");
-
-    let contract = stored_contract
-        .as_contract()
-        .expect("stored value should be contract");
-
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(AddressableEntityHash::new(
+            contract_key.into_hash_addr().expect("must be hash addr"),
+        ))
+        .expect("must have contract");
     let contract_named_keys = contract.named_keys();
 
     let contract_purse = contract_named_keys
@@ -401,7 +401,7 @@ fn should_not_enforce_max_spending_when_main_purse_not_in_use() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     let mut genesis_request = LOCAL_GENESIS_REQUEST.clone();
-    genesis_request.set_enable_entity(false);
+    genesis_request.set_enable_entity(true);
 
     genesis_request.push_genesis_validator(
         validator_pk,
@@ -447,20 +447,19 @@ fn should_not_enforce_max_spending_when_main_purse_not_in_use() {
         .commit()
         .expect_success();
 
-    let default_account = builder.get_account(account).expect("should have account");
+    let default_account = builder.get_entity_with_named_keys_by_account_hash(account).expect("should have account");
     let named_keys = default_account.named_keys();
 
     let contract_key = named_keys
         .get(&contract_name)
         .expect("contract_name key should exist");
 
-    let stored_contract = builder
-        .query(None, *contract_key, &[])
-        .expect("should have stored value at contract key");
 
-    let contract = stored_contract
-        .as_contract()
-        .expect("stored value should be contract");
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(AddressableEntityHash::new(
+            contract_key.into_hash_addr().expect("must be hash addr"),
+        ))
+        .expect("must have contract");
 
     let contract_named_keys = contract.named_keys();
 
@@ -550,7 +549,7 @@ fn should_read_bid_with_vesting_schedule_populated() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     let mut genesis_request = LOCAL_GENESIS_REQUEST.clone();
-    genesis_request.set_enable_entity(false);
+    genesis_request.set_enable_entity(true);
     genesis_request.push_genesis_validator(
         validator_pk,
         GenesisValidator::new(
@@ -574,20 +573,20 @@ fn should_read_bid_with_vesting_schedule_populated() {
         .commit()
         .expect_success();
 
-    let default_account = builder.get_account(account).expect("should have account");
+    let default_account = builder
+        .get_entity_with_named_keys_by_account_hash(account)
+        .expect("should have account");
     let named_keys = default_account.named_keys();
 
     let contract_key = named_keys
         .get(&contract_name)
         .expect("contract_name key should exist");
 
-    let stored_contract = builder
-        .query(None, *contract_key, &[])
-        .expect("should have stored value at contract key");
-
-    let contract = stored_contract
-        .as_contract()
-        .expect("stored value should be contract");
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(AddressableEntityHash::new(
+            contract_key.into_hash_addr().expect("must be hash addr"),
+        ))
+        .expect("must have contract");
 
     let contract_named_keys = contract.named_keys();
 

@@ -395,7 +395,7 @@ fn should_call_group_unrestricted_contract_caller() {
         .expect("must get Key::Hash");
 
     let args = runtime_args! {
-        PACKAGE_HASH_ARG => package_hash,
+        PACKAGE_HASH_ARG => Key::SmartContract(package_hash.value()),
     };
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -455,7 +455,7 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         None,
         UNRESTRICTED_CONTRACT_CALLER,
         runtime_args! {
-            PACKAGE_HASH_ARG => package_hash,
+            PACKAGE_HASH_ARG => Key::SmartContract(package_hash.value()),
         },
     )
     .build();
@@ -491,19 +491,20 @@ fn should_call_group_restricted_contract_as_session() {
 
     let package_hash = package_hash
         .into_package_hash()
-        .map(|package_hash| ContractPackageHash::new(package_hash.value()))
         .expect("must get Key::Hash");
+
+    let package_key = Key::SmartContract(package_hash.value());
 
     // This inserts package as an argument because this test
     // can work from different accounts which might not have the same keys in their session
     // code.
     let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        PackageHash::new(package_hash.value()),
+        package_hash,
         None,
         RESTRICTED_CONTRACT_CALLER_AS_SESSION,
         runtime_args! {
-            PACKAGE_HASH_ARG => package_hash,
+            PACKAGE_HASH_ARG => package_key,
         },
     )
     .build();
@@ -543,7 +544,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
 
     let package_key = package_hash
         .into_package_hash()
-        .map(|package_hash| PackageHash::new(package_hash.value()))
+        .map(|package_hash| Key::SmartContract(package_hash.value()))
         .expect("must get Key::Hash");
 
     // This inserts package as an argument because this test
