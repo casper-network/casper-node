@@ -289,8 +289,11 @@ pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
 
 pub fn block_global_addr_arb() -> impl Strategy<Value = BlockGlobalAddr> {
     prop_oneof![
-        0 => Just(BlockGlobalAddr::BlockTime),
-        1 => Just(BlockGlobalAddr::MessageCount)
+        Just(BlockGlobalAddr::BlockTime),
+        Just(BlockGlobalAddr::MessageCount),
+        Just(BlockGlobalAddr::ProtocolVersion),
+        Just(BlockGlobalAddr::AddressableEntity),
+        any::<u64>().prop_map(|slot| BlockGlobalAddr::BlockParentHash { slot }),
     ]
 }
 

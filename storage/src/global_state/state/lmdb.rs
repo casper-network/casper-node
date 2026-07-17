@@ -539,9 +539,17 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{account::AccountHash, execution::TransformKindV2, CLValue, Digest};
+    use casper_types::{
+        account::AccountHash, execution::TransformKindV2, BlockHash, CLValue, Digest,
+        ProtocolVersion,
+    };
 
-    use crate::global_state::state::scratch::tests::TestPair;
+    use crate::{
+        data_access_layer::{BlockGlobalRequest, BlockGlobalResult},
+        eip4788,
+        global_state::state::{scratch::tests::TestPair, CommitProvider as _, StateProvider as _},
+        tracking_copy::TrackingCopyExt,
+    };
 
     use super::*;
 
@@ -646,6 +654,50 @@ mod tests {
         assert_eq!(
             None,
             original_checkout.read(&test_pairs_updated[2].key).unwrap()
+        );
+    }
+
+    #[test]
+    fn block_global_writes_and_overwrites_eip4788_parent_hash() {
+        let timestamp = 42;
+        let replacement_timestamp = timestamp + eip4788::HISTORY_BUFFER_LENGTH;
+        let initial_parent_hash = BlockHash::new(Digest::from([1; Digest::LENGTH]));
+        let replacement_parent_hash = BlockHash::new(Digest::from([2; Digest::LENGTH]));
+        let (state, root_hash, _tempdir) = make_temporary_global_state([]);
+
+        let post_state_hash = match state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
+            root_hash,
+            ProtocolVersion::V1_0_0,
+            timestamp,
+            initial_parent_hash,
+        )) {
+            BlockGlobalResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
+            result => panic!("unexpected block-global result: {:?}", result),
+        };
+
+        let post_state_hash = match state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
+            post_state_hash,
+            ProtocolVersion::V1_0_0,
+            replacement_timestamp,
+            replacement_parent_hash,
+        )) {
+            BlockGlobalResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
+            result => panic!("unexpected block-global result: {:?}", result),
+        };
+
+        let tracking_copy = state
+            .tracking_copy(post_state_hash)
+            .expect("tracking copy should be available")
+            .expect("post-state root should exist");
+        assert_eq!(
+            tracking_copy
+                .get_eip4788_parent_hash(timestamp)
+                .expect("read should succeed"),
+            Some((replacement_timestamp, replacement_parent_hash))
         );
     }
 }

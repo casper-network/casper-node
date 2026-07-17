@@ -1,15 +1,18 @@
 //! Casper EVM precompile provider.
 
-use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
+use casper_storage::{
+    eip4788::BEACON_ROOTS_ADDRESS,
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+};
 use casper_types::{Key, StoredValue};
 use revm::{
     context_interface::{Cfg, ContextTr},
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{CallInputs, InterpreterResult},
+    interpreter::{CallInputs, CallScheme, InterpreterResult},
     primitives::{hardfork::SpecId, Address},
 };
 
-use crate::{db::CasperDb, BlockHashProvider};
+use crate::{db::CasperDb, tx, BlockHashProvider};
 
 /// Ethereum precompiles executing with access to Casper-backed state.
 #[derive(Clone, Debug)]
@@ -39,6 +42,21 @@ where
         context: &mut CTX,
         inputs: &CallInputs,
     ) -> Result<Option<Self::Output>, String> {
+        let beacon_roots_address = tx::to_revm_address(BEACON_ROOTS_ADDRESS);
+        if inputs.target_address == beacon_roots_address
+            && inputs.bytecode_address == beacon_roots_address
+            && matches!(inputs.scheme, CallScheme::Call | CallScheme::StaticCall)
+        {
+            // Copy the input before borrowing the database mutably.  The input may be backed by
+            // revm's shared memory buffer.
+            let input = inputs.input.bytes(context);
+            let result = context
+                .db_mut()
+                .eip4788_get(&input, inputs.gas_limit, inputs.reservoir)
+                .map_err(|error| error.to_string())?;
+            return Ok(Some(result));
+        }
+
         <EthPrecompiles as PrecompileProvider<CTX>>::run(&mut self.0, context, inputs)
     }
 
