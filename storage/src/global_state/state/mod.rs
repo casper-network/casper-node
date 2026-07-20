@@ -229,9 +229,7 @@ pub trait CommitProvider: StateProvider {
 
         let (writes, prunes, effects) = post_upgrade_tc.destructure();
 
-        println!("upgrade complete");
         let result = self.commit_values(pre_state_hash, writes, prunes);
-        println!("commit result: {:?}", result);
         // commit
         match result {
             Ok(post_state_hash) => ProtocolUpgradeResult::Success {

@@ -262,12 +262,10 @@ impl LmdbWasmTestBuilder {
         let result = {
             let result = scratch_state.protocol_upgrade(req);
             if let ProtocolUpgradeResult::Success { effects, .. } = result {
-                println!("scratch success");
                 let post_state_hash = self
                     .data_access_layer
                     .write_scratch_to_db(pre_state_hash, scratch_state)
                     .unwrap();
-                println!("write complete");
                 self.post_state_hash = Some(post_state_hash);
                 let mut engine_config = self.chainspec.engine_config();
                 let new_protocol_version = upgrade_config.new_protocol_version();

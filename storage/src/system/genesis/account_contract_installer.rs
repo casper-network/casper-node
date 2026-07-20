@@ -853,7 +853,6 @@ where
     ) -> Result<(), Box<GenesisError>> {
         // self.setup_system_account()?;
         // Create mint
-        println!("invoked");
         let (total_supply_key, mint_key) = self.create_mint()?;
 
         let payment_purse_uref = self.create_purse(U512::zero())?;

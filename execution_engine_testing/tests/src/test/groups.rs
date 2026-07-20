@@ -281,7 +281,6 @@ fn should_call_group_restricted_contract() {
         .named_keys()
         .get(PACKAGE_HASH_KEY)
         .expect("should have contract package");
-    println!("{package_key}");
     let package_hash = package_key
         .into_package_addr()
         .expect("must have hash addr");

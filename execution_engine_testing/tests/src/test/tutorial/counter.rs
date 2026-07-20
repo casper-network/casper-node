@@ -62,8 +62,6 @@ fn should_run_counter_example() {
 
     let query_result = builder.query(None, *counter_entity, &[]);
 
-    println!("{:?}", query_result);
-
     let query_result = query_result.expect("must query");
 
     let counter_before: i32 = if let StoredValue::CLValue(cl_value) = query_result {

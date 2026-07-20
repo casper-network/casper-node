@@ -681,8 +681,6 @@ async fn should_correctly_manage_entity_version_calls() {
     } else {
         panic!("query failed");
     };
-    println!("{package_key}");
-
     let package_hash = package_key
         .into_hash_addr()
         .map(PackageHash::new)
@@ -754,7 +752,6 @@ async fn should_correctly_manage_entity_version_calls() {
         .contract_runtime
         .data_access_layer
         .query(query_request);
-    println!("{:?}", query_result);
     if let QueryResult::Success { value, .. } = query_result {
         let versions = value.as_package().expect("must get account").versions();
 
@@ -1087,7 +1084,6 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
-        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::Success));
     }
 
@@ -1104,7 +1100,6 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
-        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::Success));
     }
 

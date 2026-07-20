@@ -379,9 +379,6 @@ where
             return Err(Self::Error::Authorization);
         }
 
-        println!("{:?}", authorization_keys);
-        println!("{:?}", footprint);
-
         // Check total key weight against deploy threshold
         if !footprint.can_deploy_with(authorization_keys) {
             return Err(Self::Error::DeploymentAuthorizationFailure);
@@ -768,7 +765,6 @@ where
         let package: Package = legacy_package.into();
 
         for (_, contract_hash) in legacy_versions.into_iter() {
-            println!("migrating version in a package");
             let contract = match self.read(&Key::Hash(contract_hash.value()))? {
                 Some(StoredValue::Contract(legacy_contract)) => legacy_contract,
                 Some(_) | None => {
@@ -849,7 +845,6 @@ where
                 Key::Hash(contract_hash.value()),
                 StoredValue::CLValue(indirection),
             );
-            println!("writing {}", entity_key);
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
         }
 
