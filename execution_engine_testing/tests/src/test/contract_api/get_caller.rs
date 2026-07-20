@@ -4,7 +4,6 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::{ContractHash, ContractPackageHash},
     runtime_args,
     system::{Caller, CallerInfo},
     CLValue, EntityAddr, PackageHash,

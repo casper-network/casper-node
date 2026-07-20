@@ -32,7 +32,7 @@ use crate::{
     tracking_copy::{self, TrackingCopy},
 };
 
-use crate::global_state::{DEFAULT_ENABLE_ENTITY, DEFAULT_MAX_QUERY_DEPTH};
+use crate::global_state::DEFAULT_MAX_QUERY_DEPTH;
 use casper_types::contracts::ContractHash;
 use proptest::proptest;
 

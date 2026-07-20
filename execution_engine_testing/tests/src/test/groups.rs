@@ -4,9 +4,8 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error},
@@ -21,7 +20,6 @@ use casper_types::{
 
 use crate::{lmdb_fixture, wasm_utils};
 
-const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
 const PACKAGE_ACCESS_KEY: &str = "package_access_key";
 const RESTRICTED_SESSION: &str = "restricted_session";

@@ -2295,17 +2295,12 @@ fn invoked_contract_will_pay(
         Some((hash_addr, entry_point_name)) => (hash_addr, entry_point_name),
     };
 
-    let registry_request = {
-        let enable_ae = state_provider.enable_addressable_entity;
-        let req = SystemEntityRegistryRequest::new(
-            state_root_hash,
-            protocol_version,
-            SystemEntityRegistrySelector::All,
-            enable_ae,
-        );
-        req
-    };
-
+    let registry_request = SystemEntityRegistryRequest::new(
+        state_root_hash,
+        protocol_version,
+        SystemEntityRegistrySelector::All,
+        state_provider.enable_addressable_entity,
+    );
     let registry = state_provider.system_entity_registry(registry_request);
     match registry {
         SystemEntityRegistryResult::RootNotFound => {}

@@ -62,7 +62,7 @@ fn install_messages_emitter_contract(
 
     let entity = builder
         .borrow_mut()
-        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have entity");
 
     let package_key = entity
@@ -133,7 +133,7 @@ fn upgrade_messages_emitter_contract(
     // Get the contract package for the upgraded messages emitter contract.
     let entity = builder
         .borrow_mut()
-        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have entity");
 
     let package_key = entity

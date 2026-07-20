@@ -2,7 +2,6 @@ use num_traits::One;
 
 use casper_engine_test_support::{
     ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error as CoreError},

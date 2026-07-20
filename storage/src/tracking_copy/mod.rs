@@ -1157,7 +1157,6 @@ use tempfile::TempDir;
 pub fn new_temporary_tracking_copy(
     initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
     max_query_depth: Option<u64>,
-    enable_addressable_entity: bool,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) = make_temporary_global_state(initial_data);
 

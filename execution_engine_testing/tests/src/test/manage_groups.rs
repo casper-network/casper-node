@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use crate::lmdb_fixture;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error},

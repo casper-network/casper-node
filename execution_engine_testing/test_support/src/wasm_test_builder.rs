@@ -1660,6 +1660,7 @@ where
             .expect("account to exist")
     }
 
+    /// Retrieve the enable addressable entity flag from gs.
     pub fn get_enable_addressable_entity_from_block_global(&self) -> bool {
         let key = Key::BlockGlobal(BlockGlobalAddr::AddressableEntity);
 

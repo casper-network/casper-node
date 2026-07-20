@@ -36,7 +36,7 @@ where
             .borrow_mut()
             .runtime_footprint_by_account_hash(protocol_version, target)
         {
-            Ok((addr, footprint)) => footprint.main_purse().ok_or_else(|| Error::Transfer)?,
+            Ok((_, footprint)) => footprint.main_purse().ok_or(Error::Transfer)?,
             Err(_) => return Err(Error::Transfer),
         };
 

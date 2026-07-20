@@ -8,7 +8,6 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractVersionKey},
@@ -18,7 +17,7 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
-    HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits, OpcodeCosts, ProtocolVersion,
+    HostFunctionCostsV1, HostFunctionCostsV2, MessageLimits, OpcodeCosts, ProtocolVersion,
     RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, WasmV1Config, WasmV2Config,
     DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };

@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{AddressableEntityHash, Key, RuntimeArgs, StoredValue};
+use casper_types::{AddressableEntityHash, RuntimeArgs, StoredValue};
 
 const COUNT_KEY: &str = "count";
 const COUNTER_INSTALLER_WASM: &str = "counter_installer.wasm";
@@ -39,11 +39,7 @@ fn should_run_counter_example() {
     builder.exec(install_request_1).expect_success().commit();
 
     let binding = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("must have value");
-
-    let binding = builder
-        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have binding");
     let result = binding.named_keys();
 

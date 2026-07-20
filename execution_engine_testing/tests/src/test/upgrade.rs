@@ -1199,7 +1199,7 @@ fn should_correctly_retain_disabled_contract_version() {
     builder.exec(exec_request).expect_success().commit();
 
     let package_hash = builder
-        .get_entity_with_named_keys_by_account_hash(DEFAULT_ACCOUNT_ADDR.clone())
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have entity")
         .named_keys()
         .get("do_nothing_package_hash")

@@ -739,17 +739,15 @@ where
         legacy_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        // if !self.enable_addressable_entity {
-        //     println!("package");
-        //     return Err(Self::Error::AddressableEntityDisable);
-        // }
+        if !self.enable_addressable_entity()? {
+            return Err(Self::Error::AddressableEntityDisable);
+        }
         let hash_addr = legacy_package_key
             .into_hash_addr()
-            .ok_or_else(|| Self::Error::KeyNotFound(legacy_package_key))?;
+            .ok_or(Self::Error::KeyNotFound(legacy_package_key))?;
 
         let package_key = Key::SmartContract(hash_addr);
         if let Some(StoredValue::SmartContract(_)) = self.read(&package_key)? {
-            println!("exiting early");
             return Ok(());
         };
 
@@ -943,9 +941,7 @@ where
     fn enable_addressable_entity(&self) -> Result<bool, Self::Error> {
         let key = Key::BlockGlobal(BlockGlobalAddr::AddressableEntity);
         match self.read(&key)? {
-            Some(StoredValue::CLValue(cl_value)) => {
-                cl_value.to_t().map_err(|cl| Self::Error::CLValue(cl))
-            }
+            Some(StoredValue::CLValue(cl_value)) => cl_value.to_t().map_err(Self::Error::CLValue),
             Some(_) | None => Err(Self::Error::ValueNotFound(
                 "unable to get ae flag".to_string(),
             )),

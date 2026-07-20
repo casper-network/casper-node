@@ -17,7 +17,7 @@ use crate::{
 };
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, Weight,
+        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue,
     },
     bytesrepr::{self, Bytes, ToBytes},
     contracts::{ContractHash, ContractPackageStatus, NamedKeys},
@@ -1738,6 +1738,7 @@ where
         Ok(())
     }
 
+    /// Handle the enable addressable entity flag setting value and write it to GS.
     pub fn handle_block_global_addressable_entity(
         &mut self,
         new_addressable_entity: bool,
@@ -1746,13 +1747,13 @@ where
         match self
             .tracking_copy
             .read(&key)
-            .map_err(|tce| ProtocolUpgradeError::TrackingCopy(tce))?
+            .map_err(ProtocolUpgradeError::TrackingCopy)?
         {
             Some(StoredValue::CLValue(cl_value)) => {
                 let previous_flag: bool = cl_value
                     .to_t()
                     .map_err(|cl| ProtocolUpgradeError::CLValue(cl.to_string()))?;
-                // AE cannot be enable then disabled
+                // AE cannot be enabled then disabled
                 if previous_flag && !new_addressable_entity {
                     return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
                 }
