@@ -1949,9 +1949,9 @@ pub trait StateProvider: Send + Sync + Sized {
         };
         let contract_hash = request.contract_hash();
         let entry_point_name = request.entry_point_name();
-        let runtime_footprint = tc.entry_points(EntityAddr::SmartContract(contract_hash));
+        let runtime_footprint = tc.runtime_footprint_by_entity_addr(EntityAddr::SmartContract(contract_hash));
         match runtime_footprint {
-            Ok(entry_points) => match entry_points.get(entry_point_name) {
+            Ok(runtime_footprint) => match runtime_footprint.entry_points().get(entry_point_name) {
                 Some(entry_point) => EntryPointResult::Success {
                     entry_point: EntryPointValue::new_v1_entry_point_value(entry_point.clone()),
                 },

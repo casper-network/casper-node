@@ -870,10 +870,7 @@ async fn should_correctly_manage_entity_version_calls() {
 mod test_mod {
     use std::sync::Arc;
 
-    use prometheus::Registry;
-    use rand::Rng;
-    use tempfile::tempdir;
-
+    use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
     use casper_storage::{
         data_access_layer::{EntryPointExistsRequest, EntryPointExistsResult},
         global_state::{
@@ -894,6 +891,9 @@ mod test_mod {
         ProtocolVersion, StoredValue, SystemHashRegistry, TimeDiff, DEFAULT_FEE_HANDLING,
         DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_REFUND_HANDLING,
     };
+    use prometheus::Registry;
+    use rand::Rng;
+    use tempfile::tempdir;
 
     use super::{Config as ContractRuntimeConfig, ContractRuntime};
     use crate::{
@@ -1003,7 +1003,11 @@ mod test_mod {
 
     // Creates a test ContractRuntime and feeds the underlying GlobalState with `test_pair`.
     // Returns [`ContractRuntime`] instance and the new Merkle root after applying the `test_pair`.
-    fn create_test_state(rng: &mut TestRng, test_pair: Vec<TestPair>) -> (ContractRuntime, Digest) {
+    fn create_test_state(
+        rng: &mut TestRng,
+        enable_addressable_entity: Option<bool>,
+        test_pair: Vec<TestPair>,
+    ) -> (ContractRuntime, Digest) {
         let temp_dir = tempdir().unwrap();
         let chainspec = Chainspec {
             protocol_config: ProtocolConfig {
@@ -1023,6 +1027,8 @@ mod test_mod {
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
                 gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
+                enable_addressable_entity: enable_addressable_entity
+                    .unwrap_or(DEFAULT_ENABLE_ENTITY),
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),
@@ -1078,7 +1084,7 @@ mod test_mod {
             entry_point_name,
             ProtocolVersion::V2_0_0,
         );
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, Some(true), initial_state);
         let request =
             EntryPointExistsRequest::new(state_hash, entry_point_name.to_string(), hash_addr);
         let res = contract_runtime
@@ -1094,7 +1100,7 @@ mod test_mod {
         let entity_addr = EntityAddr::new_smart_contract(hash_addr);
         let entry_point_name = "ep1";
         let initial_state = create_entry_point(entity_addr, entry_point_name);
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, None, initial_state);
         let request =
             EntryPointExistsRequest::new(state_hash, entry_point_name.to_string(), hash_addr);
         let res = contract_runtime
@@ -1109,7 +1115,7 @@ mod test_mod {
         let hash_addr: HashAddr = rng.gen();
         let entity_addr = EntityAddr::new_smart_contract(hash_addr);
         let initial_state = create_entry_point(entity_addr, "ep1");
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, None, initial_state);
         let request = EntryPointExistsRequest::new(state_hash, "ep2".to_string(), hash_addr);
         let res = contract_runtime
             .data_access_layer()
@@ -1121,7 +1127,7 @@ mod test_mod {
     fn returns_trie_or_chunk() {
         let rng = &mut TestRng::new();
         let (contract_runtime, root_hash) =
-            create_test_state(rng, create_test_pairs_with_large_data());
+            create_test_state(rng, None, create_test_pairs_with_large_data());
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = read_trie(&contract_runtime, TrieOrChunkId(0, root_hash));
