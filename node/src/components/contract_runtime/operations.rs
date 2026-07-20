@@ -14,7 +14,6 @@ use casper_executor_evm::{
     BlockHashProviderResult as EvmBlockHashProviderResult, CallRequest as EvmExecutorCallRequest,
     CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
     ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
-    SystemCallRequest as EvmSystemCallRequest,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -92,13 +91,13 @@ fn evm_block_context(
     }
 }
 
-fn execute_eip4788_beacon_roots_update(
+fn write_eip4788_beacon_roots(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
     chainspec: &Chainspec,
+    protocol_version: ProtocolVersion,
     block_context: EvmBlockContext,
     parent_hash: BlockHash,
-    evm_block_hash_provider: &dyn EvmBlockHashProvider,
 ) -> Result<Digest, BlockExecutionError> {
     if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
         return Ok(state_root_hash);
@@ -108,33 +107,20 @@ fn execute_eip4788_beacon_roots_update(
         return Ok(state_root_hash);
     }
 
-    let mut tracking_copy = scratch_state
-        .tracking_copy(state_root_hash)?
-        .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
-    let request = EvmSystemCallRequest {
-        block: block_context,
-        target: casper_types::evm::BEACON_ROOTS_ADDRESS,
-        input: parent_hash.as_ref().to_vec(),
-    };
-    let outcome = EvmExecutor::new(chainspec.evm_config)
-        .execute_system_call_with_block_hash_provider(
-            &mut tracking_copy,
-            request,
-            evm_block_hash_provider,
-        )
-        .map_err(|error| BlockExecutionError::TransactionConversion(error.to_string()))?;
-
-    if !matches!(outcome.status, EvmExecutionStatus::Success) {
-        return Err(BlockExecutionError::TransactionConversion(format!(
-            "EIP-4788 beacon roots system call failed with status {:?}",
-            outcome.status
-        )));
+    match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
+        state_root_hash,
+        protocol_version,
+        block_context.timestamp,
+        parent_hash,
+    )) {
+        BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
+        BlockGlobalResult::Failure(err) => {
+            Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
+        }
+        BlockGlobalResult::Success {
+            post_state_hash, ..
+        } => Ok(post_state_hash),
     }
-
-    let execution_effects = tracking_copy.effects();
-    scratch_state
-        .commit_effects(state_root_hash, execution_effects)
-        .map_err(BlockExecutionError::Lmdb)
 }
 
 fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
@@ -698,13 +684,13 @@ pub fn execute_finalized_block(
         }
     }
 
-    state_root_hash = execute_eip4788_beacon_roots_update(
+    state_root_hash = write_eip4788_beacon_roots(
         &scratch_state,
         state_root_hash,
         chainspec,
+        protocol_version,
         evm_block_context(chainspec, block_height, block_time, &proposer),
         parent_hash,
-        evm_block_hash_provider,
     )?;
 
     let transaction_config = &chainspec.transaction_config;
@@ -2358,14 +2344,8 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::global_state::state;
-    use casper_types::{evm, ByteCode, ByteCodeKind, EvmAddr, EvmConfig, DEFAULT_WEI_PER_MOTE};
-
-    fn evm_word(value: u64) -> Vec<u8> {
-        let mut bytes = vec![0u8; evm::HASH_LENGTH];
-        bytes[24..].copy_from_slice(&value.to_be_bytes());
-        bytes
-    }
+    use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
+    use casper_types::{EvmConfig, DEFAULT_WEI_PER_MOTE};
 
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
@@ -2392,7 +2372,7 @@ mod tests {
     }
 
     #[test]
-    fn eip4788_hook_updates_beacon_roots_without_transactions() {
+    fn eip4788_hook_writes_beacon_roots_without_transactions() {
         let chainspec = Chainspec {
             evm_config: EvmConfig {
                 enabled: true,
@@ -2404,60 +2384,30 @@ mod tests {
             },
             ..Default::default()
         };
-        let (global_state, state_root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
-            (
-                Key::Evm(EvmAddr::CodeHash(evm::BEACON_ROOTS_ADDRESS)),
-                StoredValue::CLValue(
-                    CLValue::from_t(evm::beacon_roots_code_hash())
-                        .expect("code hash should encode"),
-                ),
-            ),
-            (
-                Key::Evm(EvmAddr::ByteCode(evm::beacon_roots_code_hash())),
-                StoredValue::ByteCode(ByteCode::new(
-                    ByteCodeKind::EvmPrague,
-                    evm::BEACON_ROOTS_CODE.to_vec(),
-                )),
-            ),
-        ]);
+        let (global_state, state_root_hash, _tempdir) =
+            state::lmdb::make_temporary_global_state([]);
         let scratch_state = global_state.create_scratch();
         let block_time = BlockTime::new(2_000);
         let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
         let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
 
-        let updated_state_root_hash = execute_eip4788_beacon_roots_update(
+        let updated_state_root_hash = write_eip4788_beacon_roots(
             &scratch_state,
             state_root_hash,
             &chainspec,
+            ProtocolVersion::V1_0_0,
             block_context.clone(),
             parent_hash,
-            &StaticEvmBlockHashProvider::default(),
         )
         .expect("EIP-4788 hook should succeed");
-        let mut tracking_copy = scratch_state
+        let tracking_copy = scratch_state
             .tracking_copy(updated_state_root_hash)
             .expect("tracking copy should not fail")
             .expect("state root should exist");
-        let outcome = EvmExecutor::new(chainspec.evm_config)
-            .execute(
-                &mut tracking_copy,
-                EvmExecuteRequest {
-                    block: block_context,
-                    kind: EvmExecuteKind::Call(EvmExecutorCallRequest {
-                        from: EvmAddress::ZERO,
-                        to: Some(evm::BEACON_ROOTS_ADDRESS),
-                        value: casper_types::U256::from(0u8),
-                        input: evm_word(block_time.value() / 1_000),
-                        gas_limit: 5_000_000,
-                        gas_price: 0,
-                        nonce: 0,
-                        validation: EvmCallValidation::UncheckedSimulation,
-                    }),
-                },
-            )
-            .expect("EVM call should execute");
+        let entry = tracking_copy
+            .get_eip4788_parent_hash(block_context.timestamp)
+            .expect("EIP-4788 beacon root should be readable");
 
-        assert_eq!(outcome.status, EvmExecutionStatus::Success);
-        assert_eq!(outcome.output, parent_hash.as_ref());
+        assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
     }
 }

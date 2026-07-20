@@ -8,6 +8,7 @@ use crate::{
     data_access_layer::balance::{
         AvailableBalanceChecker, BalanceHolds, BalanceHoldsWithProof, ProcessingHoldBalanceHandling,
     },
+    eip4788,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError},
     KeyPrefix,
@@ -26,9 +27,10 @@ use casper_types::{
         },
         MINT,
     },
-    BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    Contract, EntityAddr, EntryPoints, HashAddr, HoldBalanceHandling, HoldsEpoch, Key, Motes,
-    Package, StoredValue, StoredValueTypeMismatch, SystemHashRegistry, URef, URefAddr, U512,
+    BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue,
+    ChecksumRegistry, Contract, Digest, EntityAddr, EntryPoints, HashAddr, HoldBalanceHandling,
+    HoldsEpoch, Key, Motes, Package, StoredValue, StoredValueTypeMismatch, SystemHashRegistry,
+    URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -41,6 +43,19 @@ pub trait TrackingCopyExt<R> {
 
     /// Returns block time associated with checked out root hash.
     fn get_block_time(&self) -> Result<Option<BlockTime>, Self::Error>;
+
+    /// Returns the EIP-4788 timestamp and parent hash for the timestamp's ring-buffer slot.
+    fn get_eip4788_parent_hash(
+        &self,
+        timestamp_secs: u64,
+    ) -> Result<Option<(u64, BlockHash)>, Self::Error>;
+
+    /// Stores an EIP-4788 timestamp and parent hash in the timestamp's ring-buffer slot.
+    fn set_eip4788_parent_hash(
+        &mut self,
+        timestamp_secs: u64,
+        parent_hash: BlockHash,
+    ) -> Result<(), Self::Error>;
 
     /// Returns balance hold configuration settings for imputed kind of balance hold.
     fn get_balance_hold_config(
@@ -150,6 +165,41 @@ where
                 Err(Self::Error::UnexpectedStoredValueVariant)
             }
         }
+    }
+
+    fn get_eip4788_parent_hash(
+        &self,
+        timestamp_secs: u64,
+    ) -> Result<Option<(u64, BlockHash)>, Self::Error> {
+        match self.read(&eip4788::parent_hash_key(timestamp_secs))? {
+            None => Ok(None),
+            Some(StoredValue::CLValue(cl_value)) => {
+                let (timestamp, parent_hash): (u64, Digest) =
+                    cl_value.into_t().map_err(Self::Error::CLValue)?;
+                Ok(Some((timestamp, BlockHash::from(parent_hash))))
+            }
+            Some(unexpected) => {
+                warn!(
+                    ?unexpected,
+                    "EIP-4788 parent hash stored as unexpected value type"
+                );
+                Err(Self::Error::UnexpectedStoredValueVariant)
+            }
+        }
+    }
+
+    fn set_eip4788_parent_hash(
+        &mut self,
+        timestamp_secs: u64,
+        parent_hash: BlockHash,
+    ) -> Result<(), Self::Error> {
+        let value = eip4788::parent_hash_value(timestamp_secs, parent_hash)
+            .map_err(Self::Error::CLValue)?;
+        self.write(
+            eip4788::parent_hash_key(timestamp_secs),
+            StoredValue::CLValue(value),
+        );
+        Ok(())
     }
 
     fn get_balance_hold_config(

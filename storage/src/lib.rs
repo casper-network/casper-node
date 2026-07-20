@@ -14,6 +14,8 @@ pub mod address_generator;
 pub mod block_store;
 /// Data access layer logic.
 pub mod data_access_layer;
+/// EIP-4788 beacon roots storage support.
+pub mod eip4788;
 /// Global state logic.
 pub mod global_state;
 /// Storage layer logic.
