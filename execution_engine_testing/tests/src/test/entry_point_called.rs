@@ -369,14 +369,20 @@ fn vm1_session_calling_system_contracts_emits_entry_point_called_and_ret() {
     assert_eq!(ep_calls_and_rets[0], session_ec);
     assert_eq!(ep_calls_and_rets[1], hp_ec);
     let transform_2 = &ep_calls_and_rets[2];
-    assert_eq!(*transform_2.key(), Key::AddressableEntity(EntityAddr::System(handle_payment_hash)));
+    assert_eq!(
+        *transform_2.key(),
+        Key::AddressableEntity(EntityAddr::System(handle_payment_hash))
+    );
     assert!(matches!(
         transform_2.kind(),
         TransformKindV2::Ret(RetValue::CLValue(_))
     ));
     assert_eq!(ep_calls_and_rets[3], mint_ec);
     let transform_4 = &ep_calls_and_rets[4];
-    assert_eq!(*transform_4.key(), Key::AddressableEntity(EntityAddr::System(mint_hash)));
+    assert_eq!(
+        *transform_4.key(),
+        Key::AddressableEntity(EntityAddr::System(mint_hash))
+    );
     assert!(matches!(
         transform_4.kind(),
         TransformKindV2::Ret(RetValue::CLValue(_))
@@ -450,12 +456,18 @@ fn vm1_stored_contract_calling_system_contract_emits_entry_point_called_and_ret(
         Key::AddressableEntity(EntityAddr::SmartContract(stored_hash)),
         TransformKindV2::EntryPointCalled(Some(mint_hash), METHOD_CREATE.to_string()),
     );
-    let stored_ret = TransformV2::new(Key::AddressableEntity(EntityAddr::SmartContract(stored_hash)), TransformKindV2::Ret(RetValue::Unit));
+    let stored_ret = TransformV2::new(
+        Key::AddressableEntity(EntityAddr::SmartContract(stored_hash)),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
 
     assert_eq!(ep_calls_and_rets[0], stored_ec);
     assert_eq!(ep_calls_and_rets[1], hp_ec);
     // HandlePayment::get_payment_purse returns a URef; check key and variant.
-    assert_eq!(ep_calls_and_rets[2].key(), &Key::AddressableEntity(EntityAddr::System(handle_payment_hash)));
+    assert_eq!(
+        ep_calls_and_rets[2].key(),
+        &Key::AddressableEntity(EntityAddr::System(handle_payment_hash))
+    );
     assert!(
         matches!(
             ep_calls_and_rets[2].kind(),
@@ -466,7 +478,10 @@ fn vm1_stored_contract_calling_system_contract_emits_entry_point_called_and_ret(
     );
     assert_eq!(ep_calls_and_rets[3], mint_ec);
     // Mint::create returns a URef; check key and variant.
-    assert_eq!(ep_calls_and_rets[4].key(), &Key::AddressableEntity(EntityAddr::System(mint_hash)));
+    assert_eq!(
+        ep_calls_and_rets[4].key(),
+        &Key::AddressableEntity(EntityAddr::System(mint_hash))
+    );
     assert!(
         matches!(
             ep_calls_and_rets[4].kind(),
@@ -627,9 +642,18 @@ fn vm1_three_level_nesting_produces_correct_journal() {
         Key::AddressableEntity(EntityAddr::SmartContract(middle_hash)),
         TransformKindV2::EntryPointCalled(Some(leaf_hash), "delegate".to_string()),
     );
-    let leaf_ret = TransformV2::new(Key::AddressableEntity(EntityAddr::SmartContract(leaf_hash)), TransformKindV2::Ret(RetValue::Unit));
-    let middle_ret = TransformV2::new(Key::AddressableEntity(EntityAddr::SmartContract(middle_hash)), TransformKindV2::Ret(RetValue::Unit));
-    let outer_ret = TransformV2::new(Key::AddressableEntity(EntityAddr::SmartContract(outer_hash)), TransformKindV2::Ret(RetValue::Unit));
+    let leaf_ret = TransformV2::new(
+        Key::AddressableEntity(EntityAddr::SmartContract(leaf_hash)),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let middle_ret = TransformV2::new(
+        Key::AddressableEntity(EntityAddr::SmartContract(middle_hash)),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
+    let outer_ret = TransformV2::new(
+        Key::AddressableEntity(EntityAddr::SmartContract(outer_hash)),
+        TransformKindV2::Ret(RetValue::Unit),
+    );
     assert_eq!(
         ep_calls_and_rets,
         vec![

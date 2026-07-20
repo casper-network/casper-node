@@ -447,13 +447,14 @@ fn should_not_enforce_max_spending_when_main_purse_not_in_use() {
         .commit()
         .expect_success();
 
-    let default_account = builder.get_entity_with_named_keys_by_account_hash(account).expect("should have account");
+    let default_account = builder
+        .get_entity_with_named_keys_by_account_hash(account)
+        .expect("should have account");
     let named_keys = default_account.named_keys();
 
     let contract_key = named_keys
         .get(&contract_name)
         .expect("contract_name key should exist");
-
 
     let contract = builder
         .get_entity_with_named_keys_by_entity_hash(AddressableEntityHash::new(

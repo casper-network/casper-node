@@ -153,7 +153,8 @@ fn should_allow_installer_to_set_variables() {
         .commit();
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
-    let faucet_entity_key = Key::AddressableEntity(EntityAddr::SmartContract(faucet_contract_hash.value()));
+    let faucet_entity_key =
+        Key::AddressableEntity(EntityAddr::SmartContract(faucet_contract_hash.value()));
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -388,7 +389,8 @@ fn should_allow_installer_to_fund_freely() {
     helper.query_and_set_faucet_contract_hash(&builder);
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
-    let faucet_entity_key = Key::AddressableEntity(EntityAddr::SmartContract(faucet_contract_hash.value()));
+    let faucet_entity_key =
+        Key::AddressableEntity(EntityAddr::SmartContract(faucet_contract_hash.value()));
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
