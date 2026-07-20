@@ -311,7 +311,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => InitiatorAddr::PublicKey(deploy.account().clone()),
             Transaction::V1(txn) => txn.initiator_addr().clone(),
-            Transaction::Evm(txn) => txn.initiator_addr().clone(),
+            Transaction::Evm(txn) => txn.initiator_addr(),
         }
     }
 

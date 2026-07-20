@@ -1320,6 +1320,8 @@ pub fn initiator_addr_arb() -> impl Strategy<Value = InitiatorAddr> {
     prop_oneof![
         public_key_arb_no_system().prop_map(InitiatorAddr::PublicKey),
         u2_slice_32().prop_map(|hash| InitiatorAddr::AccountHash(AccountHash::new(hash))),
+        any::<[u8; crate::evm::ADDRESS_LENGTH]>()
+            .prop_map(|address| InitiatorAddr::Eoa(crate::evm::Address::new(address))),
     ]
 }
 

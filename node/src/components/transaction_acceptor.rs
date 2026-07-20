@@ -314,7 +314,15 @@ impl TransactionAcceptor {
 
         if event_metadata.source.is_client() {
             let initiator_addr = event_metadata.transaction.initiator_addr();
-            let account_hash = initiator_addr.account_hash();
+            let Some(account_hash) = initiator_addr.account_hash() else {
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::InvalidTransaction(InvalidTransaction::V1(
+                        InvalidTransactionV1::InvalidInitiatorAddr,
+                    )),
+                );
+            };
             let entity_addr = EntityAddr::Account(account_hash.value());
             effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), entity_addr)

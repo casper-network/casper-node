@@ -1675,11 +1675,28 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "An externally-owned Ethereum account address.",
+          "type": "object",
+          "required": [
+            "Eoa"
+          ],
+          "properties": {
+            "Eoa": {
+              "$ref": "#/definitions/Address"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
     "AccountHash": {
       "description": "Account hash as a formatted string.",
+      "type": "string"
+    },
+    "Address": {
+      "description": "A 20-byte Ethereum account or contract address encoded as 0x-prefixed hexadecimal.",
       "type": "string"
     },
     "PricingMode": {
@@ -1791,7 +1808,6 @@
         "from",
         "gas_limit",
         "hash",
-        "initiator_addr",
         "input",
         "kind",
         "max_fee_per_gas",
@@ -1806,9 +1822,6 @@
         },
         "ttl": {
           "$ref": "#/definitions/TimeDiff"
-        },
-        "initiator_addr": {
-          "$ref": "#/definitions/InitiatorAddr"
         },
         "hash": {
           "$ref": "#/definitions/EvmTransactionHash"
@@ -1896,10 +1909,6 @@
           ]
         }
       }
-    },
-    "Address": {
-      "description": "A 20-byte Ethereum account or contract address encoded as hexadecimal.",
-      "type": "string"
     },
     "EvmTransactionKind": {
       "description": "The supported Ethereum transaction envelope kinds.",
@@ -5344,6 +5353,44 @@
         }
       }
     },
+    "RetValue": {
+      "description": "Type disambiguating between the formatting of the returned data.",
+      "oneOf": [
+        {
+          "description": "The returned data is CLValue.",
+          "type": "object",
+          "required": [
+            "CLValue"
+          ],
+          "properties": {
+            "CLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The returned data is serialized bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "There was no returned data.",
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        }
+      ]
+    },
     "EvmExecutionResult": {
       "description": "The result of executing a single EVM transaction.",
       "type": "object",
@@ -5740,44 +5787,6 @@
     "EvmTopic": {
       "description": "A 32-byte EVM log topic encoded as 0x-prefixed hexadecimal.",
       "type": "string"
-    },
-    "RetValue": {
-      "description": "Type disambiguating between the formatting of the returned data.",
-      "oneOf": [
-        {
-          "description": "The returned data is CLValue.",
-          "type": "object",
-          "required": [
-            "CLValue"
-          ],
-          "properties": {
-            "CLValue": {
-              "$ref": "#/definitions/CLValue"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The returned data is serialized bytes.",
-          "type": "object",
-          "required": [
-            "Bytes"
-          ],
-          "properties": {
-            "Bytes": {
-              "$ref": "#/definitions/Bytes"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "There was no returned data.",
-          "type": "string",
-          "enum": [
-            "Unit"
-          ]
-        }
-      ]
     },
     "Message": {
       "description": "Message that was emitted by an addressable entity during execution.",

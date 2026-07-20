@@ -55,7 +55,7 @@ impl MetaEvmTransaction {
         self.transaction.approval()
     }
 
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+    pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
         self.transaction.initiator_addr()
     }
 
