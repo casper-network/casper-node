@@ -885,11 +885,11 @@ mod test_mod {
         execution::{TransformKindV2, TransformV2},
         global_state::Pointer,
         testing::TestRng,
-        ActivationPoint, CLType, CLValue, Chainspec, ChunkWithProof, Contract, ContractWasmHash,
-        CoreConfig, Digest, EntityAddr, EntryPointAccess, EntryPointAddr, EntryPointPayment,
-        EntryPointType, EntryPointValue, EraId, HashAddr, Key, NamedKeys, ProtocolConfig,
-        ProtocolVersion, StoredValue, SystemHashRegistry, TimeDiff, DEFAULT_FEE_HANDLING,
-        DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_REFUND_HANDLING,
+        ActivationPoint, AddressableEntity, CLType, CLValue, Chainspec, ChunkWithProof, Contract,
+        ContractWasmHash, CoreConfig, Digest, EntityAddr, EntryPointAccess, EntryPointAddr,
+        EntryPointPayment, EntryPointType, EntryPointValue, EraId, HashAddr, Key, NamedKeys,
+        ProtocolConfig, ProtocolVersion, StoredValue, SystemHashRegistry, TimeDiff,
+        DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_REFUND_HANDLING,
     };
     use prometheus::Registry;
     use rand::Rng;
@@ -955,8 +955,24 @@ mod test_mod {
             EntryPointType::Caller,
             EntryPointPayment::Caller,
         );
+
+        let hash_addr = entity_addr.into_smart_contract().unwrap();
+        let entity_key = Key::AddressableEntity(entity_addr);
+        let indirection_value = CLValue::from_t(entity_key).expect("must get key");
+        let indirection_pair = TestPair(
+            Key::Hash(hash_addr),
+            StoredValue::CLValue(indirection_value),
+        );
+
+        let entity = AddressableEntity::default();
+        let entity_pair = TestPair(entity_key, StoredValue::AddressableEntity(entity));
+
         let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
-        vec![TestPair(key, StoredValue::EntryPoint(entry_point_value))]
+        vec![
+            indirection_pair,
+            entity_pair,
+            TestPair(key, StoredValue::EntryPoint(entry_point_value)),
+        ]
     }
 
     // Creates the test pairs that contain data of size
@@ -1120,6 +1136,7 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
+        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::ValueNotFound { .. }));
     }
 
