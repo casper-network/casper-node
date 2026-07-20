@@ -70,11 +70,11 @@ impl MetaTransaction {
     }
 
     /// Returns the Casper initiator address.
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+    pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
         match self {
-            MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr(),
+            MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr().clone(),
             MetaTransaction::Evm(evm) => evm.initiator_addr(),
-            MetaTransaction::V1(txn) => txn.initiator_addr(),
+            MetaTransaction::V1(txn) => txn.initiator_addr().clone(),
         }
     }
 
@@ -592,11 +592,7 @@ mod tests {
     #[test]
     fn evm_transaction_header_keeps_initiator_addr() {
         let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
-        let expected_signer = evm_transaction
-            .signer()
-            .expect("signed EVM transaction should have an approval signer")
-            .clone();
-        let expected_initiator_addr = InitiatorAddr::AccountHash(expected_signer.to_account_hash());
+        let expected_initiator_addr = InitiatorAddr::Eoa(evm_transaction.from());
 
         assert_eq!(
             Transaction::from_evm(evm_transaction.clone()).initiator_addr(),
@@ -915,7 +911,6 @@ mod tests {
         EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
-            test_initiator_addr(),
             chain_id,
             evm::Address::new([1u8; 20]),
             Some(evm::Address::new([2u8; 20])),
@@ -924,10 +919,6 @@ mod tests {
             gas_limit,
             gas_price,
         )
-    }
-
-    fn test_initiator_addr() -> InitiatorAddr {
-        InitiatorAddr::AccountHash(AccountHash::new([8; 32]))
     }
 
     fn legacy_transaction(

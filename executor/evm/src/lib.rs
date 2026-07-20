@@ -9,6 +9,7 @@ mod db;
 mod error;
 mod executor;
 mod outcome;
+mod precompiles;
 mod request;
 mod state;
 mod tx;

@@ -83,6 +83,9 @@ pub enum InvalidTransaction {
     /// The provided transaction hash does not match the actual hash of the transaction.
     InvalidTransactionHash,
 
+    /// The transaction uses an initiator address that is not valid for a V1 transaction.
+    InvalidInitiatorAddr,
+
     /// The transaction has no approvals.
     EmptyApprovals,
 
@@ -325,6 +328,12 @@ impl Display for InvalidTransaction {
                                                     "the provided hash does not match the actual hash of the transaction"
                                                 )
                                             }
+            InvalidTransaction::InvalidInitiatorAddr => {
+                                                write!(
+                                                    formatter,
+                                                    "the transaction initiator must be a Casper public key or account hash"
+                                                )
+                                            }
             InvalidTransaction::EmptyApprovals => {
                                                 write!(formatter, "the transaction has no approvals")
                                             }
@@ -549,6 +558,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::TimestampInFuture { .. }
             | InvalidTransaction::InvalidBodyHash
             | InvalidTransaction::InvalidTransactionHash
+            | InvalidTransaction::InvalidInitiatorAddr
             | InvalidTransaction::EmptyApprovals
             | InvalidTransaction::ExcessiveArgsLength { .. }
             | InvalidTransaction::ExcessiveApprovals { .. }

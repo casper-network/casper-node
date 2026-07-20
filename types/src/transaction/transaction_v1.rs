@@ -438,6 +438,11 @@ impl TransactionV1 {
     }
 
     fn do_verify(&self) -> Result<(), InvalidTransactionV1> {
+        if self.initiator_addr().account_hash().is_none() {
+            trace!(?self, "transaction has an invalid V1 initiator address");
+            return Err(InvalidTransactionV1::InvalidInitiatorAddr);
+        }
+
         if self.approvals.is_empty() {
             trace!(?self, "transaction has no approvals");
             return Err(InvalidTransactionV1::EmptyApprovals);

@@ -634,6 +634,17 @@ pub trait CommitProvider: StateProvider {
                     StoredValue::CLValue(cl_value),
                 );
             }
+            BlockGlobalKind::Eip4788ParentHash {
+                timestamp_secs,
+                parent_hash,
+            } => {
+                let mut tracking_copy = tc.borrow_mut();
+                if let Err(error) =
+                    tracking_copy.set_eip4788_parent_hash(timestamp_secs, parent_hash)
+                {
+                    return BlockGlobalResult::Failure(error);
+                }
+            }
         }
 
         let effects = tc.borrow_mut().effects();
@@ -1181,7 +1192,9 @@ pub trait StateProvider: Send + Sync + Sized {
             Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        let source_account_hash = initiator.account_hash();
+        let Some(source_account_hash) = initiator.account_hash() else {
+            return BiddingResult::Failure(TrackingCopyError::Authorization);
+        };
         let (entity_addr, mut footprint, mut entity_access_rights) = match tc
             .borrow_mut()
             .authorized_runtime_footprint_with_access_rights(
@@ -1497,10 +1510,13 @@ pub trait StateProvider: Send + Sync + Sized {
                     Ok(value) => value,
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
+                let Some(initiator_account_hash) = initiator_addr.account_hash() else {
+                    return HandleRefundResult::Failure(TrackingCopyError::Authorization);
+                };
                 // pay amount from source to target
                 match runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        Some(initiator_account_hash),
                         source_purse,
                         target_purse,
                         refund_amount,
@@ -1568,9 +1584,12 @@ pub trait StateProvider: Send + Sync + Sized {
                     Ok(value) => value,
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
+                let Some(initiator_account_hash) = initiator_addr.account_hash() else {
+                    return HandleRefundResult::Failure(TrackingCopyError::Authorization);
+                };
                 match runtime
                     .transfer(
-                        Some(initiator_addr.account_hash()),
+                        Some(initiator_account_hash),
                         source_purse,
                         target_purse,
                         refund_amount,
@@ -1714,7 +1733,7 @@ pub trait StateProvider: Send + Sync + Sized {
                     .transfer(
                         initiator_addr
                             .as_ref()
-                            .map(|initiator_addr| initiator_addr.account_hash()),
+                            .and_then(|initiator_addr| initiator_addr.account_hash()),
                         source_purse,
                         target_purse,
                         amount,
@@ -2064,7 +2083,11 @@ pub trait StateProvider: Send + Sync + Sized {
             }
         };
 
-        let source_account_hash = request.initiator().account_hash();
+        let Some(source_account_hash) = request.initiator().account_hash() else {
+            return TransferResult::Failure(TransferError::TrackingCopy(
+                TrackingCopyError::Authorization,
+            ));
+        };
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
@@ -2305,7 +2328,9 @@ pub trait StateProvider: Send + Sync + Sized {
             }
         };
 
-        let source_account_hash = request.initiator().account_hash();
+        let Some(source_account_hash) = request.initiator().account_hash() else {
+            return BurnResult::Failure(BurnError::TrackingCopy(TrackingCopyError::Authorization));
+        };
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()

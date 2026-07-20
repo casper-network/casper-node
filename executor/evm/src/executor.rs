@@ -13,8 +13,8 @@ use revm::{
 };
 
 use crate::{
-    db::CasperDb, state, tx, BlockHashProvider, DbError, Error, ExecuteKind, ExecuteRequest,
-    ExecutionOutcome, NoBlockHashProvider, Result, SystemCallRequest,
+    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, BlockHashProvider, DbError, Error,
+    ExecuteKind, ExecuteRequest, ExecutionOutcome, NoBlockHashProvider, Result, SystemCallRequest,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -124,7 +124,8 @@ impl EvmExecutor {
                 .modify_cfg_chained(|cfg| {
                     configure_evm_cfg(cfg, &self.config, execution_mode);
                 })
-                .build_mainnet();
+                .build_mainnet()
+                .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
 
             evm.transact(tx_env).map_err(map_revm_error)?
         };
@@ -164,7 +165,8 @@ impl EvmExecutor {
                 .modify_cfg_chained(|cfg| {
                     configure_evm_cfg(cfg, &self.config, EvmExecutionMode::SystemCall);
                 })
-                .build_mainnet();
+                .build_mainnet()
+                .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
 
             evm.system_call(
                 tx::to_revm_address(request.target),

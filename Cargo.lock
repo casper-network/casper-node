@@ -1688,6 +1688,7 @@ dependencies = [
 name = "casper-storage"
 version = "5.0.0"
 dependencies = [
+ "alloy-primitives",
  "anyhow",
  "assert_matches",
  "base16",

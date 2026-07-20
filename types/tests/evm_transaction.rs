@@ -16,8 +16,8 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     evm::{Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
     Approval, ApprovalsHash, Digest, EvmApproval, EvmTransaction, EvmTransactionError,
-    EvmTransactionHash, EvmTransactionKind, PublicKey, SecretKey, TimeDiff, Timestamp,
-    Transaction as CasperTransaction, TransactionHash, U256,
+    EvmTransactionHash, EvmTransactionKind, InitiatorAddr, PublicKey, SecretKey, TimeDiff,
+    Timestamp, Transaction as CasperTransaction, TransactionHash, U256,
 };
 
 const SIGNING_SECRET: [u8; 32] = [7; 32];
@@ -36,6 +36,7 @@ fn decodes_legacy_signed_rlp() {
     assert_eq!(transaction.gas_price(), Some(1_000_000_000));
     assert_eq!(transaction.value(), U256::from(123u64));
     assert_eq!(transaction.chain_id(), Some(7));
+    assert_derived_initiator(&transaction);
     transaction
         .verify()
         .expect("legacy transaction should verify");
@@ -60,6 +61,7 @@ fn decodes_eip2930_signed_rlp() {
     assert_eq!(transaction.value(), U256::from(456u64));
     assert_eq!(transaction.input(), &[0x12, 0x34]);
     assert_eq!(transaction.chain_id(), Some(7));
+    assert_derived_initiator(&transaction);
     transaction
         .verify()
         .expect("EIP-2930 transaction should verify");
@@ -81,6 +83,7 @@ fn decodes_eip1559_signed_rlp() {
     assert_eq!(transaction.value(), U256::from(789u64));
     assert_eq!(transaction.input(), &[0xab, 0xcd]);
     assert_eq!(transaction.chain_id(), Some(7));
+    assert_derived_initiator(&transaction);
     transaction
         .verify()
         .expect("EIP-1559 transaction should verify");
@@ -103,6 +106,7 @@ fn decodes_eip7702_signed_rlp() {
     assert_eq!(transaction.input(), &[0xde, 0xad]);
     assert_eq!(transaction.chain_id(), Some(7));
     assert_eq!(transaction.authorization_list().len(), 1);
+    assert_derived_initiator(&transaction);
 
     let expected = &signed_transaction.authorization_list[0];
     let actual = &transaction.authorization_list()[0];
@@ -213,6 +217,7 @@ fn evm_approvals_are_not_replaced_by_finalized_approvals() {
 fn evm_transaction_sign_replaces_approval_and_recomputes_identity() {
     let mut transaction = CasperTransaction::from(decode(signed_legacy_transaction().raw_rlp));
     let old_hash = transaction.hash();
+    let old_initiator = transaction.initiator_addr();
     let new_secret_key = secp_secret_key([1; SecretKey::SECP256K1_LENGTH]);
     let expected_signer = PublicKey::from(&new_secret_key);
 
@@ -226,6 +231,8 @@ fn evm_transaction_sign_replaces_approval_and_recomputes_identity() {
         &expected_signer
     );
     assert_ne!(TransactionHash::from(evm_transaction.hash()), old_hash);
+    assert_ne!(evm_transaction.initiator_addr(), old_initiator);
+    assert_derived_initiator(&evm_transaction);
     evm_transaction
         .verify()
         .expect("signed transaction should verify");
@@ -347,6 +354,15 @@ where
     let (decoded, remainder) = T::from_bytes(&bytes).expect("value should deserialize");
     assert!(remainder.is_empty());
     assert_eq!(&decoded, value);
+}
+
+fn assert_derived_initiator(transaction: &EvmTransaction) {
+    let address = transaction.from();
+    let initiator = transaction.initiator_addr();
+
+    assert_eq!(initiator, InitiatorAddr::Eoa(address));
+    assert_eq!(initiator.account_hash(), None);
+    assert_eq!(initiator.evm_address(), Some(address));
 }
 
 fn signed_legacy_transaction() -> SignedTransaction {

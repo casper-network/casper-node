@@ -7,6 +7,7 @@ use casper_types::{
 use thiserror::Error;
 
 use crate::{
+    eip4788,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
 };
@@ -70,23 +71,23 @@ where
 }
 
 fn beacon_roots_code_hash_key() -> Key {
-    Key::Evm(EvmAddr::CodeHash(evm::BEACON_ROOTS_ADDRESS))
+    Key::Evm(EvmAddr::CodeHash(eip4788::BEACON_ROOTS_ADDRESS))
 }
 
 fn beacon_roots_byte_code_key() -> Key {
-    Key::Evm(EvmAddr::ByteCode(evm::beacon_roots_code_hash()))
+    Key::Evm(EvmAddr::ByteCode(eip4788::beacon_roots_code_hash()))
 }
 
 fn beacon_roots_code_hash_value() -> Result<StoredValue, EvmPredeployError> {
     Ok(StoredValue::CLValue(CLValue::from_t(
-        evm::beacon_roots_code_hash(),
+        eip4788::beacon_roots_code_hash(),
     )?))
 }
 
 fn beacon_roots_byte_code_value() -> StoredValue {
     StoredValue::ByteCode(ByteCode::new(
         ByteCodeKind::EvmPrague,
-        evm::BEACON_ROOTS_CODE.to_vec(),
+        eip4788::BEACON_ROOTS_CODE.to_vec(),
     ))
 }
 
@@ -108,7 +109,7 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     let key = beacon_roots_code_hash_key();
-    let expected = evm::beacon_roots_code_hash();
+    let expected = eip4788::beacon_roots_code_hash();
     match tracking_copy.read(&key)? {
         None => {
             tracking_copy.write(key, beacon_roots_code_hash_value()?);
@@ -148,7 +149,7 @@ where
         }
         Some(StoredValue::ByteCode(byte_code)) => {
             if byte_code.kind() == ByteCodeKind::EvmPrague
-                && byte_code.bytes() == evm::BEACON_ROOTS_CODE
+                && byte_code.bytes() == eip4788::BEACON_ROOTS_CODE
             {
                 return Ok(());
             }
@@ -311,7 +312,7 @@ mod tests {
         let (mut tracking_copy, _tempdir) = tracking_copy([(
             beacon_roots_code_hash_key(),
             StoredValue::CLValue(
-                CLValue::from_t(Key::Evm(EvmAddr::Account(evm::BEACON_ROOTS_ADDRESS)))
+                CLValue::from_t(Key::Evm(EvmAddr::Account(eip4788::BEACON_ROOTS_ADDRESS)))
                     .expect("key should encode"),
             ),
         )]);

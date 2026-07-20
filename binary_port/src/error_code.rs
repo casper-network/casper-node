@@ -376,6 +376,9 @@ pub enum ErrorCode {
     /// EVM transaction nonce does not match the account nonce.
     #[error("the EVM transaction nonce does not match the account nonce")]
     InvalidTransactionEvmInvalidNonce = 119,
+    /// EOA initiators are not valid for V1 transactions.
+    #[error("invalid initiator address for Transaction::V1")]
+    InvalidTransactionInvalidInitiatorAddr = 120,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -481,6 +484,9 @@ impl From<InvalidTransactionV1> for ErrorCode {
             }
             InvalidTransactionV1::InvalidBodyHash => ErrorCode::InvalidTransactionBodyHash,
             InvalidTransactionV1::InvalidTransactionHash => ErrorCode::InvalidTransactionHash,
+            InvalidTransactionV1::InvalidInitiatorAddr => {
+                ErrorCode::InvalidTransactionInvalidInitiatorAddr
+            }
             InvalidTransactionV1::EmptyApprovals => ErrorCode::InvalidTransactionEmptyApprovals,
             InvalidTransactionV1::InvalidApproval { .. } => {
                 ErrorCode::InvalidTransactionInvalidApproval
@@ -640,6 +646,14 @@ mod tests {
             ErrorCode::from(error),
             ErrorCode::InvalidTransactionEvmInvalidNonce
         );
+    }
+
+    #[test]
+    fn invalid_v1_eoa_initiator_has_specific_error_code() {
+        let code = ErrorCode::from(InvalidTransactionV1::InvalidInitiatorAddr);
+
+        assert_eq!(code, ErrorCode::InvalidTransactionInvalidInitiatorAddr);
+        assert_eq!(code as u16, 120);
     }
 
     #[test]

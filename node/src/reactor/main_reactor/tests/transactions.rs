@@ -23,7 +23,7 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, ExecutableDeployItem,
-    ExecutionInfo, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
+    ExecutionInfo, InitiatorAddr, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
 use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use once_cell::sync::Lazy;
@@ -1219,6 +1219,10 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         &SigningKey::from_slice(&[0x11; 32]).unwrap(),
     ));
     assert_eq!(sender, expected_sender);
+    assert_eq!(
+        Transaction::from(evm_transaction.clone()).initiator_addr(),
+        InitiatorAddr::Eoa(sender)
+    );
 
     let highest_block = test.fixture.highest_complete_block();
     seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
