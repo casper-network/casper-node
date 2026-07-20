@@ -3,7 +3,7 @@ use casper_types::{execution::Effects, Digest, ProtocolUpgradeConfig};
 use crate::system::protocol_upgrade::ProtocolUpgradeError;
 
 /// Request to upgrade the protocol.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ProtocolUpgradeRequest {
     config: ProtocolUpgradeConfig,
 }

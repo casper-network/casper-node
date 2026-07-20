@@ -1700,6 +1700,7 @@ dependencies = [
  "itertools 0.10.5",
  "linked-hash-map",
  "lmdb-rkv",
+ "lmdb-rkv-sys",
  "num",
  "num-derive",
  "num-rational",

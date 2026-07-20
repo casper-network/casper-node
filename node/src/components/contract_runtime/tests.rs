@@ -124,9 +124,18 @@ impl reactor::Reactor for Reactor {
         }
 
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_withdir, "test").unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            chainspec.protocol_version(),
+        )
+        .unwrap();
+        let mut storage = Storage::new(
             &storage_withdir,
-            None,
+            storage_root,
+            storage_block_store,
             chainspec.protocol_version(),
             EraId::default(),
             "test",
@@ -137,6 +146,7 @@ impl reactor::Reactor for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
         let contract_runtime =
             ContractRuntime::new(storage.root_path(), &config.config, chainspec, registry)?;

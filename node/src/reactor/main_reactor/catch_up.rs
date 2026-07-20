@@ -29,7 +29,6 @@ pub(super) enum CatchUpInstruction {
     ShutdownForUpgrade,
     CaughtUp,
     CommitGenesis,
-    CommitUpgrade,
 }
 
 impl MainReactor {
@@ -265,7 +264,7 @@ impl MainReactor {
             SyncInstruction::BlockSync { block_hash } => {
                 Some(self.catch_up_block_sync(effect_builder, block_hash))
             }
-            SyncInstruction::CaughtUp { .. } => self.catch_up_check_transition(),
+            SyncInstruction::CaughtUp { .. } => self.catch_up_check_transition(effect_builder),
         }
     }
 
@@ -413,11 +412,42 @@ impl MainReactor {
         }
     }
 
-    fn catch_up_check_transition(&mut self) -> Option<CatchUpInstruction> {
-        // we may be starting back up after a shutdown for upgrade; if so we need to
-        // commit upgrade now before proceeding further
-        if self.should_commit_upgrade() {
-            return Some(CatchUpInstruction::CommitUpgrade);
+    fn catch_up_check_transition(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Option<CatchUpInstruction> {
+        // We may be starting back up after a shutdown for upgrade -- i.e. `MainReactor::new`
+        // found the local tip already sitting at the pre-activation switch block and committed
+        // the upgrade synchronously before the reactor even existed. If so, `CatchUp` just needs
+        // to finish (sign + gossip) the resulting immediate switch block below.
+        //
+        // A node catching up through a *historical* activation point (a new node joining an
+        // already-upgraded network) does NOT commit the upgrade itself here: it acquires the
+        // post-upgrade chain the same way it acquires everything else during catch-up, via the
+        // block synchronizer fetching from peers. Verified empirically against `dev`: a joining
+        // node given a pre-upgrade trusted hash and left to sync forward through a live upgrade
+        // never invokes the local commit path (no "committing protocol upgrade" / "switch to
+        // Upgrading" log line), while the already-running nodes that restart into it do.
+        if self.pending_immediate_switch_block.is_some() {
+            // `CatchUp` is only reachable after the `Initialize` peer-gate has passed, so it's
+            // always safe to finish (sign + gossip) the pending upgrade block right away.
+            if let Some(effects) = self.maybe_finish_pending_upgrade(effect_builder) {
+                return Some(CatchUpInstruction::Do(Duration::ZERO, effects));
+            }
+        }
+        // If we're still waiting for the upgrade's immediate switch block to land (i.e. to be
+        // executed, stored, and marked complete), bail out fatally rather than wait forever if
+        // that's taking longer than `upgrade_timeout`.
+        if let Some(started_at) = self.upgrade_started_at {
+            if !self.should_commit_upgrade() {
+                // the local tip has advanced past the switch block: the upgrade is complete.
+                self.upgrade_started_at = None;
+            } else if started_at.elapsed() > self.upgrade_timeout {
+                return Some(CatchUpInstruction::Fatal(format!(
+                    "protocol upgrade did not complete within {}",
+                    self.upgrade_timeout
+                )));
+            }
         }
         // we may need to shutdown to go thru an upgrade
         if self.should_shutdown_for_upgrade() {

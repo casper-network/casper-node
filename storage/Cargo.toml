@@ -16,6 +16,7 @@ casper-types = { version = "7.0.0", path = "../types", features = ["datasize", "
 datasize = "0.2.4"
 either = "1.8.1"
 lmdb-rkv = "0.14"
+lmdb-rkv-sys = "0.11"
 num = { version = "0.4.0", default-features = false }
 num-derive = { workspace = true }
 num-rational = { version = "0.4.0", features = ["serde"] }

@@ -3,8 +3,7 @@
 use std::sync::Arc;
 
 use casper_storage::block_store::{
-    lmdb::IndexedLmdbBlockStore, types::BlockHeight, BlockStoreError, BlockStoreProvider,
-    DataReader,
+    lmdb::LmdbBlockStore, types::BlockHeight, BlockStoreError, BlockStoreProvider, DataReader,
 };
 use casper_types::{BlockHash, BlockHeader};
 
@@ -42,12 +41,12 @@ impl BlockHashProvider for NoBlockHashProvider {
 /// Block hash provider backed by Casper's indexed LMDB block store.
 #[derive(Clone, Debug)]
 pub struct IndexedLmdbBlockHashProvider {
-    block_store: Arc<IndexedLmdbBlockStore>,
+    block_store: Arc<LmdbBlockStore>,
 }
 
 impl IndexedLmdbBlockHashProvider {
     /// Creates a block hash provider backed by `block_store`.
-    pub fn new(block_store: Arc<IndexedLmdbBlockStore>) -> Self {
+    pub fn new(block_store: Arc<LmdbBlockStore>) -> Self {
         Self { block_store }
     }
 }

@@ -1,23 +1,27 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace};
 
 use casper_storage::data_access_layer::GenesisResult;
-use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
+use casper_types::{
+    BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Digest, EraId, PublicKey, TimeDiff,
+    Timestamp,
+};
 
 use crate::{
     components::{
         binary_port,
         block_synchronizer::{self, BlockSynchronizerProgress},
-        contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server, network, rest_server, upgrade_watcher,
+        contract_runtime::{ContractRuntime, ExecutionPreState},
+        diagnostics_port, event_stream_server, network, rest_server, storage, upgrade_watcher,
     },
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::main_reactor::{
         catch_up::CatchUpInstruction, genesis_instruction::GenesisInstruction,
-        keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction,
-        upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
-        MainEvent, MainReactor, ReactorState,
+        keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction, utils,
+        validate::ValidateInstruction, Error, MainEvent, MainReactor, PendingImmediateSwitchBlock,
+        ReactorState,
     },
     types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     NodeRng,
@@ -63,39 +67,38 @@ impl MainReactor {
                     None => {
                         if self.sync_handling.is_isolated() {
                             // If node is "isolated" it doesn't care about peers
-                            if let Err(msg) = self.refresh_contract_runtime() {
-                                return (
-                                    Duration::ZERO,
-                                    fatal!(effect_builder, "{}", msg).ignore(),
-                                );
-                            }
+                            let effects = match self
+                                .refresh_contract_runtime_or_finish_upgrade(effect_builder)
+                            {
+                                Ok(effects) => effects,
+                                Err(msg) => {
+                                    return (
+                                        Duration::ZERO,
+                                        fatal!(effect_builder, "{}", msg).ignore(),
+                                    )
+                                }
+                            };
                             self.state = ReactorState::KeepUp;
-                            return (Duration::ZERO, Effects::new());
+                            return (Duration::ZERO, effects);
                         }
                         if false == self.net.has_sufficient_fully_connected_peers() {
                             info!("Initialize: awaiting sufficient fully-connected peers");
                             return (initialization_logic_default_delay.into(), Effects::new());
                         }
-                        if let Err(msg) = self.refresh_contract_runtime() {
-                            return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
-                        }
+                        let effects = match self
+                            .refresh_contract_runtime_or_finish_upgrade(effect_builder)
+                        {
+                            Ok(effects) => effects,
+                            Err(msg) => {
+                                return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
+                            }
+                        };
                         info!("Initialize: switch to CatchUp");
                         self.state = ReactorState::CatchUp;
-                        (Duration::ZERO, Effects::new())
+                        (Duration::ZERO, effects)
                     }
                 }
             }
-            ReactorState::Upgrading => match self.upgrading_instruction() {
-                UpgradingInstruction::CheckLater(msg, wait) => {
-                    debug!("Upgrading: {}", msg);
-                    (wait, Effects::new())
-                }
-                UpgradingInstruction::CatchUp => {
-                    info!("Upgrading: switch to CatchUp");
-                    self.state = ReactorState::CatchUp;
-                    (Duration::ZERO, Effects::new())
-                }
-            },
             ReactorState::CatchUp => match self.catch_up_instruction(effect_builder, rng) {
                 CatchUpInstruction::Fatal(msg) => {
                     (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore())
@@ -120,20 +123,6 @@ impl MainReactor {
                     GenesisInstruction::Fatal(msg) => (
                         Duration::ZERO,
                         fatal!(effect_builder, "failed to commit genesis: {}", msg).ignore(),
-                    ),
-                },
-                CatchUpInstruction::CommitUpgrade => match self.commit_upgrade(effect_builder) {
-                    Ok(effects) => {
-                        info!("CatchUp: switch to Upgrading");
-                        self.block_synchronizer.purge();
-                        self.state = ReactorState::Upgrading;
-                        self.last_progress = Timestamp::now();
-                        self.attempts = 0;
-                        (Duration::ZERO, effects)
-                    }
-                    Err(msg) => (
-                        Duration::ZERO,
-                        fatal!(effect_builder, "failed to commit upgrade: {}", msg).ignore(),
                     ),
                 },
                 CatchUpInstruction::CheckLater(msg, wait) => {
@@ -263,6 +252,15 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Option<Effects<MainEvent>> {
+        // storage must be ready before anything else touches disk-backed state (other
+        // components, e.g. transaction_buffer, read from it during their own init).
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.storage,
+            MainEvent::Storage(storage::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
         // open the diagnostic port first to make sure it can bind & to be responsive during init.
         if let Some(effects) = utils::initialize_component(
             effect_builder,
@@ -434,52 +432,158 @@ impl MainReactor {
         }
     }
 
-    fn upgrading_instruction(&self) -> UpgradingInstruction {
-        UpgradingInstruction::should_commit_upgrade(
-            self.should_commit_upgrade(),
-            self.control_logic_default_delay.into(),
-            self.last_progress,
-            self.upgrade_timeout,
+    /// If `tip_header` is a switch block that is the last block before the chainspec's
+    /// activation point, synchronously commits the protocol upgrade against `contract_runtime`'s
+    /// global state. Returns the info needed to later produce, sign, and gossip the resulting
+    /// immediate switch block, once the reactor is ready to do so (see
+    /// [`Self::maybe_finish_pending_upgrade`]). Returns `Ok(None)` if no upgrade is due.
+    ///
+    /// This is an associated function (rather than a `&self` method) so it can be called from
+    /// `MainReactor::new`, before the reactor itself has been constructed -- that's the only
+    /// call site: a fresh restart whose local tip already sits at the pre-activation switch
+    /// block (e.g. after a live node shuts itself down for the upgrade). A node still *catching
+    /// up* through a historical activation point does not go through here; it just receives the
+    /// post-upgrade chain via the ordinary block-synchronizer fetch path, like any other
+    /// historical data.
+    pub(super) fn commit_upgrade_if_needed(
+        contract_runtime: &ContractRuntime,
+        chainspec: &Arc<Chainspec>,
+        chainspec_raw_bytes: &Arc<ChainspecRawBytes>,
+        tip_header: Option<&BlockHeader>,
+        upgrade_timeout: TimeDiff,
+    ) -> Result<Option<PendingImmediateSwitchBlock>, Error> {
+        let Some(tip_header) = tip_header else {
+            return Ok(None);
+        };
+        if !(tip_header.is_switch_block()
+            && tip_header.is_last_block_before_activation(&chainspec.protocol_config))
+        {
+            return Ok(None);
+        }
+
+        info!(
+            era_id = %tip_header.era_id(),
+            height = tip_header.height(),
+            "committing protocol upgrade"
+        );
+
+        let upgrade_config = chainspec
+            .upgrade_config_from_parts(
+                *tip_header.state_root_hash(),
+                tip_header.protocol_version(),
+                chainspec.protocol_config.activation_point.era_id(),
+                chainspec_raw_bytes.clone(),
+            )
+            .map_err(Error::ProtocolUpgrade)?;
+
+        // Executing protocol upgrade can be time consuming. It's executed in the background so the
+        // upgrade_timeout can be enforced. This function stays synchronous -- it's called
+        // from `MainReactor::new`, before the reactor's async event loop exists -- so the
+        // wait for that bounded future to resolve is bridged onto a dedicated scoped
+        // thread, which calls `Handle::block_on` directly.
+        let handle = Handle::current();
+        let post_state_hash = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    handle.block_on(async {
+                        match tokio::time::timeout(
+                            Duration::from(upgrade_timeout),
+                            contract_runtime.commit_protocol_upgrade(upgrade_config),
+                        )
+                        .await
+                        {
+                            Ok(result) => result,
+                            Err(_) => Err(format!(
+                                "protocol upgrade did not complete within {}",
+                                upgrade_timeout
+                            )),
+                        }
+                    })
+                })
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        })
+        .map_err(Error::ProtocolUpgrade)?;
+
+        Ok(Some(PendingImmediateSwitchBlock {
+            next_block_height: tip_header.height() + 1,
+            post_state_hash,
+            parent_hash: tip_header.block_hash(),
+            parent_seed: *tip_header.accumulated_seed(),
+            era_id: tip_header.next_block_era_id(),
+            // Adding one second here to make sure the timestamp is monotonically growing -
+            // it's important for EVM smart contracts
+            timestamp: tip_header
+                .timestamp()
+                .saturating_add(TimeDiff::from_seconds(1)),
+        }))
+    }
+
+    /// If a protocol upgrade has been committed and its immediate switch block hasn't yet been
+    /// produced, builds the effects to enqueue it for execution, which will get it signed (by
+    /// this validator, if applicable) and gossiped through the normal block-execution pipeline
+    /// (see `main_reactor::handle_meta_block`).
+    ///
+    /// The caller MUST NOT invoke this before the node can actually reach peers -- broadcasting a
+    /// finality signature to zero connected peers silently drops it with no retry (see
+    /// `network::broadcast_message_to_validators`). This is why callers only invoke it once the
+    /// existing `Initialize` peer-gate (`has_sufficient_fully_connected_peers`, or isolated mode)
+    /// has passed, or from within `CatchUp`, which is only reachable after that same gate.
+    pub(super) fn maybe_finish_pending_upgrade(
+        &mut self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> Option<Effects<MainEvent>> {
+        let pending = self.pending_immediate_switch_block.take()?;
+        self.upgrade_started_at = Some(Timestamp::now());
+        self.contract_runtime
+            .set_execution_pre_state(ExecutionPreState::new(
+                pending.next_block_height,
+                pending.post_state_hash,
+                pending.parent_hash,
+                pending.parent_seed,
+            ));
+
+        let current_price = self.contract_runtime.current_gas_price();
+        let payload = BlockPayload::new(
+            BTreeMap::new(),
+            vec![],
+            Default::default(),
+            false,
+            current_price,
+        );
+        let finalized_block = FinalizedBlock::new(
+            payload,
+            Some(InternalEraReport::default()),
+            pending.timestamp,
+            pending.era_id,
+            pending.next_block_height,
+            PublicKey::System,
+        );
+
+        info!("producing immediate switch block after protocol upgrade");
+
+        Some(
+            effect_builder
+                .enqueue_block_for_execution(
+                    ExecutableBlock::from_finalized_block_and_transactions(finalized_block, vec![]),
+                    MetaBlockState::new_not_to_be_gossiped(),
+                )
+                .ignore(),
         )
     }
 
-    fn commit_upgrade(
+    /// Either finishes a pending protocol upgrade (producing its immediate switch block) or, if
+    /// none is pending, refreshes contract runtime's execution pre-state from the local tip as
+    /// usual. Used at the two points the reactor exits `ReactorState::Initialize`.
+    fn refresh_contract_runtime_or_finish_upgrade(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
-        let header = match self.get_local_tip_header()? {
-            Some(header) if header.is_switch_block() => header,
-            Some(_) => {
-                return Err("Latest complete block is not a switch block".to_string());
-            }
-            None => {
-                return Err("No complete block found in storage".to_string());
-            }
-        };
-
-        match self.chainspec.upgrade_config_from_parts(
-            *header.state_root_hash(),
-            header.protocol_version(),
-            self.chainspec.protocol_config.activation_point.era_id(),
-            self.chainspec_raw_bytes.clone(),
-        ) {
-            Ok(cfg) => {
-                let mut effects = Effects::new();
-                let next_block_height = header.height() + 1;
-                effects.extend(
-                    effect_builder
-                        .enqueue_protocol_upgrade(
-                            cfg,
-                            next_block_height,
-                            header.block_hash(),
-                            *header.accumulated_seed(),
-                        )
-                        .ignore(),
-                );
-                Ok(effects)
-            }
-            Err(msg) => Err(msg),
+        if let Some(effects) = self.maybe_finish_pending_upgrade(effect_builder) {
+            return Ok(effects);
         }
+        self.refresh_contract_runtime()?;
+        Ok(Effects::new())
     }
 
     pub(super) fn should_shutdown_for_upgrade(&self) -> bool {

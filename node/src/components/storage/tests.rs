@@ -33,8 +33,8 @@ use casper_types::{
 use tempfile::tempdir;
 
 use super::{
-    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
-    Storage, FORCE_RESYNC_FILE_NAME,
+    move_storage_files_to_network_subdir, open_block_store, prune_block_store,
+    should_move_storage_files_to_network_subdir, Config, Storage, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -187,10 +187,17 @@ fn create_sync_leap_test_chain(
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg),
-        None,
-        ProtocolVersion::from_parts(1, 0, 0),
+    let cfg = WithDir::new(harness.tmp.path(), cfg);
+    let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+    let (root, mut block_store) =
+        open_block_store(&cfg, "test").expect("could not open block store fixture");
+    prune_block_store(&mut block_store, None, protocol_version)
+        .expect("could not prune block store fixture");
+    let mut storage = Storage::new(
+        &cfg,
+        root,
+        block_store,
+        protocol_version,
         EraId::default(),
         "test",
         MAX_TTL.into(),
@@ -199,7 +206,9 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         false,
         TransactionConfig::default(),
     )
-    .expect("could not create storage component fixture")
+    .expect("could not create storage component fixture");
+    storage.initialize_for_test();
+    storage
 }
 
 /// Storage component test fixture.
@@ -218,19 +227,33 @@ fn storage_fixture_from_parts(
     recent_era_count: Option<u64>,
 ) -> Storage {
     let cfg = new_config(harness);
-    Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg),
+    let cfg = WithDir::new(harness.tmp.path(), cfg);
+    let network_name = network_name.unwrap_or("test");
+    let protocol_version = protocol_version.unwrap_or(ProtocolVersion::V1_0_0);
+    let (root, mut block_store) =
+        open_block_store(&cfg, network_name).expect("could not open block store fixture");
+    prune_block_store(
+        &mut block_store,
         hard_reset_to_start_of_era,
-        protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
+        protocol_version,
+    )
+    .expect("could not prune block store fixture");
+    let mut storage = Storage::new(
+        &cfg,
+        root,
+        block_store,
+        protocol_version,
         EraId::default(),
-        network_name.unwrap_or("test"),
+        network_name,
         max_ttl.unwrap_or(MAX_TTL).into(),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
         None,
         false,
         TransactionConfig::default(),
     )
-    .expect("could not create storage component fixture from parts")
+    .expect("could not create storage component fixture from parts");
+    storage.initialize_for_test();
+    storage
 }
 
 /// Storage component test fixture with force resync enabled.
@@ -241,10 +264,16 @@ fn storage_fixture_from_parts(
 ///
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
-    Storage::new(
+    let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+    let (root, mut block_store) =
+        open_block_store(cfg, "test").expect("could not open block store fixture");
+    prune_block_store(&mut block_store, None, protocol_version)
+        .expect("could not prune block store fixture");
+    let mut storage = Storage::new(
         cfg,
-        None,
-        ProtocolVersion::from_parts(1, 0, 0),
+        root,
+        block_store,
+        protocol_version,
         EraId::default(),
         "test",
         MAX_TTL.into(),
@@ -253,7 +282,9 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
         true,
         TransactionConfig::default(),
     )
-    .expect("could not create storage component fixture")
+    .expect("could not create storage component fixture");
+    storage.initialize_for_test();
+    storage
 }
 
 /// Storage component test fixture.
@@ -1777,10 +1808,15 @@ fn should_create_subdir_named_after_network() {
     let cfg = new_config(&harness);
 
     let network_name = "test";
+    let with_dir = WithDir::new(harness.tmp.path(), cfg.clone());
+    let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+    let (root, mut block_store) = open_block_store(&with_dir, network_name).unwrap();
+    prune_block_store(&mut block_store, None, protocol_version).unwrap();
     let storage = Storage::new(
-        &WithDir::new(harness.tmp.path(), cfg.clone()),
-        None,
-        ProtocolVersion::from_parts(1, 0, 0),
+        &with_dir,
+        root,
+        block_store,
+        protocol_version,
         EraId::default(),
         network_name,
         MAX_TTL.into(),
