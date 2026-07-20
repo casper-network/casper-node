@@ -10,6 +10,7 @@ mod address;
 mod config;
 mod evm_addr;
 mod hash;
+mod identity_instruction;
 mod receipt;
 mod topic;
 mod transaction;
@@ -30,6 +31,7 @@ pub use transaction::{
 // without going through the crate root.
 pub use config::{EvmConfig, EvmSpec, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE};
 pub use evm_addr::EvmAddr;
+pub use identity_instruction::IdentityInstruction;
 pub use transaction::{
     EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,
 };

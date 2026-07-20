@@ -42,6 +42,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     evm::Address as EvmAddress,
+    evm::IdentityInstruction as EvmIdentityInstruction,
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
@@ -59,10 +60,7 @@ use super::{
 use crate::{
     components::fetcher::FetchItem,
     contract_runtime::{
-        types::{
-            EvmIdentityPlan, EvmOriginResolution, ExecutionArtifactBuilder,
-            StaticEvmBlockHashProvider,
-        },
+        types::{EvmOriginResolution, ExecutionArtifactBuilder, StaticEvmBlockHashProvider},
         utils_evm,
     },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
@@ -120,7 +118,7 @@ fn execution_min_cost(
 ///
 /// This function only reads state. That matters because it runs before payment
 /// preconditions are known to pass. If execution is later allowed, the returned
-/// [`EvmIdentityPlan`] is applied in the tracking copy used for EVM execution.
+/// [`EvmIdentityInstruction`] is applied in the tracking copy used for EVM execution.
 fn resolve_evm_origin(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
@@ -163,7 +161,7 @@ fn resolve_evm_origin(
                 // main purse.
                 Key::Account(account_hash) => Ok(EvmOriginResolution::new(
                     BalanceIdentifier::Account(account_hash),
-                    EvmIdentityPlan::None,
+                    EvmIdentityInstruction::None,
                 )),
                 // Existing EVM-native identities keep paying from their stored
                 // purse. We may still plan an upgrade to a Casper link, but
@@ -199,7 +197,7 @@ fn resolve_evm_origin(
             if evm_account_has_code(&mut tracking_copy, address)? {
                 return Ok(EvmOriginResolution::new(
                     BalanceIdentifier::Purse(deterministic_purse),
-                    EvmIdentityPlan::None,
+                    EvmIdentityInstruction::None,
                 ));
             }
             match account_main_purse(&mut tracking_copy, protocol_version, account_hash)? {
@@ -208,7 +206,7 @@ fn resolve_evm_origin(
                 // immediately and write the bridge only if execution proceeds.
                 Some(_) => Ok(EvmOriginResolution::new(
                     BalanceIdentifier::Account(account_hash),
-                    EvmIdentityPlan::LinkExisting {
+                    EvmIdentityInstruction::LinkExisting {
                         address,
                         account_hash,
                     },
@@ -218,7 +216,7 @@ fn resolve_evm_origin(
                 // EVM purse, then write the bridge record.
                 None => Ok(EvmOriginResolution::new(
                     BalanceIdentifier::Purse(deterministic_purse),
-                    EvmIdentityPlan::CreateAccount {
+                    EvmIdentityInstruction::CreateAccount {
                         address,
                         account_hash,
                         main_purse: deterministic_purse,
@@ -236,7 +234,7 @@ fn resolve_evm_native_identity_plan<R>(
     account_hash: AccountHash,
     purse: casper_types::URef,
     deterministic_purse: casper_types::URef,
-) -> Result<EvmIdentityPlan, BlockExecutionError>
+) -> Result<EvmIdentityInstruction, BlockExecutionError>
 where
     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
 {
@@ -244,7 +242,7 @@ where
     // identity into a Casper account link. The only EVM-native identity that is
     // safe to link is the deterministic purse for this address.
     if evm_account_has_code(tracking_copy, address)? || purse.addr() != deterministic_purse.addr() {
-        return Ok(EvmIdentityPlan::None);
+        return Ok(EvmIdentityInstruction::None);
     }
 
     match account_main_purse(tracking_copy, protocol_version, account_hash)? {
@@ -252,7 +250,7 @@ where
         // purse, replacing the pointer with `Key::Account` preserves the balance
         // location and lets Casper-native flows see the account identity.
         Some(main_purse) if main_purse.addr() == purse.addr() => {
-            Ok(EvmIdentityPlan::LinkExisting {
+            Ok(EvmIdentityInstruction::LinkExisting {
                 address,
                 account_hash,
             })
@@ -260,11 +258,11 @@ where
         // A Casper account exists, but its main purse differs from the existing
         // EVM-native purse. Keep the EVM-native identity to avoid moving funds
         // or changing ownership semantics behind the user's back.
-        Some(_) => Ok(EvmIdentityPlan::None),
+        Some(_) => Ok(EvmIdentityInstruction::None),
         // No Casper account exists yet, so creating one backed by the existing
         // deterministic purse preserves balances while giving the signer a
         // Casper account identity.
-        None => Ok(EvmIdentityPlan::CreateAccount {
+        None => Ok(EvmIdentityInstruction::CreateAccount {
             address,
             account_hash,
             main_purse: purse,
@@ -396,7 +394,7 @@ where
 fn apply_evm_identity_plan<R>(
     tracking_copy: &mut TrackingCopy<R>,
     protocol_version: ProtocolVersion,
-    plan: EvmIdentityPlan,
+    plan: EvmIdentityInstruction,
 ) -> Result<(), BlockExecutionError>
 where
     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
@@ -406,12 +404,12 @@ where
     // execution so the identity record and nonce/code/storage updates commit or
     // discard together.
     match plan {
-        EvmIdentityPlan::None => Ok(()),
-        EvmIdentityPlan::LinkExisting {
+        EvmIdentityInstruction::None => Ok(()),
+        EvmIdentityInstruction::LinkExisting {
             address,
             account_hash,
         } => write_evm_identity(tracking_copy, address, Key::Account(account_hash)),
-        EvmIdentityPlan::CreateAccount {
+        EvmIdentityInstruction::CreateAccount {
             address,
             account_hash,
             main_purse,

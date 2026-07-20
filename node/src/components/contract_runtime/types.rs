@@ -10,13 +10,9 @@ mod step_outcome;
 mod validator_weights_by_era_id_request;
 
 pub(crate) use crate::components::contract_runtime::types::{
-    block_and_execution_artifacts::BlockAndExecutionArtifacts,
-    era_price::EraPrice,
-    evm_origin_resolution::{EvmIdentityPlan, EvmOriginResolution},
-    execution_artifact::ExecutionArtifact,
-    execution_artifact_builder::ExecutionArtifactBuilder,
-    execution_pre_state::ExecutionPreState,
+    block_and_execution_artifacts::BlockAndExecutionArtifacts, era_price::EraPrice,
+    evm_origin_resolution::EvmOriginResolution, execution_artifact::ExecutionArtifact,
+    execution_artifact_builder::ExecutionArtifactBuilder, execution_pre_state::ExecutionPreState,
     speculative_execution_result::SpeculativeExecutionResult,
-    static_evm_block_hash_provider::StaticEvmBlockHashProvider,
-    step_outcome::StepOutcome,
+    static_evm_block_hash_provider::StaticEvmBlockHashProvider, step_outcome::StepOutcome,
 };
