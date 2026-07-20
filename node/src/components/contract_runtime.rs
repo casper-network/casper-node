@@ -11,6 +11,7 @@ mod rewards;
 mod tests;
 mod types;
 mod utils;
+mod utils_evm;
 
 use std::{
     cmp::Ordering,

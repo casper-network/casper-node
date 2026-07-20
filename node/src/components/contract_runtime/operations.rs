@@ -11,9 +11,9 @@ use casper_execution_engine::engine_state::{
 };
 use casper_executor_evm::{
     BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
-    BlockHashProviderResult as EvmBlockHashProviderResult, CallRequest as EvmExecutorCallRequest,
-    CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
-    ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
+    CallRequest as EvmExecutorCallRequest, CallValidation as EvmCallValidation, EvmExecutor,
+    ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
+    ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -41,10 +41,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
-    evm::{
-        Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
-        ReceiptStatus as EvmReceiptStatus,
-    },
+    evm::Address as EvmAddress,
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
@@ -61,35 +58,15 @@ use super::{
 };
 use crate::{
     components::fetcher::FetchItem,
-    contract_runtime::types::ExecutionArtifactBuilder,
+    contract_runtime::{
+        types::{
+            EvmIdentityPlan, EvmOriginResolution, ExecutionArtifactBuilder,
+            StaticEvmBlockHashProvider,
+        },
+        utils_evm,
+    },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
-
-#[derive(Default)]
-struct StaticEvmBlockHashProvider {
-    block_hashes: BTreeMap<u64, BlockHash>,
-}
-
-impl EvmBlockHashProvider for StaticEvmBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> EvmBlockHashProviderResult<Option<BlockHash>> {
-        Ok(self.block_hashes.get(&block_height).copied())
-    }
-}
-
-fn evm_block_context(
-    chainspec: &Chainspec,
-    block_height: u64,
-    block_time: BlockTime,
-    proposer: &PublicKey,
-) -> EvmBlockContext {
-    EvmBlockContext {
-        number: block_height,
-        timestamp: block_time.value() / 1000,
-        beneficiary: EvmAddress::from_block_proposer_public_key(proposer),
-        gas_limit: Some(chainspec.evm_config.block_gas_limit),
-        base_fee: Some(chainspec.evm_config.base_fee_wei()),
-    }
-}
 
 fn write_eip4788_beacon_roots(
     scratch_state: &ScratchGlobalState,
@@ -123,16 +100,6 @@ fn write_eip4788_beacon_roots(
     }
 }
 
-fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
-    EvmReceipt {
-        status: EvmReceiptStatus::Halt(EvmHaltReason::Unknown),
-        gas_used: 0,
-        effective_gas_price,
-        contract_address: None,
-        logs: Vec::new(),
-    }
-}
-
 fn execution_min_cost(
     is_evm: bool,
     gas_limit: Gas,
@@ -147,54 +114,6 @@ fn execution_min_cost(
     } else {
         min_cost
     }
-}
-
-#[derive(Clone, Debug)]
-struct EvmOriginResolution {
-    // Concrete payer selected before payment checks. This is deliberately a
-    // data-access balance identifier, not an EVM-specific balance mode, so
-    // the rest of block execution can use the normal hold/refund/fee
-    // machinery.
-    balance_identifier: BalanceIdentifier,
-    // State mutation to perform later, inside the same tracking copy as EVM
-    // execution. Origin resolution itself is read-only so a rejected
-    // transaction does not create accounts or links as a side effect.
-    identity_plan: EvmIdentityPlan,
-}
-
-impl EvmOriginResolution {
-    fn new(balance_identifier: BalanceIdentifier, identity_plan: EvmIdentityPlan) -> Self {
-        Self {
-            balance_identifier,
-            identity_plan,
-        }
-    }
-}
-
-/// Deferred write needed to make an EVM sender's identity explicit in global state.
-///
-/// The runtime makes this decision because it has both pieces of context the
-/// executor should not need: the recovered transaction signer and the Casper
-/// account view at the current state root.
-#[derive(Clone, Copy, Debug)]
-enum EvmIdentityPlan {
-    /// No identity write is needed. Either the identity already exists, or the
-    /// address must remain EVM-native.
-    None,
-    /// The EVM address has no identity pointer yet, but the recovered signer
-    /// already has a Casper account. Link the address to that account hash.
-    LinkExisting {
-        address: EvmAddress,
-        account_hash: AccountHash,
-    },
-    /// Neither an identity pointer nor a Casper account exists for the
-    /// recovered signer. Create the Casper account and then link the EVM
-    /// address to it.
-    CreateAccount {
-        address: EvmAddress,
-        account_hash: AccountHash,
-        main_purse: casper_types::URef,
-    },
 }
 
 /// Resolves the payer and any deferred identity write for a signed EVM transaction.
@@ -569,7 +488,7 @@ pub fn execute_finalized_block(
         ));
     }
 
-    // scrape variables from execution pre state
+    // scrape variables from execution pre-state
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
     let parent_block_hash = execution_pre_state.parent_hash();
@@ -689,7 +608,7 @@ pub fn execute_finalized_block(
         state_root_hash,
         chainspec,
         protocol_version,
-        evm_block_context(chainspec, block_height, block_time, &proposer),
+        utils_evm::block_context(chainspec, block_height, block_time, &proposer),
         parent_hash,
     )?;
 
@@ -815,7 +734,7 @@ pub fn execute_finalized_block(
             None
         };
         let payer_balance_identifier = if let Some(resolution) = &evm_origin_resolution {
-            resolution.balance_identifier.clone()
+            resolution.balance_identifier()
         } else {
             initiator_addr
                 .clone()
@@ -872,7 +791,7 @@ pub fn execute_finalized_block(
                 debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
                 if let Some(evm_transaction) = evm_transaction {
                     artifact_builder.with_zero_cost().with_evm_receipt(
-                        evm_precondition_receipt(
+                        utils_evm::precondition_receipt(
                             evm_transaction
                                 .effective_gas_price(chainspec.evm_config.base_fee_wei()),
                         ),
@@ -1189,7 +1108,7 @@ pub fn execute_finalized_block(
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
                     let block_context =
-                        evm_block_context(chainspec, block_height, block_time, &proposer);
+                        utils_evm::block_context(chainspec, block_height, block_time, &proposer);
                     let request = EvmExecuteRequest {
                         block: block_context,
                         kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
@@ -1206,7 +1125,7 @@ pub fn execute_finalized_block(
                         apply_evm_identity_plan(
                             &mut tracking_copy,
                             protocol_version,
-                            resolution.identity_plan,
+                            resolution.identity_plan(),
                         )?;
                     }
                     apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
@@ -1338,7 +1257,7 @@ pub fn execute_finalized_block(
                 .expect("EVM transaction should exist")
                 .effective_gas_price(chainspec.evm_config.base_fee_wei());
             artifact_builder.with_zero_cost().with_evm_receipt(
-                evm_precondition_receipt(effective_gas_price),
+                utils_evm::precondition_receipt(effective_gas_price),
                 U512::zero(),
                 Effects::new(),
             );
@@ -2188,7 +2107,7 @@ where
         block: block_context,
         kind,
     };
-    let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
+    let block_hash_provider = StaticEvmBlockHashProvider::new(block_hashes);
     let outcome = match EvmExecutor::new(chainspec.evm_config).execute_with_block_hash_provider(
         &mut tracking_copy,
         execute_request,
@@ -2388,7 +2307,7 @@ mod tests {
             state::lmdb::make_temporary_global_state([]);
         let scratch_state = global_state.create_scratch();
         let block_time = BlockTime::new(2_000);
-        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
+        let block_context = utils_evm::block_context(&chainspec, 1, block_time, &PublicKey::System);
         let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
 
         let updated_state_root_hash = write_eip4788_beacon_roots(
