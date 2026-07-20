@@ -85,7 +85,7 @@ fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
         .checkout(post_state_hash)
         .expect("checkout should not fail")
         .expect("post-genesis root should exist");
-    (TrackingCopy::new(reader, 5, false), tempdir)
+    (TrackingCopy::new(reader, 5), tempdir)
 }
 
 fn executor(spec: EvmSpec) -> EvmExecutor {
