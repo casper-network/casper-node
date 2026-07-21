@@ -1638,11 +1638,8 @@ impl<'t> DataWriter<BlockHash, Block> for LmdbBlockStoreTransaction<'t, RwTransa
 
             self.block_store.delete_block_header(&mut self.txn, &key)?;
 
-            /*
-            TODO: currently we don't delete the block body since other blocks may reference it.
             self.block_store
                 .delete_block_body(&mut self.txn, block.body_hash())?;
-            */
 
             delete_by_be_u64_key(
                 &mut self.txn,
