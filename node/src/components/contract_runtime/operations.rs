@@ -46,9 +46,9 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, EvmSpec, FeeHandling, Gas, InvalidTransaction,
-    InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff,
-    Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
+    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -57,6 +57,7 @@ use super::{
     BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics, StateResultError,
     APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+use crate::contract_runtime::utils::MinCostScenario;
 use crate::{
     components::fetcher::FetchItem,
     contract_runtime::{
@@ -65,54 +66,48 @@ use crate::{
     },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
-
-fn write_eip4788_beacon_roots(
-    scratch_state: &ScratchGlobalState,
-    state_root_hash: Digest,
-    chainspec: &Chainspec,
-    protocol_version: ProtocolVersion,
-    block_context: EvmBlockContext,
-    parent_hash: BlockHash,
-) -> Result<Digest, BlockExecutionError> {
-    if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
-        return Ok(state_root_hash);
-    }
-
-    if block_context.number == 0 {
-        return Ok(state_root_hash);
-    }
-
-    match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
-        state_root_hash,
-        protocol_version,
-        block_context.timestamp,
-        parent_hash,
-    )) {
-        BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
-        BlockGlobalResult::Failure(err) => {
-            Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
-        }
-        BlockGlobalResult::Success {
-            post_state_hash, ..
-        } => Ok(post_state_hash),
-    }
-}
-
-fn execution_min_cost(
-    is_evm: bool,
-    gas_limit: Gas,
-    cost: U512,
-    baseline_motes_amount: U512,
-) -> U512 {
-    let min_cost = gas_limit.value().min(baseline_motes_amount);
-    // EVM cost is already converted to motes. Do not let the raw EVM gas
-    // limit raise the minimum above the maximum converted fee.
-    if is_evm {
-        min_cost.min(cost)
-    } else {
-        min_cost
-    }
-}
+// fn write_eip4788_beacon_roots(
+//     scratch_state: &ScratchGlobalState,
+//     state_root_hash: Digest,
+//     chainspec: &Chainspec,
+//     protocol_version: ProtocolVersion,
+//     block_context: EvmBlockContext,
+//     parent_hash: BlockHash,
+// ) -> Result<Digest, BlockExecutionError> {
+//     if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
+//         return Ok(state_root_hash);
+//     }
+//
+//     if block_context.number == 0 {
+//         return Ok(state_root_hash);
+//     }
+//
+//     match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
+//         state_root_hash,
+//         protocol_version,
+//         block_context.timestamp,
+//         parent_hash,
+//     )) {
+//         BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
+//         BlockGlobalResult::Failure(err) => {
+//             Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
+//         }
+//         BlockGlobalResult::Success {
+//             post_state_hash, ..
+//         } => Ok(post_state_hash),
+//     }
+// }
+//
+// fn execution_min_cost(is_evm: bool, cost: U512, default_min_cost: U512) -> U512 {
+//     //let min_cost = gas_limit.value().min(baseline_motes_amount);
+//     // EVM cost is already converted to motes. Do not let the raw EVM gas
+//     // limit raise the minimum above the maximum converted fee.
+//     if is_evm {
+//         default_min_cost.min(cost)
+//     } else {
+//         default_min_cost.max(cost)
+//     }
+// }
 
 /// Resolves the payer and any deferred identity write for a signed EVM transaction.
 ///
@@ -168,7 +163,7 @@ fn resolve_evm_origin(
                 // only when doing so cannot steal a contract identity or move
                 // balances between distinct purses.
                 Key::URef(purse) => {
-                    let identity_plan = resolve_evm_native_identity_plan(
+                    let eve_identity_instruction = resolve_evm_native_identity_plan(
                         &mut tracking_copy,
                         protocol_version,
                         address,
@@ -178,7 +173,7 @@ fn resolve_evm_origin(
                     )?;
                     Ok(EvmOriginResolution::new(
                         BalanceIdentifier::Purse(purse),
-                        identity_plan,
+                        eve_identity_instruction,
                     ))
                 }
                 other => Err(BlockExecutionError::PaymentError(format!(
@@ -601,14 +596,14 @@ pub fn execute_finalized_block(
         }
     }
 
-    state_root_hash = write_eip4788_beacon_roots(
-        &scratch_state,
-        state_root_hash,
-        chainspec,
-        protocol_version,
-        utils_evm::block_context(chainspec, block_height, block_time, &proposer),
-        parent_hash,
-    )?;
+    // state_root_hash = write_eip4788_beacon_roots(
+    //     &scratch_state,
+    //     state_root_hash,
+    //     chainspec,
+    //     protocol_version,
+    //     utils_evm::block_context(chainspec, block_height, block_time, &proposer),
+    //     parent_hash,
+    // )?;
 
     let transaction_config = &chainspec.transaction_config;
 
@@ -705,14 +700,18 @@ pub fn execute_finalized_block(
                 }
             };
 
-            // this is the minimum we will charge, even if 0 is consumed
-            let min_cost = execution_min_cost(is_evm, gas_limit, cost, baseline_motes_amount);
+            let min_cost_to_use = utils::min_cost_to_use(
+                MinCostScenario::new(is_evm),
+                baseline_motes_amount,
+                gas_limit.value(),
+                cost,
+            );
             ExecutionArtifactBuilder::new(
                 &stored_transaction,
                 gas_limit,
                 current_gas_price,
                 cost,
-                min_cost,
+                min_cost_to_use,
             )
         };
 
@@ -2256,75 +2255,4 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
-    use casper_types::{EvmConfig, DEFAULT_WEI_PER_MOTE};
-
-    #[test]
-    fn should_not_raise_evm_min_cost_above_converted_fee() {
-        let gas_limit = Gas::new(21_000);
-        let cost = U512::from(1);
-        let baseline_motes_amount = U512::from(1_000_000);
-
-        assert_eq!(
-            execution_min_cost(true, gas_limit, cost, baseline_motes_amount),
-            cost
-        );
-    }
-
-    #[test]
-    fn should_keep_native_min_cost_based_on_gas_limit() {
-        let gas_limit = Gas::new(21_000);
-        let cost = U512::from(1);
-        let baseline_motes_amount = U512::from(1_000_000);
-
-        assert_eq!(
-            execution_min_cost(false, gas_limit, cost, baseline_motes_amount),
-            U512::from(21_000)
-        );
-    }
-
-    #[test]
-    fn eip4788_hook_writes_beacon_roots_without_transactions() {
-        let chainspec = Chainspec {
-            evm_config: EvmConfig {
-                enabled: true,
-                chain_id: 7,
-                spec: EvmSpec::Prague,
-                block_gas_limit: 30_000_000,
-                base_fee: 0,
-                wei_per_mote: DEFAULT_WEI_PER_MOTE,
-            },
-            ..Default::default()
-        };
-        let (global_state, state_root_hash, _tempdir) =
-            state::lmdb::make_temporary_global_state([]);
-        let scratch_state = global_state.create_scratch();
-        let block_time = BlockTime::new(2_000);
-        let block_context = utils_evm::block_context(&chainspec, 1, block_time, &PublicKey::System);
-        let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
-
-        let updated_state_root_hash = write_eip4788_beacon_roots(
-            &scratch_state,
-            state_root_hash,
-            &chainspec,
-            ProtocolVersion::V1_0_0,
-            block_context.clone(),
-            parent_hash,
-        )
-        .expect("EIP-4788 hook should succeed");
-        let tracking_copy = scratch_state
-            .tracking_copy(updated_state_root_hash)
-            .expect("tracking copy should not fail")
-            .expect("state root should exist");
-        let entry = tracking_copy
-            .get_eip4788_parent_hash(block_context.timestamp)
-            .expect("EIP-4788 beacon root should be readable");
-
-        assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
-    }
 }

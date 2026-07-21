@@ -43,7 +43,7 @@ use casper_storage::{
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
-    BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig, Transaction,
+    BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig, Transaction, U512,
 };
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -650,6 +650,44 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
     )
 }
 
+/// Extensible min cost calculation scenarios.
+#[derive(Default)]
+pub(super) enum MinCostScenario {
+    #[default]
+    StandardTransaction,
+    EvmTransaction,
+}
+
+impl MinCostScenario {
+    /// Ctor.
+    pub(super) fn new(is_evm: bool) -> Self {
+        if is_evm {
+            return MinCostScenario::EvmTransaction;
+        }
+
+        MinCostScenario::StandardTransaction
+    }
+}
+
+/// Determines what min_cost should be, considering all possible floors and scenarios.
+pub(super) fn min_cost_to_use(
+    scenario: MinCostScenario,
+    baseline_motes_amount: U512,
+    gas_limit_value: U512,
+    txn_cost: U512,
+) -> U512 {
+    let floor = gas_limit_value.min(baseline_motes_amount);
+
+    match scenario {
+        MinCostScenario::StandardTransaction => floor.max(txn_cost),
+        MinCostScenario::EvmTransaction => {
+            // EVM cost is already converted to motes. Do not let the raw EVM gas
+            // limit raise the minimum above the maximum converted fee.
+            floor.min(txn_cost)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1002,6 +1040,34 @@ mod tests {
                 u64::MAX,
             ),
             None,
+        );
+    }
+
+    #[test]
+    fn should_not_raise_evm_min_cost_above_converted_fee() {
+        let gas_limit = Gas::new(21_000);
+        let cost = U512::from(1);
+        let baseline_motes_amount = U512::from(1_000_000);
+
+        let scenario = MinCostScenario::new(true);
+
+        assert_eq!(
+            min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
+            cost
+        );
+    }
+
+    #[test]
+    fn should_keep_native_min_cost_based_on_gas_limit() {
+        let gas_limit = Gas::new(21_000);
+        let cost = U512::from(1);
+        let baseline_motes_amount = U512::from(1_000_000);
+
+        let scenario = MinCostScenario::new(false);
+
+        assert_eq!(
+            min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
+            U512::from(21_000)
         );
     }
 }
