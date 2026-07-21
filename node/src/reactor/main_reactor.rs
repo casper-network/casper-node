@@ -28,7 +28,7 @@ use tracing::{debug, error, info, warn};
 use casper_binary_port::{LastProgress, NetworkName, Uptime};
 use casper_storage::block_store::{types::Tip, BlockStoreProvider, DataReader};
 use casper_types::{
-    bytesrepr, Block, BlockHash, BlockHeader, BlockV2, Chainspec, ChainspecRawBytes, Digest, EraId,
+    bytesrepr, Block, BlockHash, BlockHeader, BlockV2, Chainspec, ChainspecRawBytes, EraId,
     FinalitySignature, FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
 };
 

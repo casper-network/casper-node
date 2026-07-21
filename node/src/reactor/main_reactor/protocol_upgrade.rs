@@ -22,6 +22,32 @@ pub(super) struct PendingImmediateSwitchBlock {
     timestamp: Timestamp,
 }
 
+impl PendingImmediateSwitchBlock {
+    pub(super) fn next_block_height(&self) -> u64 {
+        self.next_block_height
+    }
+
+    pub(super) fn post_state_hash(&self) -> Digest {
+        self.post_state_hash
+    }
+
+    pub(super) fn parent_hash(&self) -> BlockHash {
+        self.parent_hash
+    }
+
+    pub(super) fn parent_seed(&self) -> Digest {
+        self.parent_seed
+    }
+
+    pub(super) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    pub(super) fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+}
+
 /// If `tip_header` is a switch block that is the last block before the chainspec's
 /// activation point, synchronously commits the protocol upgrade against `contract_runtime`'s
 /// global state. Returns the info needed to later produce, sign, and gossip the resulting

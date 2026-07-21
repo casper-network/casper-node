@@ -445,10 +445,10 @@ impl MainReactor {
         self.upgrade_started_at = Some(Timestamp::now());
         self.contract_runtime
             .set_execution_pre_state(ExecutionPreState::new(
-                pending.next_block_height,
-                pending.post_state_hash,
-                pending.parent_hash,
-                pending.parent_seed,
+                pending.next_block_height(),
+                pending.post_state_hash(),
+                pending.parent_hash(),
+                pending.parent_seed(),
             ));
 
         let current_price = self.contract_runtime.current_gas_price();
@@ -462,9 +462,9 @@ impl MainReactor {
         let finalized_block = FinalizedBlock::new(
             payload,
             Some(InternalEraReport::default()),
-            pending.timestamp,
-            pending.era_id,
-            pending.next_block_height,
+            pending.timestamp(),
+            pending.era_id(),
+            pending.next_block_height(),
             PublicKey::System,
         );
 
