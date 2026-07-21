@@ -6,6 +6,7 @@ mod error;
 mod event;
 mod fetchers;
 mod memory_metrics;
+mod protocol_upgrade;
 mod utils;
 
 mod catch_up;
@@ -77,7 +78,11 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
+        main_reactor::{
+            fetchers::Fetchers,
+            protocol_upgrade::{commit_upgrade_if_needed, PendingImmediateSwitchBlock},
+            upgrade_shutdown::SignatureGossipTracker,
+        },
         EventQueueHandle, QueueKind,
     },
     types::{
@@ -217,19 +222,6 @@ pub(crate) struct MainReactor {
     /// switch block). If it takes longer than `upgrade_timeout` for that to happen, the reactor
     /// bails out fatally rather than waiting forever.
     upgrade_started_at: Option<Timestamp>,
-}
-
-/// The information needed to produce the deterministic "immediate switch block" following a
-/// protocol upgrade, once the node is ready to sign and gossip it.
-#[derive(Clone, DataSize, Debug)]
-pub(super) struct PendingImmediateSwitchBlock {
-    next_block_height: u64,
-    #[data_size(skip)]
-    post_state_hash: Digest,
-    parent_hash: BlockHash,
-    parent_seed: Digest,
-    era_id: EraId,
-    timestamp: Timestamp,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -1168,7 +1160,7 @@ impl reactor::Reactor for MainReactor {
             DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)
                 .map_err(storage::FatalStorageError::from)?
         };
-        let pending_immediate_switch_block = Self::commit_upgrade_if_needed(
+        let pending_immediate_switch_block = commit_upgrade_if_needed(
             &contract_runtime,
             &chainspec,
             &chainspec_raw_bytes,
