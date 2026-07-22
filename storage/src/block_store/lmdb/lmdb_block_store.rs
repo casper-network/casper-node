@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{btree_map, BTreeMap, BTreeSet, HashMap},
+    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -1242,6 +1243,22 @@ where
         DataReader::<BlockHeight, BlockHeader>::read(self, height)
     }
 
+    /// Returns the first height in `range` without a stored block header.
+    ///
+    /// Header existence is checked through the block-height index without deserializing the
+    /// header.
+    pub fn first_missing_block_header_height(
+        &self,
+        range: Range<u64>,
+    ) -> Result<Option<u64>, BlockStoreError> {
+        for height in range {
+            if !DataReader::<BlockHeight, BlockHeader>::exists(self, height)? {
+                return Ok(Some(height));
+            }
+        }
+        Ok(None)
+    }
+
     /// Reads a switch block by era ID.
     pub fn read_switch_block_by_era(
         &self,
@@ -2261,6 +2278,60 @@ mod tests {
         assert!(
             !DataReader::<BlockHash, ApprovalsHashes>::exists(&ro_txn, header.block_hash())
                 .expect("should check approvals hashes existence")
+        );
+    }
+
+    #[test]
+    fn finds_first_missing_block_header_height() {
+        let rng = &mut TestRng::new();
+        let mut store =
+            LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create store");
+
+        let secret_key = SecretKey::random(rng);
+        let proposer = PublicKey::from(&secret_key);
+
+        {
+            let mut rw_txn = store.checkout_rw().expect("should checkout rw");
+            for height in [10, 11, 13, 14] {
+                let header = header_at_height(rng, height, &proposer);
+                rw_txn
+                    .write_block_header(&header)
+                    .expect("should write header");
+            }
+            rw_txn.commit().expect("should commit");
+        }
+
+        let ro_txn = store.checkout_ro().expect("should checkout ro");
+
+        assert_eq!(
+            ro_txn
+                .first_missing_block_header_height(10..12)
+                .expect("should check complete range"),
+            None
+        );
+        assert_eq!(
+            ro_txn
+                .first_missing_block_header_height(9..12)
+                .expect("should find missing first height"),
+            Some(9)
+        );
+        assert_eq!(
+            ro_txn
+                .first_missing_block_header_height(10..14)
+                .expect("should find missing middle height"),
+            Some(12)
+        );
+        assert_eq!(
+            ro_txn
+                .first_missing_block_header_height(13..16)
+                .expect("should find missing last height"),
+            Some(15)
+        );
+        assert_eq!(
+            ro_txn
+                .first_missing_block_header_height(10..10)
+                .expect("empty range should be complete"),
+            None
         );
     }
 

@@ -1,3 +1,4 @@
+use casper_executor_evm::BLOCK_HASH_HISTORY;
 use casper_executor_wasm::ExecutorV2;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -44,6 +45,10 @@ const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
 /// Semaphore enforcing maximum number of parallel resource intensive tasks.
 static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
     Lazy::new(|| tokio::sync::Semaphore::new(MAX_PARALLEL_INTENSIVE_TASKS));
+
+fn block_hash_history_range(block_height: u64) -> Range<u64> {
+    block_height.saturating_sub(BLOCK_HASH_HISTORY)..block_height
+}
 
 /// Asynchronously runs a resource intensive task.
 /// At most `MAX_PARALLEL_INTENSIVE_TASKS` are being run in parallel at any time.
@@ -215,6 +220,49 @@ pub(super) async fn exec_and_check_next<REv>(
         + Send,
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
+
+    if executable_block
+        .transactions
+        .iter()
+        .any(|transaction| transaction.as_evm().is_some())
+    {
+        let block_height = executable_block.height;
+        let block_history_range = block_hash_history_range(block_height);
+        let block_history_start = block_history_range.start;
+        let first_missing_block_header_height = {
+            // Keep the read transaction out of the async announcement and fatal paths below.
+            match data_access_layer.block_store.checkout_ro() {
+                Ok(txn) => txn.first_missing_block_header_height(block_history_range),
+                Err(error) => Err(error),
+            }
+        };
+
+        match first_missing_block_header_height {
+            Ok(Some(missing_block_height)) => {
+                info!(
+                    %block_height,
+                    %missing_block_height,
+                    %block_history_start,
+                    "ContractRuntime: not enough block history to execute block containing EVM \
+                    transactions. Abandoning the execution."
+                );
+                effect_builder
+                    .announce_not_executing_block(block_height)
+                    .await;
+                return;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return fatal!(
+                    effect_builder,
+                    "failed to check EVM block hash history for block {}: {}",
+                    block_height,
+                    error
+                )
+                .await;
+            }
+        }
+    }
 
     // FIRST determine if we are aware of the last switch block header
     let era_id = executable_block.era_id;
@@ -524,6 +572,14 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn block_hash_history_ranges_cover_boundary_heights() {
+        assert_eq!(block_hash_history_range(0), 0..0);
+        assert_eq!(block_hash_history_range(1), 0..1);
+        assert_eq!(block_hash_history_range(256), 0..256);
+        assert_eq!(block_hash_history_range(257), 1..257);
+    }
 
     #[test]
     fn calculation_is_safe_with_invalid_input() {

@@ -613,6 +613,11 @@ boundary; no recent-hash map is preloaded by contract runtime or binary port.
 
 `revm` enforces the current/future-block and 256-block history rules. A missing
 indexed header returns zero, while a block-store read error fails execution.
+Before contract runtime executes a finalized block containing an EVM
+transaction, it verifies in one block-store read transaction that every header
+in the applicable, up-to-256-block window is indexed. If any required header is
+missing, the block is not executed and the node transitions to catch-up.
+Speculative EVM execution is not subject to this finalized-block preflight.
 
 ## Chain ID
 

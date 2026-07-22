@@ -9,10 +9,10 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
-    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
-    PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
+    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, Chainspec,
+    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction, ExecutableDeployItem,
+    PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
 };
 
 use super::*;
@@ -61,6 +61,8 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
+    #[from]
+    NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement),
 }
 
 impl ReactorEvent for Event {
@@ -88,8 +90,6 @@ impl Unhandled for FatalAnnouncement {}
 impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
-
-impl Unhandled for NonExecutableBlockAnnouncement {}
 
 struct TestConfig {
     config: Config,
@@ -200,6 +200,10 @@ impl reactor::Reactor for Reactor {
                 info!("{announcement}");
                 Effects::new()
             }
+            Event::NonExecutableBlockAnnouncement(announcement) => {
+                info!("{announcement}");
+                Effects::new()
+            }
         }
     }
 }
@@ -228,6 +232,143 @@ fn execution_started(event: &Event) -> bool {
 /// A function to be used a condition check, indicating that execution has completed.
 fn execution_completed(event: &Event) -> bool {
     matches!(event, Event::MetaBlockAnnouncement(_))
+}
+
+#[tokio::test]
+async fn block_hash_history_guard_only_applies_to_evm_blocks() {
+    testing::init_logging();
+
+    let config = TestConfig {
+        config: Config::default(),
+        fixture_name: None,
+    };
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let chainspec = Arc::new(chainspec);
+    let chainspec_raw_bytes = Arc::new(chainspec_raw_bytes);
+
+    let mut rng = crate::new_rng();
+    let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
+        config,
+        Arc::clone(&chainspec),
+        Arc::clone(&chainspec_raw_bytes),
+        &mut rng,
+    )
+    .await
+    .unwrap();
+
+    let post_commit_genesis_state_hash = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .commit_genesis(chainspec.as_ref(), chainspec_raw_bytes.as_ref())
+        .as_legacy()
+        .expect("should commit genesis")
+        .0;
+    // Start at height 1 without storing a block header at height 0.
+    runner
+        .reactor_mut()
+        .inner_mut()
+        .contract_runtime
+        .set_execution_pre_state(ExecutionPreState::new(
+            1,
+            post_commit_genesis_state_hash,
+            BlockHash::default(),
+            Digest::default(),
+        ));
+
+    // A non-EVM block bypasses the history preflight and executes.
+    let non_evm_block = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(0),
+            1,
+            PublicKey::System,
+        ),
+        vec![],
+    );
+    runner
+        .process_injected_effects(execute_block(non_evm_block))
+        .await;
+    runner
+        .crank_until(&mut rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    let initial_pre_state = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+    assert_eq!(initial_pre_state.next_block_height(), 2);
+
+    // The EVM block at height 2 requires headers in 0..2, so it must be refused.
+    let transaction = Transaction::from_evm(EvmTransaction::new_unsigned_call(
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+        1,
+        evm::Address::new([1; 20]),
+        Some(evm::Address::new([2; 20])),
+        U256::zero(),
+        vec![],
+        21_000,
+        1,
+    ));
+    let evm_block = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(0),
+            2,
+            PublicKey::System,
+        ),
+        vec![transaction],
+    );
+
+    runner
+        .process_injected_effects(execute_block(evm_block))
+        .await;
+
+    runner
+        .crank_until(
+            &mut rng,
+            |event| {
+                assert!(
+                    !matches!(event, Event::MetaBlockAnnouncement(_)),
+                    "block with missing EVM block hash history should not be executed"
+                );
+                matches!(
+                    event,
+                    Event::NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement(2))
+                )
+            },
+            TEST_TIMEOUT,
+        )
+        .await;
+
+    let actual_pre_state = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+    assert_eq!(
+        actual_pre_state.next_block_height(),
+        initial_pre_state.next_block_height()
+    );
+    assert_eq!(
+        actual_pre_state.pre_state_root_hash(),
+        initial_pre_state.pre_state_root_hash()
+    );
+    assert_eq!(
+        actual_pre_state.parent_hash(),
+        initial_pre_state.parent_hash()
+    );
+    assert_eq!(
+        actual_pre_state.parent_seed(),
+        initial_pre_state.parent_seed()
+    );
 }
 
 #[tokio::test]
