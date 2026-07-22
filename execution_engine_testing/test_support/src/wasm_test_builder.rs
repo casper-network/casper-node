@@ -149,8 +149,6 @@ pub struct WasmTestBuilder<S> {
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
     temp_dir: Option<Rc<TempDir>>,
-    /// Temporary directory backing the block store held by the data access layer.
-    block_store_temp_dir: Rc<TempDir>,
 }
 
 impl<S: ScratchProvider> WasmTestBuilder<S> {
@@ -223,7 +221,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             scratch_global_state: None,
             global_state_dir: self.global_state_dir.clone(),
             temp_dir: self.temp_dir.clone(),
-            block_store_temp_dir: Rc::clone(&self.block_store_temp_dir),
         }
     }
 }
@@ -255,13 +252,6 @@ impl Default for LmdbWasmTestBuilder {
 }
 
 impl LmdbWasmTestBuilder {
-    fn new_temporary_block_store() -> (LmdbBlockStore, Rc<TempDir>) {
-        let temp_dir = Rc::new(tempfile::tempdir().expect("should create block store tempdir"));
-        let block_store = LmdbBlockStore::new(temp_dir.path(), DEFAULT_BLOCK_STORE_SIZE)
-            .expect("should create block store");
-        (block_store, temp_dir)
-    }
-
     /// Upgrades the execution engine using the scratch trie.
     pub fn upgrade_using_scratch(
         &mut self,
@@ -330,7 +320,8 @@ impl LmdbWasmTestBuilder {
         )
         .expect("should create LmdbGlobalState");
 
-        let (block_store, block_store_temp_dir) = Self::new_temporary_block_store();
+        let block_store = LmdbBlockStore::new_temporary(DEFAULT_BLOCK_STORE_SIZE)
+            .expect("should create block store");
 
         let data_access_layer = Arc::new(DataAccessLayer {
             block_store,
@@ -357,7 +348,6 @@ impl LmdbWasmTestBuilder {
             scratch_global_state: None,
             global_state_dir: Some(global_state_dir),
             temp_dir: None,
-            block_store_temp_dir,
         }
     }
 
@@ -413,7 +403,8 @@ impl LmdbWasmTestBuilder {
             }
         };
 
-        let (block_store, block_store_temp_dir) = Self::new_temporary_block_store();
+        let block_store = LmdbBlockStore::new_temporary(DEFAULT_BLOCK_STORE_SIZE)
+            .expect("should create block store");
 
         let data_access_layer = Arc::new(DataAccessLayer {
             block_store,
@@ -442,7 +433,6 @@ impl LmdbWasmTestBuilder {
             scratch_global_state: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
-            block_store_temp_dir,
         };
 
         builder

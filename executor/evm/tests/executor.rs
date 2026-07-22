@@ -13,7 +13,7 @@ use casper_executor_evm::{
     ExecutionStatus, EMPTY_CODE_HASH,
 };
 use casper_storage::{
-    block_store::{lmdb::LmdbBlockStore, BlockStoreProvider, BlockStoreTransaction, DataWriter},
+    block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
     data_access_layer::{DataAccessLayer, GenesisRequest, GenesisResult},
     eip4788,
     global_state::{
@@ -94,9 +94,8 @@ fn tracking_copy() -> (
         .checkout(post_state_hash)
         .expect("checkout should not fail")
         .expect("post-genesis root should exist");
-    let block_store_tempdir = tempfile::tempdir().expect("should create block store tempdir");
-    let block_store = LmdbBlockStore::new(block_store_tempdir.path(), 64 * 1024 * 1024)
-        .expect("should create block store");
+    let block_store =
+        LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create block store");
     let data_access_layer = DataAccessLayer {
         block_store,
         state: global_state,
@@ -106,7 +105,7 @@ fn tracking_copy() -> (
     (
         TrackingCopy::new(reader, 5, false),
         data_access_layer,
-        (tempdir, block_store_tempdir),
+        tempdir,
     )
 }
 
@@ -976,7 +975,8 @@ fn blockhash_reads_indexed_header_from_data_access_layer() {
         let mut transaction = block_store
             .checkout_rw()
             .expect("should check out write transaction");
-        DataWriter::<BlockHash, BlockHeader>::write(&mut transaction, &header)
+        transaction
+            .write_block_header(&header)
             .expect("should write block header");
         transaction.commit().expect("should commit block header");
     }

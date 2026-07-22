@@ -17,7 +17,7 @@ use smallvec::smallvec;
 
 use casper_storage::block_store::{
     types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers},
-    BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
+    BlockStoreTransaction,
 };
 use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2},
@@ -1510,7 +1510,7 @@ fn should_provide_transfers_if_not_stored() {
 
     // Check the empty collection has been stored.
     let reader = storage.block_store.checkout_rw().unwrap();
-    let maybe_transfers: Option<Vec<Transfer>> = reader.read(block_hash).unwrap();
+    let maybe_transfers = reader.read_transfers(block_hash).unwrap();
     assert_eq!(Some(vec![]), maybe_transfers);
 }
 
@@ -1555,7 +1555,10 @@ fn should_provide_transfers_after_emptied() {
         block_hash,
         transfers: Vec::<Transfer>::new(),
     };
-    assert_eq!(writer.write(&empty_transfers).unwrap(), block_hash);
+    assert_eq!(
+        writer.write_transfers(&empty_transfers).unwrap(),
+        block_hash
+    );
     writer.commit().unwrap();
 
     // Check the correct value is returned.
@@ -1566,7 +1569,7 @@ fn should_provide_transfers_after_emptied() {
 
     // Check the correct value has been stored.
     let reader = storage.block_store.checkout_rw().unwrap();
-    let maybe_transfers: Option<Vec<Transfer>> = reader.read(block_hash).unwrap();
+    let maybe_transfers = reader.read_transfers(block_hash).unwrap();
     assert_eq!(Some(vec![transfer]), maybe_transfers);
 }
 
@@ -2405,7 +2408,7 @@ fn store_and_purge_signatures() {
 
     // Purging for block_1 should leave sigs for block_2 and block_3 intact.
     let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_1.hash());
+    let _ = writer.delete_block_signatures(*block_1.hash());
     writer.commit().unwrap();
     assert_signatures(&storage, *block_1.hash(), vec![]);
     assert_signatures(
@@ -2422,7 +2425,7 @@ fn store_and_purge_signatures() {
 
     // Purging for block_4 (which has no signatures) should not modify state.
     let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_4.hash());
+    let _ = writer.delete_block_signatures(*block_4.hash());
     writer.commit().unwrap();
     assert_signatures(&storage, *block_1.hash(), vec![]);
     assert_signatures(
@@ -2439,10 +2442,10 @@ fn store_and_purge_signatures() {
 
     // Purging for all blocks should leave no signatures.
     let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_1.hash());
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_2.hash());
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_3.hash());
-    let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_4.hash());
+    let _ = writer.delete_block_signatures(*block_1.hash());
+    let _ = writer.delete_block_signatures(*block_2.hash());
+    let _ = writer.delete_block_signatures(*block_3.hash());
+    let _ = writer.delete_block_signatures(*block_4.hash());
     writer.commit().unwrap();
 
     assert_signatures(&storage, *block_1.hash(), vec![]);

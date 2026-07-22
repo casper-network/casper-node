@@ -6,6 +6,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use tempfile::TempDir;
 use tracing::{debug, error, info};
 
 use casper_types::{
@@ -95,6 +96,12 @@ pub struct LmdbBlockStore {
     /// it.
     #[data_size(skip)]
     pub(super) transaction_hash_index_db: Database,
+    /// Keeps a temporary storage directory alive for stores created by [`Self::new_temporary`].
+    ///
+    /// The `Arc` ensures shallow-cloned store handles retain the directory until the last handle
+    /// is dropped.
+    #[data_size(skip)]
+    temporary_directory: Option<Arc<TempDir>>,
 }
 
 impl LmdbBlockStore {
@@ -154,7 +161,29 @@ impl LmdbBlockStore {
             block_height_index_db,
             switch_block_era_id_index_db,
             transaction_hash_index_db,
+            temporary_directory: None,
         })
+    }
+
+    /// Creates a block store which owns its temporary directory.
+    pub fn new_temporary(total_size: usize) -> Result<Self, BlockStoreError> {
+        let temp_dir = tempfile::tempdir()
+            .map_err(|error| BlockStoreError::InternalStorage(Box::new(error)))?;
+        let mut block_store = Self::new(temp_dir.path(), total_size)?;
+        block_store.temporary_directory = Some(Arc::new(temp_dir));
+        Ok(block_store)
+    }
+
+    /// Checks out a read-only transaction.
+    pub fn checkout_ro(&self) -> Result<LmdbBlockStoreReadTransaction<'_>, BlockStoreError> {
+        <Self as BlockStoreProvider>::checkout_ro(self)
+    }
+
+    /// Checks out a read-write transaction.
+    pub fn checkout_rw(
+        &mut self,
+    ) -> Result<LmdbBlockStoreReadWriteTransaction<'_>, BlockStoreError> {
+        <Self as BlockStoreProvider>::checkout_rw(self)
     }
 
     /// Initializes the disk-backed indexes. This operation can be time
@@ -703,7 +732,7 @@ impl LmdbBlockStore {
         Ok(block_hash)
     }
 
-    pub(crate) fn write_block_header(
+    pub(crate) fn write_block_header_raw(
         &self,
         txn: &mut RwTransaction,
         block_header: &BlockHeader,
@@ -769,10 +798,10 @@ impl LmdbBlockStore {
         for (transaction_hash, execution_result) in execution_results.into_iter() {
             transfers.extend(successful_transfers(&execution_result));
 
-            let maybe_stored_execution_result: Option<ExecutionResult> = self
+            let maybe_stored_execution_result = self
                 .checkout_ro()
                 .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-                .read(transaction_hash)?;
+                .read_execution_result(transaction_hash)?;
 
             // If we have a previous execution result, we can continue if it is the same.
             match maybe_stored_execution_result {
@@ -934,6 +963,7 @@ impl BlockStoreProvider for LmdbBlockStore {
     }
 }
 
+/// A transaction checked out from an [`LmdbBlockStore`].
 pub struct LmdbBlockStoreTransaction<'t, T>
 where
     T: LmdbTransaction,
@@ -941,6 +971,12 @@ where
     txn: T,
     block_store: &'t LmdbBlockStore,
 }
+
+/// A read-only block store transaction.
+pub type LmdbBlockStoreReadTransaction<'t> = LmdbBlockStoreTransaction<'t, RoTransaction<'t>>;
+
+/// A read-write block store transaction.
+pub type LmdbBlockStoreReadWriteTransaction<'t> = LmdbBlockStoreTransaction<'t, RwTransaction<'t>>;
 
 impl<T> BlockStoreTransaction for LmdbBlockStoreTransaction<'_, T>
 where
@@ -992,7 +1028,7 @@ where
     }
 
     fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
-        self.block_store.block_header_exists(&self.txn, &key)
+        self.block_store.approvals_hashes_exist(&self.txn, &key)
     }
 }
 
@@ -1111,6 +1147,149 @@ impl<T> LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
+    /// Reads a block by its hash.
+    pub fn read_block_by_hash(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<Block>, BlockStoreError> {
+        DataReader::<BlockHash, Block>::read(self, block_hash)
+    }
+
+    /// Returns whether a block exists at the given hash.
+    pub fn block_exists_by_hash(&self, block_hash: BlockHash) -> Result<bool, BlockStoreError> {
+        DataReader::<BlockHash, Block>::exists(self, block_hash)
+    }
+
+    /// Reads a block header by its hash.
+    pub fn read_block_header_by_hash(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<BlockHeader>, BlockStoreError> {
+        DataReader::<BlockHash, BlockHeader>::read(self, block_hash)
+    }
+
+    /// Reads approvals hashes by block hash.
+    pub fn read_approvals_hashes_by_hash(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        DataReader::<BlockHash, ApprovalsHashes>::read(self, block_hash)
+    }
+
+    /// Reads block signatures by block hash.
+    pub fn read_block_signatures_by_hash(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        DataReader::<BlockHash, BlockSignatures>::read(self, block_hash)
+    }
+
+    /// Reads a transaction by its hash.
+    pub fn read_transaction(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<Transaction>, BlockStoreError> {
+        DataReader::<TransactionHash, Transaction>::read(self, transaction_hash)
+    }
+
+    /// Returns whether a transaction exists at the given hash.
+    pub fn transaction_exists(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<bool, BlockStoreError> {
+        DataReader::<TransactionHash, Transaction>::exists(self, transaction_hash)
+    }
+
+    /// Reads finalized approvals by transaction hash.
+    pub fn read_finalized_approvals(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
+        DataReader::<TransactionHash, BTreeSet<Approval>>::read(self, transaction_hash)
+    }
+
+    /// Reads an execution result by transaction hash.
+    pub fn read_execution_result(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<ExecutionResult>, BlockStoreError> {
+        DataReader::<TransactionHash, ExecutionResult>::read(self, transaction_hash)
+    }
+
+    /// Reads transfers by block hash.
+    pub fn read_transfers(
+        &self,
+        block_hash: BlockHash,
+    ) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
+        DataReader::<BlockHash, Vec<Transfer>>::read(self, block_hash)
+    }
+
+    /// Reads a state-store value.
+    pub fn read_state_store(&self, key: StateStoreKey) -> Result<Option<Vec<u8>>, BlockStoreError> {
+        DataReader::<StateStoreKey, Vec<u8>>::read(self, key)
+    }
+
+    /// Reads a block by height.
+    pub fn read_block_at_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
+        DataReader::<BlockHeight, Block>::read(self, height)
+    }
+
+    /// Reads a block header by height.
+    pub fn read_block_header_at_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, BlockStoreError> {
+        DataReader::<BlockHeight, BlockHeader>::read(self, height)
+    }
+
+    /// Reads a switch block by era ID.
+    pub fn read_switch_block_by_era(
+        &self,
+        era_id: EraId,
+    ) -> Result<Option<Block>, BlockStoreError> {
+        DataReader::<EraId, Block>::read(self, era_id)
+    }
+
+    /// Reads a switch block header by era ID.
+    pub fn read_block_header_by_era(
+        &self,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, BlockStoreError> {
+        DataReader::<EraId, BlockHeader>::read(self, era_id)
+    }
+
+    /// Reads the highest block header.
+    pub fn read_tip_block_header(&self) -> Result<Option<BlockHeader>, BlockStoreError> {
+        DataReader::<Tip, BlockHeader>::read(self, Tip)
+    }
+
+    /// Reads the highest block.
+    pub fn read_tip_block(&self) -> Result<Option<Block>, BlockStoreError> {
+        DataReader::<Tip, Block>::read(self, Tip)
+    }
+
+    /// Reads the latest switch block header.
+    pub fn read_latest_switch_block_header(&self) -> Result<Option<BlockHeader>, BlockStoreError> {
+        DataReader::<LatestSwitchBlock, BlockHeader>::read(self, LatestSwitchBlock)
+    }
+
+    /// Reads the block information indexed by transaction hash.
+    pub fn read_block_info_by_transaction_hash(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<BlockHashHeightAndEra>, BlockStoreError> {
+        DataReader::<TransactionHash, BlockHashHeightAndEra>::read(self, transaction_hash)
+    }
+
+    /// Reads raw bytes from a database table.
+    pub fn read_raw(
+        &self,
+        table_id: DbTableId,
+        key: Vec<u8>,
+    ) -> Result<Option<DbRawBytesSpec>, BlockStoreError> {
+        DataReader::<(DbTableId, Vec<u8>), DbRawBytesSpec>::read(self, (table_id, key))
+    }
+
     fn block_hash_from_index(
         &self,
         index: LmdbBlockStoreIndex,
@@ -1215,7 +1394,7 @@ where
         let index = LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(era_id));
         match self.block_hash_from_index(index)? {
             Some(block_hash) => {
-                let maybe_header: Option<BlockHeader> = self.read(block_hash)?;
+                let maybe_header = self.read_block_header_by_hash(block_hash)?;
                 Ok(maybe_header.map(|header| header.height()))
             }
             None => Ok(None),
@@ -1472,11 +1651,109 @@ where
     }
 
     fn exists(&self, key: (DbTableId, Vec<u8>)) -> Result<bool, BlockStoreError> {
-        self.read(key).map(|res| res.is_some())
+        self.read_raw(key.0, key.1).map(|res| res.is_some())
     }
 }
 
 impl<'t> LmdbBlockStoreTransaction<'t, RwTransaction<'t>> {
+    /// Writes a block and its indexes.
+    pub fn write_block(&mut self, block: &Block) -> Result<BlockHash, BlockStoreError> {
+        DataWriter::<BlockHash, Block>::write(self, block)
+    }
+
+    /// Deletes a block and its indexes.
+    pub fn delete_block(&mut self, block_hash: BlockHash) -> Result<(), BlockStoreError> {
+        DataWriter::<BlockHash, Block>::delete(self, block_hash)
+    }
+
+    /// Deletes a block body by its hash.
+    pub fn delete_block_body(&mut self, body_hash: Digest) -> Result<(), BlockStoreError> {
+        DataWriter::<Digest, BlockBody>::delete(self, body_hash)
+    }
+
+    /// Writes approvals hashes.
+    pub fn write_approvals_hashes(
+        &mut self,
+        approvals_hashes: &ApprovalsHashes,
+    ) -> Result<BlockHash, BlockStoreError> {
+        DataWriter::<BlockHash, ApprovalsHashes>::write(self, approvals_hashes)
+    }
+
+    /// Writes block signatures.
+    pub fn write_block_signatures(
+        &mut self,
+        block_signatures: &BlockSignatures,
+    ) -> Result<BlockHash, BlockStoreError> {
+        DataWriter::<BlockHash, BlockSignatures>::write(self, block_signatures)
+    }
+
+    /// Deletes block signatures by block hash.
+    pub fn delete_block_signatures(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<(), BlockStoreError> {
+        DataWriter::<BlockHash, BlockSignatures>::delete(self, block_hash)
+    }
+
+    /// Writes a block header and its indexes.
+    pub fn write_block_header(
+        &mut self,
+        block_header: &BlockHeader,
+    ) -> Result<BlockHash, BlockStoreError> {
+        DataWriter::<BlockHash, BlockHeader>::write(self, block_header)
+    }
+
+    /// Writes a transaction.
+    pub fn write_transaction(
+        &mut self,
+        transaction: &Transaction,
+    ) -> Result<TransactionHash, BlockStoreError> {
+        DataWriter::<TransactionHash, Transaction>::write(self, transaction)
+    }
+
+    /// Writes the transfers for a block.
+    pub fn write_transfers(
+        &mut self,
+        block_transfers: &BlockTransfers,
+    ) -> Result<BlockHash, BlockStoreError> {
+        DataWriter::<BlockHash, BlockTransfers>::write(self, block_transfers)
+    }
+
+    /// Writes a state-store value.
+    pub fn write_state_store(
+        &mut self,
+        state_store: &StateStore,
+    ) -> Result<Cow<'static, [u8]>, BlockStoreError> {
+        DataWriter::<Cow<'static, [u8]>, StateStore>::write(self, state_store)
+    }
+
+    /// Writes finalized approvals for a transaction.
+    pub fn write_finalized_approvals(
+        &mut self,
+        finalized_approvals: &TransactionFinalizedApprovals,
+    ) -> Result<TransactionHash, BlockStoreError> {
+        DataWriter::<TransactionHash, TransactionFinalizedApprovals>::write(
+            self,
+            finalized_approvals,
+        )
+    }
+
+    /// Writes the execution results and transaction index entries for a block.
+    pub fn write_execution_results(
+        &mut self,
+        execution_results: &BlockExecutionResults,
+    ) -> Result<BlockHashHeightAndEra, BlockStoreError> {
+        DataWriter::<BlockHashHeightAndEra, BlockExecutionResults>::write(self, execution_results)
+    }
+
+    /// Deletes execution results for a block.
+    pub fn delete_execution_results(
+        &mut self,
+        block_info: BlockHashHeightAndEra,
+    ) -> Result<(), BlockStoreError> {
+        DataWriter::<BlockHashHeightAndEra, BlockExecutionResults>::delete(self, block_info)
+    }
+
     /// Check if the block height index can be updated.
     fn should_update_block_height_index(
         &self,
@@ -1723,7 +2000,9 @@ impl<'t> DataWriter<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'t, Rw
             self.should_update_block_height_index(block_height, &block_hash)?;
         let update_switch_block_index = self.should_update_switch_block_index(data)?;
 
-        let key = self.block_store.write_block_header(&mut self.txn, data)?;
+        let key = self
+            .block_store
+            .write_block_header_raw(&mut self.txn, data)?;
 
         if update_height_index {
             put_by_be_u64_key(
@@ -1943,6 +2222,49 @@ mod tests {
     }
 
     #[test]
+    fn cloned_temporary_store_keeps_its_directory_alive() {
+        let store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create store");
+        let storage_path = store.root.clone();
+        let cloned_store = store.clone();
+
+        drop(store);
+
+        assert!(storage_path.exists());
+        cloned_store
+            .checkout_ro()
+            .expect("clone should retain the temporary directory");
+    }
+
+    #[test]
+    fn approvals_hashes_existence_does_not_follow_header_existence() {
+        let rng = &mut TestRng::new();
+        let mut store =
+            LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create store");
+
+        let secret_key = SecretKey::random(rng);
+        let proposer = PublicKey::from(&secret_key);
+        let header = header_at_height(rng, 0, &proposer);
+
+        {
+            let mut rw_txn = store.checkout_rw().expect("should checkout rw");
+            rw_txn
+                .write_block_header(&header)
+                .expect("should write header");
+            rw_txn.commit().expect("should commit");
+        }
+
+        let ro_txn = store.checkout_ro().expect("should checkout ro");
+        assert!(
+            DataReader::<BlockHash, BlockHeader>::exists(&ro_txn, header.block_hash())
+                .expect("should check header existence")
+        );
+        assert!(
+            !DataReader::<BlockHash, ApprovalsHashes>::exists(&ro_txn, header.block_hash())
+                .expect("should check approvals hashes existence")
+        );
+    }
+
+    #[test]
     fn reindex_rebuilds_disk_backed_indexes_via_append() {
         let rng = &mut TestRng::new();
         let tempdir = TempDir::new().expect("should create tempdir");
@@ -1957,7 +2279,8 @@ mod tests {
             let mut rw_txn = store.checkout_rw().expect("should checkout rw");
             for height in 0..HEADER_COUNT {
                 let header = header_at_height(rng, height, &proposer);
-                let _ = DataWriter::<BlockHash, BlockHeader>::write(&mut rw_txn, &header)
+                let _ = rw_txn
+                    .write_block_header(&header)
                     .expect("should write header");
                 headers.push(header);
             }
@@ -1972,7 +2295,9 @@ mod tests {
         // little-endian single-byte boundary (e.g. 255 -> 256) to catch ordering bugs.
         for &height in &[0u64, 1, 254, 255, 256, 257, HEADER_COUNT - 1] {
             let expected_hash = headers[height as usize].block_hash();
-            let actual: Option<BlockHeader> = ro_txn.read(height).expect("read by height");
+            let actual = ro_txn
+                .read_block_header_at_height(height)
+                .expect("read by height");
             assert_eq!(
                 actual.expect("header should exist").block_hash(),
                 expected_hash,
@@ -1981,7 +2306,7 @@ mod tests {
         }
 
         // Tip should be the highest height.
-        let tip: Option<BlockHeader> = ro_txn.read(Tip).expect("read tip");
+        let tip = ro_txn.read_tip_block_header().expect("read tip");
         assert_eq!(
             tip.expect("tip should exist").height(),
             HEADER_COUNT - 1,
@@ -1997,7 +2322,9 @@ mod tests {
             );
             let era_id = EraId::new(height / 10);
             let expected_hash = headers[height as usize].block_hash();
-            let actual: Option<BlockHeader> = ro_txn.read(era_id).expect("read by era id");
+            let actual = ro_txn
+                .read_block_header_by_era(era_id)
+                .expect("read by era id");
             assert_eq!(
                 actual
                     .expect("switch block header should exist")
@@ -2015,9 +2342,9 @@ mod tests {
             .map(|header| header.height())
             .max()
             .expect("should have at least one switch block");
-        let latest_switch: Option<BlockHeader> =
-            DataReader::<LatestSwitchBlock, BlockHeader>::read(&ro_txn, LatestSwitchBlock)
-                .expect("read latest switch block");
+        let latest_switch = ro_txn
+            .read_latest_switch_block_header()
+            .expect("read latest switch block");
         assert_eq!(
             latest_switch
                 .expect("latest switch block should exist")
@@ -2038,13 +2365,13 @@ mod tests {
         let proposer = PublicKey::from(&secret_key);
 
         // Write a header directly via a raw transaction, bypassing the index-maintaining
-        // `DataWriter` impl -- simulating a migration from a binary version that didn't yet
+        // transaction method. This simulates a migration from a binary version that didn't yet
         // maintain these disk-backed indexes.
         let header = header_at_height(rng, 0, &proposer);
         {
             let mut txn = store.env.begin_rw_txn().expect("should begin rw txn");
             let _ = store
-                .write_block_header(&mut txn, &header)
+                .write_block_header_raw(&mut txn, &header)
                 .expect("should write header");
             txn.commit().expect("should commit");
         }
@@ -2052,14 +2379,18 @@ mod tests {
         // The index hasn't been told about this header yet.
         {
             let ro_txn = store.checkout_ro().expect("should checkout ro");
-            let by_height: Option<BlockHeader> = ro_txn.read(0u64).expect("read by height");
+            let by_height = ro_txn
+                .read_block_header_at_height(0)
+                .expect("read by height");
             assert!(by_height.is_none(), "index should not exist yet");
         }
 
         store.init().expect("init should succeed");
 
         let ro_txn = store.checkout_ro().expect("should checkout ro");
-        let by_height: Option<BlockHeader> = ro_txn.read(0u64).expect("read by height");
+        let by_height = ro_txn
+            .read_block_header_at_height(0)
+            .expect("read by height");
         assert_eq!(
             by_height
                 .expect("header should be indexed after init")
@@ -2086,7 +2417,8 @@ mod tests {
         {
             let mut rw_txn = store.checkout_rw().expect("should checkout rw");
             for header in &headers {
-                let _ = DataWriter::<BlockHash, BlockHeader>::write(&mut rw_txn, header)
+                let _ = rw_txn
+                    .write_block_header(header)
                     .expect("should write header");
             }
             rw_txn.commit().expect("should commit");
@@ -2106,12 +2438,16 @@ mod tests {
         // Since the index wasn't empty (height 1's entry is still present), `init` must have
         // skipped rebuilding it -- so the deleted entry for height 0 stays missing.
         let ro_txn = store.checkout_ro().expect("should checkout ro");
-        let by_height_0: Option<BlockHeader> = ro_txn.read(0u64).expect("read by height");
+        let by_height_0 = ro_txn
+            .read_block_header_at_height(0)
+            .expect("read by height");
         assert!(
             by_height_0.is_none(),
             "init should not have rebuilt an already-populated index"
         );
-        let by_height_1: Option<BlockHeader> = ro_txn.read(1u64).expect("read by height");
+        let by_height_1 = ro_txn
+            .read_block_header_at_height(1)
+            .expect("read by height");
         assert_eq!(
             by_height_1
                 .expect("height 1 should still be indexed")

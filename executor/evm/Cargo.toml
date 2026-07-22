@@ -19,4 +19,3 @@ thiserror = "2"
 alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
 alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak"] }
 once_cell = "1"
-tempfile = "3.4.0"

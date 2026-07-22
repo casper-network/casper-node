@@ -1,13 +1,12 @@
 //! revm database adapter backed by Casper tracking copy reads.
 
 use casper_storage::{
-    block_store::{types::BlockHeight, BlockStoreProvider, DataReader},
     data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::TrackingCopyExt,
     TrackingCopy,
 };
-use casper_types::{evm, BlockHeader, CLValue, EvmAddr, Key, StoredValue, U512};
+use casper_types::{evm, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
     database_interface::Database,
     interpreter::{Gas, InstructionResult, InterpreterResult},
@@ -182,13 +181,12 @@ where
                 height: number,
                 error,
             })?;
-        let maybe_header: Option<BlockHeader> =
-            DataReader::<BlockHeight, BlockHeader>::read(&transaction, number).map_err(
-                |error| DbError::BlockHash {
-                    height: number,
-                    error,
-                },
-            )?;
+        let maybe_header = transaction
+            .read_block_header_at_height(number)
+            .map_err(|error| DbError::BlockHash {
+                height: number,
+                error,
+            })?;
         Ok(maybe_header
             .map(|header| tx::to_revm_block_hash(header.block_hash()))
             .unwrap_or(B256::ZERO))
