@@ -40,9 +40,8 @@ use lmdb::{
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
-/// We can set this very low, as there is only a single reader/writer accessing the component at any
-/// one time.
-const MAX_TRANSACTIONS: u32 = 5;
+/// Maximum number of concurrent LMDB read transactions.
+const MAX_READERS: u32 = 512;
 
 /// Maximum number of allowed dbs.
 const MAX_DB_COUNT: u32 = 20;
@@ -58,7 +57,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 
 /// Lmdb block store.
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub struct LmdbBlockStore {
     /// Storage location.
     root: PathBuf,
@@ -867,7 +866,7 @@ pub(crate) fn new_environment(
                 // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
                 | EnvironmentFlags::NO_READAHEAD,
         )
-        .set_max_readers(MAX_TRANSACTIONS)
+        .set_max_readers(MAX_READERS)
         .set_max_dbs(MAX_DB_COUNT)
         .set_map_size(total_size)
         .open(&root.join(STORAGE_DB_FILENAME))
@@ -1926,6 +1925,21 @@ mod tests {
             None,
             OnceCell::new(),
         ))
+    }
+
+    #[test]
+    fn supports_more_than_five_simultaneous_read_transactions() {
+        const CONCURRENT_READERS: usize = 6;
+
+        let tempdir = TempDir::new().expect("should create tempdir");
+        let store =
+            LmdbBlockStore::new(tempdir.path(), 64 * 1024 * 1024).expect("should create store");
+
+        let read_transactions = (0..CONCURRENT_READERS)
+            .map(|_| store.checkout_ro().expect("should checkout ro"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(read_transactions.len(), CONCURRENT_READERS);
     }
 
     #[test]

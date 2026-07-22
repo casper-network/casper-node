@@ -289,6 +289,13 @@ impl Reactor for MockReactor {
                 self.binary_port.handle_event(effect_builder, rng, event),
             ),
             Event::ControlAnnouncement(_) => panic!("unexpected control announcement"),
+            Event::ContractRuntimeRequest(ContractRuntimeRequest::SpeculativelyExecute {
+                block_header,
+                ..
+            }) => {
+                assert_eq!(block_header.height(), 42);
+                Effects::new()
+            }
             Event::ContractRuntimeRequest(_) | Event::ReactorInfoRequest(_) => {
                 // We're only interested if the binary port actually created a request to Contract
                 // Runtime component, but we're not interested in the result.
@@ -306,7 +313,7 @@ impl Reactor for MockReactor {
                     Default::default(),
                     Timestamp::now(),
                     Default::default(),
-                    Default::default(),
+                    42,
                     Default::default(),
                     proposer,
                     Default::default(),

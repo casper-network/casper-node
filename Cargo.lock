@@ -1481,7 +1481,9 @@ dependencies = [
  "alloy-primitives",
  "casper-storage",
  "casper-types",
+ "once_cell",
  "revm",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

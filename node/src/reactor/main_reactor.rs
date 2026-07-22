@@ -1144,6 +1144,7 @@ impl reactor::Reactor for MainReactor {
 
         let contract_runtime = ContractRuntime::new(
             &storage_root,
+            block_store.clone(),
             &config.contract_runtime,
             chainspec.clone(),
             registry,

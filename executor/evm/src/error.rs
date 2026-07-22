@@ -1,9 +1,9 @@
 //! Error types returned by the Casper EVM executor.
 
-use casper_storage::tracking_copy::TrackingCopyError;
+use casper_storage::{block_store::BlockStoreError, tracking_copy::TrackingCopyError};
 use casper_types::Key;
 
-use crate::{account_state::AccountStorageError, BlockHashProviderError};
+use crate::account_state::AccountStorageError;
 
 /// Result type returned by the EVM executor.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -84,8 +84,8 @@ pub enum DbError {
     BlockHash {
         /// Block height requested by the EVM.
         height: u64,
-        /// Provider error.
-        error: BlockHashProviderError,
+        /// Block store error.
+        error: BlockStoreError,
     },
 }
 

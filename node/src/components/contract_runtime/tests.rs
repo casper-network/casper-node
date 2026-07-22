@@ -132,6 +132,7 @@ impl reactor::Reactor for Reactor {
             chainspec.protocol_version(),
         )
         .unwrap();
+        let contract_runtime_block_store = storage_block_store.clone();
         let mut storage = Storage::new(
             &storage_withdir,
             storage_root,
@@ -148,8 +149,13 @@ impl reactor::Reactor for Reactor {
         .unwrap();
         storage.initialize_for_test();
 
-        let contract_runtime =
-            ContractRuntime::new(storage.root_path(), &config.config, chainspec, registry)?;
+        let contract_runtime = ContractRuntime::new(
+            storage.root_path(),
+            contract_runtime_block_store,
+            &config.config,
+            chainspec,
+            registry,
+        )?;
 
         let reactor = Reactor {
             storage,
@@ -880,6 +886,7 @@ mod test_mod {
     use tempfile::tempdir;
 
     use casper_storage::{
+        block_store::lmdb::LmdbBlockStore,
         data_access_layer::{EntryPointExistsRequest, EntryPointExistsResult},
         global_state::{
             state::{CommitProvider, StateProvider},
@@ -1034,8 +1041,10 @@ mod test_mod {
             system_costs_config: Default::default(),
             ..Chainspec::random(rng)
         };
+        let block_store = LmdbBlockStore::new(temp_dir.path(), 64 * 1024 * 1024).unwrap();
         let contract_runtime = ContractRuntime::new(
             temp_dir.path(),
+            block_store,
             &ContractRuntimeConfig::default(),
             Arc::new(chainspec),
             &Registry::default(),

@@ -102,7 +102,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | --- | --- | --- |
 | `EvmSpec::Prague` / `revm::SpecId::PRAGUE` | Implemented. | Execution behavior is delegated to `revm`; Casper does not maintain its own EVM interpreter. |
 | [EIP-2537][eip-2537] BLS12-381 precompiles | Delegated to `revm`. | Expected at `0x0b` through `0x11`, but Casper-owned conformance tests are still needed for gas costs, malformed input, subgroup checks, and failure behavior. |
-| [EIP-2935][eip-2935] block-hash history contract | Missing. | Current `BLOCKHASH` uses a recent Casper block-hash provider only. Full compatibility needs the history contract at `0x0000F90827F1C53a10cb7A02335B175320002935`, a pre-block system call, and the 8191-entry ring buffer. |
+| [EIP-2935][eip-2935] block-hash history contract | Missing. | Current `BLOCKHASH` reads indexed Casper block headers directly from the node's LMDB block store. Full compatibility needs the history contract at `0x0000F90827F1C53a10cb7A02335B175320002935`, a pre-block system call, and the 8191-entry ring buffer. |
 | [EIP-4788][eip-4788] beacon roots contract | Implemented. | Standard address, bytecode, interface, and system-call update path are present, but `parentBeaconBlockRoot := parent Casper block hash`, not an Ethereum beacon block root. |
 | [EIP-6110][eip-6110] validator deposit requests | Missing / decision needed. | Ethereum-specific deposit-log-to-request flow. Full support requires [EIP-7685][eip-7685] request construction and commitment. |
 | [EIP-7002][eip-7002] withdrawal request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x00000961Ef480Eb55e80D19ad83579A64c007002` is absent. Full support requires queue/fee state, post-block extraction, and [EIP-7685][eip-7685] request output. |
@@ -128,7 +128,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | EVM bytecode storage | Implemented. | Runtime bytecode is stored as `ByteCodeKind::EvmPrague`; future bytecode-affecting forks should add new bytecode kinds. |
 | EVM storage slots | Implemented. | Slots are Casper `U256` values under `Key::Evm(EvmAddr::Storage(..))`; zero writes prune state. |
 | Logs and receipts | Implemented. | Node stores EVM receipts/logs; sidecar computes Ethereum-style blooms and receipt roots from stored EVM receipts. Blob receipts are absent. |
-| `BLOCKHASH` opcode | Partial. | Recent Casper block hashes are available through a node-supplied provider. This is not [EIP-2935][eip-2935] history-contract state. |
+| `BLOCKHASH` opcode | Partial. | Recent Casper block hashes are read by height from the node's indexed LMDB block store. This is not [EIP-2935][eip-2935] history-contract state. |
 | `NUMBER`, `TIMESTAMP`, `GASLIMIT`, `BASEFEE` | Implemented. | Timestamp is Casper block time in seconds. Base fee is chainspec-configured and wei-denominated through `wei_per_mote`, not Ethereum's dynamic base-fee adjustment. |
 | `COINBASE` | Implemented with Casper semantics. | The address is derived from the Casper block proposer public key. |
 | `CHAINID` | Implemented. | Transaction chain ID is enforced against chainspec `[evm].chain_id`. |
@@ -605,14 +605,14 @@ The tracking-copy effects are discarded.
 ## Block Hashes
 
 The executor exposes `BLOCK_HASH_HISTORY`, mirroring revm's Ethereum
-`BLOCKHASH` history window. Node runtime and binary-port EVM calls use that
-public executor constant when loading recent block hashes, so `casper-node`
-does not need a production dependency on `revm`.
+`BLOCKHASH` history window. During execution, `CasperDb` uses the executor's
+data-access-layer handle to open a short-lived read transaction against the
+already-open node block store and look up the indexed Casper block header by
+height. The stored Casper `BlockHash` is converted to revm's hash type at that
+boundary; no recent-hash map is preloaded by contract runtime or binary port.
 
-Block hashes are loaded as Casper `BlockHash` values and converted to revm's
-hash type only at the executor API boundary. If a contract requests a future
-block, the current block, or a block outside the supported history window,
-`BLOCKHASH` returns zero.
+`revm` enforces the current/future-block and 256-block history rules. A missing
+indexed header returns zero, while a block-store read error fails execution.
 
 ## Chain ID
 

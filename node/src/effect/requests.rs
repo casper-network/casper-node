@@ -877,8 +877,6 @@ pub(crate) enum ContractRuntimeRequest {
     SpeculativelyExecute {
         /// Pre-state.
         block_header: Box<BlockHeader>,
-        /// Recent block hashes available to the EVM `BLOCKHASH` opcode.
-        block_hashes: BTreeMap<u64, BlockHash>,
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results

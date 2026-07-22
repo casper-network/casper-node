@@ -12,7 +12,7 @@ use revm::{
     primitives::{hardfork::SpecId, Address},
 };
 
-use crate::{db::CasperDb, tx, BlockHashProvider};
+use crate::{db::CasperDb, tx};
 
 /// Ethereum precompiles executing with access to Casper-backed state.
 #[derive(Clone, Debug)]
@@ -24,11 +24,11 @@ impl CasperEvmPrecompiles {
     }
 }
 
-impl<'a, R, B, CTX> PrecompileProvider<CTX> for CasperEvmPrecompiles
+impl<'a, R, S, CTX> PrecompileProvider<CTX> for CasperEvmPrecompiles
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError> + 'a,
-    B: BlockHashProvider + ?Sized + 'a,
-    CTX: ContextTr<Db = CasperDb<'a, R, B>>,
+    S: 'a,
+    CTX: ContextTr<Db = CasperDb<'a, R, S>>,
 {
     type Output = InterpreterResult;
 

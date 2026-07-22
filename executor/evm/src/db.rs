@@ -1,11 +1,13 @@
 //! revm database adapter backed by Casper tracking copy reads.
 
 use casper_storage::{
+    block_store::{types::BlockHeight, BlockStoreProvider, DataReader},
+    data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::TrackingCopyExt,
     TrackingCopy,
 };
-use casper_types::{evm, CLValue, EvmAddr, Key, StoredValue, U512};
+use casper_types::{evm, BlockHeader, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
     database_interface::Database,
     interpreter::{Gas, InstructionResult, InterpreterResult},
@@ -13,26 +15,27 @@ use revm::{
     state::{AccountInfo, Bytecode},
 };
 
-use crate::{account_state, tx, BlockHashProvider, DbError};
+use crate::{account_state, tx, DbError};
 
-pub(crate) struct CasperDb<'a, R, B>
+pub(crate) struct CasperDb<'a, R, S>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    B: BlockHashProvider + ?Sized,
 {
+    data_access_layer: &'a DataAccessLayer<S>,
     tracking_copy: &'a mut TrackingCopy<R>,
-    block_hash_provider: &'a B,
 }
 
-impl<'a, R, B> CasperDb<'a, R, B>
+impl<'a, R, S> CasperDb<'a, R, S>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    B: BlockHashProvider + ?Sized,
 {
-    pub(crate) fn new(tracking_copy: &'a mut TrackingCopy<R>, block_hash_provider: &'a B) -> Self {
+    pub(crate) fn new(
+        data_access_layer: &'a DataAccessLayer<S>,
+        tracking_copy: &'a mut TrackingCopy<R>,
+    ) -> Self {
         Self {
+            data_access_layer,
             tracking_copy,
-            block_hash_provider,
         }
     }
 
@@ -99,10 +102,9 @@ where
     }
 }
 
-impl<R, B> Database for CasperDb<'_, R, B>
+impl<R, S> Database for CasperDb<'_, R, S>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    B: BlockHashProvider + ?Sized,
 {
     type Error = DbError;
 
@@ -172,15 +174,23 @@ where
     }
 
     fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        let maybe_block_hash = self
-            .block_hash_provider
-            .block_hash(number)
+        let transaction = self
+            .data_access_layer
+            .block_store
+            .checkout_ro()
             .map_err(|error| DbError::BlockHash {
                 height: number,
                 error,
             })?;
-        Ok(maybe_block_hash
-            .map(tx::to_revm_block_hash)
+        let maybe_header: Option<BlockHeader> =
+            DataReader::<BlockHeight, BlockHeader>::read(&transaction, number).map_err(
+                |error| DbError::BlockHash {
+                    height: number,
+                    error,
+                },
+            )?;
+        Ok(maybe_header
+            .map(|header| tx::to_revm_block_hash(header.block_hash()))
             .unwrap_or(B256::ZERO))
     }
 }

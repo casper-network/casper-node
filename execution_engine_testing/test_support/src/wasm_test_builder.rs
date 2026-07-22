@@ -20,15 +20,16 @@ use casper_execution_engine::engine_state::{
     EngineConfig, Error, ExecutionEngineV1, WasmV1Request, WasmV1Result, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
+    block_store::lmdb::LmdbBlockStore,
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode,
-        HandleFeeRequest, HandleFeeResult, MessageTopicsRequest, MessageTopicsResult,
-        ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        StepRequest, StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode, HandleFeeRequest,
+        HandleFeeResult, MessageTopicsRequest, MessageTopicsResult, ProofHandling,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
         SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
         TotalSupplyResult, TransferRequest, TrieRequest,
     },
@@ -84,6 +85,9 @@ pub(crate) const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 ///
 /// The default value is chosen to be the same as the node itself.
 pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
+
+/// LMDB map size for the temporary block store used by test builders.
+const DEFAULT_BLOCK_STORE_SIZE: usize = 64 * 1024 * 1024;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
@@ -145,6 +149,8 @@ pub struct WasmTestBuilder<S> {
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
     temp_dir: Option<Rc<TempDir>>,
+    /// Temporary directory backing the block store held by the data access layer.
+    block_store_temp_dir: Rc<TempDir>,
 }
 
 impl<S: ScratchProvider> WasmTestBuilder<S> {
@@ -217,6 +223,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             scratch_global_state: None,
             global_state_dir: self.global_state_dir.clone(),
             temp_dir: self.temp_dir.clone(),
+            block_store_temp_dir: Rc::clone(&self.block_store_temp_dir),
         }
     }
 }
@@ -248,6 +255,13 @@ impl Default for LmdbWasmTestBuilder {
 }
 
 impl LmdbWasmTestBuilder {
+    fn new_temporary_block_store() -> (LmdbBlockStore, Rc<TempDir>) {
+        let temp_dir = Rc::new(tempfile::tempdir().expect("should create block store tempdir"));
+        let block_store = LmdbBlockStore::new(temp_dir.path(), DEFAULT_BLOCK_STORE_SIZE)
+            .expect("should create block store");
+        (block_store, temp_dir)
+    }
+
     /// Upgrades the execution engine using the scratch trie.
     pub fn upgrade_using_scratch(
         &mut self,
@@ -316,8 +330,10 @@ impl LmdbWasmTestBuilder {
         )
         .expect("should create LmdbGlobalState");
 
+        let (block_store, block_store_temp_dir) = Self::new_temporary_block_store();
+
         let data_access_layer = Arc::new(DataAccessLayer {
-            block_store: BlockStore::new(),
+            block_store,
             state: global_state,
             max_query_depth,
             enable_addressable_entity,
@@ -341,6 +357,7 @@ impl LmdbWasmTestBuilder {
             scratch_global_state: None,
             global_state_dir: Some(global_state_dir),
             temp_dir: None,
+            block_store_temp_dir,
         }
     }
 
@@ -396,8 +413,10 @@ impl LmdbWasmTestBuilder {
             }
         };
 
+        let (block_store, block_store_temp_dir) = Self::new_temporary_block_store();
+
         let data_access_layer = Arc::new(DataAccessLayer {
-            block_store: BlockStore::new(),
+            block_store,
             state: global_state,
             max_query_depth,
             enable_addressable_entity,
@@ -423,6 +442,7 @@ impl LmdbWasmTestBuilder {
             scratch_global_state: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
+            block_store_temp_dir,
         };
 
         builder
