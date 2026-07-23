@@ -42,7 +42,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     evm::{
-        Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
+        Address as EvmAddress, HaltReason as EvmHaltReason, Hash as EvmHash, Receipt as EvmReceipt,
         ReceiptStatus as EvmReceiptStatus,
     },
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
@@ -81,6 +81,7 @@ fn evm_block_context(
     block_height: u64,
     block_time: BlockTime,
     proposer: &PublicKey,
+    prevrandao: EvmHash,
 ) -> EvmBlockContext {
     EvmBlockContext {
         number: block_height,
@@ -88,6 +89,7 @@ fn evm_block_context(
         beneficiary: EvmAddress::from_block_proposer_public_key(proposer),
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(chainspec.evm_config.base_fee_wei()),
+        prevrandao,
     }
 }
 
@@ -684,12 +686,14 @@ pub fn execute_finalized_block(
         }
     }
 
+    let prevrandao =
+        EvmHash::new(Digest::hash_pair(parent_seed, [executable_block.random_bit as u8]).value());
     state_root_hash = write_eip4788_beacon_roots(
         &scratch_state,
         state_root_hash,
         chainspec,
         protocol_version,
-        evm_block_context(chainspec, block_height, block_time, &proposer),
+        evm_block_context(chainspec, block_height, block_time, &proposer, prevrandao),
         parent_hash,
     )?;
 
@@ -1188,8 +1192,16 @@ pub fn execute_finalized_block(
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-                    let block_context =
-                        evm_block_context(chainspec, block_height, block_time, &proposer);
+                    let random_bit = executable_block.random_bit;
+                    let prevrandao =
+                        EvmHash::new(Digest::hash_pair(parent_seed, [random_bit as u8]).value());
+                    let block_context = evm_block_context(
+                        chainspec,
+                        block_height,
+                        block_time,
+                        &proposer,
+                        prevrandao,
+                    );
                     let request = EvmExecuteRequest {
                         block: block_context,
                         kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
@@ -2169,6 +2181,7 @@ where
         beneficiary: EvmAddress::ZERO,
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(base_fee_wei),
+        prevrandao: EvmHash::new(block_header.accumulated_seed().value()),
     };
     let kind = if evm_transaction.is_unsigned_call() {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
@@ -2345,7 +2358,7 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 mod tests {
     use super::*;
     use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
-    use casper_types::{EvmConfig, DEFAULT_WEI_PER_MOTE};
+    use casper_types::{EvmConfig, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
@@ -2388,7 +2401,8 @@ mod tests {
             state::lmdb::make_temporary_global_state([]);
         let scratch_state = global_state.create_scratch();
         let block_time = BlockTime::new(2_000);
-        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
+        let block_context =
+            evm_block_context(&chainspec, 1, block_time, &PublicKey::System, EvmHash::ZERO);
         let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
 
         let updated_state_root_hash = write_eip4788_beacon_roots(
@@ -2409,5 +2423,32 @@ mod tests {
             .expect("EIP-4788 beacon root should be readable");
 
         assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
+    }
+
+    #[test]
+    fn evm_prevrandao_matches_current_block_accumulated_seed() {
+        let parent_hash = BlockHash::new(Digest::from_raw([0x11; Digest::LENGTH]));
+        let parent_seed = Digest::from_raw([0x22; Digest::LENGTH]);
+        let state_root_hash = Digest::from_raw([0x33; Digest::LENGTH]);
+        let random_bit = true;
+        let block = BlockV2::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            None,
+            Timestamp::zero(),
+            EraId::new(1),
+            1,
+            ProtocolVersion::V2_0_0,
+            PublicKey::System,
+            BTreeMap::new(),
+            Default::default(),
+            1,
+            None,
+        );
+
+        let prevrandao = EvmHash::new(Digest::hash_pair(parent_seed, [random_bit as u8]).value());
+        assert_eq!(prevrandao.as_ref(), block.accumulated_seed().as_ref());
     }
 }

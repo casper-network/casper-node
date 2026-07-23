@@ -88,6 +88,7 @@ pub struct BlockContext {
     ///
     /// Defaults to chainspec `[evm].base_fee * [evm].wei_per_mote`.
     pub base_fee: Option<u128>,
+    pub prevrandao: evm::Hash,
 }
 
 impl BlockContext {
@@ -105,6 +106,7 @@ impl BlockContext {
             timestamp: revm::primitives::U256::from(self.timestamp),
             gas_limit: self.gas_limit.unwrap_or(config.block_gas_limit),
             basefee,
+            prevrandao: Some(tx::to_revm_hash(self.prevrandao)),
             ..Default::default()
         })
     }
@@ -129,6 +131,7 @@ mod tests {
             beneficiary: evm::Address::ZERO,
             gas_limit: None,
             base_fee: None,
+            prevrandao: evm::Hash::new([0x42; evm::HASH_LENGTH]),
         };
         let block = context
             .to_revm_block(&config)
@@ -136,5 +139,9 @@ mod tests {
 
         assert_eq!(u128::from(block.basefee), config.base_fee_wei());
         assert_ne!(block.basefee, config.base_fee);
+        assert_eq!(
+            block.prevrandao,
+            Some(revm::primitives::B256::from([0x42; evm::HASH_LENGTH]))
+        );
     }
 }
