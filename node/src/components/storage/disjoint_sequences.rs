@@ -333,6 +333,17 @@ impl From<Vec<u64>> for DisjointSequences {
     }
 }
 
+/// Parses `raw` (the `bytesrepr`-encoded value stored under `COMPLETED_BLOCKS_STORAGE_KEY` in the
+/// state-store db) as a `DisjointSequences` and renders it via its `Display` impl.
+///
+/// `DisjointSequences` itself is `pub(super)` (private to `components::storage`), so this is the
+/// entry point the `read-completed-blocks` CLI command uses instead, keeping the type from
+/// leaking further than it needs to.
+pub(crate) fn render(raw: Vec<u8>) -> Result<String, bytesrepr::Error> {
+    let (sequences, _) = DisjointSequences::from_vec(raw)?;
+    Ok(sequences.to_string())
+}
+
 impl Display for DisjointSequences {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut iter = self.sequences.iter().peekable();
@@ -580,5 +591,17 @@ mod tests {
 
         assert_eq!(restored.sequences, expected_inner_state);
         assert_eq!(restored2.sequences, expected_inner_state);
+    }
+
+    #[test]
+    fn render_should_format_raw_state_store_bytes() {
+        let mut disjoint_sequences = DisjointSequences::default();
+        disjoint_sequences.extend([4, 5, 6, 7, 8]);
+        disjoint_sequences.extend([15, 16, 17, 18, 19, 20]);
+
+        let raw = disjoint_sequences.to_bytes().expect("serialization failed");
+        let rendered = render(raw).expect("render should succeed");
+        assert_eq!(rendered, disjoint_sequences.to_string());
+        assert_eq!(rendered, "[20, 15], [8, 4]");
     }
 }

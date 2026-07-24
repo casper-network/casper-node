@@ -1,8 +1,12 @@
 use std::{
     borrow::Cow,
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    thread,
 };
 
 use datasize::DataSize;
@@ -17,10 +21,10 @@ use casper_types::{
 use super::{
     lmdb_ext::{
         append_by_be_u64_key, append_value_bytesrepr, delete_by_be_u64_key, delete_value_bytesrepr,
-        get_by_be_u64_key, get_last_by_be_u64_key, put_by_be_u64_key, LmdbExtError, TransactionExt,
-        WriteTransactionExt,
+        deserialize_bytesrepr, get_by_be_u64_key, get_last_by_be_u64_key, put_by_be_u64_key,
+        LmdbExtError, TransactionExt, WriteTransactionExt,
     },
-    versioned_databases::VersionedDatabases,
+    versioned_databases::{partition_bounds, VersionedDatabases},
     DbTableId,
 };
 use crate::block_store::{
@@ -33,16 +37,21 @@ use crate::block_store::{
     BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter, DbRawBytesSpec,
 };
 use lmdb::{
-    Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwCursor, RwTransaction,
+    Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
     Transaction as LmdbTransaction, WriteFlags,
 };
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
-/// We can set this very low, as there is only a single reader/writer accessing the component at any
-/// one time.
-const MAX_TRANSACTIONS: u32 = 5;
+/// Maximum number of partitions (and therefore concurrent read-only cursors/transactions)
+/// `LmdbBlockStore::rebuild_indexes` will use.
+const MAX_REINDEX_THREADS: usize = 16;
+
+/// The node's own steady-state usage is effectively a single reader/writer at a time, but
+/// `rebuild_indexes` opens up to `MAX_REINDEX_THREADS` concurrent read-only transactions while
+/// partition-scanning, so this must accommodate that (plus headroom for any other reader).
+const MAX_TRANSACTIONS: u32 = MAX_REINDEX_THREADS as u32 + 4;
 
 /// Maximum number of allowed dbs.
 const MAX_DB_COUNT: u32 = 20;
@@ -96,6 +105,24 @@ pub struct LmdbBlockStore {
     /// it.
     #[data_size(skip)]
     pub(super) transaction_hash_index_db: Database,
+}
+
+/// Statistics from a full rebuild of the disk-backed indexes, as returned by
+/// [`LmdbBlockStore::rebuild_indexes`].
+#[derive(Copy, Clone, Debug, Default)]
+pub struct ReindexStats {
+    /// Number of block headers scanned (across both the current and legacy header databases).
+    pub headers_processed: usize,
+    /// Number of transaction-hash-index entries written.
+    pub transactions_indexed: usize,
+}
+
+/// One partition's contribution to the header-scan pass of
+/// [`LmdbBlockStore::rebuild_indexes`], produced by [`scan_header_partition`].
+struct HeaderPartitionResult {
+    block_height_index: Vec<(u64, BlockHash)>,
+    switch_block_era_id_index: Vec<(EraId, BlockHash)>,
+    body_hash_to_header_info: HashMap<Digest, BlockHashHeightAndEra>,
 }
 
 impl LmdbBlockStore {
@@ -179,97 +206,147 @@ impl LmdbBlockStore {
 
         if headers_exist && index_is_empty {
             info!("block store indexes appear to be missing; building them from a full scan");
-            self.rebuild_indexes()?;
+            let _ = self.rebuild_indexes()?;
         }
 
         Ok(())
     }
 
     /// Performs an unconditional one-off full rebuild of the disk-backed block-height/
-    /// switch-block-era-id/transaction-hash indexes, by scanning every block header currently in
-    /// storage. Exposed for tests; startup code should use [`Self::init`], which only rebuilds
-    /// when necessary.
-    #[cfg(test)]
-    pub fn reindex(&mut self) -> Result<(), BlockStoreError> {
-        self.rebuild_indexes()
-    }
-
-    fn rebuild_indexes(&mut self) -> Result<(), BlockStoreError> {
+    /// switch-block-era-id/transaction-hash indexes: clears all three index databases, then
+    /// repopulates them by scanning every block header and block body currently in storage. Used
+    /// by the `build-indexes` CLI subcommand and by tests; startup code should use
+    /// [`Self::init`], which only rebuilds when necessary.
+    pub fn rebuild_indexes(&mut self) -> Result<ReindexStats, BlockStoreError> {
         info!("reindexing block store");
 
-        let mut block_height_index = BTreeMap::new();
-        let mut switch_block_era_id_index = BTreeMap::new();
-        let mut transaction_hash_index = BTreeMap::new();
-
-        let mut block_txn = self
-            .env
-            .begin_rw_txn()
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-
-        let total_headers = header_count(&block_txn, self)?;
-        let progress_step = (total_headers / 20).max(1);
-        let mut processed: usize = 0;
-
-        // First pass: scan every header through the cursor to build the height/switch-block
-        // indexes and collect the headers for the second pass below.
-        let mut headers = Vec::new();
-        let mut collect_fn =
-            |_cursor: &mut RwCursor, block_header: BlockHeader| -> Result<(), BlockStoreError> {
-                processed += 1;
-                if processed.is_multiple_of(progress_step) {
-                    info!(
-                        percent_complete = (processed * 100 / total_headers.max(1)),
-                        processed, total_headers, "reindexing block store: scanning headers"
-                    );
-                }
-
-                Self::insert_to_block_header_indices(
-                    &mut block_height_index,
-                    &mut switch_block_era_id_index,
-                    &block_header,
-                )?;
-                headers.push(block_header);
-
-                Ok(())
-            };
-
-        self.block_header_dbs
-            .for_each_value_in_current(&mut block_txn, &mut collect_fn)?;
-        self.block_header_dbs
-            .for_each_value_in_legacy(&mut block_txn, &mut collect_fn)?;
-
-        // Second pass: the cursor's borrow of `block_txn` has ended, so each block body can be
-        // read through the transaction we already have open, instead of a fresh one per header.
-        let total_bodies = headers.len();
-        let body_progress_step = (total_bodies / 20).max(1);
-        for (processed, block_header) in headers.iter().enumerate() {
-            if processed.is_multiple_of(body_progress_step) {
-                info!(
-                    percent_complete = (processed * 100 / total_bodies.max(1)),
-                    processed, total_bodies, "reindexing block store: scanning bodies"
-                );
-            }
-
-            let maybe_block_body = self
-                .block_body_dbs
-                .get(&block_txn, block_header.body_hash())
+        let (total_headers, total_bodies) = {
+            let count_txn = self
+                .env
+                .begin_ro_txn()
                 .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-            if let Some(block_body) = &maybe_block_body {
-                let transaction_hashes = block_transaction_hashes(block_body);
-                Self::insert_to_transaction_index(
-                    &mut transaction_hash_index,
-                    block_header.block_hash(),
-                    block_header.height(),
-                    block_header.era_id(),
-                    transaction_hashes,
-                )?;
-            }
+            (
+                header_count(&count_txn, self)?,
+                body_count(&count_txn, self)?,
+            )
+        };
+
+        // Both scans below partition the keyspace by first-byte prefix and give each partition
+        // its own read-only transaction/cursor. Unlike writes (single-writer), LMDB allows any
+        // number of concurrent readers, so this parallelizes both the I/O (more outstanding reads
+        // in flight) and the per-row deserialization work. `BlockHash`/`Digest` keys are
+        // content-addressed hashes, so this prefix partitioning is close enough to uniform for
+        // roughly balanced partitions.
+        let num_partitions = thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .clamp(1, MAX_REINDEX_THREADS);
+        let bounds = partition_bounds(num_partitions);
+
+        // First pass: scan every header to build the height/switch-block indexes and the
+        // body-hash lookup table used by the second pass below. The header's own hash is read
+        // directly from the cursor's key (rather than via `BlockHeader::block_hash`, which would
+        // recompute it by re-serializing and hashing the header) since `block_header_dbs` is
+        // keyed by `BlockHash` and, for both the `current` (`bytesrepr`) and `legacy` (raw
+        // `AsRef<[u8]>`) encodings, that key is exactly the hash's bytes with no extra framing.
+        //
+        // Each thread accumulates into its own local collections (preallocated using this
+        // partition's expected share of `total_headers`), which are only joined into the shared
+        // collections after every thread has finished, so there is no cross-thread
+        // synchronization on the accumulated data itself.
+        let header_processed = AtomicUsize::new(0);
+        let header_partition_capacity = total_headers.div_ceil(bounds.len()).max(1);
+        let header_results = thread::scope(|scope| {
+            let handles: Vec<_> = (0..bounds.len())
+                .map(|partition_index| {
+                    let env = &*self.env;
+                    let header_dbs = self.block_header_dbs;
+                    let bounds = &bounds;
+                    let header_processed = &header_processed;
+                    scope.spawn(move || {
+                        scan_header_partition(
+                            env,
+                            header_dbs,
+                            partition_index,
+                            bounds,
+                            header_partition_capacity,
+                            total_headers,
+                            header_processed,
+                        )
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("reindex header-scan thread panicked"))
+                .collect::<Result<Vec<_>, BlockStoreError>>()
+        })?;
+
+        let mut block_height_index = Vec::with_capacity(total_headers);
+        let mut switch_block_era_id_index = Vec::new();
+        // Maps a block body's digest to the identity of the block header that references it, so
+        // the body scan below can be correlated back to its block without a random point-lookup
+        // per header.
+        let mut body_hash_to_header_info = HashMap::with_capacity(total_headers);
+        for result in header_results {
+            block_height_index.extend(result.block_height_index);
+            switch_block_era_id_index.extend(result.switch_block_era_id_index);
+            body_hash_to_header_info.extend(result.body_hash_to_header_info);
         }
 
-        // The scan above makes no changes to the header dbs (unlike `prune`), so this can just be
-        // rolled back rather than committed.
-        block_txn.abort();
+        let block_height_index = Self::sort_and_check_block_height_index(block_height_index)?;
+        let switch_block_era_id_index =
+            Self::sort_and_check_switch_block_era_id_index(switch_block_era_id_index)?;
 
+        // Second pass: scan every block body (same partitioning scheme), rather than looking
+        // each one up by its header's `body_hash` (a random point-lookup per header, doubled for
+        // legacy-era bodies since `VersionedDatabases::get` probes `current` before falling back
+        // to `legacy`). The body's own digest is read directly from the cursor's key (rather than
+        // via `BlockBody`'s `hash()`, which would recompute it by re-serializing and hashing the
+        // whole body) since `block_body_dbs` is keyed by that same `Digest`. Threads share
+        // read-only access to `body_hash_to_header_info` built above via the borrow `thread::
+        // scope` allows; again, each thread accumulates locally and results are joined afterwards.
+        let body_processed = AtomicUsize::new(0);
+        let body_partition_capacity = total_bodies.div_ceil(bounds.len()).max(1);
+        let body_results = thread::scope(|scope| {
+            let handles: Vec<_> = (0..bounds.len())
+                .map(|partition_index| {
+                    let env = &*self.env;
+                    let body_dbs = self.block_body_dbs;
+                    let bounds = &bounds;
+                    let body_processed = &body_processed;
+                    let body_hash_to_header_info = &body_hash_to_header_info;
+                    scope.spawn(move || {
+                        scan_body_partition(
+                            env,
+                            body_dbs,
+                            partition_index,
+                            bounds,
+                            body_partition_capacity,
+                            total_bodies,
+                            body_processed,
+                            body_hash_to_header_info,
+                        )
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("reindex body-scan thread panicked"))
+                .collect::<Result<Vec<_>, BlockStoreError>>()
+        })?;
+
+        let mut transaction_hash_index = Vec::with_capacity(total_bodies);
+        for chunk in body_results {
+            transaction_hash_index.extend(chunk);
+        }
+
+        let transaction_hash_index =
+            Self::sort_and_check_transaction_hash_index(transaction_hash_index)?;
+
+        // The scans above used read-only transactions, dropped (and so implicitly aborted) at the
+        // end of each worker thread; they made no changes to the header/body dbs, so there is
+        // nothing to roll back here.
         let mut index_txn = self
             .env
             .begin_rw_txn()
@@ -285,14 +362,14 @@ impl LmdbBlockStore {
             .clear_db(self.transaction_hash_index_db)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
 
-        // `block_height_index`/`switch_block_era_id_index`/`transaction_hash_index` are
-        // `BTreeMap`s, so iterating them yields ascending key order; combined with the `clear_db`
-        // calls above, this lets us use LMDB's `APPEND` flag to skip the usual B-tree
-        // search/rebalance per insert (a significant speedup for a full rebuild). This is safe
-        // because: the two `u64`/`EraId`-keyed indexes use `append_by_be_u64_key`, whose
-        // big-endian key encoding is specifically chosen so ascending numeric order is ascending
-        // byte order; and `TransactionHash`'s derived `Ord` (variant tag, then digest bytes)
-        // matches its `bytesrepr` encoding (tag byte, then raw digest bytes) byte-for-byte.
+        // `block_height_index`/`switch_block_era_id_index`/`transaction_hash_index` have been
+        // sorted into ascending key order above; combined with the `clear_db` calls above, this
+        // lets us use LMDB's `APPEND` flag to skip the usual B-tree search/rebalance per insert
+        // (a significant speedup for a full rebuild). This is safe because: the two
+        // `u64`/`EraId`-keyed indexes use `append_by_be_u64_key`, whose big-endian key encoding
+        // is specifically chosen so ascending numeric order is ascending byte order; and
+        // `TransactionHash`'s derived `Ord` (variant tag, then digest bytes) matches its
+        // `bytesrepr` encoding (tag byte, then raw digest bytes) byte-for-byte.
         for (height, block_hash) in block_height_index {
             append_by_be_u64_key(
                 &mut index_txn,
@@ -311,6 +388,7 @@ impl LmdbBlockStore {
             )
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         }
+        let transactions_indexed = transaction_hash_index.len();
         for (transaction_hash, block_info) in transaction_hash_index {
             append_value_bytesrepr(
                 &mut index_txn,
@@ -326,79 +404,140 @@ impl LmdbBlockStore {
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
 
         info!("block store reindexing complete");
-        Ok(())
+        Ok(ReindexStats {
+            headers_processed: total_headers,
+            transactions_indexed,
+        })
     }
 
-    /// Inserts the relevant entries to the index.
+    /// Looks up the raw value stored under `height` in the block-height index
+    /// (`block_height_index_db`), without resolving it any further, i.e. this returns the
+    /// indexed [`BlockHash`] itself rather than the block it identifies. Used by the
+    /// `read-index` CLI command for out-of-band inspection.
+    pub fn read_block_height_index_entry(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHash>, BlockStoreError> {
+        let txn = self
+            .env
+            .begin_ro_txn()
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        get_by_be_u64_key::<_, BlockHash>(&txn, self.block_height_index_db, height)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    /// Looks up the raw value stored under `era_id` in the switch-block-era-id index
+    /// (`switch_block_era_id_index_db`). See [`Self::read_block_height_index_entry`].
+    pub fn read_switch_block_era_id_index_entry(
+        &self,
+        era_id: u64,
+    ) -> Result<Option<BlockHash>, BlockStoreError> {
+        let txn = self
+            .env
+            .begin_ro_txn()
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        get_by_be_u64_key::<_, BlockHash>(&txn, self.switch_block_era_id_index_db, era_id)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    /// Appends the entries for a single block body's transactions to `transaction_hash_index`.
     ///
-    /// If a duplicate entry is encountered, index is not updated and an error is returned.
+    /// Duplicate/conflicting entries are detected in bulk afterwards by
+    /// [`Self::sort_and_check_transaction_hash_index`].
     fn insert_to_transaction_index(
-        transaction_hash_index: &mut BTreeMap<TransactionHash, BlockHashHeightAndEra>,
-        block_hash: BlockHash,
-        block_height: u64,
-        era_id: EraId,
+        transaction_hash_index: &mut Vec<(TransactionHash, BlockHashHeightAndEra)>,
+        header_info: BlockHashHeightAndEra,
         transaction_hashes: Vec<TransactionHash>,
-    ) -> Result<(), BlockStoreError> {
-        if let Some(hash) = transaction_hashes.iter().find(|hash| {
-            transaction_hash_index
-                .get(hash)
-                .is_some_and(|old_details| old_details.block_hash != block_hash)
-        }) {
-            return Err(BlockStoreError::DuplicateTransaction {
-                transaction_hash: *hash,
-                first: transaction_hash_index[hash].block_hash,
-                second: block_hash,
-            });
-        }
-
-        for hash in transaction_hashes {
-            transaction_hash_index.insert(
-                hash,
-                BlockHashHeightAndEra::new(block_hash, block_height, era_id),
-            );
-        }
-
-        Ok(())
+    ) {
+        transaction_hash_index.extend(
+            transaction_hashes
+                .into_iter()
+                .map(|hash| (hash, header_info)),
+        );
     }
 
-    /// Inserts the relevant entries to the two indices.
+    /// Appends a single block header's entries to `block_height_index` and, if it is a switch
+    /// block, to `switch_block_era_id_index`.
     ///
-    /// If a duplicate entry is encountered, neither index is updated and an error is returned.
+    /// Duplicate/conflicting entries are detected in bulk afterwards by
+    /// [`Self::sort_and_check_block_height_index`] and
+    /// [`Self::sort_and_check_switch_block_era_id_index`].
     fn insert_to_block_header_indices(
-        block_height_index: &mut BTreeMap<u64, BlockHash>,
-        switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
+        block_height_index: &mut Vec<(u64, BlockHash)>,
+        switch_block_era_id_index: &mut Vec<(EraId, BlockHash)>,
+        block_hash: BlockHash,
         block_header: &BlockHeader,
-    ) -> Result<(), BlockStoreError> {
-        let block_hash = block_header.block_hash();
-        if let Some(first) = block_height_index.get(&block_header.height()) {
-            if *first != block_hash {
+    ) {
+        block_height_index.push((block_header.height(), block_hash));
+        if block_header.is_switch_block() {
+            switch_block_era_id_index.push((block_header.era_id(), block_hash));
+        }
+    }
+
+    /// Sorts `entries` into ascending key order (required for the `APPEND`-based bulk load in
+    /// [`Self::rebuild_indexes`]), collapsing exact duplicates and erroring if two different
+    /// block hashes claim the same height.
+    fn sort_and_check_block_height_index(
+        mut entries: Vec<(u64, BlockHash)>,
+    ) -> Result<Vec<(u64, BlockHash)>, BlockStoreError> {
+        entries.sort_by_key(|(height, _)| *height);
+        for pair in entries.windows(2) {
+            let (height, first) = pair[0];
+            let (other_height, second) = pair[1];
+            if height == other_height && first != second {
                 return Err(BlockStoreError::DuplicateBlock {
-                    height: block_header.height(),
-                    first: *first,
-                    second: block_hash,
+                    height,
+                    first,
+                    second,
                 });
             }
         }
+        entries.dedup();
+        Ok(entries)
+    }
 
-        if block_header.is_switch_block() {
-            match switch_block_era_id_index.entry(block_header.era_id()) {
-                btree_map::Entry::Vacant(entry) => {
-                    let _ = entry.insert(block_hash);
-                }
-                btree_map::Entry::Occupied(entry) => {
-                    if *entry.get() != block_hash {
-                        return Err(BlockStoreError::DuplicateEraId {
-                            era_id: block_header.era_id(),
-                            first: *entry.get(),
-                            second: block_hash,
-                        });
-                    }
-                }
+    /// Sorts `entries` into ascending key order (required for the `APPEND`-based bulk load in
+    /// [`Self::rebuild_indexes`]), collapsing exact duplicates and erroring if two different
+    /// block hashes claim the same era ID.
+    fn sort_and_check_switch_block_era_id_index(
+        mut entries: Vec<(EraId, BlockHash)>,
+    ) -> Result<Vec<(EraId, BlockHash)>, BlockStoreError> {
+        entries.sort_by_key(|(era_id, _)| *era_id);
+        for pair in entries.windows(2) {
+            let (era_id, first) = pair[0];
+            let (other_era_id, second) = pair[1];
+            if era_id == other_era_id && first != second {
+                return Err(BlockStoreError::DuplicateEraId {
+                    era_id,
+                    first,
+                    second,
+                });
             }
         }
+        entries.dedup();
+        Ok(entries)
+    }
 
-        let _ = block_height_index.insert(block_header.height(), block_hash);
-        Ok(())
+    /// Sorts `entries` into ascending key order (required for the `APPEND`-based bulk load in
+    /// [`Self::rebuild_indexes`]), collapsing duplicates and erroring if the same transaction
+    /// hash is claimed by two different blocks.
+    fn sort_and_check_transaction_hash_index(
+        mut entries: Vec<(TransactionHash, BlockHashHeightAndEra)>,
+    ) -> Result<Vec<(TransactionHash, BlockHashHeightAndEra)>, BlockStoreError> {
+        entries.sort_by_key(|(transaction_hash, _)| *transaction_hash);
+        for pair in entries.windows(2) {
+            let (transaction_hash, first) = pair[0];
+            let (other_hash, second) = pair[1];
+            if transaction_hash == other_hash && first.block_hash != second.block_hash {
+                return Err(BlockStoreError::DuplicateTransaction {
+                    transaction_hash,
+                    first: first.block_hash,
+                    second: second.block_hash,
+                });
+            }
+        }
+        entries.dedup_by_key(|(transaction_hash, _)| *transaction_hash);
+        Ok(entries)
     }
 
     /// Write finality signatures.
@@ -840,6 +979,143 @@ fn header_count<Tx: LmdbTransaction>(
         .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
         .entries();
     Ok(current + legacy)
+}
+
+fn body_count<Tx: LmdbTransaction>(
+    txn: &Tx,
+    block_store: &LmdbBlockStore,
+) -> Result<usize, BlockStoreError> {
+    let current = txn
+        .stat(block_store.block_body_dbs.current)
+        .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
+        .entries();
+    let legacy = txn
+        .stat(block_store.block_body_dbs.legacy)
+        .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
+        .entries();
+    Ok(current + legacy)
+}
+
+/// Scans partition `partition_index` (of `bounds.len()`) of the header databases (`current` and
+/// `legacy`) through a fresh read-only transaction, returning this partition's contribution to
+/// the height/switch-block indexes and the body-hash lookup table consumed by
+/// [`scan_body_partition`]. Called concurrently, once per partition, by
+/// [`LmdbBlockStore::rebuild_indexes`].
+fn scan_header_partition(
+    env: &Environment,
+    header_dbs: VersionedDatabases<BlockHash, BlockHeader>,
+    partition_index: usize,
+    bounds: &[u8],
+    partition_capacity: usize,
+    total_headers: usize,
+    processed: &AtomicUsize,
+) -> Result<HeaderPartitionResult, BlockStoreError> {
+    let mut result = HeaderPartitionResult {
+        block_height_index: Vec::with_capacity(partition_capacity),
+        switch_block_era_id_index: Vec::new(),
+        body_hash_to_header_info: HashMap::with_capacity(partition_capacity),
+    };
+
+    let txn = env
+        .begin_ro_txn()
+        .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+
+    let progress_step = (total_headers / 20).max(1);
+    let mut handle_row = |raw_key: &[u8],
+                          block_header: BlockHeader|
+     -> Result<(), BlockStoreError> {
+        let count = processed.fetch_add(1, Ordering::Relaxed) + 1;
+        if count.is_multiple_of(progress_step) {
+            info!(
+                percent_complete = (count * 100 / total_headers.max(1)),
+                count, total_headers, "reindexing block store: scanning headers"
+            );
+        }
+
+        let block_hash: BlockHash = deserialize_bytesrepr(raw_key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+
+        LmdbBlockStore::insert_to_block_header_indices(
+            &mut result.block_height_index,
+            &mut result.switch_block_era_id_index,
+            block_hash,
+            &block_header,
+        );
+        let _ = result.body_hash_to_header_info.insert(
+            *block_header.body_hash(),
+            BlockHashHeightAndEra::new(block_hash, block_header.height(), block_header.era_id()),
+        );
+
+        Ok(())
+    };
+
+    header_dbs.for_each_value_in_current_partition(
+        &txn,
+        partition_index,
+        bounds,
+        &mut handle_row,
+    )?;
+    header_dbs.for_each_value_in_legacy_partition(
+        &txn,
+        partition_index,
+        bounds,
+        &mut handle_row,
+    )?;
+
+    Ok(result)
+}
+
+/// Scans partition `partition_index` of the body databases through a fresh read-only
+/// transaction, correlating each body with the header info collected by
+/// [`scan_header_partition`] and returning this partition's contribution to the
+/// transaction-hash index. Called concurrently, once per partition, by
+/// [`LmdbBlockStore::rebuild_indexes`].
+#[allow(clippy::too_many_arguments)]
+fn scan_body_partition(
+    env: &Environment,
+    body_dbs: VersionedDatabases<Digest, BlockBody>,
+    partition_index: usize,
+    bounds: &[u8],
+    partition_capacity: usize,
+    total_bodies: usize,
+    processed: &AtomicUsize,
+    body_hash_to_header_info: &HashMap<Digest, BlockHashHeightAndEra>,
+) -> Result<Vec<(TransactionHash, BlockHashHeightAndEra)>, BlockStoreError> {
+    let mut transaction_hash_index = Vec::with_capacity(partition_capacity);
+
+    let txn = env
+        .begin_ro_txn()
+        .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+
+    let progress_step = (total_bodies / 20).max(1);
+    let mut handle_row = |raw_key: &[u8], block_body: BlockBody| -> Result<(), BlockStoreError> {
+        let count = processed.fetch_add(1, Ordering::Relaxed) + 1;
+        if count.is_multiple_of(progress_step) {
+            info!(
+                percent_complete = (count * 100 / total_bodies.max(1)),
+                count, total_bodies, "reindexing block store: scanning bodies"
+            );
+        }
+
+        let body_hash: Digest = deserialize_bytesrepr(raw_key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+
+        if let Some(header_info) = body_hash_to_header_info.get(&body_hash) {
+            let transaction_hashes = block_transaction_hashes(&block_body);
+            LmdbBlockStore::insert_to_transaction_index(
+                &mut transaction_hash_index,
+                *header_info,
+                transaction_hashes,
+            );
+        }
+
+        Ok(())
+    };
+
+    body_dbs.for_each_value_in_current_partition(&txn, partition_index, bounds, &mut handle_row)?;
+    body_dbs.for_each_value_in_legacy_partition(&txn, partition_index, bounds, &mut handle_row)?;
+
+    Ok(transaction_hash_index)
 }
 
 /// Returns the transaction hashes referenced by a block body.
@@ -1950,7 +2226,8 @@ mod tests {
             rw_txn.commit().expect("should commit");
         }
 
-        store.reindex().expect("reindex should succeed");
+        let stats = store.rebuild_indexes().expect("reindex should succeed");
+        assert_eq!(stats.headers_processed as u64, HEADER_COUNT);
 
         let ro_txn = store.checkout_ro().expect("should checkout ro");
 
@@ -2010,6 +2287,63 @@ mod tests {
                 .height(),
             latest_switch_block_height,
             "wrong latest switch block"
+        );
+    }
+
+    #[test]
+    fn read_index_entry_methods_return_raw_index_values() {
+        let rng = &mut TestRng::new();
+        let tempdir = TempDir::new().expect("should create tempdir");
+        let mut store =
+            LmdbBlockStore::new(tempdir.path(), 64 * 1024 * 1024).expect("should create store");
+
+        let secret_key = SecretKey::random(rng);
+        let proposer = PublicKey::from(&secret_key);
+
+        let mut headers = Vec::new();
+        {
+            let mut rw_txn = store.checkout_rw().expect("should checkout rw");
+            for height in 0..HEADER_COUNT {
+                let header = header_at_height(rng, height, &proposer);
+                let _ = DataWriter::<BlockHash, BlockHeader>::write(&mut rw_txn, &header)
+                    .expect("should write header");
+                headers.push(header);
+            }
+            rw_txn.commit().expect("should commit");
+        }
+        let _ = store.rebuild_indexes().expect("reindex should succeed");
+
+        // `block_height_index_db` should map each height straight to that block's hash, with no
+        // further resolution (unlike `DataReader<BlockHeight, BlockHeader>`).
+        let height = 42u64;
+        let expected_hash = headers[height as usize].block_hash();
+        let actual = store
+            .read_block_height_index_entry(height)
+            .expect("read by height should succeed");
+        assert_eq!(actual, Some(expected_hash), "wrong hash at height {height}");
+        assert_eq!(
+            store
+                .read_block_height_index_entry(HEADER_COUNT + 1000)
+                .expect("read of missing height should succeed"),
+            None,
+            "reading a height past the end should return None"
+        );
+
+        // Switch blocks (height % 10 == 9) should be resolvable by era ID the same way.
+        let switch_height = 99u64;
+        assert_eq!(switch_height % 10, 9, "test bug: not a switch block height");
+        let era_id = EraId::new(switch_height / 10);
+        let expected_hash = headers[switch_height as usize].block_hash();
+        let actual = store
+            .read_switch_block_era_id_index_entry(era_id.value())
+            .expect("read by era id should succeed");
+        assert_eq!(actual, Some(expected_hash), "wrong hash for era {era_id}");
+        assert_eq!(
+            store
+                .read_switch_block_era_id_index_entry(era_id.value() + 1000)
+                .expect("read of missing era id should succeed"),
+            None,
+            "reading a nonexistent era id should return None"
         );
     }
 

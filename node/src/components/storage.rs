@@ -109,7 +109,10 @@ use object_pool::ObjectPool;
 const COMPONENT_NAME: &str = "storage";
 
 /// Key under which completed blocks are to be stored.
-const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
+///
+/// `pub(crate)` (rather than private) so the `read-completed-blocks` CLI command can look up the
+/// same state-store entry without duplicating the key.
+pub(crate) const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
 const FORCE_RESYNC_FILE_NAME: &str = "force_resync";
 
@@ -307,6 +310,22 @@ pub fn open_block_store(
     cfg: &WithDir<Config>,
     network_name: &str,
 ) -> Result<(PathBuf, LmdbBlockStore), FatalStorageError> {
+    let (root, mut block_store) = open_block_store_uninitialized(cfg, network_name)?;
+    block_store.init()?;
+    Ok((root, block_store))
+}
+
+/// Opens a node's block store, without building its disk-backed indexes even if they're
+/// missing (unlike [`open_block_store`]).
+///
+/// Intended for callers that need to control index (re)building themselves -- e.g. the
+/// `build-indexes` CLI subcommand, which always forces a fresh rebuild via
+/// [`LmdbBlockStore::rebuild_indexes`] regardless of whether the on-disk indexes already exist,
+/// and would otherwise risk paying for two full rebuilds back to back.
+pub fn open_block_store_uninitialized(
+    cfg: &WithDir<Config>,
+    network_name: &str,
+) -> Result<(PathBuf, LmdbBlockStore), FatalStorageError> {
     let config = cfg.value();
 
     // Create the database directory.
@@ -331,8 +350,7 @@ pub fn open_block_store(
         .saturating_add(config.max_deploy_store_size)
         .saturating_add(config.max_deploy_metadata_store_size);
 
-    let mut block_store = LmdbBlockStore::new(root.as_path(), total_size)?;
-    block_store.init()?;
+    let block_store = LmdbBlockStore::new(root.as_path(), total_size)?;
 
     Ok((root, block_store))
 }

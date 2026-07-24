@@ -126,6 +126,21 @@ impl<K, V> Clone for VersionedDatabases<K, V> {
 
 impl<K, V> Copy for VersionedDatabases<K, V> {}
 
+/// Splits the keyspace into `num_partitions` partitions by first-byte prefix, returning each
+/// partition's inclusive lower-bound byte (`bounds.len() == num_partitions`).
+///
+/// Callers should treat `bounds[i + 1]` as partition `i`'s exclusive upper bound, with the last
+/// partition running to the true end of the database. This is only a reasonable partitioning
+/// scheme for databases keyed by content-addressed hashes (e.g. `BlockHash`/`Digest`), since
+/// those are close enough to uniformly distributed for the resulting partitions to be
+/// similarly-sized; it says nothing useful about, say, sequential integer keys.
+pub(super) fn partition_bounds(num_partitions: usize) -> Vec<u8> {
+    let num_partitions = num_partitions.max(1);
+    (0..num_partitions)
+        .map(|i| ((i * 256) / num_partitions) as u8)
+        .collect()
+}
+
 impl<K, V> VersionedDatabases<K, V>
 where
     K: VersionedKey + std::fmt::Display,
@@ -250,47 +265,125 @@ where
     }
 
     /// Iterates every row in the current database, deserializing the value and calling `f` with the
-    /// cursor and the parsed value.
+    /// cursor, the row's raw (`bytesrepr`-encoded) key bytes, and the parsed value.
+    ///
+    /// Not currently called outside of tests: `rebuild_indexes` uses the read-only, partitioned
+    /// `for_each_value_in_current_partition` instead. Kept (with its `RwCursor`, delete-capable
+    /// signature) as ready-made infrastructure for a possible future delete-while-iterating use
+    /// (e.g. pruning); remove if that doesn't materialize.
+    #[allow(dead_code)]
     pub(super) fn for_each_value_in_current<'a, F>(
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
     ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
+        F: FnMut(&mut RwCursor<'a>, &[u8], V) -> Result<(), BlockStoreError>,
     {
         let mut cursor = txn
             .open_rw_cursor(self.current)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) =
+            let (raw_key, raw_val) =
                 row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)
                 .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-            f(&mut cursor, value)?;
+            f(&mut cursor, raw_key, value)?;
         }
         Ok(())
     }
 
     /// Iterates every row in the legacy database, deserializing the value and calling `f` with the
-    /// cursor and the parsed value.
+    /// cursor, the row's raw (`K::Legacy`'s `AsRef<[u8]>`) key bytes, and the parsed value.
+    ///
+    /// See the note on [`Self::for_each_value_in_current`]: unused outside tests since
+    /// `rebuild_indexes` moved to the partitioned read-only scan.
+    #[allow(dead_code)]
     pub(super) fn for_each_value_in_legacy<'a, F>(
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
     ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
+        F: FnMut(&mut RwCursor<'a>, &[u8], V) -> Result<(), BlockStoreError>,
     {
         let mut cursor = txn
             .open_rw_cursor(self.legacy)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) =
+            let (raw_key, raw_val) =
                 row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             let value: V::Legacy = lmdb_ext::deserialize(raw_val)
                 .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-            f(&mut cursor, value.into())?;
+            f(&mut cursor, raw_key, value.into())?;
+        }
+        Ok(())
+    }
+
+    /// Scans partition `partition_index` (of `bounds.len()` partitions, as computed by
+    /// [`partition_bounds`]) of the current database using a read-only cursor, deserializing
+    /// each value and calling `f` with the row's raw key bytes and the parsed value.
+    ///
+    /// Read-only transactions (unlike the `RwTransaction` used by
+    /// [`Self::for_each_value_in_current`]) can be opened concurrently from multiple threads,
+    /// which is the point of partitioning: each thread scans a disjoint slice of the keyspace
+    /// through its own transaction.
+    pub(super) fn for_each_value_in_current_partition<Tx, F>(
+        &self,
+        txn: &Tx,
+        partition_index: usize,
+        bounds: &[u8],
+        f: &mut F,
+    ) -> Result<(), BlockStoreError>
+    where
+        Tx: LmdbTransaction,
+        F: FnMut(&[u8], V) -> Result<(), BlockStoreError>,
+    {
+        let mut cursor = txn
+            .open_ro_cursor(self.current)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        let upper_bound = bounds.get(partition_index + 1).copied();
+        let iter = cursor.iter_from([bounds[partition_index]]);
+        for row in iter {
+            let (raw_key, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            if upper_bound.is_some_and(|upper| raw_key.first().is_some_and(|&b| b >= upper)) {
+                break;
+            }
+            let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            f(raw_key, value)?;
+        }
+        Ok(())
+    }
+
+    /// Scans partition `partition_index` of the legacy database using a read-only cursor; see
+    /// [`Self::for_each_value_in_current_partition`].
+    pub(super) fn for_each_value_in_legacy_partition<Tx, F>(
+        &self,
+        txn: &Tx,
+        partition_index: usize,
+        bounds: &[u8],
+        f: &mut F,
+    ) -> Result<(), BlockStoreError>
+    where
+        Tx: LmdbTransaction,
+        F: FnMut(&[u8], V) -> Result<(), BlockStoreError>,
+    {
+        let mut cursor = txn
+            .open_ro_cursor(self.legacy)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        let upper_bound = bounds.get(partition_index + 1).copied();
+        let iter = cursor.iter_from([bounds[partition_index]]);
+        for row in iter {
+            let (raw_key, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            if upper_bound.is_some_and(|upper| raw_key.first().is_some_and(|&b| b >= upper)) {
+                break;
+            }
+            let value: V::Legacy = lmdb_ext::deserialize(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            f(raw_key, value.into())?;
         }
         Ok(())
     }
@@ -517,7 +610,7 @@ mod tests {
         // Iterate `current`, deleting each cursor entry and gathering the visited values in a map.
         let mut txn = fixture.env.begin_rw_txn().unwrap();
         let mut visited = HashMap::new();
-        let mut visitor = |cursor: &mut RwCursor, transaction: Transaction| {
+        let mut visitor = |cursor: &mut RwCursor, _raw_key: &[u8], transaction: Transaction| {
             cursor.del(WriteFlags::empty()).unwrap();
             let _ = visited.insert(transaction.hash(), transaction);
             Ok(())
@@ -536,7 +629,7 @@ mod tests {
         }
 
         // Ensure a second run is a no-op.
-        let mut visitor = |_cursor: &mut RwCursor, _transaction: Transaction| {
+        let mut visitor = |_cursor: &mut RwCursor, _raw_key: &[u8], _transaction: Transaction| {
             panic!("should never get called");
         };
         let mut txn = fixture.env.begin_rw_txn().unwrap();
@@ -560,7 +653,7 @@ mod tests {
         // Iterate `legacy`, deleting each cursor entry and gathering the visited values in a map.
         let mut txn = fixture.env.begin_rw_txn().unwrap();
         let mut visited = HashMap::new();
-        let mut visitor = |cursor: &mut RwCursor, transaction: Transaction| {
+        let mut visitor = |cursor: &mut RwCursor, _raw_key: &[u8], transaction: Transaction| {
             cursor.del(WriteFlags::empty()).unwrap();
             match transaction {
                 Transaction::Deploy(deploy) => {
@@ -588,7 +681,7 @@ mod tests {
         }
 
         // Ensure a second run is a no-op.
-        let mut visitor = |_cursor: &mut RwCursor, _transaction: Transaction| {
+        let mut visitor = |_cursor: &mut RwCursor, _raw_key: &[u8], _transaction: Transaction| {
             panic!("should never get called");
         };
         let mut txn = fixture.env.begin_rw_txn().unwrap();

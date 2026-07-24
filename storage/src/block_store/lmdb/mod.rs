@@ -4,7 +4,7 @@ mod versioned_databases;
 mod lmdb_block_store;
 
 use core::convert::TryFrom;
-pub use lmdb_block_store::LmdbBlockStore;
+pub use lmdb_block_store::{LmdbBlockStore, ReindexStats};
 
 #[cfg(test)]
 use rand::Rng;
