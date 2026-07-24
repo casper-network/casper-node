@@ -6,6 +6,7 @@ mod error;
 mod event;
 mod fetchers;
 mod memory_metrics;
+mod protocol_upgrade;
 mod utils;
 
 mod catch_up;
@@ -15,7 +16,6 @@ mod reactor_state;
 #[cfg(test)]
 mod tests;
 mod upgrade_shutdown;
-mod upgrading_instruction;
 mod validate;
 
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
@@ -26,9 +26,10 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_binary_port::{LastProgress, NetworkName, Uptime};
+use casper_storage::block_store::{types::Tip, BlockStoreProvider, DataReader};
 use casper_types::{
-    bytesrepr, Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
-    FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
+    bytesrepr, Block, BlockHash, BlockHeader, BlockV2, Chainspec, ChainspecRawBytes, EraId,
+    FinalitySignature, FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
 };
 
 #[cfg(test)]
@@ -48,7 +49,7 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
-        storage::Storage,
+        storage::{self, Storage},
         sync_leaper::SyncLeaper,
         transaction_acceptor::{self, TransactionAcceptor},
         transaction_buffer::{self, TransactionBuffer},
@@ -77,7 +78,11 @@ use crate::{
     reactor::{
         self,
         event_queue_metrics::EventQueueMetrics,
-        main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
+        main_reactor::{
+            fetchers::Fetchers,
+            protocol_upgrade::{commit_upgrade_if_needed, PendingImmediateSwitchBlock},
+            upgrade_shutdown::SignatureGossipTracker,
+        },
         EventQueueHandle, QueueKind,
     },
     types::{
@@ -205,6 +210,18 @@ pub(crate) struct MainReactor {
     prevent_validator_shutdown: bool,
 
     force_catchup: bool,
+
+    /// Set when a protocol upgrade has been committed against global state but its immediate
+    /// switch block hasn't yet been produced, signed, and gossiped -- deferred until the node
+    /// can actually reach peers (see `MainReactor::maybe_finish_pending_upgrade`).
+    pending_immediate_switch_block: Option<PendingImmediateSwitchBlock>,
+
+    /// Set to the current time when the immediate switch block for a protocol upgrade is
+    /// enqueued for execution, and cleared once the upgrade is observed to be complete (i.e.
+    /// `should_commit_upgrade` becomes false again, meaning the local tip has advanced past the
+    /// switch block). If it takes longer than `upgrade_timeout` for that to happen, the reactor
+    /// bails out fatally rather than waiting forever.
+    upgrade_started_at: Option<Timestamp>,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -1115,10 +1132,53 @@ impl reactor::Reactor for MainReactor {
 
         let storage_config = WithDir::new(&root_dir, config.storage.clone());
 
-        let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
+        // Open (and, if necessary, build the disk-backed indexes of) the block store as early
+        // as possible, before anything else touches disk-backed state.
+        let (storage_root, mut block_store) =
+            storage::open_block_store(&storage_config, &chainspec.network_config.name)?;
+        storage::prune_block_store(
+            &mut block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            protocol_version,
+        )?;
+
+        let contract_runtime = ContractRuntime::new(
+            &storage_root,
+            &config.contract_runtime,
+            chainspec.clone(),
+            registry,
+        )?;
+
+        // If our local tip (post-prune) is the activation point, commit the protocol upgrade
+        // synchronously now. The resulting immediate switch block is *not* produced yet: that's
+        // deferred until the node can actually sign and gossip it
+        // (see `MainReactor::maybe_finish_pending_upgrade`).
+        let local_tip: Option<BlockHeader> = {
+            let ro_txn = block_store
+                .checkout_ro()
+                .map_err(storage::FatalStorageError::from)?;
+            DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)
+                .map_err(storage::FatalStorageError::from)?
+        };
+
+        // config.node.skip_protocol_upgrade allows to skip the protocol upgrade. In this flow we
+        // rely that the node will sync_leap the immediate switch blocks from peers.
+        let pending_immediate_switch_block = if config.node.skip_protocol_upgrade {
+            None
+        } else {
+            commit_upgrade_if_needed(
+                &contract_runtime,
+                &chainspec,
+                &chainspec_raw_bytes,
+                local_tip.as_ref(),
+                config.node.upgrade_timeout,
+            )?
+        };
+
         let storage = Storage::new(
             &storage_config,
-            hard_reset_to_start_of_era,
+            storage_root,
+            block_store,
             protocol_version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
@@ -1127,13 +1187,6 @@ impl reactor::Reactor for MainReactor {
             Some(registry),
             config.node.force_resync,
             chainspec.transaction_config.clone(),
-        )?;
-
-        let contract_runtime = ContractRuntime::new(
-            storage.root_path(),
-            &config.contract_runtime,
-            chainspec.clone(),
-            registry,
         )?;
 
         let allow_handshake = config.node.sync_handling != SyncHandling::Isolated;
@@ -1287,6 +1340,8 @@ impl reactor::Reactor for MainReactor {
             finality_signature_creation: true,
             prevent_validator_shutdown,
             force_catchup: false,
+            pending_immediate_switch_block,
+            upgrade_started_at: None,
         };
         info!("MainReactor: instantiated");
 

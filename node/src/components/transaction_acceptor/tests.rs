@@ -1418,10 +1418,20 @@ impl reactor::Reactor for Reactor {
         let transaction_acceptor =
             TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry)?;
 
-        let storage = Storage::new(
+        let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_with_dir, "test").unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            protocol_version,
+        )
+        .unwrap();
+        let mut storage = Storage::new(
             &storage_with_dir,
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
+            storage_root,
+            storage_block_store,
+            protocol_version,
             EraId::default(),
             "test",
             chainspec.transaction_config.max_ttl.into(),
@@ -1431,6 +1441,7 @@ impl reactor::Reactor for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
         let reactor = Reactor {
             storage,

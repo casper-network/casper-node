@@ -41,7 +41,7 @@ mod tests;
 mod utils;
 
 use casper_storage::block_store::{
-    lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
+    lmdb::LmdbBlockStore,
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
         LatestSwitchBlock, StateStore, StateStoreKey, Tip, TransactionFinalizedApprovals,
@@ -68,7 +68,7 @@ use casper_types::{
     execution::{execution_result_v1, ExecutionResult, ExecutionResultV1},
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockHeaderWithSignatures, BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2,
-    ChainNameDigest, DeployHash, EraId, ExecutionInfo, FinalitySignature, ProtocolVersion,
+    ChainNameDigest, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, ProtocolVersion,
     Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionId, Transfer, U512,
 };
 use datasize::DataSize;
@@ -80,7 +80,7 @@ use tracing::{debug, error, info, warn};
 use crate::{
     components::{
         fetcher::{FetchItem, FetchResponse},
-        Component,
+        Component, ComponentState, InitializedComponent,
     },
     effect::{
         announcements::FatalAnnouncement,
@@ -126,8 +126,8 @@ const STORAGE_FILES: [&str; 5] = [
 pub struct Storage {
     /// Storage location.
     root: PathBuf,
-    /// Block store
-    pub(crate) block_store: IndexedLmdbBlockStore,
+    /// Block store.
+    block_store: LmdbBlockStore,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
     /// The activation point era of the current protocol version.
@@ -153,6 +153,13 @@ pub struct Storage {
     transaction_config: TransactionConfig,
     /// The utilization of blocks.
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
+    /// Component initialization state.
+    state: ComponentState,
+    /// The protocol version this node is running.
+    #[data_size(skip)]
+    protocol_version: ProtocolVersion,
+    /// Whether a force resync was requested.
+    force_resync: bool,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -193,41 +200,82 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request(*req),
-            Event::NetRequestIncoming(ref incoming) => {
-                match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
-                    Ok(effects) => Ok(effects),
-                    Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
-                    Err(ref other_err) => {
-                        warn!(
-                            sender=%incoming.sender,
-                            err=display_error(other_err),
-                            "error handling net request"
+        match &self.state {
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+            ComponentState::Uninitialized => {
+                warn!(?event, "uninitialized component received event");
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => match self.do_initialize() {
+                    Ok(()) => {
+                        <Self as InitializedComponent<REv>>::set_state(
+                            self,
+                            ComponentState::Initialized,
                         );
-                        // We could still send the requester a "not found" message, and could do
-                        // so even in the fatal case, but it is safer to not do so at the
-                        // moment, giving less surface area for possible amplification attacks.
+                        Effects::new()
+                    }
+                    Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
+                },
+                _ => {
+                    warn!(
+                        ?event,
+                        "initializing component received non-Initialize event"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => {
+                let result = match event {
+                    Event::Initialize => {
+                        info!("Storage: skipping initialization, already initialized");
                         Ok(Effects::new())
                     }
-                }
-            }
-            Event::MarkBlockCompletedRequest(req) => self.handle_mark_block_completed_request(req),
-            Event::MakeBlockExecutableRequest(req) => {
-                let ret = self.make_executable_block(&req.block_hash);
-                match ret {
-                    Ok(maybe) => Ok(req.responder.respond(maybe).ignore()),
-                    Err(err) => Err(err),
-                }
-            }
-        };
+                    Event::StorageRequest(req) => self.handle_storage_request(*req),
+                    Event::NetRequestIncoming(ref incoming) => {
+                        match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
+                            Ok(effects) => Ok(effects),
+                            Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
+                            Err(ref other_err) => {
+                                warn!(
+                                    sender=%incoming.sender,
+                                    err=display_error(other_err),
+                                    "error handling net request"
+                                );
+                                // We could still send the requester a "not found" message, and
+                                // could do so even in the fatal case, but it is safer to not do
+                                // so at the moment, giving less surface area for possible
+                                // amplification attacks.
+                                Ok(Effects::new())
+                            }
+                        }
+                    }
+                    Event::MarkBlockCompletedRequest(req) => {
+                        self.handle_mark_block_completed_request(req)
+                    }
+                    Event::MakeBlockExecutableRequest(req) => {
+                        let ret = self.make_executable_block(&req.block_hash);
+                        match ret {
+                            Ok(maybe) => Ok(req.responder.respond(maybe).ignore()),
+                            Err(err) => Err(err),
+                        }
+                    }
+                };
 
-        // Any error is turned into a fatal effect, the component itself does not panic. Note that
-        // we are dropping a lot of responders this way, but since we are crashing with fatal
-        // anyway, it should not matter.
-        match result {
-            Ok(effects) => effects,
-            Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
+                // Any error is turned into a fatal effect, the component itself does not panic.
+                // Note that we are dropping a lot of responders this way, but since we are
+                // crashing with fatal anyway, it should not matter.
+                match result {
+                    Ok(effects) => effects,
+                    Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
+                }
+            }
         }
     }
 
@@ -236,12 +284,160 @@ where
     }
 }
 
+impl<REv> InitializedComponent<REv> for Storage
+where
+    REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
+{
+    fn state(&self) -> &ComponentState {
+        &self.state
+    }
+
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<REv>>::name(self),
+            "component state changed"
+        );
+        self.state = new_state;
+    }
+}
+
+/// Opens (and, if necessary, builds the disk-backed indexes of) a node's block store.
+pub fn open_block_store(
+    cfg: &WithDir<Config>,
+    network_name: &str,
+) -> Result<(PathBuf, LmdbBlockStore), FatalStorageError> {
+    let config = cfg.value();
+
+    // Create the database directory.
+    let mut root = cfg.with_dir(config.path.clone());
+    let network_subdir = root.join(network_name);
+
+    if !network_subdir.exists() {
+        fs::create_dir_all(&network_subdir).map_err(|err| {
+            FatalStorageError::CreateDatabaseDirectory(network_subdir.clone(), err)
+        })?;
+    }
+
+    if should_move_storage_files_to_network_subdir(&root, &STORAGE_FILES)? {
+        move_storage_files_to_network_subdir(&root, &network_subdir, &STORAGE_FILES)?;
+    }
+
+    root = network_subdir;
+
+    // Calculate the upper bound for the memory map that is potentially used.
+    let total_size = config
+        .max_block_store_size
+        .saturating_add(config.max_deploy_store_size)
+        .saturating_add(config.max_deploy_metadata_store_size);
+
+    let mut block_store = LmdbBlockStore::new(root.as_path(), total_size)?;
+    block_store.init()?;
+
+    Ok((root, block_store))
+}
+
+/// Performs the chainspec-driven hard-reset prune: deletes every stored block (and its body,
+/// execution results, and index entries) at or after `hard_reset_to_start_of_era` that isn't
+/// from the current protocol version. No-op if `hard_reset_to_start_of_era` is `None`.
+pub fn prune_block_store(
+    block_store: &mut LmdbBlockStore,
+    hard_reset_to_start_of_era: Option<EraId>,
+    protocol_version: ProtocolVersion,
+) -> Result<(), FatalStorageError> {
+    let Some(invalid_era) = hard_reset_to_start_of_era else {
+        return Ok(());
+    };
+
+    info!("pruning block store");
+
+    let tip_height = {
+        let ro_txn = block_store.checkout_ro()?;
+        match DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)? {
+            Some(header) => header.height(),
+            None => {
+                info!("block store is empty, nothing to prune");
+                return Ok(());
+            }
+        }
+    };
+    let total_headers = tip_height + 1;
+    let progress_step = (total_headers / 20).max(1);
+
+    // First pass (read-only): scan every header to decide which blocks to delete, and whether
+    // each body hash referenced along the way is still needed by at least one retained block
+    // (bodies are only ever deleted once no retained header references them any more).
+    let mut blocks_to_delete = Vec::new();
+    let mut body_hash_retained: HashMap<Digest, bool> = HashMap::new();
+    {
+        let ro_txn = block_store.checkout_ro()?;
+        for height in 0..=tip_height {
+            if height % progress_step == 0 {
+                info!(
+                    percent_complete = (height * 100 / total_headers.max(1)),
+                    height, total_headers, "pruning block store: scanning"
+                );
+            }
+            let header: BlockHeader = match ro_txn.read(height)? {
+                Some(header) => header,
+                None => continue,
+            };
+
+            // Retain blocks from eras before the hard reset era, and blocks after this era if
+            // they are from the current protocol version (as otherwise a node restart would
+            // purge them again, despite them being valid).
+            let should_retain =
+                header.era_id() < invalid_era || header.protocol_version() == protocol_version;
+
+            let retained = body_hash_retained
+                .entry(*header.body_hash())
+                .or_insert(false);
+            *retained = *retained || should_retain;
+
+            if !should_retain {
+                blocks_to_delete.push((header.block_hash(), header.height(), header.era_id()));
+            }
+        }
+    }
+
+    if blocks_to_delete.is_empty() {
+        info!("block store pruning complete: nothing to prune");
+        return Ok(());
+    }
+    let blocks_to_delete_count = blocks_to_delete.len();
+
+    // Second pass (read-write): delete the execution results and the block itself for each
+    // block being pruned -- in that order, since deleting the execution results needs to read
+    // the block (header + body) to find its transaction hashes -- then purge any block body no
+    // longer referenced by a retained block.
+    {
+        let mut rw_txn = block_store.checkout_rw()?;
+        for (block_hash, block_height, era_id) in blocks_to_delete {
+            DataWriter::<BlockHashHeightAndEra, BlockExecutionResults>::delete(
+                &mut rw_txn,
+                BlockHashHeightAndEra::new(block_hash, block_height, era_id),
+            )?;
+            DataWriter::<BlockHash, Block>::delete(&mut rw_txn, block_hash)?;
+        }
+        for (body_hash, retained) in body_hash_retained {
+            if !retained {
+                DataWriter::<Digest, BlockBody>::delete(&mut rw_txn, body_hash)?;
+            }
+        }
+        rw_txn.commit()?;
+    }
+
+    info!(blocks_to_delete_count, "block store pruning complete");
+    Ok(())
+}
+
 impl Storage {
-    /// Creates a new storage component.
+    /// Ctor and init
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
-        hard_reset_to_start_of_era: Option<EraId>,
+        root: PathBuf,
+        block_store: LmdbBlockStore,
         protocol_version: ProtocolVersion,
         activation_era: EraId,
         network_name: &str,
@@ -252,38 +448,11 @@ impl Storage {
         transaction_config: TransactionConfig,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
-
-        // Create the database directory.
-        let mut root = cfg.with_dir(config.path.clone());
-        let network_subdir = root.join(network_name);
-
-        if !network_subdir.exists() {
-            fs::create_dir_all(&network_subdir).map_err(|err| {
-                FatalStorageError::CreateDatabaseDirectory(network_subdir.clone(), err)
-            })?;
-        }
-
-        if should_move_storage_files_to_network_subdir(&root, &STORAGE_FILES)? {
-            move_storage_files_to_network_subdir(&root, &network_subdir, &STORAGE_FILES)?;
-        }
-
-        root = network_subdir;
-
-        // Calculate the upper bound for the memory map that is potentially used.
-        let total_size = config
-            .max_block_store_size
-            .saturating_add(config.max_deploy_store_size)
-            .saturating_add(config.max_deploy_metadata_store_size);
-
-        let block_store = LmdbBlockStore::new(root.as_path(), total_size)?;
-        let indexed_block_store =
-            IndexedLmdbBlockStore::new(block_store, hard_reset_to_start_of_era, protocol_version)?;
-
         let metrics = registry.map(Metrics::new).transpose()?;
 
-        let mut component = Self {
+        Ok(Self {
             root,
-            block_store: indexed_block_store,
+            block_store,
             completed_blocks: Default::default(),
             activation_era,
             key_block_height_for_activation_point: None,
@@ -295,10 +464,16 @@ impl Storage {
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
             transaction_config,
-        };
+            state: ComponentState::Uninitialized,
+            protocol_version,
+            force_resync,
+        })
+    }
 
-        if force_resync {
-            let force_resync_file_path = component.root_path().join(FORCE_RESYNC_FILE_NAME);
+    /// Performs completed-blocks bookkeeping (and force-resync marker handling, if configured).
+    fn do_initialize(&mut self) -> Result<(), FatalStorageError> {
+        if self.force_resync {
+            let force_resync_file_path = self.root_path().join(FORCE_RESYNC_FILE_NAME);
             // Check if resync is already in progress. Force resync will kick
             // in only when the marker file didn't exist before.
             // Use `OpenOptions::create_new` to atomically check for the file
@@ -313,10 +488,10 @@ impl Storage {
                     // is now created, initialize force resync.
                     info!("initializing force resync");
                     // Default `storage.completed_blocks`.
-                    component.completed_blocks = Default::default();
-                    component.persist_completed_blocks()?;
+                    self.completed_blocks = Default::default();
+                    self.persist_completed_blocks()?;
                     // Exit the initialization function early.
-                    return Ok(component);
+                    return Ok(());
                 }
                 Err(io_err) if io_err.kind() == ErrorKind::AlreadyExists => {
                     info!("skipping force resync as marker file exists");
@@ -332,7 +507,7 @@ impl Storage {
         }
 
         {
-            let ro_txn = component.block_store.checkout_ro()?;
+            let ro_txn = self.block_store.checkout_ro()?;
             let maybe_state_store: Option<Vec<u8>> = ro_txn.read(StateStoreKey::new(
                 Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY),
             ))?;
@@ -349,7 +524,7 @@ impl Storage {
                         sequences.clear();
                     }
 
-                    component.completed_blocks = sequences;
+                    self.completed_blocks = sequences;
                 }
                 None => {
                     // No state so far. We can make the following observations:
@@ -375,8 +550,10 @@ impl Storage {
                         for height in (0..=highest_block_header.height()).rev() {
                             let maybe_header: Option<BlockHeader> = ro_txn.read(height)?;
                             match maybe_header {
-                                Some(header) if header.protocol_version() < protocol_version => {
-                                    component.completed_blocks =
+                                Some(header)
+                                    if header.protocol_version() < self.protocol_version =>
+                                {
+                                    self.completed_blocks =
                                         DisjointSequences::new(Sequence::new(0, header.height()));
                                     break;
                                 }
@@ -387,9 +564,9 @@ impl Storage {
                 }
             }
         }
-        component.persist_completed_blocks()?;
-        component.warm_up_utilization_tracker()?;
-        Ok(component)
+        self.persist_completed_blocks()?;
+        self.warm_up_utilization_tracker()?;
+        Ok(())
     }
 
     /// Assume:
@@ -671,9 +848,10 @@ impl Storage {
             StorageRequest::GetApprovalsHashes {
                 block_hash,
                 responder,
-            } => responder
-                .respond(self.block_store.checkout_ro()?.read(block_hash)?)
-                .ignore(),
+            } => {
+                let maybe_item = self.block_store.checkout_ro()?.read(block_hash)?;
+                responder.respond(maybe_item).ignore()
+            }
             StorageRequest::GetHighestCompleteBlock { responder } => responder
                 .respond(self.get_highest_complete_block()?)
                 .ignore(),
@@ -2342,6 +2520,16 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
 // only ever be used when writing tests.
 #[cfg(test)]
 impl Storage {
+    /// Drives this component through its `InitializedComponent` initialization step, mirroring
+    /// what the reactor's `initialize_next_component` does at startup. Test harnesses across the
+    /// crate that construct a `Storage` directly (rather than via the full reactor) must call
+    /// this before issuing any `StorageRequest`s against it.
+    pub(crate) fn initialize_for_test(&mut self) {
+        self.do_initialize()
+            .expect("storage initialization should succeed");
+        self.state = ComponentState::Initialized;
+    }
+
     /// Directly returns a transaction with finalized approvals from internal store.
     ///
     /// # Panics

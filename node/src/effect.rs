@@ -134,8 +134,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
-    NextUpgrade, Package, PackageAddr, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionId, Transfer, U512,
+    NextUpgrade, Package, PackageAddr, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -152,7 +152,6 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::ExecutionPreState,
     effect::announcements::NonExecutableBlockAnnouncement,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
@@ -956,18 +955,6 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
-                QueueKind::ContractRuntime,
-            )
-            .await;
-    }
-
-    pub(crate) async fn update_contract_runtime_state(self, new_pre_state: ExecutionPreState)
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.event_queue
-            .schedule(
-                ContractRuntimeRequest::UpdatePreState { new_pre_state },
                 QueueKind::ContractRuntime,
             )
             .await;
@@ -1811,28 +1798,6 @@ impl<REv> EffectBuilder<REv> {
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,
-            )
-            .await;
-    }
-
-    pub(crate) async fn enqueue_protocol_upgrade(
-        self,
-        upgrade_config: ProtocolUpgradeConfig,
-        next_block_height: u64,
-        parent_hash: BlockHash,
-        parent_seed: Digest,
-    ) where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.event_queue
-            .schedule(
-                ContractRuntimeRequest::DoProtocolUpgrade {
-                    protocol_upgrade_config: Box::new(upgrade_config),
-                    next_block_height,
-                    parent_hash,
-                    parent_seed,
-                },
-                QueueKind::Control,
             )
             .await;
     }
