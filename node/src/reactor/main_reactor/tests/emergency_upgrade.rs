@@ -8,10 +8,8 @@ use crate::reactor::main_reactor::tests::{
     fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE, ERA_THREE, ERA_TWO, ONE_MIN,
 };
 
-/// Exercises an emergency protocol upgrade that requires "peeling" (hard-resetting) blocks
-/// already stored under the old protocol version -- as would happen if a chain kept producing
-/// blocks past the point an emergency fix needed to roll back to -- combined with a
-/// `global_state_update` (an emergency validator-set confirmation).
+/// Exercises an protocol upgrade that requires "peeling" blocks already stored under the old
+/// protocol version.
 ///
 /// This also verifies that the resulting immediate switch block still gets signed and enough
 /// finality signatures gossiped around the (freshly restarted) network to be marked complete,
@@ -79,9 +77,8 @@ async fn emergency_upgrade_requiring_block_peeling() {
             .await;
     }
 
-    // The network should come back up, apply the upgrade, and continue producing (and
-    // completing!) blocks -- proving the deferred sign+gossip mechanism for the immediate switch
-    // block worked across the restart.
+    // The network should come back up, apply the upgrade, and continue producing
+    // blocks
     fixture.run_until_block_height(3, ONE_MIN).await;
 
     for runner in fixture.network.nodes().values() {

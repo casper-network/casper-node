@@ -52,7 +52,7 @@ impl PendingImmediateSwitchBlock {
 /// activation point, synchronously commits the protocol upgrade against `contract_runtime`'s
 /// global state. Returns the info needed to later produce, sign, and gossip the resulting
 /// immediate switch block, once the reactor is ready to do so (see
-/// [`Self::maybe_finish_pending_upgrade`]). Returns `Ok(None)` if no upgrade is due.
+/// [`Self::maybe_finish_pending_upgrade`]). Returns `Ok(None)` if no upgrade is due
 ///
 /// This is an associated function (rather than a `&self` method) so it can be called from
 /// `MainReactor::new`, before the reactor itself has been constructed -- that's the only

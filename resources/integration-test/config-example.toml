@@ -68,6 +68,11 @@ upgrade_timeout = '30 seconds'
 # other restarting nodes. This config is inert on non-validating nodes.
 prevent_validator_shutdown = false
 
+# If true, skips committing a protocol upgrade locally when this node's tip is the last
+# block before the upgrade's activation point. Instead, the node will acquire the
+# post-upgrade chain via the ordinary syncing process, as if it were catching up.
+skip_protocol_upgrade = false
+
 # =================================
 # Configuration options for logging
 # =================================

@@ -1160,13 +1160,20 @@ impl reactor::Reactor for MainReactor {
             DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)
                 .map_err(storage::FatalStorageError::from)?
         };
-        let pending_immediate_switch_block = commit_upgrade_if_needed(
-            &contract_runtime,
-            &chainspec,
-            &chainspec_raw_bytes,
-            local_tip.as_ref(),
-            config.node.upgrade_timeout,
-        )?;
+
+        // config.node.skip_protocol_upgrade allows to skip the protocol upgrade. In this flow we
+        // rely that the node will sync_leap the immediate switch blocks from peers.
+        let pending_immediate_switch_block = if config.node.skip_protocol_upgrade {
+            None
+        } else {
+            commit_upgrade_if_needed(
+                &contract_runtime,
+                &chainspec,
+                &chainspec_raw_bytes,
+                local_tip.as_ref(),
+                config.node.upgrade_timeout,
+            )?
+        };
 
         let storage = Storage::new(
             &storage_config,
