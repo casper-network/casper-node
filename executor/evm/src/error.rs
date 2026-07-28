@@ -14,6 +14,9 @@ pub enum Error {
     /// EVM execution is disabled in the chainspec configuration.
     #[error("EVM execution is disabled")]
     Disabled,
+    /// EVM wei-to-mote conversion ratio is invalid.
+    #[error("EVM wei_per_mote must be greater than zero")]
+    InvalidWeiPerMote,
     /// Signed EVM transaction does not include an EIP-155 replay-protection chain id.
     #[error("EVM transaction is missing replay-protection chain id")]
     MissingChainId,
@@ -65,8 +68,8 @@ pub enum DbError {
         /// Decode error text.
         error: String,
     },
-    /// A Casper balance does not fit into EVM U256.
-    #[error("Casper balance at {key} does not fit into EVM U256")]
+    /// A Casper balance, after scaling from motes to wei, does not fit into EVM U256.
+    #[error("Casper balance at {key}, scaled to wei, does not fit into EVM U256")]
     BalanceOverflow {
         /// Balance key that was read.
         key: Box<Key>,

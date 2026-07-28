@@ -1,6 +1,6 @@
 //! Public execution outcome types.
 
-use casper_types::evm;
+use casper_types::{evm, U512};
 use revm::context_interface::result::{
     ExecutionResult, HaltReason as RevmHaltReason, OutOfGasError as RevmOutOfGasError, Output,
 };
@@ -20,10 +20,12 @@ pub struct ExecutionOutcome {
     pub logs: Vec<evm::Log>,
     /// Address created by a successful create transaction.
     pub created_contract_address: Option<evm::Address>,
+    /// Whole motes discarded when final EVM balances are rounded down for persistence.
+    pub dust_motes: U512,
 }
 
 impl ExecutionOutcome {
-    pub(crate) fn from_revm_result(result: &ExecutionResult) -> Self {
+    pub(crate) fn from_revm_result(result: &ExecutionResult, dust_motes: U512) -> Self {
         match result {
             ExecutionResult::Success {
                 gas, logs, output, ..
@@ -40,6 +42,7 @@ impl ExecutionOutcome {
                     output: output_bytes,
                     logs: logs.iter().map(from_revm_log).collect(),
                     created_contract_address,
+                    dust_motes,
                 }
             }
             ExecutionResult::Revert { gas, output, .. } => Self {
@@ -48,6 +51,7 @@ impl ExecutionOutcome {
                 output: output.to_vec(),
                 logs: Vec::new(),
                 created_contract_address: None,
+                dust_motes,
             },
             ExecutionResult::Halt { gas, reason, .. } => Self {
                 status: ExecutionStatus::Halt(from_revm_halt_reason(reason)),
@@ -55,6 +59,7 @@ impl ExecutionOutcome {
                 output: Vec::new(),
                 logs: Vec::new(),
                 created_contract_address: None,
+                dust_motes,
             },
         }
     }

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    U512,
+    U256, U512,
 };
 
 /// The default number of wei represented by one mote.
@@ -122,6 +122,21 @@ impl EvmConfig {
                 .to_integer(),
         )
     }
+
+    /// Converts an Ethereum transaction value from wei to motes.
+    ///
+    /// Casper purse balances have mote precision, so values containing a
+    /// fractional mote are not representable and return `None`.
+    pub fn value_motes(&self, value_wei: U256) -> Option<U256> {
+        if self.wei_per_mote == 0 {
+            return None;
+        }
+        let wei_per_mote = U256::from(self.wei_per_mote);
+        if value_wei % wei_per_mote != U256::zero() {
+            return None;
+        }
+        Some(value_wei / wei_per_mote)
+    }
 }
 
 impl ToBytes for EvmConfig {
@@ -201,5 +216,22 @@ mod tests {
         let config = EvmConfig::default();
 
         assert_eq!(config.gas_fee_motes(1, 1), Some(U512::from(1)));
+    }
+
+    #[test]
+    fn should_convert_exact_evm_value_from_wei_to_motes() {
+        let config = EvmConfig::default();
+
+        assert_eq!(
+            config.value_motes(U256::from(DEFAULT_WEI_PER_MOTE) * U256::from(15u64)),
+            Some(U256::from(15u64))
+        );
+    }
+
+    #[test]
+    fn should_reject_evm_value_with_fractional_mote() {
+        let config = EvmConfig::default();
+
+        assert_eq!(config.value_motes(U256::from(1u64)), None);
     }
 }

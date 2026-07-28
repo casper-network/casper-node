@@ -114,6 +114,14 @@ impl MetaEvmTransaction {
             });
         }
 
+        if !transaction.is_unsigned_call() && evm_config.value_motes(transaction.value()).is_none()
+        {
+            return Err(EvmTransactionError::ValueNotRepresentable {
+                value: transaction.value(),
+                wei_per_mote: evm_config.wei_per_mote,
+            });
+        }
+
         let base_fee = evm_config.base_fee_wei();
         match transaction.kind() {
             EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
@@ -131,14 +139,15 @@ impl MetaEvmTransaction {
                         base_fee,
                     });
                 }
+                if !transaction.is_unsigned_call() && gas_price > base_fee {
+                    return Err(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                        priority_fee_per_gas: gas_price - base_fee,
+                    });
+                }
             }
             EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => {
-                // `max_fee_per_gas` is still meaningful on Casper as the user's
-                // dynamic-fee total price cap. It must at least cover the
-                // configured EVM base fee; with the priority fee forced to zero
-                // below, this cap is what lets Ethereum tooling submit typed
-                // dynamic-fee transactions without implying transaction
-                // priority based on gas parameters.
+                // `max_fee_per_gas` remains the user's total price cap and must
+                // cover the configured base fee.
                 let max_fee_per_gas = transaction.max_fee_per_gas();
                 if max_fee_per_gas < base_fee {
                     return Err(EvmTransactionError::MaxFeePerGasBelowBaseFee {
@@ -149,15 +158,22 @@ impl MetaEvmTransaction {
                 let max_priority_fee_per_gas = transaction
                     .max_priority_fee_per_gas()
                     .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?;
-                if max_priority_fee_per_gas != 0 {
-                    // Casper does not currently prioritize transactions based
-                    // on transaction gas parameters. Accepting a non-zero
-                    // EIP-1559 priority fee would charge users for a priority
-                    // signal that the node does not honor, so this prototype
-                    // only accepts EIP-1559 as a max-fee compatibility
-                    // envelope with zero priority fee.
-                    return Err(EvmTransactionError::NonZeroMaxPriorityFeePerGas {
-                        max_priority_fee_per_gas,
+                if max_priority_fee_per_gas > max_fee_per_gas {
+                    return Err(
+                        EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas {
+                            max_priority_fee_per_gas,
+                            max_fee_per_gas,
+                        },
+                    );
+                }
+                let priority_fee_per_gas = transaction.effective_priority_fee_per_gas(base_fee);
+                if priority_fee_per_gas != 0 {
+                    // A non-zero cap is compatible with a tipless network when
+                    // max_fee_per_gas equals the base fee. Reject only a
+                    // positive effective tip, which would charge for priority
+                    // that Casper does not honor.
+                    return Err(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                        priority_fee_per_gas,
                     });
                 }
             }

@@ -149,6 +149,13 @@ fn execution_min_cost(
     }
 }
 
+fn evm_consumed_gas(status: EvmExecutionStatus, gas_used: u64, gas_limit: u64) -> u64 {
+    match status {
+        EvmExecutionStatus::Success | EvmExecutionStatus::Revert => gas_used,
+        EvmExecutionStatus::Halt(_) => gas_limit,
+    }
+}
+
 #[derive(Clone, Debug)]
 struct EvmOriginResolution {
     // Concrete payer selected before payment checks. This is deliberately a
@@ -754,14 +761,11 @@ pub fn execute_finalized_block(
                 }
             };
 
-            // NOTE: this is the actual adjusted cost that we charge for.
+            // NOTE: this is the maximum adjusted cost reserved before execution.
             // Native transactions use gas limit * Casper gas price. EVM
-            // transactions convert gas limit * EVM gas price from wei to motes.
-            // For accepted EIP-1559 transactions, config compliance has already required
-            // `max_priority_fee_per_gas == 0`, so the effective EVM gas price is the
-            // configured base fee capped by `max_fee_per_gas`; Casper does not charge an
-            // Ethereum-style priority premium while transaction priority is not based on
-            // gas parameters.
+            // transactions reserve gas limit * the transaction's signed maximum
+            // price, converted from wei to motes. Post-processing applies the
+            // chainspec's refund and fee handling to the unused amount.
             let cost = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
                     .max_fee_amount(&chainspec.evm_config)
@@ -1047,10 +1051,11 @@ pub fn execute_finalized_block(
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let required_balance = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .required_balance(actual_cost)
+                    .required_balance(actual_cost, &chainspec.evm_config)
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
-                            "EVM value plus fee amount overflowed U512".to_string(),
+                            "EVM value is not an exact mote amount or value plus fee overflowed U512"
+                                .to_string(),
                         )
                     })?
             } else {
@@ -1223,22 +1228,25 @@ pub fn execute_finalized_block(
                     state_root_hash =
                         scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
                     let effective_gas_price = evm_transaction.effective_gas_price(base_fee_wei);
-                    let consumed = if matches!(outcome.status, EvmExecutionStatus::Success) {
-                        evm_transaction
-                            .fee_amount(outcome.gas_used, &chainspec.evm_config)
-                            .ok_or_else(|| {
-                                BlockExecutionError::PaymentError(
-                                    "EVM fee amount overflowed U512".to_string(),
-                                )
-                            })?
-                    } else {
-                        artifact_builder.cost_to_use()
-                    };
-                    artifact_builder.with_evm_receipt(
-                        outcome.to_receipt(effective_gas_price),
-                        consumed,
-                        execution_effects,
+                    let consumed_gas = evm_consumed_gas(
+                        outcome.status,
+                        outcome.gas_used,
+                        evm_transaction.gas_limit(),
                     );
+                    let consumed = evm_transaction
+                        .fee_amount(consumed_gas, &chainspec.evm_config)
+                        .ok_or_else(|| {
+                            BlockExecutionError::PaymentError(
+                                "EVM fee amount overflowed U512".to_string(),
+                            )
+                        })?;
+                    let mut receipt = outcome.to_receipt(effective_gas_price);
+                    // A top-level exceptional halt consumes the full supplied gas under EVM
+                    // execution semantics. Casper refund and fee policy is applied afterward.
+                    if matches!(outcome.status, EvmExecutionStatus::Halt(_)) {
+                        receipt.gas_used = evm_transaction.gas_limit();
+                    }
+                    artifact_builder.with_evm_receipt(receipt, consumed, execution_effects);
                 }
                 _ if is_v1_wasm => {
                     let wasm_v1_start = Instant::now();
@@ -2368,6 +2376,30 @@ mod tests {
         assert_eq!(
             execution_min_cost(false, gas_limit, cost, baseline_motes_amount),
             U512::from(21_000)
+        );
+    }
+
+    #[test]
+    fn should_use_actual_gas_for_evm_success_and_revert() {
+        assert_eq!(
+            evm_consumed_gas(EvmExecutionStatus::Success, 21_000, 100_000),
+            21_000
+        );
+        assert_eq!(
+            evm_consumed_gas(EvmExecutionStatus::Revert, 30_000, 100_000),
+            30_000
+        );
+    }
+
+    #[test]
+    fn should_use_full_gas_limit_for_evm_halt() {
+        assert_eq!(
+            evm_consumed_gas(
+                EvmExecutionStatus::Halt(EvmHaltReason::StackUnderflow),
+                30_000,
+                100_000,
+            ),
+            100_000
         );
     }
 

@@ -6,20 +6,31 @@ use casper_storage::{
 };
 use casper_types::{evm, ByteCode, ByteCodeKind, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
-    primitives::{Address, U256},
+    primitives::{Address, AddressMap, U256},
     state::{Account, EvmState},
 };
 
 use crate::{account_state, tx, Error};
 
-pub(crate) fn apply<R>(tracking_copy: &mut TrackingCopy<R>, state: EvmState) -> Result<(), Error>
+pub(crate) fn apply<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    state: EvmState,
+    wei_per_mote: u64,
+) -> Result<U512, Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
+    let (mut balance_motes_by_address, dust_motes) = resolve_balances(&state, wei_per_mote)?;
+
     for (address, account) in state {
-        apply_account(tracking_copy, address, account)?;
+        let balance_motes = balance_motes_by_address.remove(&address).ok_or_else(|| {
+            Error::State(format!(
+                "missing resolved EVM balance for changed account {address:?}"
+            ))
+        })?;
+        apply_account(tracking_copy, address, account, balance_motes)?;
     }
-    Ok(())
+    Ok(dust_motes)
 }
 
 pub(crate) struct DisabledFeeTransfers {
@@ -58,6 +69,7 @@ fn apply_account<R>(
     tracking_copy: &mut TrackingCopy<R>,
     address: Address,
     account: Account,
+    balance_motes: U512,
 ) -> Result<(), Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -100,7 +112,7 @@ where
     }
     account_state::write_nonce(tracking_copy, address, account.info.nonce)?;
     account_state::write_code_hash(tracking_copy, address, code_hash)?;
-    write_balance(tracking_copy, main_purse, account.info.balance)?;
+    write_balance(tracking_copy, main_purse, balance_motes)?;
 
     for (slot, value) in account.changed_storage_slots() {
         let key = Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(
@@ -172,13 +184,13 @@ where
 fn write_balance<R>(
     tracking_copy: &mut TrackingCopy<R>,
     main_purse: casper_types::URef,
-    balance: U256,
+    balance_motes: U512,
 ) -> Result<(), Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    let balance = u256_to_u512(balance);
-    let cl_value = CLValue::from_t(balance).map_err(|error| Error::State(error.to_string()))?;
+    let cl_value =
+        CLValue::from_t(balance_motes).map_err(|error| Error::State(error.to_string()))?;
     tracking_copy.write(
         Key::Balance(main_purse.addr()),
         StoredValue::CLValue(cl_value),
@@ -189,4 +201,83 @@ where
 fn u256_to_u512(value: U256) -> U512 {
     let bytes = value.to_be_bytes::<32>();
     U512::from_big_endian(&bytes)
+}
+
+fn resolve_balances(
+    state: &EvmState,
+    wei_per_mote: u64,
+) -> Result<(AddressMap<U512>, U512), Error> {
+    if wei_per_mote == 0 {
+        return Err(Error::InvalidWeiPerMote);
+    }
+
+    let wei_per_mote = U512::from(wei_per_mote);
+    let mut balances = AddressMap::with_capacity_and_hasher(state.len(), Default::default());
+    let mut aggregate_remainder_wei = U512::zero();
+    for (address, account) in state {
+        let balance_wei = u256_to_u512(account.info.balance);
+        balances.insert(*address, balance_wei / wei_per_mote);
+        aggregate_remainder_wei = aggregate_remainder_wei
+            .checked_add(balance_wei % wei_per_mote)
+            .ok_or_else(|| {
+                Error::State("aggregate EVM balance remainder overflowed U512".to_string())
+            })?;
+    }
+
+    if aggregate_remainder_wei % wei_per_mote != U512::zero() {
+        return Err(Error::State(format!(
+            "aggregate EVM balance remainder {aggregate_remainder_wei} wei is not divisible by \
+             {wei_per_mote} wei per mote"
+        )));
+    }
+
+    Ok((balances, aggregate_remainder_wei / wei_per_mote))
+}
+
+#[cfg(test)]
+mod tests {
+    use revm::state::AccountInfo;
+
+    use super::*;
+
+    fn state_with_balances(balances: &[u64]) -> EvmState {
+        balances
+            .iter()
+            .enumerate()
+            .map(|(index, balance)| {
+                let mut address = [0u8; 20];
+                address[19] = u8::try_from(index).unwrap();
+                (
+                    Address::from(address),
+                    AccountInfo {
+                        balance: U256::from(*balance),
+                        ..Default::default()
+                    }
+                    .into(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn should_sum_all_remainders_before_converting_to_dust_motes() {
+        let state = state_with_balances(&[8, 1, 1]);
+
+        let (balances, dust_motes) =
+            resolve_balances(&state, 10).expect("aggregate remainder should resolve");
+
+        assert!(balances.values().all(U512::is_zero));
+        assert_eq!(dust_motes, U512::one());
+    }
+
+    #[test]
+    fn should_reject_non_divisible_aggregate_remainder() {
+        let state = state_with_balances(&[1]);
+
+        assert!(matches!(
+            resolve_balances(&state, 10),
+            Err(Error::State(message))
+                if message.contains("aggregate EVM balance remainder 1 wei is not divisible")
+        ));
+    }
 }
