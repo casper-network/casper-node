@@ -84,8 +84,8 @@ Implemented in the sidecar workspace for validation:
 Not implemented yet:
 
 - Native Ethereum JSON-RPC in node.
-- `eth_getStorageAt`, `eth_getTransactionByHash`, `eth_blobBaseFee`,
-  historical `eth_call`, and full transaction objects in block responses.
+- `eth_getStorageAt`, `eth_getTransactionByHash`, `eth_blobBaseFee`, and full
+  transaction objects in block responses.
 - [EIP-4844][eip-4844] blob transactions.
 - Non-empty [EIP-2930][eip-2930]/[EIP-1559][eip-1559] access lists.
 - Non-empty [EIP-7702][eip-7702] access lists and positive effective priority
@@ -150,7 +150,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | Sidecar / JSON-RPC surface | Current status | Casper-specific gotchas / limitations |
 | --- | --- | --- |
 | [`eth_getBlockByNumber`][execution-apis], [`eth_getBlockByHash`][execution-apis] | Partial. | Project `parentBeaconBlockRoot` as the parent Casper block hash. `fullTransactions=true` is unsupported, several fields are placeholders or Casper-derived, and blob fields are absent. |
-| [`eth_call`][execution-apis] | Partial. | Uses binary-port speculative execution. Historical state, state overrides, block overrides, access lists, and EIP-1559 fee fields are missing. |
+| [`eth_call`][execution-apis] | Partial. | Uses binary-port speculative execution. Numeric historical block heights are supported; pending state, state overrides, block overrides, access lists, and EIP-1559 fee fields are missing. |
 | [`eth_getTransactionReceipt`][execution-apis] | Implemented / partial. | Projects stored EVM receipts for transaction types `0`, `1`, `2`, and `4`; no blob transaction receipts. |
 | [`eth_getLogs`][execution-apis], [`eth_newFilter`][execution-apis], [`eth_getFilterChanges`][execution-apis], [`eth_getFilterLogs`][execution-apis], [`eth_uninstallFilter`][execution-apis], [`eth_subscribe`][geth-pubsub] | Implemented / partial. | Filters are process-local and range-limited; log scans are not optimized for large historical ranges; `removed` is always `false`. |
 | [`eth_getTransactionCount`][execution-apis] | Partial. | Reads latest EVM nonce; block selectors are not historical. |

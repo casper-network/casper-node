@@ -2125,6 +2125,39 @@ where
     }
 }
 
+fn speculative_evm_block_context(
+    chainspec: &Chainspec,
+    block_header: &BlockHeader,
+    is_unsigned_call: bool,
+) -> EvmBlockContext {
+    if is_unsigned_call {
+        let beneficiary = match block_header {
+            BlockHeader::V1(_) => EvmAddress::ZERO,
+            BlockHeader::V2(header) => {
+                EvmAddress::from_block_proposer_public_key(header.proposer())
+            }
+        };
+        EvmBlockContext {
+            number: block_header.height(),
+            timestamp: block_header.timestamp().millis() / 1_000,
+            beneficiary,
+            gas_limit: Some(chainspec.evm_config.block_gas_limit),
+            base_fee: Some(chainspec.evm_config.base_fee_wei()),
+        }
+    } else {
+        let block_time = block_header
+            .timestamp()
+            .saturating_add(chainspec.core_config.minimum_block_time);
+        EvmBlockContext {
+            number: block_header.height(),
+            timestamp: block_time.millis() / 1000,
+            beneficiary: EvmAddress::ZERO,
+            gas_limit: Some(chainspec.evm_config.block_gas_limit),
+            base_fee: Some(chainspec.evm_config.base_fee_wei()),
+        }
+    }
+}
+
 fn speculatively_execute_evm<S>(
     state_provider: &S,
     chainspec: &Chainspec,
@@ -2167,18 +2200,10 @@ where
             ))
         }
     };
-    let block_time = block_header
-        .timestamp()
-        .saturating_add(chainspec.core_config.minimum_block_time);
     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-    let block_context = EvmBlockContext {
-        number: block_header.height(),
-        timestamp: block_time.millis() / 1000,
-        beneficiary: EvmAddress::ZERO,
-        gas_limit: Some(chainspec.evm_config.block_gas_limit),
-        base_fee: Some(base_fee_wei),
-    };
-    let kind = if evm_transaction.is_unsigned_call() {
+    let is_unsigned_call = evm_transaction.is_unsigned_call();
+    let block_context = speculative_evm_block_context(chainspec, &block_header, is_unsigned_call);
+    let kind = if is_unsigned_call {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
             from: evm_transaction.from(),
             to: evm_transaction.to(),
@@ -2210,7 +2235,7 @@ where
         }
     };
     let effects = tracking_copy.effects();
-    let effective_gas_price = if evm_transaction.is_unsigned_call() {
+    let effective_gas_price = if is_unsigned_call {
         base_fee_wei
     } else {
         evm_transaction.effective_gas_price(base_fee_wei)
@@ -2353,7 +2378,7 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 mod tests {
     use super::*;
     use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
-    use casper_types::{EvmConfig, DEFAULT_WEI_PER_MOTE};
+    use casper_types::{BlockHeaderV2, EvmConfig, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
@@ -2400,6 +2425,48 @@ mod tests {
                 100_000,
             ),
             100_000
+        );
+    }
+
+    #[test]
+    fn unsigned_evm_call_uses_selected_block_context() {
+        let chainspec = Chainspec {
+            evm_config: EvmConfig {
+                enabled: true,
+                chain_id: 7,
+                spec: EvmSpec::Prague,
+                block_gas_limit: 30_000_000,
+                base_fee: 3,
+                wei_per_mote: DEFAULT_WEI_PER_MOTE,
+            },
+            ..Default::default()
+        };
+        let timestamp = Timestamp::from(123_456_789);
+        let proposer = PublicKey::System;
+        let block_header = BlockHeader::V2(BlockHeaderV2::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            timestamp,
+            Default::default(),
+            42,
+            chainspec.protocol_version(),
+            proposer.clone(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ));
+
+        let context = speculative_evm_block_context(&chainspec, &block_header, true);
+
+        assert_eq!(context.number, 42);
+        assert_eq!(context.timestamp, timestamp.millis() / 1_000);
+        assert_eq!(
+            context.beneficiary,
+            EvmAddress::from_block_proposer_public_key(&proposer)
         );
     }
 
