@@ -2,6 +2,7 @@
 
 use casper_storage::{
     data_access_layer::DataAccessLayer,
+    eip2935,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::TrackingCopyExt,
     TrackingCopy,
@@ -49,6 +50,59 @@ where
             }),
             None => Ok(U256::ZERO),
         }
+    }
+
+    fn block_hash_at_height(&self, height: u64) -> Result<B256, DbError> {
+        let transaction = self
+            .data_access_layer
+            .block_store
+            .checkout_ro()
+            .map_err(|error| DbError::BlockHash { height, error })?;
+        let maybe_header = transaction
+            .read_block_header_at_height(height)
+            .map_err(|error| DbError::BlockHash { height, error })?;
+        Ok(maybe_header
+            .map(|header| tx::to_revm_block_hash(header.block_hash()))
+            .unwrap_or(B256::ZERO))
+    }
+
+    /// Executes the native EIP-2935 block hash lookup.
+    pub(crate) fn eip2935_get(
+        &self,
+        input: &[u8],
+        block_number: U256,
+        gas_limit: u64,
+        reservoir: u64,
+    ) -> Result<InterpreterResult, DbError> {
+        let revert = || InterpreterResult {
+            result: InstructionResult::Revert,
+            output: Bytes::new(),
+            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
+        };
+
+        if input.len() != evm::HASH_LENGTH {
+            return Ok(revert());
+        }
+
+        let requested_height = U256::from_be_slice(input);
+        if requested_height >= block_number
+            || block_number - requested_height > U256::from(eip2935::HISTORY_BUFFER_LENGTH)
+        {
+            return Ok(revert());
+        }
+
+        let Ok(requested_height) = u64::try_from(requested_height) else {
+            return Ok(revert());
+        };
+        let block_hash = self.block_hash_at_height(requested_height)?;
+
+        Ok(InterpreterResult {
+            result: InstructionResult::Return,
+            output: Bytes::copy_from_slice(block_hash.as_slice()),
+            // Native EIP-2935 reads have no interpreted bytecode or SLOAD cost. Retain the call
+            // frame's reservoir so EIP-8037 accounting remains unchanged.
+            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
+        })
     }
 
     /// Executes the native EIP-4788 `get` operation.
@@ -173,23 +227,7 @@ where
     }
 
     fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        let transaction = self
-            .data_access_layer
-            .block_store
-            .checkout_ro()
-            .map_err(|error| DbError::BlockHash {
-                height: number,
-                error,
-            })?;
-        let maybe_header = transaction
-            .read_block_header_at_height(number)
-            .map_err(|error| DbError::BlockHash {
-                height: number,
-                error,
-            })?;
-        Ok(maybe_header
-            .map(|header| tx::to_revm_block_hash(header.block_hash()))
-            .unwrap_or(B256::ZERO))
+        self.block_hash_at_height(number)
     }
 }
 

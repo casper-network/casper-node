@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, iter, path::PathBuf, sync::Arc, time::Duration};
 
-use casper_storage::data_access_layer::{QueryRequest, QueryResult};
+use casper_storage::{
+    block_store::BlockStoreTransaction,
+    data_access_layer::{QueryRequest, QueryResult},
+};
 use derive_more::{Display, From};
 use fs_extra::dir;
 use prometheus::Registry;
@@ -9,10 +12,11 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, Chainspec,
-    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction, ExecutableDeployItem,
-    PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
+    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, BlockHeader,
+    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction,
+    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey,
+    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionConfig,
+    TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
 };
 
 use super::*;
@@ -296,14 +300,53 @@ async fn block_hash_history_guard_only_applies_to_evm_blocks() {
         .crank_until(&mut rng, execution_completed, TEST_TIMEOUT)
         .await;
 
+    let pre_state_after_non_evm_block = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+    assert_eq!(pre_state_after_non_evm_block.next_block_height(), 2);
+
+    // Store every header in the 256-block BLOCKHASH window for height 257 while leaving height 0
+    // absent. This distinguishes the EIP-2935 window from the shorter opcode window.
+    {
+        let mut block_store = runner
+            .reactor()
+            .inner()
+            .contract_runtime
+            .data_access_layer
+            .block_store
+            .clone();
+        let mut transaction = block_store
+            .checkout_rw()
+            .expect("should check out block-store write transaction");
+        for height in 2..=256 {
+            let block = TestBlockBuilder::new().height(height).build(&mut rng);
+            let header = BlockHeader::V2(block.header().clone());
+            transaction
+                .write_block_header(&header)
+                .expect("should store block header");
+        }
+        transaction.commit().expect("should commit block headers");
+    }
+    runner
+        .reactor_mut()
+        .inner_mut()
+        .contract_runtime
+        .set_execution_pre_state(ExecutionPreState::new(
+            257,
+            pre_state_after_non_evm_block.pre_state_root_hash(),
+            BlockHash::default(),
+            Digest::default(),
+        ));
     let initial_pre_state = runner
         .reactor()
         .inner()
         .contract_runtime
         .execution_pre_state();
-    assert_eq!(initial_pre_state.next_block_height(), 2);
 
-    // The EVM block at height 2 requires headers in 0..2, so it must be refused.
+    // The EVM block at height 257 requires headers in 0..257, so it must be refused even though
+    // the complete 256-block BLOCKHASH window is present.
     let transaction = Transaction::from_evm(EvmTransaction::new_unsigned_call(
         Timestamp::now(),
         TimeDiff::from_seconds(60),
@@ -321,7 +364,7 @@ async fn block_hash_history_guard_only_applies_to_evm_blocks() {
             None,
             Timestamp::now(),
             EraId::new(0),
-            2,
+            257,
             PublicKey::System,
         ),
         vec![transaction],
@@ -341,7 +384,7 @@ async fn block_hash_history_guard_only_applies_to_evm_blocks() {
                 );
                 matches!(
                     event,
-                    Event::NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement(2))
+                    Event::NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement(257))
                 )
             },
             TEST_TIMEOUT,

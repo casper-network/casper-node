@@ -79,7 +79,7 @@ pub enum DbError {
         /// Decode error text.
         error: String,
     },
-    /// Failed to resolve a historical block hash for the EVM `BLOCKHASH` opcode.
+    /// Failed to resolve a historical EVM block hash from the block store.
     #[error("failed to resolve EVM block hash at height {height}: {error}")]
     BlockHash {
         /// Block height requested by the EVM.

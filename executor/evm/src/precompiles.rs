@@ -1,12 +1,13 @@
 //! Casper EVM precompile provider.
 
 use casper_storage::{
+    eip2935::BLOCK_HASH_HISTORY_ADDRESS,
     eip4788::BEACON_ROOTS_ADDRESS,
     global_state::{error::Error as GlobalStateError, state::StateReader},
 };
 use casper_types::{Key, StoredValue};
 use revm::{
-    context_interface::{Cfg, ContextTr},
+    context_interface::{Block as _, Cfg, ContextTr},
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{CallInputs, CallScheme, InterpreterResult},
     primitives::{hardfork::SpecId, Address},
@@ -53,6 +54,22 @@ where
             let result = context
                 .db_mut()
                 .eip4788_get(&input, inputs.gas_limit, inputs.reservoir)
+                .map_err(|error| error.to_string())?;
+            return Ok(Some(result));
+        }
+
+        let block_hash_history_address = tx::to_revm_address(BLOCK_HASH_HISTORY_ADDRESS);
+        if inputs.target_address == block_hash_history_address
+            && inputs.bytecode_address == block_hash_history_address
+            && matches!(inputs.scheme, CallScheme::Call | CallScheme::StaticCall)
+        {
+            // Copy the input before borrowing the database mutably.  The input may be backed by
+            // revm's shared memory buffer.
+            let input = inputs.input.bytes(context);
+            let block_number = context.block().number();
+            let result = context
+                .db_mut()
+                .eip2935_get(&input, block_number, inputs.gas_limit, inputs.reservoir)
                 .map_err(|error| error.to_string())?;
             return Ok(Some(result));
         }

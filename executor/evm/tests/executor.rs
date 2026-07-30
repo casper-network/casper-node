@@ -15,7 +15,7 @@ use casper_executor_evm::{
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
     data_access_layer::{DataAccessLayer, GenesisRequest, GenesisResult},
-    eip4788,
+    eip2935, eip4788,
     global_state::{
         self,
         error::Error as GlobalStateError,
@@ -151,6 +151,20 @@ fn block_header(block_height: u64) -> BlockHeader {
         None,
         OnceCell::new(),
     ))
+}
+
+fn write_block_header(
+    data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    block_header: &BlockHeader,
+) {
+    let mut block_store = data_access_layer.block_store.clone();
+    let mut transaction = block_store
+        .checkout_rw()
+        .expect("should check out write transaction");
+    transaction
+        .write_block_header(block_header)
+        .expect("should write block header");
+    transaction.commit().expect("should commit block header");
 }
 
 fn init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
@@ -928,6 +942,110 @@ fn eip4788_rejects_invalid_calldata() {
 }
 
 #[test]
+fn eip2935_native_lookup_reads_indexed_header_and_bypasses_bytecode() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let header = block_header(1);
+    let expected_hash = header.block_hash();
+    write_block_header(&data_access_layer, &header);
+
+    // Direct calls must use the native lookup even when the installed code would revert.
+    seed_evm_code(
+        &mut tracking_copy,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        reverting_runtime(),
+    );
+
+    let mut stored_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    stored_request.block.number = 2;
+    let stored = executor
+        .execute(&data_access_layer, &mut tracking_copy, stored_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(stored.status, ExecutionStatus::Success);
+    assert_eq!(stored.output.as_slice(), expected_hash.as_ref());
+
+    let mut missing_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(0).to_vec(),
+        CasperU256::zero(),
+    );
+    missing_request.block.number = 2;
+    let missing = executor
+        .execute(&data_access_layer, &mut tracking_copy, missing_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(missing.status, ExecutionStatus::Success);
+    assert_eq!(missing.output.as_slice(), &[0; evm::HASH_LENGTH]);
+
+    let mut oldest_valid_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    oldest_valid_request.block.number = eip2935::HISTORY_BUFFER_LENGTH + 1;
+    let oldest_valid = executor
+        .execute(&data_access_layer, &mut tracking_copy, oldest_valid_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(oldest_valid.status, ExecutionStatus::Success);
+    assert_eq!(oldest_valid.output.as_slice(), expected_hash.as_ref());
+
+    let mut too_old_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    too_old_request.block.number = eip2935::HISTORY_BUFFER_LENGTH + 2;
+    let too_old = executor
+        .execute(&data_access_layer, &mut tracking_copy, too_old_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(too_old.status, ExecutionStatus::Revert);
+}
+
+#[test]
+fn eip2935_reverts_for_invalid_requests() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    seed_evm_code(
+        &mut tracking_copy,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let mut oversized_height = [0xff; evm::HASH_LENGTH];
+    oversized_height[0] = 1;
+    let cases = [
+        (1, vec![]),
+        (1, vec![0; evm::HASH_LENGTH - 1]),
+        (1, vec![0; evm::HASH_LENGTH + 1]),
+        (0, word(0).to_vec()),
+        (1, word(1).to_vec()),
+        (1, word(2).to_vec()),
+        (1, oversized_height.to_vec()),
+    ];
+
+    for (block_number, input) in cases {
+        let mut request = call_request(
+            evm::Address::ZERO,
+            Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+            input,
+            CasperU256::zero(),
+        );
+        request.block.number = block_number;
+        let outcome = executor
+            .execute(&data_access_layer, &mut tracking_copy, request)
+            .expect("EIP-2935 lookup should execute");
+        assert_eq!(outcome.status, ExecutionStatus::Revert);
+    }
+}
+
+#[test]
 fn blockhash_reads_indexed_header_from_data_access_layer() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
@@ -970,16 +1088,7 @@ fn blockhash_reads_indexed_header_from_data_access_layer() {
 
     let header = block_header(1);
     let expected_hash = header.block_hash();
-    {
-        let mut block_store = data_access_layer.block_store.clone();
-        let mut transaction = block_store
-            .checkout_rw()
-            .expect("should check out write transaction");
-        transaction
-            .write_block_header(&header)
-            .expect("should write block header");
-        transaction.commit().expect("should commit block header");
-    }
+    write_block_header(&data_access_layer, &header);
 
     let mut historical_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     historical_request.block.number = 2;

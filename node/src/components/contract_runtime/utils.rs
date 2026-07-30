@@ -1,4 +1,3 @@
-use casper_executor_evm::BLOCK_HASH_HISTORY;
 use casper_executor_wasm::ExecutorV2;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -34,6 +33,7 @@ use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
     data_access_layer::{DataAccessLayer, TransferResult},
+    eip2935,
     global_state::state::lmdb::LmdbGlobalState,
 };
 use casper_types::{BlockHash, Chainspec, EraId, Gas, Key};
@@ -47,7 +47,7 @@ static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
     Lazy::new(|| tokio::sync::Semaphore::new(MAX_PARALLEL_INTENSIVE_TASKS));
 
 fn block_hash_history_range(block_height: u64) -> Range<u64> {
-    block_height.saturating_sub(BLOCK_HASH_HISTORY)..block_height
+    block_height.saturating_sub(eip2935::HISTORY_BUFFER_LENGTH)..block_height
 }
 
 /// Asynchronously runs a resource intensive task.
@@ -577,8 +577,8 @@ mod tests {
     fn block_hash_history_ranges_cover_boundary_heights() {
         assert_eq!(block_hash_history_range(0), 0..0);
         assert_eq!(block_hash_history_range(1), 0..1);
-        assert_eq!(block_hash_history_range(256), 0..256);
-        assert_eq!(block_hash_history_range(257), 1..257);
+        assert_eq!(block_hash_history_range(8_191), 0..8_191);
+        assert_eq!(block_hash_history_range(8_192), 1..8_192);
     }
 
     #[test]
