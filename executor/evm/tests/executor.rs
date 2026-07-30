@@ -10,7 +10,7 @@ use alloy_eips::{
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, CallRequest, CallValidation, Error, EvmExecutor, ExecuteKind, ExecuteRequest,
-    ExecutionStatus, EMPTY_CODE_HASH,
+    ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
@@ -989,8 +989,17 @@ fn blockhash_reads_indexed_header_from_data_access_layer() {
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), expected_hash.as_ref());
 
+    let mut oldest_valid_request =
+        call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    oldest_valid_request.block.number = BLOCK_HASH_HISTORY + 1;
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, oldest_valid_request)
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), expected_hash.as_ref());
+
     let mut too_old_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
-    too_old_request.block.number = 258;
+    too_old_request.block.number = BLOCK_HASH_HISTORY + 2;
     let outcome = executor
         .execute(&data_access_layer, &mut tracking_copy, too_old_request)
         .expect("EVM execution should succeed");
