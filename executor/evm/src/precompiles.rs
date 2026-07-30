@@ -7,13 +7,14 @@ use casper_storage::{
 };
 use casper_types::{Key, StoredValue};
 use revm::{
-    context_interface::{Block as _, Cfg, ContextTr},
+    context_interface::{Block as _, Cfg, ContextError, ContextTr},
+    database_interface::Database,
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{CallInputs, CallScheme, InterpreterResult},
-    primitives::{hardfork::SpecId, Address},
+    interpreter::{CallInputs, CallScheme, Gas, InstructionResult, InterpreterResult},
+    primitives::{hardfork::SpecId, Address, Bytes, B256},
 };
 
-use crate::{db::CasperDb, tx};
+use crate::{db::CasperDb, tx, DbError};
 
 /// Ethereum precompiles executing with access to Casper-backed state.
 #[derive(Clone, Debug)]
@@ -22,6 +23,39 @@ pub(crate) struct CasperEvmPrecompiles(EthPrecompiles);
 impl CasperEvmPrecompiles {
     pub(crate) fn new(spec: SpecId) -> Self {
         Self(EthPrecompiles::new(spec))
+    }
+}
+
+fn native_get_result<CTX>(
+    context: &mut CTX,
+    lookup_result: Result<Option<B256>, DbError>,
+    gas_limit: u64,
+    reservoir: u64,
+) -> InterpreterResult
+where
+    CTX: ContextTr,
+    <CTX::Db as Database>::Error: From<DbError>,
+{
+    let (result, output) = match lookup_result {
+        Ok(Some(value)) => (
+            InstructionResult::Return,
+            Bytes::copy_from_slice(value.as_slice()),
+        ),
+        Ok(None) => (InstructionResult::Revert, Bytes::new()),
+        Err(error) => {
+            // Preserve database errors in revm's typed error channel.  Returning a string from
+            // this provider would turn the error into `EVMError::Custom`.
+            *context.error() = Err(ContextError::Db(error.into()));
+            (InstructionResult::FatalExternalError, Bytes::new())
+        }
+    };
+
+    InterpreterResult {
+        result,
+        output,
+        // Native lookups have no interpreted-bytecode or SLOAD cost. Retain the call frame's
+        // reservoir so EIP-8037 accounting remains unchanged.
+        gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
     }
 }
 
@@ -51,10 +85,9 @@ where
             // Copy the input before borrowing the database mutably.  The input may be backed by
             // revm's shared memory buffer.
             let input = inputs.input.bytes(context);
-            let result = context
-                .db_mut()
-                .eip4788_get(&input, inputs.gas_limit, inputs.reservoir)
-                .map_err(|error| error.to_string())?;
+            let lookup_result = context.db_mut().eip4788_get(&input);
+            let result =
+                native_get_result(context, lookup_result, inputs.gas_limit, inputs.reservoir);
             return Ok(Some(result));
         }
 
@@ -67,10 +100,9 @@ where
             // revm's shared memory buffer.
             let input = inputs.input.bytes(context);
             let block_number = context.block().number();
-            let result = context
-                .db_mut()
-                .eip2935_get(&input, block_number, inputs.gas_limit, inputs.reservoir)
-                .map_err(|error| error.to_string())?;
+            let lookup_result = context.db_mut().eip2935_get(&input, block_number);
+            let result =
+                native_get_result(context, lookup_result, inputs.gas_limit, inputs.reservoir);
             return Ok(Some(result));
         }
 

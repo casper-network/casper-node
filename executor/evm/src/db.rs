@@ -10,7 +10,6 @@ use casper_storage::{
 use casper_types::{evm, CLValue, EvmAddr, Key, StoredValue, U512};
 use revm::{
     database_interface::Database,
-    interpreter::{Gas, InstructionResult, InterpreterResult},
     primitives::{Address, Bytes, StorageKey, StorageValue, B256, U256},
     state::{AccountInfo, Bytecode},
 };
@@ -71,60 +70,33 @@ where
         &self,
         input: &[u8],
         block_number: U256,
-        gas_limit: u64,
-        reservoir: u64,
-    ) -> Result<InterpreterResult, DbError> {
-        let revert = || InterpreterResult {
-            result: InstructionResult::Revert,
-            output: Bytes::new(),
-            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
-        };
-
+    ) -> Result<Option<B256>, DbError> {
         if input.len() != evm::HASH_LENGTH {
-            return Ok(revert());
+            return Ok(None);
         }
 
         let requested_height = U256::from_be_slice(input);
         if requested_height >= block_number
             || block_number - requested_height > U256::from(eip2935::HISTORY_BUFFER_LENGTH)
         {
-            return Ok(revert());
+            return Ok(None);
         }
 
         let Ok(requested_height) = u64::try_from(requested_height) else {
-            return Ok(revert());
+            return Ok(None);
         };
-        let block_hash = self.block_hash_at_height(requested_height)?;
-
-        Ok(InterpreterResult {
-            result: InstructionResult::Return,
-            output: Bytes::copy_from_slice(block_hash.as_slice()),
-            // Native EIP-2935 reads have no interpreted bytecode or SLOAD cost. Retain the call
-            // frame's reservoir so EIP-8037 accounting remains unchanged.
-            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
-        })
+        self.block_hash_at_height(requested_height).map(Some)
     }
 
     /// Executes the native EIP-4788 `get` operation.
     ///
     /// The lookup is backed only by the current tracking copy; EVM execution must not depend on
     /// locally retained block history.
-    pub(crate) fn eip4788_get(
-        &mut self,
-        input: &[u8],
-        gas_limit: u64,
-        reservoir: u64,
-    ) -> Result<InterpreterResult, DbError> {
-        let revert = || InterpreterResult {
-            result: InstructionResult::Revert,
-            output: Bytes::new(),
-            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
-        };
-
+    pub(crate) fn eip4788_get(&mut self, input: &[u8]) -> Result<Option<B256>, DbError> {
         // EIP-4788 accepts one uint256 timestamp.  Values wider than u64 must revert rather
         // than truncate to a colliding ring-buffer timestamp.
         if input.len() != 32 || input[..24].iter().any(|byte| *byte != 0) {
-            return Ok(revert());
+            return Ok(None);
         }
 
         let timestamp = u64::from_be_bytes(
@@ -133,25 +105,19 @@ where
                 .expect("the final 8 bytes of a 32-byte input have fixed length"),
         );
         if timestamp == 0 {
-            return Ok(revert());
+            return Ok(None);
         }
 
         let Some((stored_timestamp, block_hash)) =
             self.tracking_copy.get_eip4788_parent_hash(timestamp)?
         else {
-            return Ok(revert());
+            return Ok(None);
         };
         if stored_timestamp != timestamp {
-            return Ok(revert());
+            return Ok(None);
         }
 
-        Ok(InterpreterResult {
-            result: InstructionResult::Return,
-            output: Bytes::copy_from_slice(block_hash.as_ref()),
-            // Native EIP-4788 reads have no interpreted bytecode or SLOAD cost. Retain the call
-            // frame's reservoir so EIP-8037 accounting remains unchanged.
-            gas: Gas::new_with_regular_gas_and_reservoir(gas_limit, reservoir),
-        })
+        Ok(Some(tx::to_revm_block_hash(block_hash)))
     }
 }
 

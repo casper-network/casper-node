@@ -28,11 +28,11 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, BlockHeader, BlockHeaderV2,
-    ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, EvmSpec,
-    EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
+    contracts::NamedKeys, evm, AccessRights, Account, BlockGlobalAddr, BlockHash, BlockHeader,
+    BlockHeaderV2, ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr,
+    EvmConfig, EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key,
+    Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
 use once_cell::sync::OnceCell;
 use revm::bytecode::opcode;
@@ -942,6 +942,38 @@ fn eip4788_rejects_invalid_calldata() {
 }
 
 #[test]
+fn eip4788_preserves_tracking_copy_errors() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let timestamp = block().timestamp;
+    seed_evm_code(
+        &mut tracking_copy,
+        eip4788::BEACON_ROOTS_ADDRESS,
+        eip4788::BEACON_ROOTS_CODE.to_vec(),
+    );
+    tracking_copy.write(
+        Key::BlockGlobal(BlockGlobalAddr::BlockParentHash {
+            slot: timestamp % eip4788::HISTORY_BUFFER_LENGTH,
+        }),
+        StoredValue::CLValue(CLValue::from_t(1u64).expect("value should encode")),
+    );
+
+    let error = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(eip4788::BEACON_ROOTS_ADDRESS),
+                word(timestamp).to_vec(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect_err("malformed EIP-4788 state should fail execution");
+    assert!(matches!(error, Error::Database(DbError::TrackingCopy(_))));
+}
+
+#[test]
 fn eip2935_native_lookup_reads_indexed_header_and_bypasses_bytecode() {
     let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1043,6 +1075,46 @@ fn eip2935_reverts_for_invalid_requests() {
             .expect("EIP-2935 lookup should execute");
         assert_eq!(outcome.status, ExecutionStatus::Revert);
     }
+}
+
+#[test]
+fn eip2935_preserves_block_store_errors() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    seed_evm_code(
+        &mut tracking_copy,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    // Exhaust this environment's LMDB reader slots so the native lookup fails while checking out
+    // its short-lived read transaction.
+    let read_transactions = (0..512)
+        .map(|_| {
+            data_access_layer
+                .block_store
+                .checkout_ro()
+                .expect("should check out reader")
+        })
+        .collect::<Vec<_>>();
+
+    let mut request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    request.block.number = 2;
+
+    let error = executor
+        .execute(&data_access_layer, &mut tracking_copy, request)
+        .expect_err("exhausted LMDB readers should fail execution");
+    assert!(matches!(
+        error,
+        Error::Database(DbError::BlockHash { height: 1, .. })
+    ));
+
+    drop(read_transactions);
 }
 
 #[test]
