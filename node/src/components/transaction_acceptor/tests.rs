@@ -79,7 +79,6 @@ use crate::{
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(30);
 const EVM_TEST_CHAIN_ID: u64 = 1_129_533_695;
-const EVM_TEST_GAS_PRICE: u128 = 1_000_000_000_000_000;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -326,7 +325,12 @@ impl TestScenario {
         }
     }
 
-    fn transaction(&self, rng: &mut TestRng, admin: &SecretKey) -> Transaction {
+    fn transaction(
+        &self,
+        rng: &mut TestRng,
+        admin: &SecretKey,
+        evm_gas_price: u128,
+    ) -> Transaction {
         let secret_key = SecretKey::random(rng);
         match self {
             TestScenario::FromPeerInvalidTransaction(TxnType::Deploy)
@@ -344,7 +348,7 @@ impl TestScenario {
             TestScenario::FromPeerEvmInvalidNonce
             | TestScenario::FromClientEvmInvalidNonce
             | TestScenario::FromClientEvmMissingIdentityWithCodeHash => {
-                Transaction::from(signed_evm_legacy_transaction(1))
+                Transaction::from(signed_evm_legacy_transaction(1, evm_gas_price))
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
@@ -999,12 +1003,12 @@ impl TestScenario {
     }
 }
 
-fn signed_evm_legacy_transaction(nonce: u64) -> EvmTransaction {
+fn signed_evm_legacy_transaction(nonce: u64, gas_price: u128) -> EvmTransaction {
     let recipient = evm::Address::new([1; evm::ADDRESS_LENGTH]);
     let transaction = TxLegacy {
         chain_id: Some(EVM_TEST_CHAIN_ID),
         nonce,
-        gas_price: EVM_TEST_GAS_PRICE,
+        gas_price,
         gas_limit: 21_000,
         to: TxKind::Call(AlloyAddress::from(recipient.value())),
         value: AlloyU256::ZERO,
@@ -1609,7 +1613,7 @@ async fn run_transaction_acceptor_without_timeout(
     let txn_responder = Responder::without_shutdown(txn_sender);
 
     // Create a transaction specific to the test scenario
-    let txn = test_scenario.transaction(rng, &admin);
+    let txn = test_scenario.transaction(rng, &admin, chainspec.evm_config.base_fee_wei());
     // Mark the source as either a peer or a client depending on the scenario.
     let source = test_scenario.source(rng);
 
