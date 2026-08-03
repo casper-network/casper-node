@@ -9,8 +9,8 @@ use alloy_eips::{
 };
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
-    BlockContext, CallRequest, CallValidation, Error, EvmExecutor, ExecuteKind, ExecuteRequest,
-    ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
+    BlockContext, CallRequest, CallValidation, DbError, Error, EvmExecutor, ExecuteKind,
+    ExecuteRequest, ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
