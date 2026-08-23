@@ -468,7 +468,6 @@ impl ExecutionArtifactBuilder {
             }
         };
         match &self.meta_transaction {
-            MetaTransaction::Unset => Err(ExecutionArtifactBuilderError::MissingInitiatorAddr),
             MetaTransaction::Deploy(_) => Ok(BalanceIdentifierResolution::Identifier(default_ret)),
             MetaTransaction::V1(mv1) => {
                 if mv1.is_v1_wasm() {

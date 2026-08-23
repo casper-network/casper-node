@@ -52,10 +52,6 @@ pub(crate) enum Error {
     /// Component state error: expected a version 1 transaction.
     #[error("internal error: expected a transaction")]
     ExpectedTransactionV1,
-
-    /// Unsupported transaction type.
-    #[error("unsupported transaction type")]
-    Unsupported,
 }
 
 impl Error {
@@ -130,7 +126,6 @@ impl From<Error> for BinaryPortErrorCode {
             Error::InvalidTransaction(invalid_transaction) => {
                 BinaryPortErrorCode::from(invalid_transaction)
             }
-            Error::Unsupported => BinaryPortErrorCode::UnsupportedRequest,
         }
     }
 }

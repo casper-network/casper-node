@@ -28,7 +28,6 @@ use super::fields_container::{ARGS_MAP_KEY, ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY}
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) enum MetaTransaction {
-    Unset,
     Deploy(MetaDeploy),
     Evm(MetaEvmTransaction),
     V1(MetaTransactionV1),
@@ -67,7 +66,6 @@ impl MetaTransaction {
     /// Returns the `TransactionHash` identifying this transaction.
     pub(crate) fn hash(&self) -> TransactionHash {
         match self {
-            MetaTransaction::Unset => TransactionHash::default(),
             MetaTransaction::Deploy(meta_deploy) => {
                 TransactionHash::from(*meta_deploy.deploy().hash())
             }
@@ -79,7 +77,6 @@ impl MetaTransaction {
     /// Timestamp.
     pub(crate) fn timestamp(&self) -> Timestamp {
         match self {
-            MetaTransaction::Unset => Timestamp::default(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().header().timestamp(),
             MetaTransaction::Evm(evm) => evm.timestamp(),
             MetaTransaction::V1(v1) => v1.timestamp(),
@@ -89,7 +86,6 @@ impl MetaTransaction {
     /// Time to live.
     pub(crate) fn ttl(&self) -> TimeDiff {
         match self {
-            MetaTransaction::Unset => TimeDiff::default(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().header().ttl(),
             MetaTransaction::Evm(evm) => evm.ttl(),
             MetaTransaction::V1(v1) => v1.ttl(),
@@ -99,7 +95,6 @@ impl MetaTransaction {
     /// Returns the `Approval`s for this transaction.
     pub(crate) fn approvals(&self) -> BTreeSet<Approval> {
         match self {
-            MetaTransaction::Unset => BTreeSet::new(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().approvals().clone(),
             MetaTransaction::Evm(evm) => evm.approval().cloned().into_iter().collect(),
             MetaTransaction::V1(v1) => v1.approvals().clone(),
@@ -109,7 +104,6 @@ impl MetaTransaction {
     /// Returns the Casper initiator address.
     pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
         match self {
-            MetaTransaction::Unset => InitiatorAddr::AccountHash(AccountHash::new([0; 32])),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr().clone(),
             MetaTransaction::Evm(evm) => evm.initiator_addr(),
             MetaTransaction::V1(txn) => txn.initiator_addr().clone(),
@@ -119,7 +113,6 @@ impl MetaTransaction {
     /// Returns the set of account hashes corresponding to the public keys of the approvals.
     pub(crate) fn authorization_keys(&self) -> BTreeSet<AccountHash> {
         match self {
-            MetaTransaction::Unset => BTreeSet::new(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .approvals()
@@ -143,7 +136,7 @@ impl MetaTransaction {
     pub(crate) fn is_native(&self) -> bool {
         match self {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().is_transfer(),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+            MetaTransaction::Evm(_) => false,
             MetaTransaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
         }
     }
@@ -152,7 +145,7 @@ impl MetaTransaction {
         match self {
             MetaTransaction::Deploy(meta_deploy) => !meta_deploy.deploy().is_transfer(),
             MetaTransaction::V1(v1_txn) => *v1_txn.target() != TransactionTarget::Native,
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+            MetaTransaction::Evm(_) => false,
         }
     }
 
@@ -160,7 +153,7 @@ impl MetaTransaction {
         match self {
             MetaTransaction::Deploy(_) => true,
             MetaTransaction::V1(v1) => v1.is_v1_wasm(),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+            MetaTransaction::Evm(_) => false,
         }
     }
 
@@ -168,14 +161,14 @@ impl MetaTransaction {
         match self {
             MetaTransaction::Deploy(_) => false,
             MetaTransaction::V1(v1) => v1.is_v2_wasm(),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+            MetaTransaction::Evm(_) => false,
         }
     }
 
     /// Returns true if this is an evm txn, else false.
     pub(crate) fn is_evm(&self) -> bool {
         match self {
-            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => false,
+            MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => false,
             MetaTransaction::Evm(_) => true,
         }
     }
@@ -187,7 +180,7 @@ impl MetaTransaction {
                 .deploy()
                 .payment()
                 .is_standard_payment(Phase::Payment),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => true,
+            MetaTransaction::Evm(_) => true,
             MetaTransaction::V1(v1) => {
                 if let PricingMode::PaymentLimited {
                     standard_payment, ..
@@ -208,7 +201,7 @@ impl MetaTransaction {
                 meta_deploy.deploy().session().args().clone(),
             )),
             MetaTransaction::V1(transaction_v1) => Cow::Borrowed(transaction_v1.args()),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+            MetaTransaction::Evm(_) => {
                 unreachable!("This type of transaction does not have Casper session args")
             }
         }
@@ -221,7 +214,7 @@ impl MetaTransaction {
                 meta_deploy.deploy().session().entry_point_name().into()
             }
             MetaTransaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+            MetaTransaction::Evm(_) => {
                 unreachable!("This type of transaction does not have Casper entry points")
             }
         }
@@ -230,7 +223,6 @@ impl MetaTransaction {
     /// The transaction lane.
     pub(crate) fn transaction_lane(&self) -> u8 {
         match self {
-            MetaTransaction::Unset => 0,
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.lane_id(),
             MetaTransaction::Evm(evm) => evm.lane_id(),
             MetaTransaction::V1(v1) => v1.lane_id(),
@@ -240,7 +232,6 @@ impl MetaTransaction {
     /// Returns the gas price tolerance.
     pub(crate) fn gas_price_tolerance(&self) -> Result<u8, InvalidTransaction> {
         match self {
-            MetaTransaction::Unset => Ok(0),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .gas_price_tolerance()
@@ -253,7 +244,6 @@ impl MetaTransaction {
     /// Returns the min_cost.
     pub(crate) fn initial_cost(&self) -> Motes {
         match self {
-            MetaTransaction::Unset => Motes::zero(),
             MetaTransaction::Deploy(md) => md.initial_cost(),
             MetaTransaction::Evm(met) => met.initial_cost(),
             MetaTransaction::V1(mv1) => mv1.initial_cost(),
@@ -263,7 +253,6 @@ impl MetaTransaction {
     /// Returns the cost_estimate.
     pub(crate) fn cost_estimate(&self) -> Option<U512> {
         match self {
-            MetaTransaction::Unset => None,
             MetaTransaction::Deploy(md) => Some(md.initial_cost().value()),
             MetaTransaction::V1(mv1) => Some(mv1.initial_cost().value()),
             MetaTransaction::Evm(met) => met.required_balance(met.initial_cost().value()),
@@ -272,7 +261,6 @@ impl MetaTransaction {
 
     pub(crate) fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, InvalidTransaction> {
         match self {
-            MetaTransaction::Unset => Ok(Gas::zero()),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .gas_limit(chainspec)
@@ -299,7 +287,7 @@ impl MetaTransaction {
     /// Is the transaction the original transaction variant.
     pub(crate) fn is_deploy_transaction(&self) -> bool {
         match self {
-            MetaTransaction::Unset | MetaTransaction::Evm(_) | MetaTransaction::V1(_) => false,
+            MetaTransaction::Evm(_) | MetaTransaction::V1(_) => false,
             MetaTransaction::Deploy(_) => true,
         }
     }
@@ -318,7 +306,7 @@ impl MetaTransaction {
             MetaTransaction::V1(v1) => {
                 return v1.contract_direct_address();
             }
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => {}
+            MetaTransaction::Evm(_) => {}
         }
         None
     }
@@ -330,7 +318,6 @@ impl MetaTransaction {
         at: Timestamp,
     ) -> Result<(), InvalidTransaction> {
         match self {
-            MetaTransaction::Unset => Ok(()),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .is_config_compliant(chainspec, timestamp_leeway, at)
@@ -344,7 +331,6 @@ impl MetaTransaction {
 
     pub(crate) fn payload_hash(&self) -> Digest {
         match self {
-            MetaTransaction::Unset => Digest::default(),
             MetaTransaction::Deploy(meta_deploy) => *meta_deploy.deploy().body_hash(),
             MetaTransaction::Evm(evm) => evm.payload_hash(),
             MetaTransaction::V1(v1) => *v1.payload_hash(),
@@ -385,7 +371,7 @@ impl MetaTransaction {
                 );
                 SessionInputData::SessionDataV1 { data }
             }
-            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+            MetaTransaction::Evm(_) => {
                 unreachable!("These types of transactions do not have Casper session input data")
             }
         }
@@ -397,20 +383,19 @@ impl MetaTransaction {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().serialized_length(),
             MetaTransaction::Evm(evm) => evm.serialized_length(),
             MetaTransaction::V1(v1) => v1.serialized_length(),
-            MetaTransaction::Unset => 0,
         }
     }
 
     pub(crate) fn seed(&self) -> Option<[u8; 32]> {
         match self {
-            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => v1.seed(),
         }
     }
 
     pub(crate) fn is_install_or_upgrade(&self) -> bool {
         match self {
-            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => false,
             MetaTransaction::V1(meta_transaction_v1) => {
                 meta_transaction_v1.lane_id() == INSTALL_UPGRADE_LANE_ID
             }
@@ -419,28 +404,28 @@ impl MetaTransaction {
 
     pub(crate) fn transferred_value(&self) -> Option<u64> {
         match self {
-            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => Some(v1.transferred_value()),
         }
     }
 
     pub(crate) fn target(&self) -> Option<TransactionTarget> {
         match self {
-            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => Some(v1.target().clone()),
         }
     }
 
     pub(crate) fn evm_signer(&self) -> Option<Result<&PublicKey, EvmTransactionError>> {
         match self {
-            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
             MetaTransaction::Evm(etxn) => Some(etxn.transaction().signer()),
         }
     }
 
     pub(crate) fn evm_effective_gas_cost(&self, base_fee: u128) -> Option<u128> {
         match self {
-            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
             MetaTransaction::Evm(etxn) => Some(etxn.effective_gas_cost(base_fee)),
         }
     }
@@ -456,7 +441,6 @@ impl MetaTransaction {
 impl Display for MetaTransaction {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            MetaTransaction::Unset => write!(formatter, "unset"),
             MetaTransaction::Deploy(meta_deploy) => Display::fmt(meta_deploy.deploy(), formatter),
             MetaTransaction::Evm(evm) => Display::fmt(evm, formatter),
             MetaTransaction::V1(txn) => Display::fmt(txn, formatter),

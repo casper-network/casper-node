@@ -815,11 +815,6 @@ impl TransactionAcceptor {
             MetaTransaction::V1(_) => {
                 self.verify_transaction_v1_body(effect_builder, event_metadata, block_header)
             }
-            MetaTransaction::Unset => self.reject_transaction(
-                effect_builder,
-                *event_metadata,
-                Error::ExpectedTransactionV1,
-            ),
         }
     }
 
@@ -831,7 +826,7 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         let session = match &event_metadata.meta_transaction {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.session(),
-            MetaTransaction::Unset | MetaTransaction::Evm(_) | MetaTransaction::V1(_) => {
+            MetaTransaction::Evm(_) | MetaTransaction::V1(_) => {
                 return self.reject_transaction(
                     effect_builder,
                     *event_metadata,
@@ -955,7 +950,7 @@ impl TransactionAcceptor {
         }
 
         let next_step = match &event_metadata.meta_transaction {
-            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => {
                 error!("should only handle version 1 transactions in verify_transaction_v1_body");
                 return self.reject_transaction(
                     effect_builder,
@@ -1077,10 +1072,6 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::AddReservations
                 | TransactionEntryPoint::CancelReservations => None,
             },
-            MetaTransaction::Unset => {
-                error!("unset transaction");
-                None
-            }
         };
 
         match maybe_entry_point_name {
@@ -1279,7 +1270,6 @@ impl TransactionAcceptor {
             MetaTransaction::V1(txn) => txn
                 .verify()
                 .map_err(|err| Error::InvalidTransaction(err.into())),
-            MetaTransaction::Unset => Err(Error::Unsupported),
         };
         if let Err(error) = is_valid {
             return self.reject_transaction(effect_builder, *event_metadata, error);
