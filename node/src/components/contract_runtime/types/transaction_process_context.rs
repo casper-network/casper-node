@@ -82,7 +82,7 @@ impl InitialBalanceIdentifierResult {
 
 #[derive(Debug, Display)]
 #[allow(unused)] // TODO remove this when ready
-pub(crate) enum ExecutionArtifactBuilderError {
+pub(crate) enum TransactionProcessContextError {
     InvalidTransaction(InvalidTransaction),
     MissingInitiatorAddr,
     MissingHeader,
@@ -96,7 +96,7 @@ pub(crate) enum ExecutionArtifactBuilderError {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ExecutionArtifactBuilder {
+pub(crate) struct TransactionProcessContext {
     effects: Effects,
     transaction_hash: TransactionHash,
     header: TransactionHeader,
@@ -123,21 +123,21 @@ pub(crate) struct ExecutionArtifactBuilder {
     evm_receipt: Option<EvmReceipt>,
 }
 
-impl ExecutionArtifactBuilder {
+impl TransactionProcessContext {
     pub(crate) fn try_new(
         txn: &Transaction,
         chainspec: &Chainspec,
         gas_price: u8,
-    ) -> Result<Self, ExecutionArtifactBuilderError> {
+    ) -> Result<Self, TransactionProcessContextError> {
         let meta_transaction =
             match MetaTransaction::new_from_txn_with_price(txn, chainspec, gas_price) {
                 Ok(meta_transaction) => meta_transaction,
-                Err(err) => return Err(ExecutionArtifactBuilderError::InvalidTransaction(err)),
+                Err(err) => return Err(TransactionProcessContextError::InvalidTransaction(err)),
             };
 
         let limits_and_costs = LimitsAndCosts::try_from_meta_txn(&meta_transaction, chainspec)?;
 
-        Ok(ExecutionArtifactBuilder {
+        Ok(TransactionProcessContext {
             effects: Effects::new(),
             transaction_hash: txn.hash(),
             header: txn.into(),
@@ -244,7 +244,7 @@ impl ExecutionArtifactBuilder {
     }
 }
 
-impl ExecutionArtifactBuilder {
+impl TransactionProcessContext {
     // *************** EVM **************
 
     pub(crate) fn evm_effective_gas_price(&self) -> Option<u128> {
@@ -273,7 +273,7 @@ impl ExecutionArtifactBuilder {
     }
 }
 
-impl ExecutionArtifactBuilder {
+impl TransactionProcessContext {
     // *************** APPENDERS (aka "WITHS") **************
     pub(crate) fn with_gas_limit_consumed(&mut self) -> &mut Self {
         self.limits_and_costs.with_gas_limit_consumed();
@@ -631,7 +631,7 @@ impl ExecutionArtifactBuilder {
     }
 }
 
-impl ExecutionArtifactBuilder {
+impl TransactionProcessContext {
     // *************** FLOW CONTROL ****************
 
     fn allow_execution(&self) -> bool {
@@ -715,12 +715,12 @@ impl ExecutionArtifactBuilder {
 
     pub(crate) fn balance_identifier_resolution(
         &self,
-    ) -> Result<BalanceIdentifierResolution, ExecutionArtifactBuilderError> {
+    ) -> Result<BalanceIdentifierResolution, TransactionProcessContextError> {
         let initiator_addr = self.initiator_addr().clone();
         let default_ret = match BalanceIdentifier::try_from(initiator_addr.clone()) {
             Ok(bi) => bi,
             Err(_) => {
-                return Err(ExecutionArtifactBuilderError::BalanceIdentifierError(
+                return Err(TransactionProcessContextError::BalanceIdentifierError(
                     Box::new(BalanceIdentifierError::TryFromInitiatorAddr(initiator_addr)),
                 ))
             }
@@ -738,7 +738,7 @@ impl ExecutionArtifactBuilder {
                 let evm_ret = match BalanceIdentifier::try_from(mtxn.initiator_addr()) {
                     Ok(bi) => bi,
                     Err(_) => {
-                        return Err(ExecutionArtifactBuilderError::BalanceIdentifierError(
+                        return Err(TransactionProcessContextError::BalanceIdentifierError(
                             Box::new(BalanceIdentifierError::TryFromInitiatorAddr(initiator_addr)),
                         ))
                     }
@@ -749,9 +749,8 @@ impl ExecutionArtifactBuilder {
         }
     }
 
-    // *************** BUILD ****************
-    // NOTE: by convention, build should always be the final function in the impl.
-    pub(crate) fn build(self) -> ExecutionArtifact {
+    // *************** TAKE ****************
+    pub(crate) fn into_execution_artifact(self) -> ExecutionArtifact {
         let actual_cost = self.cost_to_use();
 
         let execution_result = if let Some((initiator, receipt)) = &self.evm_addr_receipt() {

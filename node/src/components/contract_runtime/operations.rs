@@ -53,8 +53,8 @@ use crate::contract_runtime::types::InitialBalanceIdentifierResult;
 use crate::{
     components::fetcher::FetchItem,
     contract_runtime::types::{
-        BalanceIdentifierResolution, EvmOriginResolution, ExecutionArtifactBuilder, ProcessRequest,
-        StaticEvmBlockHashProvider,
+        BalanceIdentifierResolution, EvmOriginResolution, ProcessRequest,
+        StaticEvmBlockHashProvider, TransactionProcessContext,
     },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
@@ -162,9 +162,9 @@ pub(super) fn execute_finalized_block(
     // from here on out, until the effects are applied at the end.
     let scratch_state = data_access_layer.get_scratch_global_state();
 
-    for stored_transaction in executable_block.transactions {
+    for txn in executable_block.transactions {
         let mut txn_process_ctx =
-            ExecutionArtifactBuilder::try_new(&stored_transaction, chainspec, current_gas_price)
+            TransactionProcessContext::try_new(&txn, chainspec, current_gas_price)
                 .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
         let transaction_hash = txn_process_ctx.transaction_hash();
@@ -178,7 +178,7 @@ pub(super) fn execute_finalized_block(
                 "lane_id is currently not supported"
             );
             // record it and move on.
-            artifacts.push(txn_process_ctx.build());
+            artifacts.push(txn_process_ctx.into_execution_artifact());
             continue;
         }
 
@@ -220,7 +220,7 @@ pub(super) fn execute_finalized_block(
                     %transaction_hash,
                     "unknown initial balance identifier"
                 );
-                artifacts.push(txn_process_ctx.build());
+                artifacts.push(txn_process_ctx.into_execution_artifact());
                 continue;
             }
         };
@@ -248,7 +248,7 @@ pub(super) fn execute_finalized_block(
                     "failed to determine cost_estimate"
                 );
                 // record it and move on.
-                artifacts.push(txn_process_ctx.build());
+                artifacts.push(txn_process_ctx.into_execution_artifact());
                 continue;
             }
         };
@@ -726,7 +726,7 @@ pub(super) fn execute_finalized_block(
             debug!(%transaction_hash, ?err_msg, "transaction error");
         }
 
-        artifacts.push(txn_process_ctx.build());
+        artifacts.push(txn_process_ctx.into_execution_artifact());
     }
 
     // transaction processing is finished
@@ -1493,7 +1493,7 @@ fn invoked_contract_will_pay(
 }
 
 fn txn_initial_balance_identifier(
-    ctx: &ExecutionArtifactBuilder,
+    ctx: &TransactionProcessContext,
     state_provider: &ScratchGlobalState,
     state_root_hash: Digest,
     protocol_version: ProtocolVersion,

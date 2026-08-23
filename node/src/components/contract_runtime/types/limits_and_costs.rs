@@ -1,4 +1,4 @@
-use crate::contract_runtime::types::execution_artifact_builder::ExecutionArtifactBuilderError;
+use crate::contract_runtime::types::transaction_process_context::TransactionProcessContextError;
 use crate::types::MetaTransaction;
 use casper_types::{Chainspec, Gas, U512};
 use num_rational::Ratio;
@@ -141,7 +141,7 @@ impl LimitsAndCosts {
     pub(crate) fn try_from_meta_txn(
         mtxn: &MetaTransaction,
         chainspec: &Chainspec,
-    ) -> Result<LimitsAndCosts, ExecutionArtifactBuilderError> {
+    ) -> Result<LimitsAndCosts, TransactionProcessContextError> {
         /*
         we solve for halting state using a `gas limit` which is the maximum amount of
         computation we will allow a given transaction to consume. the transaction itself
@@ -170,7 +170,7 @@ impl LimitsAndCosts {
         let gas_limit = match &mtxn.gas_limit(chainspec) {
             Ok(gas_limit) => *gas_limit,
             Err(ite) => {
-                return Err(ExecutionArtifactBuilderError::InvalidTransaction(
+                return Err(TransactionProcessContextError::InvalidTransaction(
                     ite.clone(),
                 ))
             }
@@ -180,7 +180,7 @@ impl LimitsAndCosts {
         let baseline_motes_amount = chainspec.core_config.baseline_motes_amount_u512();
         let min_cost = match mtxn.min_cost(gas_limit_value, baseline_motes_amount) {
             Ok(motes) => motes.value(),
-            Err(err) => return Err(ExecutionArtifactBuilderError::InvalidTransaction(err)),
+            Err(err) => return Err(TransactionProcessContextError::InvalidTransaction(err)),
         };
 
         let wei_per_mote = u128::from(chainspec.evm_config.wei_per_mote);
