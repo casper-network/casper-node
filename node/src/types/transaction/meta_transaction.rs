@@ -92,7 +92,7 @@ impl MetaTransaction {
         }
     }
 
-    /// Returns the `Approval`s for this transaction.
+    /// Returns the `Approval` set for this transaction.
     pub(crate) fn approvals(&self) -> BTreeSet<Approval> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().approvals().clone(),
@@ -527,7 +527,6 @@ mod tests {
         assert_eq!(meta.gas_price_tolerance().unwrap(), u8::MAX);
         assert_eq!(meta.size_estimate(), evm_transaction.serialized_length());
         assert!(meta.is_standard_payment());
-        assert!(!meta.is_custom_payment());
         assert!(!meta.is_v1_wasm());
         assert!(!meta.is_v2_wasm());
         assert!(meta.seed().is_none());
@@ -954,14 +953,14 @@ mod proptests {
         #[test]
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
             let chainspec = {
-            let mut transaction_config = TransactionConfig::default();
+            let mut transaction_config = casper_types::TransactionConfig::default();
             transaction_config.transaction_v1_config.set_wasm_lanes(vec![
                 TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
                 TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
                 let mut chainspec = Chainspec::default();
                 chainspec.transaction_config = transaction_config;
-                chainspec.with_pricing_handling(PricingHandling::PaymentLimited);
+                chainspec.with_pricing_handling(casper_types::PricingHandling::PaymentLimited);
                 chainspec
             };
             let maybe_transaction = MetaTransaction::new_from_txn_with_price(&transaction, &chainspec, 1);

@@ -4,6 +4,8 @@ mod evm_origin_resolution;
 mod execution_artifact;
 mod execution_artifact_builder;
 mod execution_pre_state;
+mod limits_and_costs;
+mod process_request;
 mod speculative_execution_result;
 mod static_evm_block_hash_provider;
 mod step_outcome;
@@ -16,9 +18,10 @@ pub(crate) use crate::components::contract_runtime::types::{
     execution_artifact::ExecutionArtifact,
     execution_artifact_builder::{
         BalanceIdentifierResolution, ExecutionArtifactBuilder, InitialBalanceIdentifierResult,
-        ProcessRequest,
     },
     execution_pre_state::ExecutionPreState,
+    limits_and_costs::LimitsAndCosts,
+    process_request::ProcessRequest,
     speculative_execution_result::SpeculativeExecutionResult,
     static_evm_block_hash_provider::StaticEvmBlockHashProvider,
     step_outcome::StepOutcome,

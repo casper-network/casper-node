@@ -17,8 +17,8 @@ use tracing::{debug, error, info};
 use crate::{
     contract_runtime::{
         exec_queue::{ExecQueue, QueueItem},
-        execute_finalized_block,
         metrics::Metrics,
+        operations::execute_finalized_block,
         rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
     },
     effect::{

@@ -59,504 +59,9 @@ use crate::{
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 
-/// Resolves the payer and any deferred identity write for a signed EVM transaction.
-///
-/// This function only reads state. That matters because it runs before payment
-/// preconditions are known to pass. If execution is later allowed, the returned
-/// [`EvmIdentityInstruction`] is applied in the tracking copy used for EVM execution.
-fn resolve_evm_origin(
-    scratch_state: &ScratchGlobalState,
-    state_root_hash: Digest,
-    protocol_version: ProtocolVersion,
-    signer: &PublicKey,
-    address: EvmAddress,
-) -> Result<EvmOriginResolution, BlockExecutionError> {
-    // The signer gives us a Casper `AccountHash` preimage from the secp256k1
-    // public key. That account hash is not derivable from the 20-byte EVM
-    // address alone, so identity linking must happen while the signed
-    // transaction is available.
-    // let signer = transaction
-    //     .signer()
-    //     .map_err(|error| BlockExecutionError::TransactionConversion(error.to_string()))?;
-    let account_hash = signer.to_account_hash();
-    // Native EVM identities use a deterministic purse derived from the EVM
-    // address. Linked Casper accounts use the account's existing main purse
-    // instead, so the same key pair can spend the same funds from Casper and
-    // Ethereum-style transaction paths.
-    //let address = transaction.from();
-    let deterministic_purse = casper_types::evm::deterministic_purse(address);
-    let mut tracking_copy = match scratch_state.tracking_copy(state_root_hash) {
-        Ok(Some(tc)) => tc,
-        Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
-        Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
-    };
-
-    // `EvmAddr::Account` is now only an identity pointer. It is either
-    // `Key::Account` for a linked Casper account or `Key::URef` for an
-    // EVM-native purse identity.
-    let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
-    match tracking_copy
-        .read(&identity_key)
-        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-    {
-        Some(StoredValue::CLValue(cl_value)) => {
-            let key = cl_value
-                .into_t::<Key>()
-                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            match key {
-                // Existing bridge records are authoritative. Once an EVM
-                // address is linked, the payer is the linked Casper account's
-                // main purse.
-                Key::Account(account_hash) => Ok(EvmOriginResolution::new(
-                    BalanceIdentifier::Account(account_hash),
-                    EvmIdentityInstruction::None,
-                )),
-                // Existing EVM-native identities keep paying from their stored
-                // purse. We may still plan an upgrade to a Casper link, but
-                // only when doing so cannot steal a contract identity or move
-                // balances between distinct purses.
-                Key::URef(purse) => {
-                    let eve_identity_instruction = resolve_evm_native_identity_plan(
-                        &mut tracking_copy,
-                        protocol_version,
-                        address,
-                        account_hash,
-                        purse,
-                        deterministic_purse,
-                    )?;
-                    Ok(EvmOriginResolution::new(
-                        BalanceIdentifier::Purse(purse),
-                        eve_identity_instruction,
-                    ))
-                }
-                other => Err(BlockExecutionError::PaymentError(format!(
-                    "invalid EVM account identity key: {other}"
-                ))),
-            }
-        }
-        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-            "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key), found {}",
-            stored_value.type_name()
-        ))),
-        None => {
-            // No identity pointer plus non-empty EVM code means this address is
-            // already a contract/runtime-created EVM account. Contracts do not
-            // have a signing key, so they must remain EVM-native.
-            if evm_account_has_code(&mut tracking_copy, address)? {
-                return Ok(EvmOriginResolution::new(
-                    BalanceIdentifier::Purse(deterministic_purse),
-                    EvmIdentityInstruction::None,
-                ));
-            }
-            match account_main_purse(&mut tracking_copy, protocol_version, account_hash)? {
-                // A Casper account exists for the recovered signer, but the EVM
-                // address has not been seen before. Use the account for payment
-                // immediately and write the bridge only if execution proceeds.
-                Some(_) => Ok(EvmOriginResolution::new(
-                    BalanceIdentifier::Account(account_hash),
-                    EvmIdentityInstruction::LinkExisting {
-                        address,
-                        account_hash,
-                    },
-                )),
-                // First use of this signing pair on both sides. Runtime will
-                // create a Casper account whose main purse is the deterministic
-                // EVM purse, then write the bridge record.
-                None => Ok(EvmOriginResolution::new(
-                    BalanceIdentifier::Purse(deterministic_purse),
-                    EvmIdentityInstruction::CreateAccount {
-                        address,
-                        account_hash,
-                        main_purse: deterministic_purse,
-                    },
-                )),
-            }
-        }
-    }
-}
-
-fn resolve_evm_native_identity_plan<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    protocol_version: ProtocolVersion,
-    address: EvmAddress,
-    account_hash: AccountHash,
-    purse: casper_types::URef,
-    deterministic_purse: casper_types::URef,
-) -> Result<EvmIdentityInstruction, BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    // Do not overwrite contract identities, and do not turn an arbitrary purse
-    // identity into a Casper account link. The only EVM-native identity that is
-    // safe to link is the deterministic purse for this address.
-    if evm_account_has_code(tracking_copy, address)? || purse.addr() != deterministic_purse.addr() {
-        return Ok(EvmIdentityInstruction::None);
-    }
-
-    match account_main_purse(tracking_copy, protocol_version, account_hash)? {
-        // If the recovered Casper account already uses the same deterministic
-        // purse, replacing the pointer with `Key::Account` preserves the balance
-        // location and lets Casper-native flows see the account identity.
-        Some(main_purse) if main_purse.addr() == purse.addr() => {
-            Ok(EvmIdentityInstruction::LinkExisting {
-                address,
-                account_hash,
-            })
-        }
-        // A Casper account exists, but its main purse differs from the existing
-        // EVM-native purse. Keep the EVM-native identity to avoid moving funds
-        // or changing ownership semantics behind the user's back.
-        Some(_) => Ok(EvmIdentityInstruction::None),
-        // No Casper account exists yet, so creating one backed by the existing
-        // deterministic purse preserves balances while giving the signer a
-        // Casper account identity.
-        None => Ok(EvmIdentityInstruction::CreateAccount {
-            address,
-            account_hash,
-            main_purse: purse,
-        }),
-    }
-}
-
-fn evm_account_has_code<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    address: EvmAddress,
-) -> Result<bool, BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    // Code hash is the cheap contract/EOA discriminator for an EVM address. A
-    // non-empty code hash means the address is not a user-controlled signing
-    // identity, so runtime must not create or link a Casper account for it.
-    let key = Key::Evm(casper_types::EvmAddr::CodeHash(address));
-    match tracking_copy
-        .read(&key)
-        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-    {
-        Some(StoredValue::CLValue(cl_value)) => {
-            let code_hash = cl_value
-                .into_t::<casper_types::evm::Hash>()
-                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            Ok(code_hash != casper_types::evm::EMPTY_CODE_HASH)
-        }
-        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-            "unexpected stored value for {key}: expected StoredValue::CLValue(evm::Hash), found {}",
-            stored_value.type_name()
-        ))),
-        None => Ok(false),
-    }
-}
-//
-// fn evm_account_has_nonce<R>(
-//     tracking_copy: &mut TrackingCopy<R>,
-//     address: EvmAddress,
-// ) -> Result<bool, BlockExecutionError>
-// where
-//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-// {
-//     let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
-//     match tracking_copy
-//         .read(&key)
-//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-//     {
-//         Some(StoredValue::CLValue(cl_value)) => {
-//             let _nonce = cl_value
-//                 .into_t::<u64>()
-//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-//             Ok(true)
-//         }
-//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-//             "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
-//             stored_value.type_name()
-//         ))),
-//         None => Ok(false),
-//     }
-// }
-
-fn account_main_purse<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    protocol_version: ProtocolVersion,
-    account_hash: AccountHash,
-) -> Result<Option<casper_types::URef>, BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    // Runtime footprints cover both legacy `StoredValue::Account` accounts and
-    // addressable-entity-backed accounts, so this is the authoritative account
-    // existence check for identity linking.
-    match tracking_copy.runtime_footprint_by_account_hash(protocol_version, account_hash) {
-        Ok((_, entity)) => entity
-            .main_purse()
-            .map(Some)
-            .ok_or_else(|| BlockExecutionError::PaymentError("missing account main purse".into())),
-        Err(TrackingCopyError::KeyNotFound(_)) => Ok(None),
-        Err(error) => Err(BlockExecutionError::PaymentError(error.to_string())),
-    }
-}
-//
-// fn apply_evm_proposer_identity<R>(
-//     tracking_copy: &mut TrackingCopy<R>,
-//     protocol_version: ProtocolVersion,
-//     proposer: &PublicKey,
-// ) -> Result<(), BlockExecutionError>
-// where
-//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-// {
-//     let address = EvmAddress::from_block_proposer_public_key(proposer);
-//     let account_hash = proposer.to_account_hash();
-//     if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
-//         return Ok(());
-//     }
-//
-//     let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
-//     match tracking_copy
-//         .read(&identity_key)
-//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-//     {
-//         Some(StoredValue::CLValue(cl_value)) => {
-//             let identity = cl_value
-//                 .into_t::<Key>()
-//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-//             match identity {
-//                 Key::Account(_) | Key::URef(_) => Ok(()),
-//                 other => Err(BlockExecutionError::PaymentError(format!(
-//                     "invalid EVM account identity key: {other}"
-//                 ))),
-//             }
-//         }
-//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-//             "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key),
-// found {}",             stored_value.type_name()
-//         ))),
-//         None => {
-//             if evm_account_has_code(tracking_copy, address)?
-//                 || evm_account_has_nonce(tracking_copy, address)?
-//             {
-//                 return Ok(());
-//             }
-//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
-//         }
-//     }
-// }
-//
-// fn apply_evm_identity_plan<R>(
-//     tracking_copy: &mut TrackingCopy<R>,
-//     protocol_version: ProtocolVersion,
-//     plan: EvmIdentityInstruction,
-// ) -> Result<(), BlockExecutionError>
-// where
-//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-// {
-//     // Identity writes are intentionally delayed until after payment
-//     // preconditions pass. They are applied to the same tracking copy as EVM
-//     // execution so the identity record and nonce/code/storage updates commit or
-//     // discard together.
-//     match plan {
-//         EvmIdentityInstruction::None => Ok(()),
-//         EvmIdentityInstruction::LinkExisting {
-//             address,
-//             account_hash,
-//         } => write_evm_identity(tracking_copy, address, Key::Account(account_hash)),
-//         EvmIdentityInstruction::CreateAccount {
-//             address,
-//             account_hash,
-//             main_purse,
-//         } => {
-//             // Another transaction in the same block may have already created
-//             // the account through this scratch state. Avoid recreating it, but
-//             // still write the EVM identity pointer below.
-//             if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
-//                 let account = Account::create(account_hash, NamedKeys::new(), main_purse);
-//                 tracking_copy
-//                     .create_addressable_entity_from_account(account, protocol_version)
-//                     .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-//             }
-//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
-//         }
-//     }
-// }
-//
-// fn write_evm_identity<R>(
-//     tracking_copy: &mut TrackingCopy<R>,
-//     address: EvmAddress,
-//     identity: Key,
-// ) -> Result<(), BlockExecutionError>
-// where
-//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-// {
-//     // Keep the bridge record minimal: a CLValue containing the identity `Key`.
-//     // Nonce, code hash, bytecode, and storage live under their own EVM keys.
-//     let key = Key::Evm(casper_types::EvmAddr::Account(address));
-//     let cl_value = CLValue::from_t(identity)
-//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-//     tracking_copy.write(key, StoredValue::CLValue(cl_value));
-//     Ok(())
-// }
-//
-// enum InitialBalanceIdentifierResult {
-//     Unknown,
-//     Identifier(BalanceIdentifier),
-//     IdentifierAndStateError(BalanceIdentifier, StateResultError),
-//     IdentifierAndEvmResolution(BalanceIdentifier, EvmOriginResolution),
-//     IdentifierAndEvmError(BalanceIdentifier, EvmTransactionError),
-// }
-//
-// impl InitialBalanceIdentifierResult {
-//     pub(crate) fn balance_identifier(&self) -> Option<&BalanceIdentifier> {
-//         match self {
-//             InitialBalanceIdentifierResult::Unknown => None,
-//             InitialBalanceIdentifierResult::Identifier(bi)
-//             | InitialBalanceIdentifierResult::IdentifierAndStateError(bi, _)
-//             | InitialBalanceIdentifierResult::IdentifierAndEvmResolution(bi, _)
-//             | InitialBalanceIdentifierResult::IdentifierAndEvmError(bi, _) => Some(bi),
-//         }
-//     }
-//
-//     pub(crate) fn state_result_error(&self) -> Option<&StateResultError> {
-//         if let InitialBalanceIdentifierResult::IdentifierAndStateError(_, err) = self {
-//             Some(err)
-//         } else {
-//             None
-//         }
-//     }
-//
-//     pub(crate) fn evm_origin_resolution(&self) -> Option<&EvmOriginResolution> {
-//         if let InitialBalanceIdentifierResult::IdentifierAndEvmResolution(_, eor) = self {
-//             Some(eor)
-//         } else {
-//             None
-//         }
-//     }
-//
-//     pub(crate) fn evm_transaction_error(&self) -> Option<&EvmTransactionError> {
-//         if let InitialBalanceIdentifierResult::IdentifierAndEvmError(_, err) = self {
-//             Some(err)
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-fn txn_initial_balance_identifier(
-    ctx: &ExecutionArtifactBuilder,
-    state_provider: &ScratchGlobalState,
-    state_root_hash: Digest,
-    protocol_version: ProtocolVersion,
-    addressable_entity_enabled: bool,
-) -> Result<InitialBalanceIdentifierResult, BlockExecutionError> {
-    let transaction_hash = ctx.hash();
-    let initiator_addr = ctx.initiator_addr().clone();
-
-    match ctx.balance_identifier_resolution() {
-        Ok(resolution) => {
-            match resolution {
-                BalanceIdentifierResolution::Identifier(bi) => {
-                    Ok(InitialBalanceIdentifierResult::Identifier(bi))
-                }
-                BalanceIdentifierResolution::CheckContractPay(default_bi) => {
-                    if !addressable_entity_enabled {
-                        // the initiating account pays using its main purse
-                        trace!(%transaction_hash, "account session");
-                        Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
-                    } else {
-                        match invoked_contract_will_pay(
-                            state_provider,
-                            state_root_hash,
-                            ctx.contract_direct_address(),
-                        ) {
-                            Ok(Some(entity_addr)) => {
-                                let entity_bi = BalanceIdentifier::Entity(entity_addr);
-                                Ok(InitialBalanceIdentifierResult::Identifier(entity_bi))
-                            }
-                            Ok(None) => {
-                                // the initiating account pays using its main purse
-                                trace!(%transaction_hash, "direct invocation with account payment");
-                                Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
-                            }
-                            Err(state_err) => {
-                                trace!(%transaction_hash, "failed to resolve contract self payment");
-                                let penalized_bi = BalanceIdentifier::PenalizedAccount(
-                                    initiator_addr
-                                        .account_hash()
-                                        .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
-                                );
-                                Ok(InitialBalanceIdentifierResult::IdentifierAndStateError(
-                                    penalized_bi,
-                                    state_err,
-                                ))
-                            }
-                        }
-                    }
-                }
-                BalanceIdentifierResolution::CheckEvmAccount(_initiator_bi) => {
-                    let signer = match ctx.evm_signer() {
-                        Some(Ok(signer)) => signer,
-                        Some(Err(evm_err)) => {
-                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
-                            let penalized_bi = BalanceIdentifier::PenalizedAccount(
-                                initiator_addr
-                                    .account_hash()
-                                    .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
-                            );
-                            return Ok(InitialBalanceIdentifierResult::IdentifierAndEvmError(
-                                penalized_bi,
-                                evm_err,
-                            ));
-                        }
-                        None => {
-                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
-                            return Err(BlockExecutionError::TransactionConversion(
-                                "non evm transaction flagged as evm".to_string(),
-                            ));
-                        }
-                    };
-
-                    let evm_address = match ctx.evm_address() {
-                        Some(addr) => addr,
-                        None => {
-                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
-                            return Err(BlockExecutionError::TransactionConversion(
-                                "evm transaction missing its address".to_string(),
-                            ));
-                        }
-                    };
-
-                    match resolve_evm_origin(
-                        state_provider,
-                        state_root_hash,
-                        protocol_version,
-                        signer,
-                        evm_address,
-                    ) {
-                        Ok(resolution) => {
-                            let bi = resolution.balance_identifier();
-                            Ok(InitialBalanceIdentifierResult::IdentifierAndEvmResolution(
-                                bi, resolution,
-                            ))
-                        }
-                        Err(err) => {
-                            trace!(%transaction_hash, "failed to resolve evm origin");
-                            Err(err)
-                        }
-                    }
-                }
-            }
-        }
-        Err(err) => {
-            trace!(%transaction_hash, "failed to determine payer_balance_identifier");
-            error!(
-                %transaction_hash,
-                ?err,
-                "failed to determine payer_balance_identifier"
-            );
-            Ok(InitialBalanceIdentifierResult::Unknown)
-        }
-    }
-}
-
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_finalized_block(
+pub(super) fn execute_finalized_block(
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
     execution_engine_v1: &ExecutionEngineV1,
     execution_engine_v2: ExecutorV2,
@@ -662,7 +167,7 @@ pub fn execute_finalized_block(
             ExecutionArtifactBuilder::try_new(&stored_transaction, chainspec, current_gas_price)
                 .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
-        let transaction_hash = txn_process_ctx.hash();
+        let transaction_hash = txn_process_ctx.transaction_hash();
 
         let lane_id = txn_process_ctx.transaction_lane();
         if !chainspec.is_supported(lane_id) {
@@ -1058,12 +563,11 @@ pub fn execute_finalized_block(
 
         // handle refunds per the chainspec determined setting.
         let refund_amount = {
-            let consumed =
-                if balance_identifier.is_penalty() || txn_process_ctx.error_message().is_some() {
-                    txn_process_ctx.cost_to_use() // no refund for penalty
-                } else {
-                    txn_process_ctx.consumed()
-                };
+            let consumed = if balance_identifier.is_penalty() || txn_process_ctx.has_error() {
+                txn_process_ctx.cost_to_use() // no refund for penalty
+            } else {
+                txn_process_ctx.consumed()
+            };
 
             let available = txn_process_ctx.available().unwrap_or(U512::zero());
 
@@ -1218,6 +722,10 @@ pub fn execute_finalized_block(
             .with_handle_fee_result(&handle_fee_result)
             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
+        if let Some(err_msg) = txn_process_ctx.error_message() {
+            debug!(%transaction_hash, ?err_msg, "transaction error");
+        }
+
         artifacts.push(txn_process_ctx.build());
     }
 
@@ -1231,10 +739,10 @@ pub fn execute_finalized_block(
     // post-processing starts now
     let post_processing_start = Instant::now();
 
-    // calculate and store checksums for approvals and execution effects across the transactions in
-    // the block we do this so that the full set of approvals and the full set of effect metadata
-    // can be verified if necessary for a given block. the block synchronizer in particular
-    // depends on the existence of such checksums.
+    // the canonical full set of approvals and metadata must be historically verifiable.
+    // to allow this, we must calculate and store checksums for approvals and execution effects
+    //   across all transactions in the block.
+    // block synchronization uses these checksums to ensure correct complete block data.
     let transaction_approvals_hashes = {
         let approvals_checksum = types::compute_approvals_checksum(transaction_ids.clone())
             .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
@@ -1845,33 +1353,6 @@ where
     ))
 }
 
-fn invoked_contract_will_pay(
-    state_provider: &ScratchGlobalState,
-    state_root_hash: Digest,
-    contract_address: Option<(HashAddr, String)>,
-) -> Result<Option<EntityAddr>, StateResultError> {
-    if let Some((hash_addr, entry_point_name)) = contract_address {
-        let entity_addr = EntityAddr::new_smart_contract(hash_addr);
-        let entry_point_request =
-            EntryPointRequest::new(state_root_hash, entry_point_name, hash_addr);
-        let entry_point_response = state_provider.entry_point(entry_point_request);
-        match entry_point_response {
-            EntryPointResult::RootNotFound => Err(StateResultError::RootNotFound),
-            EntryPointResult::ValueNotFound(msg) => Err(StateResultError::ValueNotFound(msg)),
-            EntryPointResult::Failure(tce) => Err(StateResultError::Failure(tce)),
-            EntryPointResult::Success { entry_point } => {
-                if entry_point.will_pay_direct_invocation() {
-                    Ok(Some(entity_addr))
-                } else {
-                    Ok(None)
-                }
-            }
-        }
-    } else {
-        Ok(None)
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn commit_step(
     native_runtime_config: NativeRuntimeConfig,
@@ -1960,3 +1441,484 @@ pub(crate) fn compute_execution_results_checksum<'a>(
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
 }
+
+// *************** EVM RELATED *****************
+
+fn account_main_purse<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    protocol_version: ProtocolVersion,
+    account_hash: AccountHash,
+) -> Result<Option<casper_types::URef>, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    // Runtime footprints cover both legacy `StoredValue::Account` accounts and
+    // addressable-entity-backed accounts, so this is the authoritative account
+    // existence check for identity linking.
+    match tracking_copy.runtime_footprint_by_account_hash(protocol_version, account_hash) {
+        Ok((_, entity)) => entity
+            .main_purse()
+            .map(Some)
+            .ok_or_else(|| BlockExecutionError::PaymentError("missing account main purse".into())),
+        Err(TrackingCopyError::KeyNotFound(_)) => Ok(None),
+        Err(error) => Err(BlockExecutionError::PaymentError(error.to_string())),
+    }
+}
+
+fn invoked_contract_will_pay(
+    state_provider: &ScratchGlobalState,
+    state_root_hash: Digest,
+    contract_address: Option<(HashAddr, String)>,
+) -> Result<Option<EntityAddr>, StateResultError> {
+    if let Some((hash_addr, entry_point_name)) = contract_address {
+        let entity_addr = EntityAddr::new_smart_contract(hash_addr);
+        let entry_point_request =
+            EntryPointRequest::new(state_root_hash, entry_point_name, hash_addr);
+        let entry_point_response = state_provider.entry_point(entry_point_request);
+        match entry_point_response {
+            EntryPointResult::RootNotFound => Err(StateResultError::RootNotFound),
+            EntryPointResult::ValueNotFound(msg) => Err(StateResultError::ValueNotFound(msg)),
+            EntryPointResult::Failure(tce) => Err(StateResultError::Failure(tce)),
+            EntryPointResult::Success { entry_point } => {
+                if entry_point.will_pay_direct_invocation() {
+                    Ok(Some(entity_addr))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+fn txn_initial_balance_identifier(
+    ctx: &ExecutionArtifactBuilder,
+    state_provider: &ScratchGlobalState,
+    state_root_hash: Digest,
+    protocol_version: ProtocolVersion,
+    addressable_entity_enabled: bool,
+) -> Result<InitialBalanceIdentifierResult, BlockExecutionError> {
+    let transaction_hash = ctx.transaction_hash();
+    let initiator_addr = ctx.initiator_addr().clone();
+
+    match ctx.balance_identifier_resolution() {
+        Ok(resolution) => {
+            match resolution {
+                BalanceIdentifierResolution::Identifier(bi) => {
+                    Ok(InitialBalanceIdentifierResult::Identifier(bi))
+                }
+                BalanceIdentifierResolution::CheckContractPay(default_bi) => {
+                    if !addressable_entity_enabled {
+                        // the initiating account pays using its main purse
+                        trace!(%transaction_hash, "account session");
+                        Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
+                    } else {
+                        match invoked_contract_will_pay(
+                            state_provider,
+                            state_root_hash,
+                            ctx.contract_direct_address(),
+                        ) {
+                            Ok(Some(entity_addr)) => {
+                                let entity_bi = BalanceIdentifier::Entity(entity_addr);
+                                Ok(InitialBalanceIdentifierResult::Identifier(entity_bi))
+                            }
+                            Ok(None) => {
+                                // the initiating account pays using its main purse
+                                trace!(%transaction_hash, "direct invocation with account payment");
+                                Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
+                            }
+                            Err(state_err) => {
+                                trace!(%transaction_hash, "failed to resolve contract self payment");
+                                let penalized_bi = BalanceIdentifier::PenalizedAccount(
+                                    initiator_addr
+                                        .account_hash()
+                                        .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
+                                );
+                                Ok(InitialBalanceIdentifierResult::IdentifierAndStateError(
+                                    penalized_bi,
+                                    state_err,
+                                ))
+                            }
+                        }
+                    }
+                }
+                BalanceIdentifierResolution::CheckEvmAccount(_initiator_bi) => {
+                    let signer = match ctx.evm_signer() {
+                        Some(Ok(signer)) => signer,
+                        Some(Err(evm_err)) => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            let penalized_bi = BalanceIdentifier::PenalizedAccount(
+                                initiator_addr
+                                    .account_hash()
+                                    .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
+                            );
+                            return Ok(InitialBalanceIdentifierResult::IdentifierAndEvmError(
+                                penalized_bi,
+                                evm_err,
+                            ));
+                        }
+                        None => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            return Err(BlockExecutionError::TransactionConversion(
+                                "non evm transaction flagged as evm".to_string(),
+                            ));
+                        }
+                    };
+
+                    let evm_address = match ctx.evm_address() {
+                        Some(addr) => addr,
+                        None => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            return Err(BlockExecutionError::TransactionConversion(
+                                "evm transaction missing its address".to_string(),
+                            ));
+                        }
+                    };
+
+                    match resolve_evm_origin(
+                        state_provider,
+                        state_root_hash,
+                        protocol_version,
+                        signer,
+                        evm_address,
+                    ) {
+                        Ok(resolution) => {
+                            let bi = resolution.balance_identifier();
+                            Ok(InitialBalanceIdentifierResult::IdentifierAndEvmResolution(
+                                bi, resolution,
+                            ))
+                        }
+                        Err(err) => {
+                            trace!(%transaction_hash, "failed to resolve evm origin");
+                            Err(err)
+                        }
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            trace!(%transaction_hash, "failed to determine payer_balance_identifier");
+            error!(
+                %transaction_hash,
+                ?err,
+                "failed to determine payer_balance_identifier"
+            );
+            Ok(InitialBalanceIdentifierResult::Unknown)
+        }
+    }
+}
+/// Resolves the payer and any deferred identity write for a signed EVM transaction.
+///
+/// This function only reads state. That matters because it runs before payment
+/// preconditions are known to pass. If execution is later allowed, the returned
+/// [`EvmIdentityInstruction`] is applied in the tracking copy used for EVM execution.
+fn resolve_evm_origin(
+    scratch_state: &ScratchGlobalState,
+    state_root_hash: Digest,
+    protocol_version: ProtocolVersion,
+    signer: &PublicKey,
+    address: EvmAddress,
+) -> Result<EvmOriginResolution, BlockExecutionError> {
+    // The signer gives us a Casper `AccountHash` preimage from the secp256k1
+    // public key. That account hash is not derivable from the 20-byte EVM
+    // address alone, so identity linking must happen while the signed
+    // transaction is available.
+    // let signer = transaction
+    //     .signer()
+    //     .map_err(|error| BlockExecutionError::TransactionConversion(error.to_string()))?;
+    let account_hash = signer.to_account_hash();
+    // Native EVM identities use a deterministic purse derived from the EVM
+    // address. Linked Casper accounts use the account's existing main purse
+    // instead, so the same key pair can spend the same funds from Casper and
+    // Ethereum-style transaction paths.
+    //let address = transaction.from();
+    let deterministic_purse = casper_types::evm::deterministic_purse(address);
+    let mut tracking_copy = match scratch_state.tracking_copy(state_root_hash) {
+        Ok(Some(tc)) => tc,
+        Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+        Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
+    };
+
+    // `EvmAddr::Account` is now only an identity pointer. It is either
+    // `Key::Account` for a linked Casper account or `Key::URef` for an
+    // EVM-native purse identity.
+    let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
+    match tracking_copy
+        .read(&identity_key)
+        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+    {
+        Some(StoredValue::CLValue(cl_value)) => {
+            let key = cl_value
+                .into_t::<Key>()
+                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+            match key {
+                // Existing bridge records are authoritative. Once an EVM
+                // address is linked, the payer is the linked Casper account's
+                // main purse.
+                Key::Account(account_hash) => Ok(EvmOriginResolution::new(
+                    BalanceIdentifier::Account(account_hash),
+                    EvmIdentityInstruction::None,
+                )),
+                // Existing EVM-native identities keep paying from their stored
+                // purse. We may still plan an upgrade to a Casper link, but
+                // only when doing so cannot steal a contract identity or move
+                // balances between distinct purses.
+                Key::URef(purse) => {
+                    let eve_identity_instruction = resolve_evm_native_identity_plan(
+                        &mut tracking_copy,
+                        protocol_version,
+                        address,
+                        account_hash,
+                        purse,
+                        deterministic_purse,
+                    )?;
+                    Ok(EvmOriginResolution::new(
+                        BalanceIdentifier::Purse(purse),
+                        eve_identity_instruction,
+                    ))
+                }
+                other => Err(BlockExecutionError::PaymentError(format!(
+                    "invalid EVM account identity key: {other}"
+                ))),
+            }
+        }
+        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+            "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key), found {}",
+            stored_value.type_name()
+        ))),
+        None => {
+            // No identity pointer plus non-empty EVM code means this address is
+            // already a contract/runtime-created EVM account. Contracts do not
+            // have a signing key, so they must remain EVM-native.
+            if evm_account_has_code(&mut tracking_copy, address)? {
+                return Ok(EvmOriginResolution::new(
+                    BalanceIdentifier::Purse(deterministic_purse),
+                    EvmIdentityInstruction::None,
+                ));
+            }
+            match account_main_purse(&mut tracking_copy, protocol_version, account_hash)? {
+                // A Casper account exists for the recovered signer, but the EVM
+                // address has not been seen before. Use the account for payment
+                // immediately and write the bridge only if execution proceeds.
+                Some(_) => Ok(EvmOriginResolution::new(
+                    BalanceIdentifier::Account(account_hash),
+                    EvmIdentityInstruction::LinkExisting {
+                        address,
+                        account_hash,
+                    },
+                )),
+                // First use of this signing pair on both sides. Runtime will
+                // create a Casper account whose main purse is the deterministic
+                // EVM purse, then write the bridge record.
+                None => Ok(EvmOriginResolution::new(
+                    BalanceIdentifier::Purse(deterministic_purse),
+                    EvmIdentityInstruction::CreateAccount {
+                        address,
+                        account_hash,
+                        main_purse: deterministic_purse,
+                    },
+                )),
+            }
+        }
+    }
+}
+
+fn resolve_evm_native_identity_plan<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    protocol_version: ProtocolVersion,
+    address: EvmAddress,
+    account_hash: AccountHash,
+    purse: casper_types::URef,
+    deterministic_purse: casper_types::URef,
+) -> Result<EvmIdentityInstruction, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    // Do not overwrite contract identities, and do not turn an arbitrary purse
+    // identity into a Casper account link. The only EVM-native identity that is
+    // safe to link is the deterministic purse for this address.
+    if evm_account_has_code(tracking_copy, address)? || purse.addr() != deterministic_purse.addr() {
+        return Ok(EvmIdentityInstruction::None);
+    }
+
+    match account_main_purse(tracking_copy, protocol_version, account_hash)? {
+        // If the recovered Casper account already uses the same deterministic
+        // purse, replacing the pointer with `Key::Account` preserves the balance
+        // location and lets Casper-native flows see the account identity.
+        Some(main_purse) if main_purse.addr() == purse.addr() => {
+            Ok(EvmIdentityInstruction::LinkExisting {
+                address,
+                account_hash,
+            })
+        }
+        // A Casper account exists, but its main purse differs from the existing
+        // EVM-native purse. Keep the EVM-native identity to avoid moving funds
+        // or changing ownership semantics behind the user's back.
+        Some(_) => Ok(EvmIdentityInstruction::None),
+        // No Casper account exists yet, so creating one backed by the existing
+        // deterministic purse preserves balances while giving the signer a
+        // Casper account identity.
+        None => Ok(EvmIdentityInstruction::CreateAccount {
+            address,
+            account_hash,
+            main_purse: purse,
+        }),
+    }
+}
+
+fn evm_account_has_code<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: EvmAddress,
+) -> Result<bool, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    // Code hash is the cheap contract/EOA discriminator for an EVM address. A
+    // non-empty code hash means the address is not a user-controlled signing
+    // identity, so runtime must not create or link a Casper account for it.
+    let key = Key::Evm(casper_types::EvmAddr::CodeHash(address));
+    match tracking_copy
+        .read(&key)
+        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+    {
+        Some(StoredValue::CLValue(cl_value)) => {
+            let code_hash = cl_value
+                .into_t::<casper_types::evm::Hash>()
+                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+            Ok(code_hash != casper_types::evm::EMPTY_CODE_HASH)
+        }
+        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+            "unexpected stored value for {key}: expected StoredValue::CLValue(evm::Hash), found {}",
+            stored_value.type_name()
+        ))),
+        None => Ok(false),
+    }
+}
+
+//
+// fn evm_account_has_nonce<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     address: EvmAddress,
+// ) -> Result<bool, BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
+//     match tracking_copy
+//         .read(&key)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+//     {
+//         Some(StoredValue::CLValue(cl_value)) => {
+//             let _nonce = cl_value
+//                 .into_t::<u64>()
+//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             Ok(true)
+//         }
+//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+//             "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
+//             stored_value.type_name()
+//         ))),
+//         None => Ok(false),
+//     }
+// }
+
+//
+// fn apply_evm_proposer_identity<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     protocol_version: ProtocolVersion,
+//     proposer: &PublicKey,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     let address = EvmAddress::from_block_proposer_public_key(proposer);
+//     let account_hash = proposer.to_account_hash();
+//     if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
+//         return Ok(());
+//     }
+//
+//     let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
+//     match tracking_copy
+//         .read(&identity_key)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+//     {
+//         Some(StoredValue::CLValue(cl_value)) => {
+//             let identity = cl_value
+//                 .into_t::<Key>()
+//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             match identity {
+//                 Key::Account(_) | Key::URef(_) => Ok(()),
+//                 other => Err(BlockExecutionError::PaymentError(format!(
+//                     "invalid EVM account identity key: {other}"
+//                 ))),
+//             }
+//         }
+//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+//             "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key),
+// found {}",             stored_value.type_name()
+//         ))),
+//         None => {
+//             if evm_account_has_code(tracking_copy, address)?
+//                 || evm_account_has_nonce(tracking_copy, address)?
+//             {
+//                 return Ok(());
+//             }
+//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+//         }
+//     }
+// }
+//
+// fn apply_evm_identity_plan<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     protocol_version: ProtocolVersion,
+//     plan: EvmIdentityInstruction,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     // Identity writes are intentionally delayed until after payment
+//     // preconditions pass. They are applied to the same tracking copy as EVM
+//     // execution so the identity record and nonce/code/storage updates commit or
+//     // discard together.
+//     match plan {
+//         EvmIdentityInstruction::None => Ok(()),
+//         EvmIdentityInstruction::LinkExisting {
+//             address,
+//             account_hash,
+//         } => write_evm_identity(tracking_copy, address, Key::Account(account_hash)),
+//         EvmIdentityInstruction::CreateAccount {
+//             address,
+//             account_hash,
+//             main_purse,
+//         } => {
+//             // Another transaction in the same block may have already created
+//             // the account through this scratch state. Avoid recreating it, but
+//             // still write the EVM identity pointer below.
+//             if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
+//                 let account = Account::create(account_hash, NamedKeys::new(), main_purse);
+//                 tracking_copy
+//                     .create_addressable_entity_from_account(account, protocol_version)
+//                     .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             }
+//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+//         }
+//     }
+// }
+//
+// fn write_evm_identity<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     address: EvmAddress,
+//     identity: Key,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     // Keep the bridge record minimal: a CLValue containing the identity `Key`.
+//     // Nonce, code hash, bytecode, and storage live under their own EVM keys.
+//     let key = Key::Evm(casper_types::EvmAddr::Account(address));
+//     let cl_value = CLValue::from_t(identity)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//     tracking_copy.write(key, StoredValue::CLValue(cl_value));
+//     Ok(())
+// }
