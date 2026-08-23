@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Common state result errors.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub(crate) enum StateResultError {
     /// Invalid state root hash.
     #[error("invalid state root hash")]
@@ -181,4 +181,6 @@ pub enum BlockExecutionError {
     InvalidTransactionArgs,
     #[error("Data Access Layer conflicts with chainspec setting: {0}")]
     InvalidAESetting(bool),
+    #[error("Invalid balance identifier")]
+    InvalidBalanceIdentifier,
 }

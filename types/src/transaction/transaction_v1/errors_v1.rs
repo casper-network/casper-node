@@ -229,8 +229,12 @@ pub enum InvalidTransaction {
     },
     /// The transaction is missing a seed field.
     MissingSeed,
-    // Pricing mode not implemented yet
+    // Pricing mode not implemented yet.
     PricingModeNotSupported,
+    // Pricing mode error.
+    PricingModeError {
+        msg: String,
+    },
     // Invalid payment amount.
     InvalidPaymentAmount,
     /// Unexpected entry point detected.
@@ -423,6 +427,15 @@ impl Display for InvalidTransaction {
                                                     "received a transaction with an invalid mode {price_mode}"
                                                 )
                                             }
+            InvalidTransaction::PricingModeError { msg } => {
+                write!(
+                    formatter,
+                    "pricing mode error: {msg}"
+                )
+            }
+            InvalidTransaction::PricingModeNotSupported => {
+                write!(formatter, "Pricing mode not supported")
+            }
             InvalidTransaction::InvalidTransactionLane(kind) => {
                                                 write!(
                                                     formatter,
@@ -482,9 +495,6 @@ impl Display for InvalidTransaction {
                                             }
             InvalidTransaction::MissingSeed => {
                                                 write!(formatter, "missing seed for install or upgrade")
-                                            }
-            InvalidTransaction::PricingModeNotSupported => {
-                                                write!(formatter, "Pricing mode not supported")
                                             }
             InvalidTransaction::InvalidPaymentAmount => {
                                                 write!(formatter, "invalid payment amount")
@@ -575,21 +585,17 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasLimit
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
+            | InvalidTransaction::PricingModeError { .. }
+            | InvalidTransaction::PricingModeNotSupported
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionLane(_)
             | InvalidTransaction::CannotCalculateFieldsHash
             | InvalidTransaction::NoLaneMatch
-            | InvalidTransaction::UnexpectedTransactionFieldEntries => None,
-            InvalidTransaction::CouldNotDeserializeField { error } => match error {
-                FieldDeserializationError::IndexNotExists { .. }
-                | FieldDeserializationError::LingeringBytesInField { .. } => None,
-                FieldDeserializationError::FromBytesError { error, .. } => Some(error),
-            },
-            InvalidTransaction::ExpectedNamedArguments
+            | InvalidTransaction::UnexpectedTransactionFieldEntries
+            | InvalidTransaction::ExpectedNamedArguments
             | InvalidTransaction::ExpectedBytesArguments
             | InvalidTransaction::InvalidTransactionRuntime { .. }
             | InvalidTransaction::MissingSeed
-            | InvalidTransaction::PricingModeNotSupported
             | InvalidTransaction::InvalidPaymentAmount
             | InvalidTransaction::InsufficientBurnAmount { .. }
             | InvalidTransaction::UnexpectedEntryPoint { .. }
@@ -600,6 +606,12 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidReservedSlots { .. }
             | InvalidTransaction::InvalidDelegationAmount { .. }
             | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
+
+            InvalidTransaction::CouldNotDeserializeField { error } => match error {
+                FieldDeserializationError::IndexNotExists { .. }
+                | FieldDeserializationError::LingeringBytesInField { .. } => None,
+                FieldDeserializationError::FromBytesError { error, .. } => Some(error),
+            },
         }
     }
 }

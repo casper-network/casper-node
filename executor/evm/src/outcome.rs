@@ -1,11 +1,10 @@
 //! Public execution outcome types.
 
-use casper_types::evm;
+use crate::tx;
+use casper_types::{evm, evm::HaltReason};
 use revm::context_interface::result::{
     ExecutionResult, HaltReason as RevmHaltReason, OutOfGasError as RevmOutOfGasError, Output,
 };
-
-use crate::tx;
 
 /// Result returned by [`crate::EvmExecutor::execute`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +22,17 @@ pub struct ExecutionOutcome {
 }
 
 impl ExecutionOutcome {
+    /// Creates a Halt (no exec) outcome.
+    pub fn no_exec() -> Self {
+        ExecutionOutcome {
+            status: ExecutionStatus::Halt(HaltReason::NoExec),
+            gas_used: 0,
+            output: Vec::new(),
+            logs: Vec::new(),
+            created_contract_address: None,
+        }
+    }
+
     pub(crate) fn from_revm_result(result: &ExecutionResult) -> Self {
         match result {
             ExecutionResult::Success {

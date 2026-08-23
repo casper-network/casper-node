@@ -17,6 +17,12 @@ const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 const EXEC_WASM_V1_NAME: &str = "contract_runtime_exec_wasm_v1";
 const EXEC_WASM_V1_HELP: &str = "time in seconds to execute wasm using the v1 exec engine";
 
+const EXEC_WASM_V2_NAME: &str = "contract_runtime_exec_wasm_v2";
+const EXEC_WASM_V2_HELP: &str = "time in seconds to execute wasm using the v2 exec engine";
+
+const EXEC_EVM_V1_NAME: &str = "contract_runtime_exec_evm_v1";
+const EXEC_EVM_V1_HELP: &str = "time in seconds to execute wasm using the evm v1 exec engine";
+
 const EXEC_BLOCK_PRE_PROCESSING_NAME: &str = "contract_runtime_exec_block_pre_proc";
 const EXEC_BLOCK_PRE_PROCESSING_HELP: &str =
     "processing time in seconds before any transactions have processed";
@@ -121,6 +127,10 @@ pub struct Metrics {
     pub(super) exec_block_tnx_processing: Histogram,
     // tnx processing elapsed
     pub(super) exec_wasm_v1: Histogram,
+    // tnx processing elapsed
+    pub(super) exec_wasm_v2: Histogram,
+    // tnx processing elapsed
+    pub(super) exec_evm_v1: Histogram,
     // ee_v1 execution elapsed
     pub(super) exec_block_step_processing: Histogram,
     // step processing elapsed
@@ -206,6 +216,18 @@ impl Metrics {
                 registry,
                 EXEC_WASM_V1_NAME,
                 EXEC_WASM_V1_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_wasm_v2: utils::register_histogram_metric(
+                registry,
+                EXEC_WASM_V2_NAME,
+                EXEC_WASM_V2_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_evm_v1: utils::register_histogram_metric(
+                registry,
+                EXEC_EVM_V1_NAME,
+                EXEC_EVM_V1_HELP,
                 common_buckets.clone(),
             )?,
             exec_block_post_processing: utils::register_histogram_metric(
@@ -365,6 +387,8 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.exec_block_pre_processing);
         unregister_metric!(self.registry, self.exec_block_tnx_processing);
         unregister_metric!(self.registry, self.exec_wasm_v1);
+        unregister_metric!(self.registry, self.exec_wasm_v2);
+        unregister_metric!(self.registry, self.exec_evm_v1);
         unregister_metric!(self.registry, self.exec_block_post_processing);
         unregister_metric!(self.registry, self.exec_block_step_processing);
         unregister_metric!(self.registry, self.exec_block_total);

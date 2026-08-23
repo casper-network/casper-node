@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
+use crate::types::MetaTransaction;
 use bytes::Bytes;
 use casper_executor_wasm::{
     install::{
@@ -20,13 +21,70 @@ use casper_storage::{
     AddressGeneratorBuilder,
 };
 use casper_types::{
-    execution::Effects, BlockHash, Digest, Gas, Key, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionRuntimeParams, TransactionTarget, U512,
+    execution::Effects, BlockHash, BlockTime, Digest, Gas, InitiatorAddr, Key, TransactionArgs,
+    TransactionEntryPoint, TransactionHash, TransactionInvocationTarget, TransactionRuntimeParams,
+    TransactionTarget, U512,
 };
 use thiserror::Error;
 use tracing::info;
 
-use super::MetaTransaction;
+pub(crate) struct TransactionInput<'a> {
+    transaction_hash: TransactionHash,
+    initiator_addr: InitiatorAddr,
+    session_args: Cow<'a, TransactionArgs>,
+    transferred_value: Option<u64>,
+    target: Option<TransactionTarget>,
+    entry_point: TransactionEntryPoint,
+    timestamp: BlockTime,
+}
+impl<'a> TransactionInput<'a> {
+    pub(crate) fn new(transaction: &'a MetaTransaction) -> Self {
+        TransactionInput {
+            transaction_hash: transaction.hash(),
+            initiator_addr: transaction.initiator_addr(),
+            session_args: transaction.session_args(),
+            transferred_value: transaction.transferred_value(),
+            target: transaction.target(),
+            entry_point: transaction.entry_point(),
+            timestamp: transaction.timestamp().into(),
+        }
+    }
+
+    /// The transaction hash.
+    pub(crate) fn transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
+    }
+
+    /// The initiator addr.
+    pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
+        self.initiator_addr.clone()
+    }
+
+    /// The session args.
+    pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
+        self.session_args.clone()
+    }
+
+    /// The transferred value.
+    pub(crate) fn transferred_value(&self) -> Option<u64> {
+        self.transferred_value
+    }
+
+    /// The target.
+    pub(crate) fn target(&self) -> Option<TransactionTarget> {
+        self.target.clone()
+    }
+
+    /// The entry point.
+    pub(crate) fn entry_point(&self) -> TransactionEntryPoint {
+        self.entry_point.clone()
+    }
+
+    /// Timestamp.
+    pub(crate) fn timestamp(&self) -> BlockTime {
+        self.timestamp
+    }
+}
 
 /// The request to execute a Wasm contract.
 pub(crate) enum WasmV2Request {
@@ -100,10 +158,14 @@ impl WasmV2Request {
         state_root_hash: Digest,
         parent_block_hash: BlockHash,
         block_height: u64,
-        transaction: &MetaTransaction,
+        txn_input: TransactionInput,
+        //transaction: &MetaTransaction,
     ) -> Result<Self, InvalidRequest> {
-        let transaction_hash = transaction.hash();
-        let initiator_addr = transaction.initiator_addr();
+        let value = txn_input
+            .transferred_value()
+            .ok_or(InvalidRequest::ExpectedTransferredValue)?;
+
+        let initiator_addr = txn_input.initiator_addr();
         let initiator_account_hash = initiator_addr
             .account_hash()
             .ok_or(InvalidRequest::InvalidInitiatorAddr)?;
@@ -113,19 +175,16 @@ impl WasmV2Request {
             .try_into()
             .map_err(|_| InvalidRequest::InvalidGasLimit(gas_limit.value()))?;
 
+        let transaction_hash = txn_input.transaction_hash();
         let address_generator = AddressGeneratorBuilder::default()
             .seed_with(transaction_hash.as_ref())
             .build();
 
-        let session_args = transaction.session_args();
+        let session_args = txn_input.session_args();
 
         let input_data = session_args
             .as_bytesrepr()
             .ok_or(InvalidRequest::ExpectedBytesArguments)?;
-
-        let value = transaction
-            .transferred_value()
-            .ok_or(InvalidRequest::ExpectedTransferredValue)?;
 
         enum Target {
             Install {
@@ -143,10 +202,10 @@ impl WasmV2Request {
             },
         }
 
-        let transaction_target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
+        let transaction_target = txn_input.target().ok_or(InvalidRequest::ExpectedTarget)?;
         let target = match transaction_target {
             TransactionTarget::Native => todo!(), //
-            TransactionTarget::Stored { id, runtime: _ } => match transaction.entry_point() {
+            TransactionTarget::Stored { id, runtime: _ } => match txn_input.entry_point() {
                 TransactionEntryPoint::Custom(entry_point) => Target::Stored {
                     id: id.clone(),
                     entry_point: entry_point.clone(),
@@ -169,7 +228,7 @@ impl WasmV2Request {
                         seed,
                     },
                 is_install_upgrade: _, // TODO: Handle this
-            } => match transaction.entry_point() {
+            } => match txn_input.entry_point() {
                 TransactionEntryPoint::Call => Target::Session {
                     module_bytes: module_bytes.clone().take_inner().into(),
                 },
@@ -226,7 +285,7 @@ impl WasmV2Request {
                     .with_address_generator(address_generator)
                     .with_transferred_value(value)
                     .with_chain_name(network_name)
-                    .with_block_time(transaction.timestamp().into())
+                    .with_block_time(txn_input.timestamp())
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
@@ -248,7 +307,7 @@ impl WasmV2Request {
                     .with_caller_key(initiator_key)
                     .with_chain_name(network_name)
                     .with_transferred_value(value)
-                    .with_block_time(transaction.timestamp().into())
+                    .with_block_time(txn_input.timestamp())
                     .with_input(input_data.clone().take_inner().into())
                     .with_state_hash(state_root_hash)
                     .with_parent_block_hash(parent_block_hash)

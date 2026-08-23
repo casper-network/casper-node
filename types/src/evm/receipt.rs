@@ -143,6 +143,8 @@ pub enum HaltReason {
     OutOfFunds,
     /// Call depth exceeded the EVM limit.
     CallTooDeep,
+    /// No execution attempted.
+    NoExec,
     /// Halt reason was not recognized by this version.
     Unknown,
 }
@@ -169,7 +171,8 @@ impl HaltReason {
             HaltReason::CallNotAllowedInsideStatic => 16,
             HaltReason::OutOfFunds => 17,
             HaltReason::CallTooDeep => 18,
-            HaltReason::Unknown => 19,
+            HaltReason::NoExec => 19,
+            HaltReason::Unknown => 20,
         }
     }
 
@@ -201,6 +204,7 @@ impl HaltReason {
             }
             HaltReason::OutOfFunds => "EVM halted: out of funds",
             HaltReason::CallTooDeep => "EVM halted: call too deep",
+            HaltReason::NoExec => "EVM not started: no execution",
             HaltReason::Unknown => "EVM halted: unknown reason",
         }
     }
@@ -228,7 +232,8 @@ impl HaltReason {
             16 => HaltReason::CallNotAllowedInsideStatic,
             17 => HaltReason::OutOfFunds,
             18 => HaltReason::CallTooDeep,
-            19 => HaltReason::Unknown,
+            19 => HaltReason::NoExec,
+            20 => HaltReason::Unknown,
             _ => unreachable!(),
         }
     }
@@ -284,7 +289,8 @@ impl FromBytes for HaltReason {
             16 => HaltReason::CallNotAllowedInsideStatic,
             17 => HaltReason::OutOfFunds,
             18 => HaltReason::CallTooDeep,
-            19 => HaltReason::Unknown,
+            19 => HaltReason::NoExec,
+            20 => HaltReason::Unknown,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((reason, remainder))

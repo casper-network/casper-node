@@ -633,16 +633,46 @@ pub trait CommitProvider: StateProvider {
                     StoredValue::CLValue(cl_value),
                 );
             }
-            BlockGlobalKind::Eip4788ParentHash {
-                timestamp_secs,
-                parent_hash,
+            BlockGlobalKind::BlockInfo {
+                block_time,
+                protocol_version,
+                addressable_entity_enabled: addresable_entity_enabled,
             } => {
-                let mut tracking_copy = tc.borrow_mut();
-                if let Err(error) =
-                    tracking_copy.set_eip4788_parent_hash(timestamp_secs, parent_hash)
+                let cl_value =
+                    match CLValue::from_t(block_time.value()).map_err(TrackingCopyError::CLValue) {
+                        Ok(cl_value) => cl_value,
+                        Err(tce) => {
+                            return BlockGlobalResult::Failure(tce);
+                        }
+                    };
+                tc.borrow_mut().write(
+                    Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+                    StoredValue::CLValue(cl_value),
+                );
+                let cl_value = match CLValue::from_t(protocol_version.destructure())
+                    .map_err(TrackingCopyError::CLValue)
                 {
-                    return BlockGlobalResult::Failure(error);
-                }
+                    Ok(cl_value) => cl_value,
+                    Err(tce) => {
+                        return BlockGlobalResult::Failure(tce);
+                    }
+                };
+                tc.borrow_mut().write(
+                    Key::BlockGlobal(BlockGlobalAddr::ProtocolVersion),
+                    StoredValue::CLValue(cl_value),
+                );
+                let cl_value = match CLValue::from_t(addresable_entity_enabled)
+                    .map_err(TrackingCopyError::CLValue)
+                {
+                    Ok(cl_value) => cl_value,
+                    Err(tce) => {
+                        return BlockGlobalResult::Failure(tce);
+                    }
+                };
+                tc.borrow_mut().write(
+                    Key::BlockGlobal(BlockGlobalAddr::AddressableEntity),
+                    StoredValue::CLValue(cl_value),
+                );
             }
         }
 

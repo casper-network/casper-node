@@ -43,7 +43,7 @@ use casper_storage::{
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
-    BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig, Transaction, U512,
+    BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig, Transaction,
 };
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -211,7 +211,7 @@ where
     {
         Some((utilization, block_count, total_block_count)) => {
             if block_count != total_block_count {
-                // The node needs awareness of all of the blocks for the era for which it tries to
+                // The node needs awareness of all the blocks for the era for which it tries to
                 // produce the switch block.
                 return EraEndInstruction::NoExec;
             }
@@ -303,7 +303,7 @@ pub(super) async fn exec_and_check_next<REv>(
         EraEndInstruction::NoExec => {
             // This means that we don't have enough data to calculate the era_end field
             // The best thing we can do here is force the node to CatchUp with the hope
-            // that it will either acquire the missing state or the network will progress
+            // that it will either acquire the missing state or the network will progress,
             // and we will move past this point.
             info!(
                 block_height = executable_block.height,
@@ -648,44 +648,6 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
     SpeculativeExecutionResult::new(
         block_hash, transfers, limit, consumed, effects, messages, error_msg,
     )
-}
-
-/// Extensible min cost calculation scenarios.
-#[derive(Default)]
-pub(super) enum MinCostScenario {
-    #[default]
-    StandardTransaction,
-    EvmTransaction,
-}
-
-impl MinCostScenario {
-    /// Ctor.
-    pub(super) fn new(is_evm: bool) -> Self {
-        if is_evm {
-            return MinCostScenario::EvmTransaction;
-        }
-
-        MinCostScenario::StandardTransaction
-    }
-}
-
-/// Determines what min_cost should be, considering all possible floors and scenarios.
-pub(super) fn min_cost_to_use(
-    scenario: MinCostScenario,
-    baseline_motes_amount: U512,
-    gas_limit_value: U512,
-    txn_cost: U512,
-) -> U512 {
-    let floor = gas_limit_value.min(baseline_motes_amount);
-
-    match scenario {
-        MinCostScenario::StandardTransaction => floor.max(txn_cost),
-        MinCostScenario::EvmTransaction => {
-            // EVM cost is already converted to motes. Do not let the raw EVM gas
-            // limit raise the minimum above the maximum converted fee.
-            floor.min(txn_cost)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1043,31 +1005,31 @@ mod tests {
         );
     }
 
-    #[test]
-    fn should_not_raise_evm_min_cost_above_converted_fee() {
-        let gas_limit = Gas::new(21_000);
-        let cost = U512::from(1);
-        let baseline_motes_amount = U512::from(1_000_000);
+    // #[test]
+    // fn should_not_raise_evm_min_cost_above_converted_fee() {
+    //     let gas_limit = Gas::new(21_000);
+    //     let cost = U512::from(1);
+    //     let baseline_motes_amount = U512::from(1_000_000);
+    //
+    //     let scenario = MinCostScenario::new(true);
+    //
+    //     assert_eq!(
+    //         min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
+    //         cost
+    //     );
+    // }
 
-        let scenario = MinCostScenario::new(true);
-
-        assert_eq!(
-            min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
-            cost
-        );
-    }
-
-    #[test]
-    fn should_keep_native_min_cost_based_on_gas_limit() {
-        let gas_limit = Gas::new(21_000);
-        let cost = U512::from(1);
-        let baseline_motes_amount = U512::from(1_000_000);
-
-        let scenario = MinCostScenario::new(false);
-
-        assert_eq!(
-            min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
-            U512::from(21_000)
-        );
-    }
+    // #[test]
+    // fn should_keep_native_min_cost_based_on_gas_limit() {
+    //     let gas_limit = Gas::new(21_000);
+    //     let cost = U512::from(1);
+    //     let baseline_motes_amount = U512::from(1_000_000);
+    //
+    //     let scenario = MinCostScenario::new(false);
+    //
+    //     assert_eq!(
+    //         min_cost_to_use(scenario, baseline_motes_amount, gas_limit.value(), cost),
+    //         U512::from(21_000)
+    //     );
+    // }
 }

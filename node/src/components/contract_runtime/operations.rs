@@ -1,10 +1,8 @@
-pub(crate) mod wasm_v2_request;
-
+use crate::types::transaction::{WasmV2Request, WasmV2Result};
 use casper_executor_wasm::ExecutorV2;
 use itertools::Itertools;
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
-use wasm_v2_request::{WasmV2Request, WasmV2Result};
 
 use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
@@ -13,21 +11,18 @@ use casper_executor_evm::{
     BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
     CallRequest as EvmExecutorCallRequest, CallValidation as EvmCallValidation, EvmExecutor,
     ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
-    ExecutionStatus as EvmExecutionStatus,
 };
+use casper_storage::data_access_layer::BalanceResult;
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        balance::BalanceHandling,
-        mint::{BalanceIdentifierTransferArgs, BurnRequest},
-        AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier,
-        BalanceIdentifierPurseRequest, BalanceIdentifierPurseResult, BalanceRequest,
-        BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
-        BlockRewardsResult, DataAccessLayer, EntryPointRequest, EntryPointResult,
-        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
-        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
-        InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
-        StepResult, TransferRequest,
+        balance::BalanceHandling, mint::BurnRequest, AuctionMethod, BalanceHoldKind,
+        BalanceHoldRequest, BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest,
+        BlockGlobalResult, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
+        EntryPointRequest, EntryPointResult, EraValidatorsRequest, EraValidatorsResult, EvictItem,
+        FeeRequest, FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
+        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
+        StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -38,17 +33,14 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
-    contracts::NamedKeys,
-    evm::Address as EvmAddress,
-    evm::IdentityInstruction as EvmIdentityInstruction,
+    evm::{Address as EvmAddress, IdentityInstruction as EvmIdentityInstruction},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
-    system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
-    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, EvmTransactionError, FeeHandling, Gas, HashAddr,
+    InvalidTransaction, InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling,
+    StoredValue, TimeDiff, Transaction, TransactionEntryPoint, U512,
 };
 
 use super::{
@@ -57,57 +49,15 @@ use super::{
     BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics, StateResultError,
     APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
-use crate::contract_runtime::utils::MinCostScenario;
+use crate::contract_runtime::types::InitialBalanceIdentifierResult;
 use crate::{
     components::fetcher::FetchItem,
-    contract_runtime::{
-        types::{EvmOriginResolution, ExecutionArtifactBuilder, StaticEvmBlockHashProvider},
-        utils_evm,
+    contract_runtime::types::{
+        BalanceIdentifierResolution, EvmOriginResolution, ExecutionArtifactBuilder, ProcessRequest,
+        StaticEvmBlockHashProvider,
     },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
-// fn write_eip4788_beacon_roots(
-//     scratch_state: &ScratchGlobalState,
-//     state_root_hash: Digest,
-//     chainspec: &Chainspec,
-//     protocol_version: ProtocolVersion,
-//     block_context: EvmBlockContext,
-//     parent_hash: BlockHash,
-// ) -> Result<Digest, BlockExecutionError> {
-//     if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
-//         return Ok(state_root_hash);
-//     }
-//
-//     if block_context.number == 0 {
-//         return Ok(state_root_hash);
-//     }
-//
-//     match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
-//         state_root_hash,
-//         protocol_version,
-//         block_context.timestamp,
-//         parent_hash,
-//     )) {
-//         BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
-//         BlockGlobalResult::Failure(err) => {
-//             Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
-//         }
-//         BlockGlobalResult::Success {
-//             post_state_hash, ..
-//         } => Ok(post_state_hash),
-//     }
-// }
-//
-// fn execution_min_cost(is_evm: bool, cost: U512, default_min_cost: U512) -> U512 {
-//     //let min_cost = gas_limit.value().min(baseline_motes_amount);
-//     // EVM cost is already converted to motes. Do not let the raw EVM gas
-//     // limit raise the minimum above the maximum converted fee.
-//     if is_evm {
-//         default_min_cost.min(cost)
-//     } else {
-//         default_min_cost.max(cost)
-//     }
-// }
 
 /// Resolves the payer and any deferred identity write for a signed EVM transaction.
 ///
@@ -118,25 +68,28 @@ fn resolve_evm_origin(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
     protocol_version: ProtocolVersion,
-    transaction: &casper_types::EvmTransaction,
+    signer: &PublicKey,
+    address: EvmAddress,
 ) -> Result<EvmOriginResolution, BlockExecutionError> {
-    let address = transaction.from();
     // The signer gives us a Casper `AccountHash` preimage from the secp256k1
     // public key. That account hash is not derivable from the 20-byte EVM
     // address alone, so identity linking must happen while the signed
     // transaction is available.
-    let signer = transaction
-        .signer()
-        .map_err(|error| BlockExecutionError::TransactionConversion(error.to_string()))?;
+    // let signer = transaction
+    //     .signer()
+    //     .map_err(|error| BlockExecutionError::TransactionConversion(error.to_string()))?;
     let account_hash = signer.to_account_hash();
     // Native EVM identities use a deterministic purse derived from the EVM
     // address. Linked Casper accounts use the account's existing main purse
     // instead, so the same key pair can spend the same funds from Casper and
     // Ethereum-style transaction paths.
+    //let address = transaction.from();
     let deterministic_purse = casper_types::evm::deterministic_purse(address);
-    let mut tracking_copy = scratch_state
-        .tracking_copy(state_root_hash)?
-        .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+    let mut tracking_copy = match scratch_state.tracking_copy(state_root_hash) {
+        Ok(Some(tc)) => tc,
+        Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+        Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
+    };
 
     // `EvmAddr::Account` is now only an identity pointer. It is either
     // `Key::Account` for a linked Casper account or `Key::URef` for an
@@ -293,32 +246,32 @@ where
         None => Ok(false),
     }
 }
-
-fn evm_account_has_nonce<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    address: EvmAddress,
-) -> Result<bool, BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
-    match tracking_copy
-        .read(&key)
-        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-    {
-        Some(StoredValue::CLValue(cl_value)) => {
-            let _nonce = cl_value
-                .into_t::<u64>()
-                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            Ok(true)
-        }
-        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-            "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
-            stored_value.type_name()
-        ))),
-        None => Ok(false),
-    }
-}
+//
+// fn evm_account_has_nonce<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     address: EvmAddress,
+// ) -> Result<bool, BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
+//     match tracking_copy
+//         .read(&key)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+//     {
+//         Some(StoredValue::CLValue(cl_value)) => {
+//             let _nonce = cl_value
+//                 .into_t::<u64>()
+//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             Ok(true)
+//         }
+//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+//             "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
+//             stored_value.type_name()
+//         ))),
+//         None => Ok(false),
+//     }
+// }
 
 fn account_main_purse<R>(
     tracking_copy: &mut TrackingCopy<R>,
@@ -340,104 +293,265 @@ where
         Err(error) => Err(BlockExecutionError::PaymentError(error.to_string())),
     }
 }
+//
+// fn apply_evm_proposer_identity<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     protocol_version: ProtocolVersion,
+//     proposer: &PublicKey,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     let address = EvmAddress::from_block_proposer_public_key(proposer);
+//     let account_hash = proposer.to_account_hash();
+//     if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
+//         return Ok(());
+//     }
+//
+//     let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
+//     match tracking_copy
+//         .read(&identity_key)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
+//     {
+//         Some(StoredValue::CLValue(cl_value)) => {
+//             let identity = cl_value
+//                 .into_t::<Key>()
+//                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             match identity {
+//                 Key::Account(_) | Key::URef(_) => Ok(()),
+//                 other => Err(BlockExecutionError::PaymentError(format!(
+//                     "invalid EVM account identity key: {other}"
+//                 ))),
+//             }
+//         }
+//         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
+//             "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key),
+// found {}",             stored_value.type_name()
+//         ))),
+//         None => {
+//             if evm_account_has_code(tracking_copy, address)?
+//                 || evm_account_has_nonce(tracking_copy, address)?
+//             {
+//                 return Ok(());
+//             }
+//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+//         }
+//     }
+// }
+//
+// fn apply_evm_identity_plan<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     protocol_version: ProtocolVersion,
+//     plan: EvmIdentityInstruction,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     // Identity writes are intentionally delayed until after payment
+//     // preconditions pass. They are applied to the same tracking copy as EVM
+//     // execution so the identity record and nonce/code/storage updates commit or
+//     // discard together.
+//     match plan {
+//         EvmIdentityInstruction::None => Ok(()),
+//         EvmIdentityInstruction::LinkExisting {
+//             address,
+//             account_hash,
+//         } => write_evm_identity(tracking_copy, address, Key::Account(account_hash)),
+//         EvmIdentityInstruction::CreateAccount {
+//             address,
+//             account_hash,
+//             main_purse,
+//         } => {
+//             // Another transaction in the same block may have already created
+//             // the account through this scratch state. Avoid recreating it, but
+//             // still write the EVM identity pointer below.
+//             if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
+//                 let account = Account::create(account_hash, NamedKeys::new(), main_purse);
+//                 tracking_copy
+//                     .create_addressable_entity_from_account(account, protocol_version)
+//                     .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//             }
+//             write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+//         }
+//     }
+// }
+//
+// fn write_evm_identity<R>(
+//     tracking_copy: &mut TrackingCopy<R>,
+//     address: EvmAddress,
+//     identity: Key,
+// ) -> Result<(), BlockExecutionError>
+// where
+//     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+// {
+//     // Keep the bridge record minimal: a CLValue containing the identity `Key`.
+//     // Nonce, code hash, bytecode, and storage live under their own EVM keys.
+//     let key = Key::Evm(casper_types::EvmAddr::Account(address));
+//     let cl_value = CLValue::from_t(identity)
+//         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
+//     tracking_copy.write(key, StoredValue::CLValue(cl_value));
+//     Ok(())
+// }
+//
+// enum InitialBalanceIdentifierResult {
+//     Unknown,
+//     Identifier(BalanceIdentifier),
+//     IdentifierAndStateError(BalanceIdentifier, StateResultError),
+//     IdentifierAndEvmResolution(BalanceIdentifier, EvmOriginResolution),
+//     IdentifierAndEvmError(BalanceIdentifier, EvmTransactionError),
+// }
+//
+// impl InitialBalanceIdentifierResult {
+//     pub(crate) fn balance_identifier(&self) -> Option<&BalanceIdentifier> {
+//         match self {
+//             InitialBalanceIdentifierResult::Unknown => None,
+//             InitialBalanceIdentifierResult::Identifier(bi)
+//             | InitialBalanceIdentifierResult::IdentifierAndStateError(bi, _)
+//             | InitialBalanceIdentifierResult::IdentifierAndEvmResolution(bi, _)
+//             | InitialBalanceIdentifierResult::IdentifierAndEvmError(bi, _) => Some(bi),
+//         }
+//     }
+//
+//     pub(crate) fn state_result_error(&self) -> Option<&StateResultError> {
+//         if let InitialBalanceIdentifierResult::IdentifierAndStateError(_, err) = self {
+//             Some(err)
+//         } else {
+//             None
+//         }
+//     }
+//
+//     pub(crate) fn evm_origin_resolution(&self) -> Option<&EvmOriginResolution> {
+//         if let InitialBalanceIdentifierResult::IdentifierAndEvmResolution(_, eor) = self {
+//             Some(eor)
+//         } else {
+//             None
+//         }
+//     }
+//
+//     pub(crate) fn evm_transaction_error(&self) -> Option<&EvmTransactionError> {
+//         if let InitialBalanceIdentifierResult::IdentifierAndEvmError(_, err) = self {
+//             Some(err)
+//         } else {
+//             None
+//         }
+//     }
+// }
 
-fn apply_evm_proposer_identity<R>(
-    tracking_copy: &mut TrackingCopy<R>,
+fn txn_initial_balance_identifier(
+    ctx: &ExecutionArtifactBuilder,
+    state_provider: &ScratchGlobalState,
+    state_root_hash: Digest,
     protocol_version: ProtocolVersion,
-    proposer: &PublicKey,
-) -> Result<(), BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    let address = EvmAddress::from_block_proposer_public_key(proposer);
-    let account_hash = proposer.to_account_hash();
-    if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
-        return Ok(());
-    }
+    addressable_entity_enabled: bool,
+) -> Result<InitialBalanceIdentifierResult, BlockExecutionError> {
+    let transaction_hash = ctx.hash();
+    let initiator_addr = ctx.initiator_addr().clone();
 
-    let identity_key = Key::Evm(casper_types::EvmAddr::Account(address));
-    match tracking_copy
-        .read(&identity_key)
-        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
-    {
-        Some(StoredValue::CLValue(cl_value)) => {
-            let identity = cl_value
-                .into_t::<Key>()
-                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            match identity {
-                Key::Account(_) | Key::URef(_) => Ok(()),
-                other => Err(BlockExecutionError::PaymentError(format!(
-                    "invalid EVM account identity key: {other}"
-                ))),
+    match ctx.balance_identifier_resolution() {
+        Ok(resolution) => {
+            match resolution {
+                BalanceIdentifierResolution::Identifier(bi) => {
+                    Ok(InitialBalanceIdentifierResult::Identifier(bi))
+                }
+                BalanceIdentifierResolution::CheckContractPay(default_bi) => {
+                    if !addressable_entity_enabled {
+                        // the initiating account pays using its main purse
+                        trace!(%transaction_hash, "account session");
+                        Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
+                    } else {
+                        match invoked_contract_will_pay(
+                            state_provider,
+                            state_root_hash,
+                            ctx.contract_direct_address(),
+                        ) {
+                            Ok(Some(entity_addr)) => {
+                                let entity_bi = BalanceIdentifier::Entity(entity_addr);
+                                Ok(InitialBalanceIdentifierResult::Identifier(entity_bi))
+                            }
+                            Ok(None) => {
+                                // the initiating account pays using its main purse
+                                trace!(%transaction_hash, "direct invocation with account payment");
+                                Ok(InitialBalanceIdentifierResult::Identifier(default_bi))
+                            }
+                            Err(state_err) => {
+                                trace!(%transaction_hash, "failed to resolve contract self payment");
+                                let penalized_bi = BalanceIdentifier::PenalizedAccount(
+                                    initiator_addr
+                                        .account_hash()
+                                        .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
+                                );
+                                Ok(InitialBalanceIdentifierResult::IdentifierAndStateError(
+                                    penalized_bi,
+                                    state_err,
+                                ))
+                            }
+                        }
+                    }
+                }
+                BalanceIdentifierResolution::CheckEvmAccount(_initiator_bi) => {
+                    let signer = match ctx.evm_signer() {
+                        Some(Ok(signer)) => signer,
+                        Some(Err(evm_err)) => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            let penalized_bi = BalanceIdentifier::PenalizedAccount(
+                                initiator_addr
+                                    .account_hash()
+                                    .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
+                            );
+                            return Ok(InitialBalanceIdentifierResult::IdentifierAndEvmError(
+                                penalized_bi,
+                                evm_err,
+                            ));
+                        }
+                        None => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            return Err(BlockExecutionError::TransactionConversion(
+                                "non evm transaction flagged as evm".to_string(),
+                            ));
+                        }
+                    };
+
+                    let evm_address = match ctx.evm_address() {
+                        Some(addr) => addr,
+                        None => {
+                            trace!(%transaction_hash, "failed to resolve evm transaction identifier");
+                            return Err(BlockExecutionError::TransactionConversion(
+                                "evm transaction missing its address".to_string(),
+                            ));
+                        }
+                    };
+
+                    match resolve_evm_origin(
+                        state_provider,
+                        state_root_hash,
+                        protocol_version,
+                        signer,
+                        evm_address,
+                    ) {
+                        Ok(resolution) => {
+                            let bi = resolution.balance_identifier();
+                            Ok(InitialBalanceIdentifierResult::IdentifierAndEvmResolution(
+                                bi, resolution,
+                            ))
+                        }
+                        Err(err) => {
+                            trace!(%transaction_hash, "failed to resolve evm origin");
+                            Err(err)
+                        }
+                    }
+                }
             }
         }
-        Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
-            "unexpected stored value for {identity_key}: expected StoredValue::CLValue(Key), found {}",
-            stored_value.type_name()
-        ))),
-        None => {
-            if evm_account_has_code(tracking_copy, address)?
-                || evm_account_has_nonce(tracking_copy, address)?
-            {
-                return Ok(());
-            }
-            write_evm_identity(tracking_copy, address, Key::Account(account_hash))
+        Err(err) => {
+            trace!(%transaction_hash, "failed to determine payer_balance_identifier");
+            error!(
+                %transaction_hash,
+                ?err,
+                "failed to determine payer_balance_identifier"
+            );
+            Ok(InitialBalanceIdentifierResult::Unknown)
         }
     }
-}
-
-fn apply_evm_identity_plan<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    protocol_version: ProtocolVersion,
-    plan: EvmIdentityInstruction,
-) -> Result<(), BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    // Identity writes are intentionally delayed until after payment
-    // preconditions pass. They are applied to the same tracking copy as EVM
-    // execution so the identity record and nonce/code/storage updates commit or
-    // discard together.
-    match plan {
-        EvmIdentityInstruction::None => Ok(()),
-        EvmIdentityInstruction::LinkExisting {
-            address,
-            account_hash,
-        } => write_evm_identity(tracking_copy, address, Key::Account(account_hash)),
-        EvmIdentityInstruction::CreateAccount {
-            address,
-            account_hash,
-            main_purse,
-        } => {
-            // Another transaction in the same block may have already created
-            // the account through this scratch state. Avoid recreating it, but
-            // still write the EVM identity pointer below.
-            if account_main_purse(tracking_copy, protocol_version, account_hash)?.is_none() {
-                let account = Account::create(account_hash, NamedKeys::new(), main_purse);
-                tracking_copy
-                    .create_addressable_entity_from_account(account, protocol_version)
-                    .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            }
-            write_evm_identity(tracking_copy, address, Key::Account(account_hash))
-        }
-    }
-}
-
-fn write_evm_identity<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    address: EvmAddress,
-    identity: Key,
-) -> Result<(), BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    // Keep the bridge record minimal: a CLValue containing the identity `Key`.
-    // Nonce, code hash, bytecode, and storage live under their own EVM keys.
-    let key = Key::Evm(casper_types::EvmAddr::Account(address));
-    let cl_value = CLValue::from_t(identity)
-        .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-    tracking_copy.write(key, StoredValue::CLValue(cl_value));
-    Ok(())
 }
 
 /// Executes a finalized block.
@@ -449,7 +563,7 @@ pub fn execute_finalized_block(
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
-    evm_block_hash_provider: &dyn EvmBlockHashProvider,
+    _evm_block_hash_provider: &dyn EvmBlockHashProvider,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
@@ -488,21 +602,6 @@ pub fn execute_finalized_block(
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let mut state_root_hash = pre_state_root_hash; // initial state root is parent's state root
 
-    let payment_balance_addr =
-        match data_access_layer.balance_purse(BalanceIdentifierPurseRequest::new(
-            state_root_hash,
-            protocol_version,
-            BalanceIdentifier::Payment,
-        )) {
-            BalanceIdentifierPurseResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            BalanceIdentifierPurseResult::Failure(tce) => {
-                return Err(BlockExecutionError::BlockGlobal(format!("{:?}", tce)));
-            }
-            BalanceIdentifierPurseResult::Success { purse_addr } => purse_addr,
-        };
-
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
 
@@ -514,12 +613,7 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
-    let baseline_motes_amount = chainspec.core_config.baseline_motes_amount_u512();
     let balance_handling = BalanceHandling::Available;
-
-    // get scratch state, which must be used for all processing and post-processing data
-    // requirements.
-    let scratch_state = data_access_layer.get_scratch_global_state();
 
     // pre-processing is finished
     if let Some(metrics) = metrics.as_ref() {
@@ -538,48 +632,11 @@ pub fn execute_finalized_block(
     // transaction processing starts now
     let txn_processing_start = Instant::now();
 
-    // put block_time to global state
     // NOTE this must occur prior to any block processing as subsequent logic
-    // will refer to the block time value being written to GS now.
-    match scratch_state.block_global(BlockGlobalRequest::block_time(
+    // will refer to the values being written to GS.
+    match data_access_layer.block_global(BlockGlobalRequest::set_block_info(
         state_root_hash,
-        protocol_version,
         block_time,
-    )) {
-        BlockGlobalResult::RootNotFound => {
-            return Err(BlockExecutionError::RootNotFound(state_root_hash));
-        }
-        BlockGlobalResult::Failure(err) => {
-            return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
-        }
-        BlockGlobalResult::Success {
-            post_state_hash, ..
-        } => {
-            state_root_hash = post_state_hash;
-        }
-    }
-
-    // put protocol version to global state
-    match scratch_state.block_global(BlockGlobalRequest::set_protocol_version(
-        state_root_hash,
-        protocol_version,
-    )) {
-        BlockGlobalResult::RootNotFound => {
-            return Err(BlockExecutionError::RootNotFound(state_root_hash));
-        }
-        BlockGlobalResult::Failure(err) => {
-            return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
-        }
-        BlockGlobalResult::Success {
-            post_state_hash, ..
-        } => {
-            state_root_hash = post_state_hash;
-        }
-    }
-
-    // put enable addressable entity flag to global state
-    match scratch_state.block_global(BlockGlobalRequest::set_addressable_entity(
-        state_root_hash,
         protocol_version,
         addressable_entity_enabled,
     )) {
@@ -596,355 +653,75 @@ pub fn execute_finalized_block(
         }
     }
 
-    // state_root_hash = write_eip4788_beacon_roots(
-    //     &scratch_state,
-    //     state_root_hash,
-    //     chainspec,
-    //     protocol_version,
-    //     utils_evm::block_context(chainspec, block_height, block_time, &proposer),
-    //     parent_hash,
-    // )?;
-
-    let transaction_config = &chainspec.transaction_config;
+    // scratch_state must be used for all processing and post-processing data
+    // from here on out, until the effects are applied at the end.
+    let scratch_state = data_access_layer.get_scratch_global_state();
 
     for stored_transaction in executable_block.transactions {
-        let evm_transaction = stored_transaction.as_evm();
-        let is_evm = evm_transaction.is_some();
-        let transaction = MetaTransaction::from_transaction(
-            &stored_transaction,
-            chainspec.core_config.pricing_handling,
-            transaction_config,
-        )
-        .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
+        let mut txn_process_ctx =
+            ExecutionArtifactBuilder::try_new(&stored_transaction, chainspec, current_gas_price)
+                .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
-        let transaction_hash = stored_transaction.hash();
-        let authorization_keys = stored_transaction.authorization_keys();
+        let transaction_hash = txn_process_ctx.hash();
 
-        /*
-        we solve for halting state using a `gas limit` which is the maximum amount of
-        computation we will allow a given transaction to consume. the transaction itself
-        provides a function to determine this if provided with the current cost tables
-        gas_limit is ALWAYS calculated with price == 1.
-
-        next there is the actual cost, i.e. how much we charge for that computation
-        this is calculated by multiplying the gas limit by the current `gas_price`
-        gas price has a floor of 1, and the ceiling is configured in the chainspec
-        NOTE: when the gas price is 1, the gas limit and the cost are coincidentally
-        equal because x == x * 1; thus it is recommended to run tests with
-        price >1 to avoid being confused by this.
-
-        the third important value is the amount of computation consumed by executing a
-        transaction  for native transactions there is no wasm and the consumed always
-        equals the limit  for bytecode / wasm based transactions the consumed is based on
-        what opcodes were executed and can range from >=0 to <=gas_limit.
-        consumed is determined after execution and is used for refund & fee post-processing.
-
-        we check these top level concerns early so that we can skip if there is an error
-        */
-
-        let lane_id = transaction.transaction_lane();
-
-        let mut artifact_builder = {
-            // NOTE: this is the allowed computation limit (gas limit)
-            let gas_limit = if let Some(evm_transaction) = evm_transaction {
-                Gas::new(evm_transaction.gas_limit())
-            } else {
-                match transaction.gas_limit(chainspec) {
-                    Ok(gas) => gas,
-                    Err(ite) => {
-                        debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
-                        artifacts.push(
-                            ExecutionArtifactBuilder::pre_condition_failure(
-                                &stored_transaction,
-                                current_gas_price,
-                                ite,
-                            )
-                            .build(),
-                        );
-                        continue;
-                    }
-                }
-            };
-
-            // NOTE: this is the actual adjusted cost that we charge for.
-            // Native transactions use gas limit * Casper gas price. EVM
-            // transactions convert gas limit * EVM gas price from wei to motes.
-            // For accepted EIP-1559 transactions, config compliance has already required
-            // `max_priority_fee_per_gas == 0`, so the effective EVM gas price is the
-            // configured base fee capped by `max_fee_per_gas`; Casper does not charge an
-            // Ethereum-style priority premium while transaction priority is not based on
-            // gas parameters.
-            let cost = if let Some(evm_transaction) = evm_transaction {
-                evm_transaction
-                    .max_fee_amount(&chainspec.evm_config)
-                    .ok_or_else(|| {
-                        BlockExecutionError::PaymentError(
-                            "EVM fee amount overflowed U512".to_string(),
-                        )
-                    })?
-            } else {
-                match stored_transaction.gas_cost(chainspec, lane_id, current_gas_price) {
-                    Ok(motes) => motes.value(),
-                    Err(ite) => {
-                        debug!(%transaction_hash, "invalid transaction (motes conversion)");
-                        artifacts.push(
-                            ExecutionArtifactBuilder::pre_condition_failure(
-                                &stored_transaction,
-                                current_gas_price,
-                                ite,
-                            )
-                            .build(),
-                        );
-                        continue;
-                    }
-                }
-            };
-
-            let min_cost_to_use = utils::min_cost_to_use(
-                MinCostScenario::new(is_evm),
-                baseline_motes_amount,
-                gas_limit.value(),
-                cost,
+        let lane_id = txn_process_ctx.transaction_lane();
+        if !chainspec.is_supported(lane_id) {
+            // this transaction should not have been allowed in the block
+            error!(
+                %transaction_hash,
+                %lane_id,
+                "lane_id is currently not supported"
             );
-            ExecutionArtifactBuilder::new(
-                &stored_transaction,
-                gas_limit,
-                current_gas_price,
-                cost,
-                min_cost_to_use,
-            )
-        };
+            // record it and move on.
+            artifacts.push(txn_process_ctx.build());
+            continue;
+        }
 
-        let is_standard_payment = transaction.is_standard_payment();
-        let is_custom_payment = !is_standard_payment && transaction.is_custom_payment();
-        let is_v1_wasm = transaction.is_v1_wasm();
-        let is_v2_wasm = transaction.is_v2_wasm();
-        let initiator_addr = stored_transaction.initiator_addr();
-        let evm_origin_resolution = if let Some(evm_transaction) = evm_transaction {
-            Some(resolve_evm_origin(
+        let initiator_addr = txn_process_ctx.initiator_addr().clone();
+
+        let balance_identifier = {
+            let ret = txn_initial_balance_identifier(
+                &txn_process_ctx,
                 &scratch_state,
                 state_root_hash,
                 protocol_version,
-                evm_transaction,
-            )?)
-        } else {
-            None
-        };
-        let payer_balance_identifier = if let Some(resolution) = &evm_origin_resolution {
-            resolution.balance_identifier()
-        } else {
-            initiator_addr
-                .clone()
-                .try_into()
-                .map_err(|_| BlockExecutionError::InvalidTransactionVariant)?
-        };
-
-        let refund_purse_active = is_custom_payment;
-        if refund_purse_active {
-            // if custom payment before doing any processing, initialize the initiator's main purse
-            //  to be the refund purse for this transaction.
-            // NOTE: when executed, custom payment logic has the option to call set_refund_purse
-            //  on the handle payment contract to set up a different refund purse, if desired.
-            let handle_refund_request = HandleRefundRequest::new(
-                native_runtime_config.clone(),
-                state_root_hash,
-                protocol_version,
-                transaction_hash,
-                HandleRefundMode::SetRefundPurse {
-                    target: Box::new(payer_balance_identifier.clone()),
-                },
-            );
-            let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
-            if let Err(root_not_found) =
-                artifact_builder.with_set_refund_purse_result(&handle_refund_result)
-            {
-                if root_not_found {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                artifacts.push(artifact_builder.build());
-                continue; // don't commit effects, move on
+                addressable_entity_enabled,
+            )
+            .map_err(|err| {
+                error!(
+                    %transaction_hash,
+                    ?err,
+                    "failed to determine balance_identifier"
+                );
+                err
+            })?;
+            if let Some(state_err) = ret.state_result_error() {
+                txn_process_ctx
+                    .with_state_result_error(state_err.clone())
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
-            state_root_hash = scratch_state
-                .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
-        }
+            if let Some(evm_err) = ret.evm_transaction_error() {
+                txn_process_ctx.with_evm_error(evm_err.clone());
+            }
+            if let Some(evm_resolution) = ret.evm_origin_resolution() {
+                txn_process_ctx.with_evm_origin_resolution(Some(evm_resolution.clone()));
+            }
 
-        {
-            // Ensure the initiator's main purse can cover the penalty payment before proceeding.
-            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
-                state_root_hash,
-                protocol_version,
-                payer_balance_identifier.clone(),
-                balance_handling,
-                ProofHandling::NoProofs,
-            ));
-
-            if let Err(root_not_found) = artifact_builder
-                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
-            {
-                if root_not_found {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                trace!(%transaction_hash, "insufficient initial balance");
-                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
-                if let Some(evm_transaction) = evm_transaction {
-                    artifact_builder.with_zero_cost().with_evm_receipt(
-                        utils_evm::precondition_receipt(
-                            evm_transaction
-                                .effective_gas_price(chainspec.evm_config.base_fee_wei()),
-                        ),
-                        U512::zero(),
-                        Effects::new(),
-                    );
-                }
-                artifacts.push(artifact_builder.build());
-                // only reads have happened so far, and we can't charge due
-                // to insufficient balance, so move on with no effects committed
+            if let Some(bi) = ret.balance_identifier() {
+                bi.clone()
+            } else {
+                // record it and move on.
+                info!(
+                    %transaction_hash,
+                    "unknown initial balance identifier"
+                );
+                artifacts.push(txn_process_ctx.build());
                 continue;
             }
-        }
-
-        let mut balance_identifier = {
-            if is_evm {
-                // EVM transactions intentionally do not participate in Casper custom payment
-                // or refund-purse setup. Ethereum payloads carry a gas limit and gas price fields,
-                // but this chain still owns the fee/refund policy through the same chainspec
-                // settings used by Deploy and native Transaction::V1 payloads. The EVM sender's
-                // main purse is therefore the payer for the processing hold, refund
-                // calculation, and final fee handling, while revm runs with gas fee
-                // charging disabled and only mutates EVM nonce, code, storage,
-                // logs, creates, and value transfers.
-                payer_balance_identifier.clone()
-            } else if is_standard_payment {
-                let contract_might_pay =
-                    addressable_entity_enabled && transaction.is_contract_by_hash_invocation();
-
-                if contract_might_pay {
-                    match invoked_contract_will_pay(&scratch_state, state_root_hash, &transaction) {
-                        Ok(Some(entity_addr)) => BalanceIdentifier::Entity(entity_addr),
-                        Ok(None) => {
-                            // the initiating account pays using its main purse
-                            trace!(%transaction_hash, "direct invocation with account payment");
-                            payer_balance_identifier.clone()
-                        }
-                        Err(err) => {
-                            trace!(%transaction_hash, "failed to resolve contract self payment");
-                            artifact_builder
-                                .with_state_result_error(err)
-                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                            BalanceIdentifier::PenalizedAccount(
-                                initiator_addr
-                                    .account_hash()
-                                    .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
-                            )
-                        }
-                    }
-                } else {
-                    // the initiating account pays using its main purse
-                    trace!(%transaction_hash, "account session with standard payment");
-                    payer_balance_identifier.clone()
-                }
-            } else if is_v2_wasm {
-                // vm2 does not support custom payment, so it MUST be standard payment
-                // if transaction runtime is v2 then the initiating account will pay using
-                // the refund purse
-                payer_balance_identifier.clone()
-            } else if is_custom_payment {
-                // this is the custom payment flow
-                // the initiating account will pay, but wants to do so with a different purse or
-                // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                let custom_payment_gas_limit =
-                    Gas::new(chainspec.transaction_config.native_transfer_minimum_motes * 5);
-                let pay_result = match WasmV1Request::new_custom_payment(
-                    BlockInfo::new(
-                        state_root_hash,
-                        block_time,
-                        parent_block_hash,
-                        block_height,
-                        protocol_version,
-                    ),
-                    custom_payment_gas_limit,
-                    &transaction.to_payment_input_data(),
-                ) {
-                    Ok(mut pay_request) => {
-                        pay_request
-                            .args
-                            .insert(ARG_AMOUNT, artifact_builder.cost_to_use())
-                            .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
-                        execution_engine_v1.execute(&scratch_state, pay_request)
-                    }
-                    Err(error) => {
-                        WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
-                    }
-                };
-
-                let insufficient_payment_deposited = !pay_result.balance_increased_by_amount(
-                    payment_balance_addr,
-                    artifact_builder.cost_to_use(),
-                );
-
-                if insufficient_payment_deposited || pay_result.error().is_some() {
-                    // Charge initiator for the penalty payment amount
-                    // the most expedient way to do this that aligns with later code
-                    // is to transfer from the initiator's main purse to the payment purse
-                    let transfer_result = scratch_state.transfer(TransferRequest::new_indirect(
-                        native_runtime_config.clone(),
-                        state_root_hash,
-                        protocol_version,
-                        transaction_hash,
-                        initiator_addr.clone(),
-                        authorization_keys.clone(),
-                        BalanceIdentifierTransferArgs::new(
-                            None,
-                            payer_balance_identifier.clone(),
-                            BalanceIdentifier::Payment,
-                            baseline_motes_amount,
-                            None,
-                        ),
-                    ));
-
-                    let msg = match pay_result.error() {
-                        Some(err) => format!("{}", err),
-                        None => {
-                            if insufficient_payment_deposited {
-                                "Insufficient custom payment".to_string()
-                            } else {
-                                // this should be unreachable due to guard condition above
-                                let unk = "Unknown custom payment issue";
-                                warn!(%transaction_hash, unk);
-                                debug_assert!(false, "{}", unk);
-                                unk.to_string()
-                            }
-                        }
-                    };
-                    // commit penalty payment effects
-                    state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, transfer_result.effects().clone())?;
-                    artifact_builder
-                        .with_error_message(msg)
-                        .with_transfer_result(transfer_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, balance_identifier=?BalanceIdentifier::PenalizedPayment, "account session with custom payment failed");
-                    BalanceIdentifier::PenalizedPayment
-                } else {
-                    // commit successful effects
-                    state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, pay_result.effects().clone())?;
-                    artifact_builder
-                        .with_wasm_v1_result(pay_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, balance_identifier=?BalanceIdentifier::Payment, "account session with custom payment success");
-                    BalanceIdentifier::Payment
-                }
-            } else {
-                BalanceIdentifier::PenalizedAccount(
-                    initiator_addr
-                        .account_hash()
-                        .ok_or(BlockExecutionError::InvalidTransactionVariant)?,
-                )
-            }
         };
 
-        let post_payment_balance_result = scratch_state.balance(BalanceRequest::new(
+        // we do a check for initial min balance to determine if we should proceed or not
+        let initial_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
             protocol_version,
             balance_identifier.clone(),
@@ -952,98 +729,82 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
-        let allow_execution = {
-            let is_not_penalized = !balance_identifier.is_penalty();
-            // in the case of custom payment, we do all payment processing up front after checking
-            // if the initiator can cover the penalty payment, and then either charge the full
-            // amount in the happy path or the penalty amount in the sad path...in whichever case
-            // the sad path is handled by is_penalty and the balance in the payment purse is
-            // the penalty payment or the full amount but is 'sufficient' either way
-            let actual_cost = artifact_builder.actual_cost(); // use actual cost here
-            let required_balance = if let Some(evm_transaction) = evm_transaction {
-                evm_transaction
-                    .required_balance(actual_cost)
-                    .ok_or_else(|| {
-                        BlockExecutionError::PaymentError(
-                            "EVM value plus fee amount overflowed U512".to_string(),
-                        )
-                    })?
-            } else {
-                actual_cost
-            };
-            let is_sufficient_balance =
-                is_custom_payment || post_payment_balance_result.is_sufficient(required_balance);
-            let is_allowed_by_chainspec = chainspec.is_supported(lane_id);
-            let allow = is_not_penalized && is_sufficient_balance && is_allowed_by_chainspec;
-            if !allow {
-                let err_msg = {
-                    if !is_sufficient_balance {
-                        "Insufficient funds".to_string()
-                    } else {
-                        format!(
-                            "penalized: {}, sufficient balance: {}, allowed by chainspec: {}",
-                            !is_not_penalized, is_sufficient_balance, is_allowed_by_chainspec
-                        )
-                    }
-                };
-                if artifact_builder.error_message().is_none() {
-                    artifact_builder.with_error_message(err_msg);
-                }
-                info!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, "payment preprocessing unsuccessful");
-            } else {
-                debug!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, "payment preprocessing successful");
-            }
-            allow
-        };
+        if let BalanceResult::RootNotFound = initial_balance_result {
+            return Err(BlockExecutionError::RootNotFound(state_root_hash));
+        }
 
-        if allow_execution {
-            debug!(%transaction_hash, ?allow_execution, "execution allowed");
-            if is_standard_payment {
-                // place a processing hold on the paying account to prevent double spend.
-                let hold_amount = artifact_builder.cost_to_use();
-                let hold_request = BalanceHoldRequest::new_processing_hold(
-                    state_root_hash,
-                    protocol_version,
-                    balance_identifier.clone(),
-                    hold_amount,
-                    insufficient_balance_handling,
+        txn_process_ctx.with_initial_balance_result(&initial_balance_result);
+
+        let required_balance = match txn_process_ctx.cost_estimate() {
+            Some(cost_estimate) => cost_estimate,
+            None => {
+                error!(
+                    %transaction_hash,
+                    "failed to determine cost_estimate"
                 );
-                let hold_result = scratch_state.balance_hold(hold_request);
-                state_root_hash =
-                    scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
-                artifact_builder
-                    .with_balance_hold_result(&hold_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                // record it and move on.
+                artifacts.push(txn_process_ctx.build());
+                continue;
             }
+        };
+        txn_process_ctx
+            .with_is_sufficient_balance(initial_balance_result.is_sufficient(required_balance));
+        txn_process_ctx.with_is_penalized(balance_identifier.is_penalty());
+        txn_process_ctx.with_exec_attempt();
 
-            trace!(%transaction_hash, ?lane_id, "eligible for execution");
-            match lane_id {
-                lane_id if lane_id == MINT_LANE_ID => {
-                    let transaction_args = transaction.session_args();
-                    let runtime_args = transaction_args
-                        .as_named()
-                        .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
-                    let entry_point = transaction.entry_point();
-                    if let TransactionEntryPoint::Transfer = entry_point {
-                        let transfer_result =
-                            scratch_state.transfer(TransferRequest::with_runtime_args(
-                                native_runtime_config.clone(),
-                                state_root_hash,
-                                protocol_version,
-                                transaction_hash,
-                                initiator_addr.clone(),
-                                authorization_keys,
-                                runtime_args.clone(),
-                            ));
-                        state_root_hash = scratch_state
-                            .commit_effects(state_root_hash, transfer_result.effects().clone())?;
-                        artifact_builder
-                            .consume_limit()
-                            .with_transfer_result(transfer_result)
-                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    } else if let TransactionEntryPoint::Burn = entry_point {
-                        let burn_result = scratch_state.burn(BurnRequest::with_runtime_args(
+        // last point beyond which we don't charge
+        // place a processing hold on the paying account to prevent double spend.
+        let hold_amount = txn_process_ctx.cost_to_use();
+        let hold_request = BalanceHoldRequest::new_processing_hold(
+            state_root_hash,
+            protocol_version,
+            balance_identifier.clone(),
+            hold_amount,
+            insufficient_balance_handling,
+        );
+        let hold_result = scratch_state.balance_hold(hold_request);
+        state_root_hash = scratch_state
+            .commit_effects(state_root_hash, hold_result.effects().clone())
+            .map_err(BlockExecutionError::Lmdb)?;
+        txn_process_ctx
+            .with_balance_hold_result(&hold_result)
+            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+
+        let authorization_keys = txn_process_ctx.authorization_keys();
+        // TODO: consider early skip if authorization_keys is empty
+
+        let process_request = txn_process_ctx.process_request();
+        trace!(%transaction_hash, %process_request, "process_request created");
+        match process_request {
+            ProcessRequest::NoExec => {
+                // noop
+                debug!(%transaction_hash, "no exec");
+            }
+            ProcessRequest::NoExecEvm {
+                effective_gas_price,
+            } => {
+                txn_process_ctx.with_zero_cost();
+                let outcome = casper_executor_evm::ExecutionOutcome::no_exec();
+                txn_process_ctx.with_evm_execution_outcome(
+                    outcome,
+                    effective_gas_price,
+                    Effects::new(),
+                );
+
+                debug!(%transaction_hash, "no exec evm");
+            }
+            ProcessRequest::NativeMint {
+                session_args,
+                entry_point,
+            } => {
+                // let transaction_args = txn_process_ctx.session_args();
+                let runtime_args = session_args
+                    .as_named()
+                    .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
+                // let entry_point = txn_process_ctx.entry_point();
+                if let TransactionEntryPoint::Transfer = entry_point {
+                    let transfer_result =
+                        scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
                             state_root_hash,
                             protocol_version,
@@ -1052,156 +813,121 @@ pub fn execute_finalized_block(
                             authorization_keys,
                             runtime_args.clone(),
                         ));
-                        state_root_hash = scratch_state
-                            .commit_effects(state_root_hash, burn_result.effects().clone())?;
-                        artifact_builder
-                            .consume_limit()
-                            .with_burn_result(burn_result)
-                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    } else {
-                        artifact_builder.with_error_message(format!(
-                            "Attempt to call unsupported native mint entrypoint: {}",
-                            entry_point
-                        ));
-                    }
+                    state_root_hash = scratch_state
+                        .commit_effects(state_root_hash, transfer_result.effects().clone())
+                        .map_err(BlockExecutionError::Lmdb)?;
+                    txn_process_ctx
+                        .with_gas_limit_consumed()
+                        .with_transfer_result(transfer_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                } else if let TransactionEntryPoint::Burn = entry_point {
+                    let burn_result = scratch_state.burn(BurnRequest::with_runtime_args(
+                        native_runtime_config.clone(),
+                        state_root_hash,
+                        protocol_version,
+                        transaction_hash,
+                        initiator_addr.clone(),
+                        authorization_keys,
+                        runtime_args.clone(),
+                    ));
+                    state_root_hash = scratch_state
+                        .commit_effects(state_root_hash, burn_result.effects().clone())
+                        .map_err(BlockExecutionError::Lmdb)?;
+                    txn_process_ctx
+                        .with_gas_limit_consumed()
+                        .with_burn_result(burn_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                } else {
+                    txn_process_ctx.with_error_message(format!(
+                        "Attempt to call unsupported native mint entrypoint: {}",
+                        entry_point
+                    ));
                 }
-                lane_id if lane_id == AUCTION_LANE_ID => {
-                    let transaction_args = transaction.session_args();
-                    let runtime_args = transaction_args
-                        .as_named()
-                        .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
-                    let entry_point = transaction.entry_point();
-                    match AuctionMethod::from_parts(entry_point, runtime_args, chainspec) {
-                        Ok(auction_method) => {
-                            let bidding_result = scratch_state.bidding(BiddingRequest::new(
-                                native_runtime_config.clone(),
-                                state_root_hash,
-                                protocol_version,
-                                transaction_hash,
-                                initiator_addr.clone(),
-                                authorization_keys,
-                                auction_method,
-                            ));
-                            state_root_hash = scratch_state.commit_effects(
-                                state_root_hash,
-                                bidding_result.effects().clone(),
-                            )?;
-                            artifact_builder
-                                .consume_limit()
-                                .with_bidding_result(bidding_result)
-                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                        }
-                        Err(ame) => {
-                            error!(
-                                %transaction_hash,
-                                ?ame,
-                                "failed to determine auction method"
-                            );
-                            artifact_builder.with_auction_method_error(&ame);
-                        }
-                    };
-                }
-                _ if is_evm => {
-                    let evm_transaction = evm_transaction.expect("EVM transaction should exist");
-                    let base_fee_wei = chainspec.evm_config.base_fee_wei();
-                    let block_context =
-                        utils_evm::block_context(chainspec, block_height, block_time, &proposer);
-                    let request = EvmExecuteRequest {
-                        block: block_context,
-                        kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
-                    };
-                    let mut tracking_copy = scratch_state
-                        .tracking_copy(state_root_hash)?
-                        .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
-                    if let Some(resolution) = &evm_origin_resolution {
-                        // Apply the deferred bridge/account creation only now,
-                        // after balance preconditions have allowed execution.
-                        // This keeps rejected EVM transactions from mutating
-                        // identity state and makes the identity write atomic
-                        // with the revm state transition below.
-                        apply_evm_identity_plan(
-                            &mut tracking_copy,
-                            protocol_version,
-                            resolution.identity_plan(),
-                        )?;
-                    }
-                    apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
-                    let outcome = EvmExecutor::new(chainspec.evm_config)
-                        .execute_with_block_hash_provider(
-                            &mut tracking_copy,
-                            request,
-                            evm_block_hash_provider,
-                        )
-                        .map_err(|error| {
-                            BlockExecutionError::TransactionConversion(error.to_string())
-                        })?;
-                    let execution_effects = tracking_copy.effects();
-                    state_root_hash =
-                        scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
-                    let effective_gas_price = evm_transaction.effective_gas_price(base_fee_wei);
-                    let consumed = if matches!(outcome.status, EvmExecutionStatus::Success) {
-                        evm_transaction
-                            .fee_amount(outcome.gas_used, &chainspec.evm_config)
-                            .ok_or_else(|| {
-                                BlockExecutionError::PaymentError(
-                                    "EVM fee amount overflowed U512".to_string(),
-                                )
-                            })?
-                    } else {
-                        artifact_builder.cost_to_use()
-                    };
-                    artifact_builder.with_evm_receipt(
-                        outcome.to_receipt(effective_gas_price),
-                        consumed,
-                        execution_effects,
-                    );
-                }
-                _ if is_v1_wasm => {
-                    let wasm_v1_start = Instant::now();
-                    let session_input_data = transaction.to_session_input_data();
-                    match WasmV1Request::new_session(
-                        BlockInfo::new(
+            }
+            ProcessRequest::NativeAuction {
+                session_args,
+                entry_point,
+            } => {
+                // let transaction_args = txn_process_ctx.session_args();
+                let runtime_args = session_args
+                    .as_named()
+                    .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
+                // let entry_point = txn_process_ctx.entry_point();
+                match AuctionMethod::from_parts(entry_point, runtime_args, chainspec) {
+                    Ok(auction_method) => {
+                        let bidding_result = scratch_state.bidding(BiddingRequest::new(
+                            native_runtime_config.clone(),
                             state_root_hash,
-                            block_time,
-                            parent_block_hash,
-                            block_height,
                             protocol_version,
-                        ),
-                        artifact_builder.gas_limit(),
-                        &session_input_data,
-                    ) {
-                        Ok(wasm_v1_request) => {
-                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
-                            let wasm_v1_result =
-                                execution_engine_v1.execute(&scratch_state, wasm_v1_request);
-                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
-                            state_root_hash = scratch_state.commit_effects(
-                                state_root_hash,
-                                wasm_v1_result.effects().clone(),
-                            )?;
-                            // note: consumed is scraped from wasm_v1_result along w/ other fields
-                            artifact_builder
-                                .with_wasm_v1_result(wasm_v1_result)
-                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                        }
-                        Err(ire) => {
-                            debug!(%transaction_hash, ?lane_id, ?ire, "unable to get wasm v1 request");
-                            artifact_builder.with_invalid_wasm_v1_request(&ire);
-                        }
-                    };
-                    if let Some(metrics) = metrics.as_ref() {
-                        metrics
-                            .exec_wasm_v1
-                            .observe(wasm_v1_start.elapsed().as_secs_f64());
+                            transaction_hash,
+                            initiator_addr.clone(),
+                            authorization_keys,
+                            auction_method,
+                        ));
+                        state_root_hash = scratch_state
+                            .commit_effects(state_root_hash, bidding_result.effects().clone())
+                            .map_err(BlockExecutionError::Lmdb)?;
+                        txn_process_ctx
+                            .with_gas_limit_consumed()
+                            .with_bidding_result(bidding_result)
+                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                     }
+                    Err(ame) => {
+                        error!(
+                            %transaction_hash,
+                            ?ame,
+                            "failed to determine auction method"
+                        );
+                        txn_process_ctx.with_auction_method_error(&ame);
+                    }
+                };
+            }
+            ProcessRequest::WasmV1 { session_input_data } => {
+                let wasm_v1_start = Instant::now();
+                match WasmV1Request::new_session(
+                    BlockInfo::new(
+                        state_root_hash,
+                        block_time,
+                        parent_block_hash,
+                        block_height,
+                        protocol_version,
+                    ),
+                    txn_process_ctx.gas_limit(),
+                    &session_input_data,
+                ) {
+                    Ok(wasm_v1_request) => {
+                        trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
+                        let wasm_v1_result =
+                            execution_engine_v1.execute(&scratch_state, wasm_v1_request);
+                        trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
+                        state_root_hash = scratch_state
+                            .commit_effects(state_root_hash, wasm_v1_result.effects().clone())
+                            .map_err(BlockExecutionError::Lmdb)?;
+                        // note: consumed is scraped from wasm_v1_result along w/ other fields
+                        txn_process_ctx
+                            .with_wasm_v1_result(wasm_v1_result)
+                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                    }
+                    Err(ire) => {
+                        debug!(%transaction_hash, ?lane_id, ?ire, "unable to get wasm v1 request");
+                        txn_process_ctx.with_invalid_wasm_v1_request(&ire);
+                    }
+                };
+                if let Some(metrics) = metrics.as_ref() {
+                    metrics
+                        .exec_wasm_v1
+                        .observe(wasm_v1_start.elapsed().as_secs_f64());
                 }
-                _ if is_v2_wasm => match WasmV2Request::new(
-                    artifact_builder.gas_limit(),
+            }
+            ProcessRequest::WasmV2 { transaction_info } => {
+                let wasm_v2_start = Instant::now();
+                match WasmV2Request::new(
+                    txn_process_ctx.gas_limit(),
                     chainspec.network_config.name.clone(),
                     state_root_hash,
                     parent_block_hash,
                     block_height,
-                    &transaction,
+                    transaction_info,
                 ) {
                     Ok(wasm_v2_request) => {
                         match wasm_v2_request.execute(
@@ -1229,37 +955,88 @@ pub fn execute_finalized_block(
                                 }
 
                                 state_root_hash = wasm_v2_result.post_state_hash();
-                                artifact_builder.with_wasm_v2_result(wasm_v2_result);
+                                txn_process_ctx.with_wasm_v2_result(wasm_v2_result);
                             }
                             Err(wasm_v2_error) => {
-                                artifact_builder.with_wasm_v2_error(wasm_v2_error);
+                                txn_process_ctx.with_wasm_v2_error(wasm_v2_error);
                             }
                         }
                     }
                     Err(ire) => {
                         debug!(%transaction_hash, ?lane_id, ?ire, "unable to get wasm v2 request");
-                        artifact_builder.with_invalid_wasm_v2_request(ire);
+                        txn_process_ctx.with_invalid_wasm_v2_request(ire);
                     }
-                },
-                _ => {
-                    // it is currently not possible to specify a vm other than v1 or v2 on the
-                    // transaction itself, so this should be unreachable
-                    unreachable!("Unknown VM target")
+                }
+                if let Some(metrics) = metrics.as_ref() {
+                    metrics
+                        .exec_wasm_v2
+                        .observe(wasm_v2_start.elapsed().as_secs_f64());
                 }
             }
-        }
+            ProcessRequest::EvmV1 {
+                evm_txn,
+                base_fee_wei,
+                effective_gas_price,
+                block_gas_limit,
+            } => {
+                let evm_v1_start = Instant::now();
+                let block_context = EvmBlockContext::new(
+                    block_height,
+                    block_time,
+                    block_gas_limit,
+                    base_fee_wei,
+                    EvmAddress::from_block_proposer_public_key(&proposer),
+                );
+                let request = EvmExecuteRequest {
+                    block: block_context,
+                    kind: EvmExecuteKind::Transaction(Box::new(evm_txn)),
+                };
 
-        if is_evm && !allow_execution {
-            let effective_gas_price = evm_transaction
-                .expect("EVM transaction should exist")
-                .effective_gas_price(chainspec.evm_config.base_fee_wei());
-            artifact_builder.with_zero_cost().with_evm_receipt(
-                utils_evm::precondition_receipt(effective_gas_price),
-                U512::zero(),
-                Effects::new(),
-            );
-            artifacts.push(artifact_builder.build());
-            continue;
+                let mut tracking_copy = scratch_state
+                    .tracking_copy(state_root_hash)
+                    .map_err(BlockExecutionError::Lmdb)?
+                    .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+
+                // TODO: move origin resolution to before txn process request
+                // if let Some(resolution) = &evm_origin_resolution {
+                //     // Apply the deferred bridge/account creation only now,
+                //     // after balance preconditions have allowed execution.
+                //     // This keeps rejected EVM transactions from mutating
+                //     // identity state and makes the identity write atomic
+                //     // with the revm state transition below.
+                //     apply_evm_identity_plan(
+                //         &mut tracking_copy,
+                //         protocol_version,
+                //         resolution.identity_plan(),
+                //     )?;
+                // }
+                // apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
+
+                let outcome = EvmExecutor::new(chainspec.evm_config)
+                    .execute(&mut tracking_copy, request)
+                    .map_err(|error| {
+                        BlockExecutionError::TransactionConversion(error.to_string())
+                    })?;
+                let execution_effects = tracking_copy.effects();
+                state_root_hash = scratch_state
+                    .commit_effects(state_root_hash, execution_effects.clone())
+                    .map_err(BlockExecutionError::Lmdb)?;
+
+                txn_process_ctx.with_evm_execution_outcome(
+                    outcome,
+                    effective_gas_price,
+                    execution_effects,
+                );
+                if let Some(metrics) = metrics.as_ref() {
+                    metrics
+                        .exec_evm_v1
+                        .observe(evm_v1_start.elapsed().as_secs_f64());
+                }
+            }
+            ProcessRequest::Unknown => {
+                // this should be unreachable
+                unreachable!("Unknown transaction execution target");
+            }
         }
 
         // clear all holds on the balance_identifier purse before payment processing
@@ -1271,9 +1048,10 @@ pub fn execute_finalized_block(
                 balance_identifier.clone(),
             );
             let hold_result = scratch_state.balance_hold(hold_request);
-            state_root_hash =
-                scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
-            artifact_builder
+            state_root_hash = scratch_state
+                .commit_effects(state_root_hash, hold_result.effects().clone())
+                .map_err(BlockExecutionError::Lmdb)?;
+            txn_process_ctx
                 .with_balance_hold_result(&hold_result)
                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
         }
@@ -1281,42 +1059,22 @@ pub fn execute_finalized_block(
         // handle refunds per the chainspec determined setting.
         let refund_amount = {
             let consumed =
-                if balance_identifier.is_penalty() || artifact_builder.error_message().is_some() {
-                    artifact_builder.cost_to_use() // no refund for penalty
+                if balance_identifier.is_penalty() || txn_process_ctx.error_message().is_some() {
+                    txn_process_ctx.cost_to_use() // no refund for penalty
                 } else {
-                    artifact_builder.consumed()
+                    txn_process_ctx.consumed()
                 };
 
-            let available = artifact_builder.available().unwrap_or(U512::zero());
+            let available = txn_process_ctx.available().unwrap_or(U512::zero());
 
             let refund_mode = match refund_handling {
-                RefundHandling::NoRefund => {
-                    if fee_handling.is_no_fee() && is_custom_payment {
-                        // in no fee mode, we need to return the motes to the refund purse,
-                        //  and then point the balance_identifier to the refund purse
-                        // this will result in the downstream no fee handling logic
-                        //  placing a hold on the correct purse.
-                        balance_identifier = BalanceIdentifier::Refund;
-                        Some(HandleRefundMode::RefundNoFeeCustomPayment {
-                            initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: artifact_builder.limit(),
-                            gas_price: current_gas_price,
-                            cost: artifact_builder.cost_to_use(),
-                        })
-                    } else {
-                        None
-                    }
-                }
+                RefundHandling::NoRefund => None,
                 RefundHandling::Burn { refund_ratio } => {
-                    let (limit, gas_price) = if is_evm {
-                        (artifact_builder.cost_to_use(), 1)
-                    } else {
-                        (artifact_builder.limit(), current_gas_price)
-                    };
+                    let (limit, cost, gas_price) = txn_process_ctx.refund_amounts();
                     Some(HandleRefundMode::Burn {
                         limit,
                         gas_price,
-                        cost: artifact_builder.cost_to_use(),
+                        cost,
                         consumed,
                         source: Box::new(balance_identifier.clone()),
                         ratio: refund_ratio,
@@ -1324,55 +1082,24 @@ pub fn execute_finalized_block(
                     })
                 }
                 RefundHandling::Refund { refund_ratio } => {
-                    let source = Box::new(balance_identifier.clone());
-                    if is_custom_payment {
-                        // in custom payment we have to do all payment handling up front.
-                        // therefore, if refunds are turned on we have to transfer the refunded
-                        // amount back to the specified refund purse.
-
-                        // the refund purse for a given transaction is set to the initiator's main
-                        // purse by default, but the custom payment provided by the initiator can
-                        // set a different purse when executed. thus, the handle payment system
-                        // contract tracks a refund purse and is handled internally at processing
-                        // time. Outer logic should never assume or refer to a specific purse for
-                        // purposes of refund. instead, `BalanceIdentifier::Refund` is used by outer
-                        // logic, which is interpreted by inner logic to use the currently set
-                        // refund purse.
-                        Some(HandleRefundMode::Refund {
-                            initiator_addr: Box::new(initiator_addr.clone()),
-                            limit: artifact_builder.limit(),
-                            gas_price: current_gas_price,
-                            consumed,
-                            cost: artifact_builder.cost_to_use(),
-                            ratio: refund_ratio,
-                            source,
-                            target: Box::new(BalanceIdentifier::Refund),
-                            available,
-                        })
-                    } else {
-                        // in normal payment handling we put a temporary processing hold
-                        // on the paying purse rather than take the token up front.
-                        // thus, here we only want to determine the refund amount rather than
-                        // attempt to process a refund on something we haven't actually taken yet.
-                        // later in the flow when the processing hold is released and payment is
-                        // finalized we reduce the amount taken by the refunded amount. This avoids
-                        // the churn of taking the token up front via transfer (which writes
-                        // multiple permanent records) and then transfer some of it back (which
-                        // writes more permanent records).
-                        let (limit, gas_price) = if is_evm {
-                            (artifact_builder.cost_to_use(), 1)
-                        } else {
-                            (artifact_builder.limit(), current_gas_price)
-                        };
-                        Some(HandleRefundMode::CalculateAmount {
-                            limit,
-                            gas_price,
-                            consumed,
-                            cost: artifact_builder.cost_to_use(),
-                            ratio: refund_ratio,
-                            available,
-                        })
-                    }
+                    // in normal payment handling we put a temporary processing hold
+                    // on the paying purse rather than take the token up front.
+                    // thus, here we only want to determine the refund amount rather than
+                    // attempt to process a refund on something we haven't actually taken yet.
+                    // later in the flow when the processing hold is released and payment is
+                    // finalized we reduce the amount taken by the refunded amount. This avoids
+                    // the churn of taking the token up front via transfer (which writes
+                    // multiple permanent records) and then transfer some of it back (which
+                    // writes more permanent records).
+                    let (limit, cost, gas_price) = txn_process_ctx.refund_amounts();
+                    Some(HandleRefundMode::CalculateAmount {
+                        limit,
+                        gas_price,
+                        consumed,
+                        cost,
+                        ratio: refund_ratio,
+                        available,
+                    })
                 }
             };
             match refund_mode {
@@ -1387,8 +1114,9 @@ pub fn execute_finalized_block(
                     let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
                     let refunded_amount = handle_refund_result.refund_amount();
                     state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
-                    artifact_builder
+                        .commit_effects(state_root_hash, handle_refund_result.effects().clone())
+                        .map_err(BlockExecutionError::Lmdb)?;
+                    txn_process_ctx
                         .with_handle_refund_result(&handle_refund_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
@@ -1397,13 +1125,13 @@ pub fn execute_finalized_block(
                 None => U512::zero(),
             }
         };
-        artifact_builder.with_refund_amount(refund_amount);
+        txn_process_ctx.with_refund_amount(refund_amount);
 
         // take the lower of the difference between cost - refund OR available
-        let fee_amount = artifact_builder
+        let fee_amount = txn_process_ctx
             .cost_to_use()
             .saturating_sub(refund_amount)
-            .min(artifact_builder.available().unwrap_or(U512::zero()));
+            .min(txn_process_ctx.available().unwrap_or(U512::zero()));
 
         // handle fees per the chainspec determined setting.
         let handle_fee_result = match fee_handling {
@@ -1417,9 +1145,10 @@ pub fn execute_finalized_block(
                     insufficient_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
-                state_root_hash =
-                    scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
-                artifact_builder
+                state_root_hash = scratch_state
+                    .commit_effects(state_root_hash, hold_result.effects().clone())
+                    .map_err(BlockExecutionError::Lmdb)?;
+                txn_process_ctx
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 let handle_fee_request = HandleFeeRequest::new(
@@ -1481,46 +1210,15 @@ pub fn execute_finalized_block(
             }
         };
 
-        state_root_hash =
-            scratch_state.commit_effects(state_root_hash, handle_fee_result.effects().clone())?;
+        state_root_hash = scratch_state
+            .commit_effects(state_root_hash, handle_fee_result.effects().clone())
+            .map_err(BlockExecutionError::Lmdb)?;
 
-        artifact_builder
+        txn_process_ctx
             .with_handle_fee_result(&handle_fee_result)
             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
-        // clear refund purse if it was set
-        if refund_purse_active {
-            // if refunds are turned on we initialize the refund purse to the initiator's main
-            // purse before doing any processing. NOTE: when executed, custom payment logic
-            // has the option to call set_refund_purse on the handle payment contract to set
-            // up a different refund purse, if desired.
-            let handle_refund_request = HandleRefundRequest::new(
-                native_runtime_config.clone(),
-                state_root_hash,
-                protocol_version,
-                transaction_hash,
-                HandleRefundMode::ClearRefundPurse,
-            );
-            let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
-            if let Err(root_not_found) =
-                artifact_builder.with_clear_refund_purse_result(&handle_refund_result)
-            {
-                if root_not_found {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                warn!(
-                    "{}",
-                    artifact_builder.error_message().unwrap_or(
-                        "unknown error encountered when attempting to clear refund purse"
-                            .to_string()
-                    )
-                );
-            }
-            state_root_hash = scratch_state
-                .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
-        }
-
-        artifacts.push(artifact_builder.build());
+        artifacts.push(txn_process_ctx.build());
     }
 
     // transaction processing is finished
@@ -1556,7 +1254,9 @@ pub fn execute_finalized_block(
                     .into(),
             ),
         ));
-        scratch_state.commit_effects(state_root_hash, effects)?;
+        scratch_state
+            .commit_effects(state_root_hash, effects)
+            .map_err(BlockExecutionError::Lmdb)?;
         transaction_ids
             .into_iter()
             .map(|id| id.approvals_hash())
@@ -1766,7 +1466,9 @@ pub fn execute_finalized_block(
         let database_write_start = Instant::now();
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
-        state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+        state_root_hash = data_access_layer
+            .write_scratch_to_db(state_root_hash, scratch_state)
+            .map_err(BlockExecutionError::Lmdb)?;
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .scratch_lmdb_write_time
@@ -1860,8 +1562,15 @@ pub fn execute_finalized_block(
         last_switch_block_hash,
     ));
 
-    let proof_of_checksum_registry = match data_access_layer.tracking_copy(state_root_hash)? {
-        Some(tc) => match tc.reader().read_with_proof(&Key::ChecksumRegistry)? {
+    let proof_of_checksum_registry = match data_access_layer
+        .tracking_copy(state_root_hash)
+        .map_err(BlockExecutionError::Lmdb)?
+    {
+        Some(tc) => match tc
+            .reader()
+            .read_with_proof(&Key::ChecksumRegistry)
+            .map_err(BlockExecutionError::Lmdb)?
+        {
             Some(proof) => proof,
             None => return Err(BlockExecutionError::MissingChecksumRegistry),
         },
@@ -1907,12 +1616,9 @@ pub(super) fn speculatively_execute<S>(
 where
     S: StateProvider,
 {
-    let transaction_config = &chainspec.transaction_config;
-    let maybe_transaction = MetaTransaction::from_transaction(
-        &input_transaction,
-        chainspec.core_config.pricing_handling,
-        transaction_config,
-    );
+    let gas_price = 1; // run speculative with flat cost
+    let maybe_transaction =
+        MetaTransaction::new_from_txn_with_price(&input_transaction, chainspec, gas_price);
     if let Err(error) = maybe_transaction {
         return SpeculativeExecutionResult::invalid_transaction(error);
     }
@@ -2045,12 +1751,12 @@ where
 {
     if !chainspec.evm_config.enabled {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::EvmTransactionError::Disabled,
+            EvmTransactionError::Disabled,
         ));
     }
     if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::EvmTransactionError::GasLimitExceedsBlockGasLimit {
+            EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: evm_transaction.gas_limit(),
                 block_gas_limit: chainspec.evm_config.block_gas_limit,
             },
@@ -2062,14 +1768,12 @@ where
         Ok(Some(tracking_copy)) => tracking_copy,
         Ok(None) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(format!(
-                    "state root {state_root_hash} not found"
-                )),
+                EvmTransactionError::Decode(format!("state root {state_root_hash} not found")),
             ))
         }
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(format!(
+                EvmTransactionError::Decode(format!(
                     "failed to check out EVM speculative execution state: {error}"
                 )),
             ))
@@ -2078,13 +1782,16 @@ where
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
-    let base_fee_wei = chainspec.evm_config.base_fee_wei();
+
+    let base_fee = u128::from(chainspec.evm_config.base_fee);
+    let wei_per_mote = u128::from(chainspec.evm_config.wei_per_mote);
+    let base_fee_wei = base_fee * wei_per_mote;
     let block_context = EvmBlockContext {
         number: block_header.height(),
         timestamp: block_time.millis() / 1000,
         beneficiary: EvmAddress::ZERO,
-        gas_limit: Some(chainspec.evm_config.block_gas_limit),
-        base_fee: Some(base_fee_wei),
+        block_gas_limit: chainspec.evm_config.block_gas_limit,
+        base_fee_wei,
     };
     let kind = if evm_transaction.is_unsigned_call() {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
@@ -2113,7 +1820,7 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(error.to_string()),
+                EvmTransactionError::Decode(error.to_string()),
             ))
         }
     };
@@ -2141,30 +1848,27 @@ where
 fn invoked_contract_will_pay(
     state_provider: &ScratchGlobalState,
     state_root_hash: Digest,
-    transaction: &MetaTransaction,
+    contract_address: Option<(HashAddr, String)>,
 ) -> Result<Option<EntityAddr>, StateResultError> {
-    let (hash_addr, entry_point_name) = match transaction.contract_direct_address() {
-        None => {
-            return Err(StateResultError::ValueNotFound(
-                "contract direct address not found".to_string(),
-            ))
-        }
-        Some((hash_addr, entry_point_name)) => (hash_addr, entry_point_name),
-    };
-    let entity_addr = EntityAddr::new_smart_contract(hash_addr);
-    let entry_point_request = EntryPointRequest::new(state_root_hash, entry_point_name, hash_addr);
-    let entry_point_response = state_provider.entry_point(entry_point_request);
-    match entry_point_response {
-        EntryPointResult::RootNotFound => Err(StateResultError::RootNotFound),
-        EntryPointResult::ValueNotFound(msg) => Err(StateResultError::ValueNotFound(msg)),
-        EntryPointResult::Failure(tce) => Err(StateResultError::Failure(tce)),
-        EntryPointResult::Success { entry_point } => {
-            if entry_point.will_pay_direct_invocation() {
-                Ok(Some(entity_addr))
-            } else {
-                Ok(None)
+    if let Some((hash_addr, entry_point_name)) = contract_address {
+        let entity_addr = EntityAddr::new_smart_contract(hash_addr);
+        let entry_point_request =
+            EntryPointRequest::new(state_root_hash, entry_point_name, hash_addr);
+        let entry_point_response = state_provider.entry_point(entry_point_request);
+        match entry_point_response {
+            EntryPointResult::RootNotFound => Err(StateResultError::RootNotFound),
+            EntryPointResult::ValueNotFound(msg) => Err(StateResultError::ValueNotFound(msg)),
+            EntryPointResult::Failure(tce) => Err(StateResultError::Failure(tce)),
+            EntryPointResult::Success { entry_point } => {
+                if entry_point.will_pay_direct_invocation() {
+                    Ok(Some(entity_addr))
+                } else {
+                    Ok(None)
+                }
             }
         }
+    } else {
+        Ok(None)
     }
 }
 

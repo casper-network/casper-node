@@ -5,8 +5,8 @@ use serde::Serialize;
 #[cfg(test)]
 use casper_types::TransactionLaneDefinition;
 use casper_types::{
-    calculate_lane_id_for_deploy, Deploy, ExecutableDeployItem, InitiatorAddr, InvalidTransaction,
-    PricingHandling, TransactionV1Config,
+    calculate_lane_id_for_deploy, Chainspec, Deploy, ExecutableDeployItem, GasLimited,
+    InitiatorAddr, InvalidTransaction, Motes,
 };
 #[derive(Clone, Debug, Serialize, DataSize)]
 pub(crate) struct MetaDeploy {
@@ -15,21 +15,30 @@ pub(crate) struct MetaDeploy {
     lane_id: u8,
     #[data_size(skip)]
     #[serde(skip)]
+    initial_cost: Motes,
+    #[data_size(skip)]
+    #[serde(skip)]
     initiator_addr: OnceCell<InitiatorAddr>,
 }
 
 impl MetaDeploy {
     pub(crate) fn from_deploy(
         deploy: Deploy,
-        pricing_handling: PricingHandling,
-        config: &TransactionV1Config,
+        chainspec: &Chainspec,
+        gas_price: u8,
     ) -> Result<Self, InvalidTransaction> {
-        let lane_id = calculate_lane_id_for_deploy(&deploy, pricing_handling, config)
+        let pricing_handling = &chainspec.core_config.pricing_handling;
+        let transaction_config = &chainspec.transaction_config.transaction_v1_config;
+        let lane_id = calculate_lane_id_for_deploy(&deploy, pricing_handling, transaction_config)
+            .map_err(InvalidTransaction::Deploy)?;
+        let initial_cost = deploy
+            .gas_cost(chainspec, gas_price)
             .map_err(InvalidTransaction::Deploy)?;
         let initiator_addr = OnceCell::new();
         Ok(MetaDeploy {
             deploy,
             lane_id,
+            initial_cost,
             initiator_addr,
         })
     }
@@ -41,6 +50,10 @@ impl MetaDeploy {
 
     pub(crate) fn lane_id(&self) -> u8 {
         self.lane_id
+    }
+
+    pub(crate) fn initial_cost(&self) -> Motes {
+        self.initial_cost
     }
 
     pub(crate) fn session(&self) -> &ExecutableDeployItem {

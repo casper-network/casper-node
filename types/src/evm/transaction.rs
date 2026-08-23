@@ -33,7 +33,7 @@ use schemars::JsonSchema;
 use serde::{de, Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
-use super::{Address, EvmConfig, Hash, HASH_LENGTH};
+use super::{Address, Hash, HASH_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -1196,17 +1196,6 @@ impl EvmTransaction {
                 }
             }
         }
-    }
-
-    /// Returns the fee amount for `gas_used`, denominated in motes.
-    pub fn fee_amount(&self, gas_used: u64, evm_config: &EvmConfig) -> Option<U512> {
-        let gas_price_wei = self.effective_gas_price(evm_config.base_fee_wei());
-        evm_config.gas_fee_motes(gas_used, gas_price_wei)
-    }
-
-    /// Returns the maximum fee amount this transaction can consume, denominated in motes.
-    pub fn max_fee_amount(&self, evm_config: &EvmConfig) -> Option<U512> {
-        self.fee_amount(self.gas_limit, evm_config)
     }
 
     /// Returns the balance needed for value transfer plus the supplied fee amount.

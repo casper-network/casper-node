@@ -107,7 +107,7 @@ impl EvmExecutor {
         }
 
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
-        let block = request.block.to_revm_block(&self.config)?;
+        let block = request.block.to_revm_block()?;
         let execution_mode = match &request.kind {
             ExecuteKind::Transaction(_) => EvmExecutionMode::Checked,
             ExecuteKind::Call(call) if call.validation.is_unchecked_simulation() => {
@@ -134,8 +134,7 @@ impl EvmExecutor {
         let mut state = result_and_state.state;
         // revm skips the upfront fee debit but still applies the
         // post-execution gas reimbursement and beneficiary reward.
-        let disabled_fee_transfers =
-            disabled_fee_transfers(&self.config, &request, &result_and_state.result);
+        let disabled_fee_transfers = disabled_fee_transfers(&request, &result_and_state.result);
         state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
         state::apply(tracking_copy, state)?;
         Ok(outcome)
@@ -156,7 +155,7 @@ impl EvmExecutor {
             return Err(Error::Disabled);
         }
 
-        let block = request.block.to_revm_block(&self.config)?;
+        let block = request.block.to_revm_block()?;
         let result_and_state = {
             let db = CasperDb::new(tracking_copy, block_hash_provider);
             let mut evm = Context::mainnet()
@@ -198,15 +197,11 @@ fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmEx
 }
 
 fn disabled_fee_transfers(
-    config: &EvmConfig,
     request: &ExecuteRequest,
     result: &RevmExecutionResult,
 ) -> state::DisabledFeeTransfers {
     let gas = result_gas(result);
-    let base_fee = request
-        .block
-        .base_fee
-        .unwrap_or_else(|| config.base_fee_wei());
+    let base_fee = request.block.base_fee_wei;
     let (caller, gas_limit, effective_gas_price) = match &request.kind {
         ExecuteKind::Transaction(transaction) => (
             tx::to_revm_address(transaction.from()),

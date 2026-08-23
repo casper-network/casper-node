@@ -1,8 +1,7 @@
 //! Public execution request types.
 
-use casper_types::{evm, EvmConfig, EvmTransaction, U256};
-
 use crate::{tx, Error};
+use casper_types::{evm, BlockTime, EvmTransaction, U256};
 
 /// Request passed to [`crate::EvmExecutor::execute`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,7 +45,7 @@ pub struct CallRequest {
     pub to: Option<evm::Address>,
     /// Amount of wei to send, encoded as a big-endian 256-bit word.
     pub value: U256,
-    /// Calldata or contract init code.
+    /// Call data or contract init code.
     pub input: Vec<u8>,
     /// Gas available for execution.
     pub gas_limit: u64,
@@ -83,28 +82,41 @@ pub struct BlockContext {
     /// Block beneficiary address.
     pub beneficiary: evm::Address,
     /// Optional gas limit override. Defaults to chainspec `[evm].block_gas_limit`.
-    pub gas_limit: Option<u64>,
+    pub block_gas_limit: u64,
     /// Optional base-fee override in wei.
     ///
     /// Defaults to chainspec `[evm].base_fee * [evm].wei_per_mote`.
-    pub base_fee: Option<u128>,
+    pub base_fee_wei: u128,
 }
 
 impl BlockContext {
-    pub(crate) fn to_revm_block(
-        &self,
-        config: &EvmConfig,
-    ) -> Result<revm::context::BlockEnv, Error> {
-        let base_fee = self.base_fee.unwrap_or_else(|| config.base_fee_wei());
-        let basefee = u64::try_from(base_fee).map_err(|_| {
+    pub fn new(
+        block_height: u64,     // aka number
+        block_time: BlockTime, // aka timestamp
+        block_gas_limit: u64,
+        base_fee_wei: u128,
+        beneficiary: evm::Address,
+    ) -> Self {
+        BlockContext {
+            number: block_height,
+            timestamp: block_time.value() / 1000,
+            beneficiary,
+            block_gas_limit,
+            base_fee_wei,
+        }
+    }
+
+    pub(crate) fn to_revm_block(&self) -> Result<revm::context::BlockEnv, Error> {
+        let base_fee_wei = self.base_fee_wei;
+        let base_fee = u64::try_from(base_fee_wei).map_err(|_| {
             Error::Transaction("configured EVM base fee overflows revm u64".to_string())
         })?;
         Ok(revm::context::BlockEnv {
             number: revm::primitives::U256::from(self.number),
             beneficiary: tx::to_revm_address(self.beneficiary),
             timestamp: revm::primitives::U256::from(self.timestamp),
-            gas_limit: self.gas_limit.unwrap_or(config.block_gas_limit),
-            basefee,
+            gas_limit: self.block_gas_limit,
+            basefee: base_fee,
             ..Default::default()
         })
     }
@@ -118,23 +130,24 @@ mod tests {
 
     #[test]
     fn should_use_wei_denominated_base_fee_for_revm_block() {
-        let config = EvmConfig {
+        let config = casper_types::EvmConfig {
             base_fee: 3,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
             ..Default::default()
         };
+        let base_fee_wei = u128::from(config.base_fee) * u128::from(config.wei_per_mote);
         let context = BlockContext {
             number: 1,
             timestamp: 1,
             beneficiary: evm::Address::ZERO,
-            gas_limit: None,
-            base_fee: None,
+            block_gas_limit: config.block_gas_limit,
+            base_fee_wei,
         };
         let block = context
-            .to_revm_block(&config)
+            .to_revm_block()
             .expect("base fee should fit in revm block context");
 
-        assert_eq!(u128::from(block.basefee), config.base_fee_wei());
+        assert_eq!(u128::from(block.basefee), base_fee_wei);
         assert_ne!(block.basefee, config.base_fee);
     }
 }

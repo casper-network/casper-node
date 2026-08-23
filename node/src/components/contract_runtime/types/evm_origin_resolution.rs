@@ -11,6 +11,7 @@ pub(crate) struct EvmOriginResolution {
     // State mutation to perform later, inside the same tracking copy as EVM
     // execution. Origin resolution itself is read-only so a rejected
     // transaction does not create accounts or links as a side effect.
+    #[allow(unused)] // TODO remove this when ready
     identity_plan: EvmIdentityInstruction,
 }
 
@@ -29,6 +30,7 @@ impl EvmOriginResolution {
         self.balance_identifier.clone()
     }
 
+    #[allow(unused)] // TODO remove this when ready
     pub(crate) fn identity_plan(&self) -> EvmIdentityInstruction {
         self.identity_plan
     }

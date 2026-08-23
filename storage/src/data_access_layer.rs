@@ -56,8 +56,8 @@ mod trie;
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
 pub use balance::{
-    BalanceHolds, BalanceHoldsWithProof, BalanceIdentifier, BalanceIdentifierFromInitiatorError,
-    BalanceRequest, BalanceResult, GasHoldBalanceHandling, ProofHandling, ProofsResult,
+    BalanceHolds, BalanceHoldsWithProof, BalanceIdentifier, BalanceIdentifierError, BalanceRequest,
+    BalanceResult, GasHoldBalanceHandling, ProofHandling, ProofsResult,
 };
 pub use balance_hold::{
     BalanceHoldError, BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult,

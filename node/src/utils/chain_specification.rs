@@ -48,17 +48,6 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
         return false;
     }
 
-    // EVM fee accounting uses u128/U512, but the current revm BlockEnv stores
-    // the block base fee as u64. Reject chainspecs this executor cannot run.
-    if u64::try_from(chainspec.evm_config.base_fee_wei()).is_err() {
-        error!(
-            base_fee = chainspec.evm_config.base_fee,
-            wei_per_mote = chainspec.evm_config.wei_per_mote,
-            "EVM base fee converted to wei exceeds the current revm BlockEnv base fee limit",
-        );
-        return false;
-    }
-
     if chainspec.core_config.consensus_protocol == ConsensusProtocolName::Highway {
         if chainspec.core_config.minimum_block_time > chainspec.highway_config.maximum_round_length
         {

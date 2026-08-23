@@ -10,7 +10,7 @@ pub mod transaction_v1_payload;
 use super::InitiatorAddrAndSecretKey;
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    crypto,
+    crypto, Chainspec, Motes, PricingModeError,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, TransactionConfig, LARGE_WASM_LANE_ID};
@@ -279,6 +279,25 @@ impl TransactionV1 {
         } else {
             None
         }
+    }
+
+    /// Returns calculated gas cost.
+    pub fn gas_cost(
+        &self,
+        chainspec: &Chainspec,
+        lane_id: u8,
+        gas_price: u8,
+    ) -> Result<Motes, PricingModeError> {
+        if let Ok(TransactionTarget::Native) = self.get_transaction_target() {
+            // retro-compatibility for incentivized native transfer cost
+            if let Ok(TransactionEntryPoint::Transfer) = self.get_transaction_entry_point() {
+                return Ok(Motes::new(
+                    chainspec.system_costs_config.mint_costs().transfer,
+                ));
+            };
+        }
+        let pricing_mode = self.pricing_mode();
+        pricing_mode.gas_cost(chainspec, lane_id, gas_price)
     }
 
     /// Returns a random, valid but possibly expired transaction.

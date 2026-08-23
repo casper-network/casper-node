@@ -2,15 +2,18 @@ mod meta_deploy;
 mod meta_evm;
 mod meta_transaction_v1;
 mod transaction_header;
+pub(crate) mod wasm_v2_request;
+pub(crate) use wasm_v2_request::TransactionInput as WasmV2TransactionInput;
+
 use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, SessionInputData};
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
-    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
-    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
-    INSTALL_UPGRADE_LANE_ID,
+    EvmTransactionError, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
+    InvalidTransaction, Motes, Phase, PricingMode, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    INSTALL_UPGRADE_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use meta_deploy::MetaDeploy;
@@ -25,15 +28,46 @@ use super::fields_container::{ARGS_MAP_KEY, ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY}
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) enum MetaTransaction {
+    Unset,
     Deploy(MetaDeploy),
     Evm(MetaEvmTransaction),
     V1(MetaTransactionV1),
 }
 
 impl MetaTransaction {
+    /// Create a new `MetaTransaction` from a `Transaction`, using default min_gas_price.
+    pub(crate) fn new_from_txn(
+        transaction: &Transaction,
+        chainspec: &Chainspec,
+    ) -> Result<Self, InvalidTransaction> {
+        let gas_price = chainspec.vacancy_config.min_gas_price;
+        Self::new_from_txn_with_price(transaction, chainspec, gas_price)
+    }
+
+    /// Create a new `MetaTransaction` from a `Transaction`.
+    pub(crate) fn new_from_txn_with_price(
+        transaction: &Transaction,
+        chainspec: &Chainspec,
+        gas_price: u8,
+    ) -> Result<Self, InvalidTransaction> {
+        match transaction {
+            Transaction::Deploy(deploy) => {
+                MetaDeploy::from_deploy(deploy.clone(), chainspec, gas_price)
+                    .map(MetaTransaction::Deploy)
+            }
+            Transaction::V1(v1) => MetaTransactionV1::from_transaction_v1(v1, chainspec, gas_price)
+                .map(MetaTransaction::V1),
+            Transaction::Evm(evm) => {
+                MetaEvmTransaction::from_evm_transaction(evm, chainspec, gas_price)
+                    .map(MetaTransaction::Evm)
+            }
+        }
+    }
+
     /// Returns the `TransactionHash` identifying this transaction.
     pub(crate) fn hash(&self) -> TransactionHash {
         match self {
+            MetaTransaction::Unset => TransactionHash::default(),
             MetaTransaction::Deploy(meta_deploy) => {
                 TransactionHash::from(*meta_deploy.deploy().hash())
             }
@@ -45,6 +79,7 @@ impl MetaTransaction {
     /// Timestamp.
     pub(crate) fn timestamp(&self) -> Timestamp {
         match self {
+            MetaTransaction::Unset => Timestamp::default(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().header().timestamp(),
             MetaTransaction::Evm(evm) => evm.timestamp(),
             MetaTransaction::V1(v1) => v1.timestamp(),
@@ -54,6 +89,7 @@ impl MetaTransaction {
     /// Time to live.
     pub(crate) fn ttl(&self) -> TimeDiff {
         match self {
+            MetaTransaction::Unset => TimeDiff::default(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().header().ttl(),
             MetaTransaction::Evm(evm) => evm.ttl(),
             MetaTransaction::V1(v1) => v1.ttl(),
@@ -63,6 +99,7 @@ impl MetaTransaction {
     /// Returns the `Approval`s for this transaction.
     pub(crate) fn approvals(&self) -> BTreeSet<Approval> {
         match self {
+            MetaTransaction::Unset => BTreeSet::new(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().approvals().clone(),
             MetaTransaction::Evm(evm) => evm.approval().cloned().into_iter().collect(),
             MetaTransaction::V1(v1) => v1.approvals().clone(),
@@ -72,6 +109,7 @@ impl MetaTransaction {
     /// Returns the Casper initiator address.
     pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
         match self {
+            MetaTransaction::Unset => InitiatorAddr::AccountHash(AccountHash::new([0; 32])),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.initiator_addr().clone(),
             MetaTransaction::Evm(evm) => evm.initiator_addr(),
             MetaTransaction::V1(txn) => txn.initiator_addr().clone(),
@@ -79,8 +117,9 @@ impl MetaTransaction {
     }
 
     /// Returns the set of account hashes corresponding to the public keys of the approvals.
-    pub(crate) fn signers(&self) -> BTreeSet<AccountHash> {
+    pub(crate) fn authorization_keys(&self) -> BTreeSet<AccountHash> {
         match self {
+            MetaTransaction::Unset => BTreeSet::new(),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .approvals()
@@ -104,7 +143,7 @@ impl MetaTransaction {
     pub(crate) fn is_native(&self) -> bool {
         match self {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().is_transfer(),
-            MetaTransaction::Evm(_) => false,
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
             MetaTransaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
         }
     }
@@ -113,7 +152,31 @@ impl MetaTransaction {
         match self {
             MetaTransaction::Deploy(meta_deploy) => !meta_deploy.deploy().is_transfer(),
             MetaTransaction::V1(v1_txn) => *v1_txn.target() != TransactionTarget::Native,
-            MetaTransaction::Evm(_) => false,
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+        }
+    }
+
+    pub(crate) fn is_v1_wasm(&self) -> bool {
+        match self {
+            MetaTransaction::Deploy(_) => true,
+            MetaTransaction::V1(v1) => v1.is_v1_wasm(),
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+        }
+    }
+
+    pub(crate) fn is_v2_wasm(&self) -> bool {
+        match self {
+            MetaTransaction::Deploy(_) => false,
+            MetaTransaction::V1(v1) => v1.is_v2_wasm(),
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
+        }
+    }
+
+    /// Returns true if this is an evm txn, else false.
+    pub(crate) fn is_evm(&self) -> bool {
+        match self {
+            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => false,
+            MetaTransaction::Evm(_) => true,
         }
     }
 
@@ -124,7 +187,7 @@ impl MetaTransaction {
                 .deploy()
                 .payment()
                 .is_standard_payment(Phase::Payment),
-            MetaTransaction::Evm(_) => true,
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => true,
             MetaTransaction::V1(v1) => {
                 if let PricingMode::PaymentLimited {
                     standard_payment, ..
@@ -138,59 +201,16 @@ impl MetaTransaction {
         }
     }
 
-    /// Should this transaction use custom payment processing?
-    pub(crate) fn is_custom_payment(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(meta_deploy) => !meta_deploy
-                .deploy()
-                .payment()
-                .is_standard_payment(Phase::Payment),
-            MetaTransaction::Evm(_) => false,
-            MetaTransaction::V1(v1) => {
-                if let PricingMode::PaymentLimited {
-                    standard_payment, ..
-                } = v1.pricing_mode()
-                {
-                    !*standard_payment
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    /// Authorization keys.
-    pub(crate) fn authorization_keys(&self) -> BTreeSet<AccountHash> {
-        match self {
-            MetaTransaction::Deploy(meta_deploy) => meta_deploy
-                .deploy()
-                .approvals()
-                .iter()
-                .map(|approval| approval.signer().to_account_hash())
-                .collect(),
-            MetaTransaction::Evm(evm) => evm
-                .approval()
-                .into_iter()
-                .map(|approval| approval.signer().to_account_hash())
-                .collect(),
-            MetaTransaction::V1(transaction_v1) => transaction_v1
-                .approvals()
-                .iter()
-                .map(|approval| approval.signer().to_account_hash())
-                .collect(),
-        }
-    }
-
     /// The session args.
     pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
         match self {
             MetaTransaction::Deploy(meta_deploy) => Cow::Owned(TransactionArgs::Named(
                 meta_deploy.deploy().session().args().clone(),
             )),
-            MetaTransaction::Evm(_) => {
-                unreachable!("EVM transactions do not have Casper session args")
-            }
             MetaTransaction::V1(transaction_v1) => Cow::Borrowed(transaction_v1.args()),
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+                unreachable!("This type of transaction does not have Casper session args")
+            }
         }
     }
 
@@ -200,16 +220,17 @@ impl MetaTransaction {
             MetaTransaction::Deploy(meta_deploy) => {
                 meta_deploy.deploy().session().entry_point_name().into()
             }
-            MetaTransaction::Evm(_) => {
-                unreachable!("EVM transactions do not have Casper entry points")
-            }
             MetaTransaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+                unreachable!("This type of transaction does not have Casper entry points")
+            }
         }
     }
 
     /// The transaction lane.
     pub(crate) fn transaction_lane(&self) -> u8 {
         match self {
+            MetaTransaction::Unset => 0,
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.lane_id(),
             MetaTransaction::Evm(evm) => evm.lane_id(),
             MetaTransaction::V1(v1) => v1.lane_id(),
@@ -219,6 +240,7 @@ impl MetaTransaction {
     /// Returns the gas price tolerance.
     pub(crate) fn gas_price_tolerance(&self) -> Result<u8, InvalidTransaction> {
         match self {
+            MetaTransaction::Unset => Ok(0),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .gas_price_tolerance()
@@ -228,8 +250,29 @@ impl MetaTransaction {
         }
     }
 
+    /// Returns the min_cost.
+    pub(crate) fn initial_cost(&self) -> Motes {
+        match self {
+            MetaTransaction::Unset => Motes::zero(),
+            MetaTransaction::Deploy(md) => md.initial_cost(),
+            MetaTransaction::Evm(met) => met.initial_cost(),
+            MetaTransaction::V1(mv1) => mv1.initial_cost(),
+        }
+    }
+
+    /// Returns the cost_estimate.
+    pub(crate) fn cost_estimate(&self) -> Option<U512> {
+        match self {
+            MetaTransaction::Unset => None,
+            MetaTransaction::Deploy(md) => Some(md.initial_cost().value()),
+            MetaTransaction::V1(mv1) => Some(mv1.initial_cost().value()),
+            MetaTransaction::Evm(met) => met.required_balance(met.initial_cost().value()),
+        }
+    }
+
     pub(crate) fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, InvalidTransaction> {
         match self {
+            MetaTransaction::Unset => Ok(Gas::zero()),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .gas_limit(chainspec)
@@ -239,18 +282,26 @@ impl MetaTransaction {
         }
     }
 
+    pub(crate) fn min_cost(
+        &self,
+        gas_limit: U512,
+        baseline_motes_amount: U512,
+    ) -> Result<Motes, InvalidTransaction> {
+        let floor = if self.is_evm() {
+            gas_limit.min(baseline_motes_amount)
+        } else {
+            gas_limit.max(baseline_motes_amount)
+        };
+        let min_cost = floor.max(self.initial_cost().value());
+        Ok(Motes::new(min_cost))
+    }
+
     /// Is the transaction the original transaction variant.
     pub(crate) fn is_deploy_transaction(&self) -> bool {
         match self {
+            MetaTransaction::Unset | MetaTransaction::Evm(_) | MetaTransaction::V1(_) => false,
             MetaTransaction::Deploy(_) => true,
-            MetaTransaction::Evm(_) => false,
-            MetaTransaction::V1(_) => false,
         }
-    }
-
-    /// Does this transaction provide the hash addr for a specific contract to invoke directly?
-    pub(crate) fn is_contract_by_hash_invocation(&self) -> bool {
-        self.contract_direct_address().is_some()
     }
 
     /// Returns a `hash_addr` for a targeted contract, if known.
@@ -267,34 +318,9 @@ impl MetaTransaction {
             MetaTransaction::V1(v1) => {
                 return v1.contract_direct_address();
             }
-            MetaTransaction::Evm(_) => {}
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => {}
         }
         None
-    }
-
-    /// Create a new `MetaTransaction` from a `Transaction`.
-    pub(crate) fn from_transaction(
-        transaction: &Transaction,
-        pricing_handling: PricingHandling,
-        transaction_config: &TransactionConfig,
-    ) -> Result<Self, InvalidTransaction> {
-        match transaction {
-            Transaction::Deploy(deploy) => MetaDeploy::from_deploy(
-                deploy.clone(),
-                pricing_handling,
-                &transaction_config.transaction_v1_config,
-            )
-            .map(MetaTransaction::Deploy),
-            Transaction::V1(v1) => MetaTransactionV1::from_transaction_v1(
-                v1,
-                &transaction_config.transaction_v1_config,
-            )
-            .map(MetaTransaction::V1),
-            Transaction::Evm(evm) => {
-                MetaEvmTransaction::from_evm_transaction(evm, transaction_config)
-                    .map(MetaTransaction::Evm)
-            }
-        }
     }
 
     pub(crate) fn is_config_compliant(
@@ -304,6 +330,7 @@ impl MetaTransaction {
         at: Timestamp,
     ) -> Result<(), InvalidTransaction> {
         match self {
+            MetaTransaction::Unset => Ok(()),
             MetaTransaction::Deploy(meta_deploy) => meta_deploy
                 .deploy()
                 .is_config_compliant(chainspec, timestamp_leeway, at)
@@ -317,10 +344,15 @@ impl MetaTransaction {
 
     pub(crate) fn payload_hash(&self) -> Digest {
         match self {
+            MetaTransaction::Unset => Digest::default(),
             MetaTransaction::Deploy(meta_deploy) => *meta_deploy.deploy().body_hash(),
             MetaTransaction::Evm(evm) => evm.payload_hash(),
             MetaTransaction::V1(v1) => *v1.payload_hash(),
         }
+    }
+
+    pub(crate) fn to_transaction_info(&self) -> WasmV2TransactionInput<'_> {
+        WasmV2TransactionInput::new(self)
     }
 
     pub(crate) fn to_session_input_data(&self) -> SessionInputData<'_> {
@@ -333,13 +365,10 @@ impl MetaTransaction {
                     deploy.hash(),
                     deploy.session(),
                     initiator_addr,
-                    self.signers().clone(),
+                    self.authorization_keys().clone(),
                     is_standard_payment,
                 );
                 SessionInputData::DeploySessionData { data }
-            }
-            MetaTransaction::Evm(_) => {
-                unreachable!("EVM transactions do not have Casper session input data")
             }
             MetaTransaction::V1(v1) => {
                 let initiator_addr = v1.initiator_addr();
@@ -351,60 +380,13 @@ impl MetaTransaction {
                     v1.hash(),
                     v1.pricing_mode(),
                     initiator_addr,
-                    self.signers().clone(),
+                    self.authorization_keys().clone(),
                     is_standard_payment,
                 );
                 SessionInputData::SessionDataV1 { data }
             }
-        }
-    }
-
-    /// Returns the `SessionInputData` for a payment code if present.
-    pub(crate) fn to_payment_input_data(&self) -> SessionInputData<'_> {
-        match self {
-            MetaTransaction::Deploy(meta_deploy) => {
-                let initiator_addr = meta_deploy.initiator_addr();
-                let is_standard_payment = matches!(meta_deploy.deploy().payment(), ExecutableDeployItem::ModuleBytes { module_bytes, .. } if module_bytes.is_empty());
-                let deploy = meta_deploy.deploy();
-                let data = SessionDataDeploy::new(
-                    deploy.hash(),
-                    deploy.payment(),
-                    initiator_addr,
-                    self.signers().clone(),
-                    is_standard_payment,
-                );
-                SessionInputData::DeploySessionData { data }
-            }
-            MetaTransaction::Evm(_) => {
-                unreachable!("EVM transactions do not have Casper payment input data")
-            }
-            MetaTransaction::V1(v1) => {
-                let initiator_addr = v1.initiator_addr();
-
-                let is_standard_payment = if let PricingMode::PaymentLimited {
-                    standard_payment,
-                    ..
-                } = v1.pricing_mode()
-                {
-                    *standard_payment
-                } else {
-                    true
-                };
-
-                // Under V1 transaction we don't have a separate payment code, and custom payment is
-                // executed as session code with a phase set to Payment.
-                let data = SessionDataV1::new(
-                    v1.args().as_named().expect("V1 wasm args should be named and validated at the transaction acceptor level"),
-                    v1.target(),
-                    v1.entry_point(),
-                    v1.lane_id() == INSTALL_UPGRADE_LANE_ID,
-                    v1.hash(),
-                    v1.pricing_mode(),
-                    initiator_addr,
-                    self.signers().clone(),
-                    is_standard_payment,
-                );
-                SessionInputData::SessionDataV1 { data }
+            MetaTransaction::Unset | MetaTransaction::Evm(_) => {
+                unreachable!("These types of transactions do not have Casper session input data")
             }
         }
     }
@@ -415,37 +397,20 @@ impl MetaTransaction {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.deploy().serialized_length(),
             MetaTransaction::Evm(evm) => evm.serialized_length(),
             MetaTransaction::V1(v1) => v1.serialized_length(),
-        }
-    }
-
-    pub(crate) fn is_v1_wasm(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(_) => true,
-            MetaTransaction::Evm(_) => false,
-            MetaTransaction::V1(v1) => v1.is_v1_wasm(),
-        }
-    }
-
-    pub(crate) fn is_v2_wasm(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(_) => false,
-            MetaTransaction::Evm(_) => false,
-            MetaTransaction::V1(v1) => v1.is_v2_wasm(),
+            MetaTransaction::Unset => 0,
         }
     }
 
     pub(crate) fn seed(&self) -> Option<[u8; 32]> {
         match self {
-            MetaTransaction::Deploy(_) => None,
-            MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => v1.seed(),
         }
     }
 
     pub(crate) fn is_install_or_upgrade(&self) -> bool {
         match self {
-            MetaTransaction::Deploy(_) => false,
-            MetaTransaction::Evm(_) => false,
+            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => false,
             MetaTransaction::V1(meta_transaction_v1) => {
                 meta_transaction_v1.lane_id() == INSTALL_UPGRADE_LANE_ID
             }
@@ -454,17 +419,29 @@ impl MetaTransaction {
 
     pub(crate) fn transferred_value(&self) -> Option<u64> {
         match self {
-            MetaTransaction::Deploy(_) => None,
-            MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => Some(v1.transferred_value()),
         }
     }
 
     pub(crate) fn target(&self) -> Option<TransactionTarget> {
         match self {
-            MetaTransaction::Deploy(_) => None,
-            MetaTransaction::Evm(_) => None,
+            MetaTransaction::Deploy(_) | MetaTransaction::Unset | MetaTransaction::Evm(_) => None,
             MetaTransaction::V1(v1) => Some(v1.target().clone()),
+        }
+    }
+
+    pub(crate) fn evm_signer(&self) -> Option<Result<&PublicKey, EvmTransactionError>> {
+        match self {
+            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
+            MetaTransaction::Evm(etxn) => Some(etxn.transaction().signer()),
+        }
+    }
+
+    pub(crate) fn evm_effective_gas_cost(&self, base_fee: u128) -> Option<u128> {
+        match self {
+            MetaTransaction::Unset | MetaTransaction::Deploy(_) | MetaTransaction::V1(_) => None,
+            MetaTransaction::Evm(etxn) => Some(etxn.effective_gas_cost(base_fee)),
         }
     }
 
@@ -479,6 +456,7 @@ impl MetaTransaction {
 impl Display for MetaTransaction {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            MetaTransaction::Unset => write!(formatter, "unset"),
             MetaTransaction::Deploy(meta_deploy) => Display::fmt(meta_deploy.deploy(), formatter),
             MetaTransaction::Evm(evm) => Display::fmt(evm, formatter),
             MetaTransaction::V1(txn) => Display::fmt(txn, formatter),
@@ -495,20 +473,8 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
     use casper_types::calculate_transaction_lane;
 
     match transaction {
-        Transaction::Deploy(_) => {
-            let meta = MetaTransaction::from_transaction(
-                transaction,
-                chainspec.core_config.pricing_handling,
-                &chainspec.transaction_config,
-            )?;
-            Ok(meta.transaction_lane())
-        }
-        Transaction::Evm(_) => {
-            let meta = MetaTransaction::from_transaction(
-                transaction,
-                chainspec.core_config.pricing_handling,
-                &chainspec.transaction_config,
-            )?;
+        Transaction::Deploy(_) | Transaction::Evm(_) => {
+            let meta = MetaTransaction::new_from_txn_with_price(transaction, &chainspec, 1)?;
             Ok(meta.transaction_lane())
         }
         Transaction::V1(v1) => {
@@ -561,12 +527,8 @@ mod tests {
         let chainspec = chainspec();
         let evm_transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
         let transaction = Transaction::from_evm(evm_transaction.clone());
-        let meta = MetaTransaction::from_transaction(
-            &transaction,
-            chainspec.core_config.pricing_handling,
-            &chainspec.transaction_config,
-        )
-        .expect("EVM transaction metadata should be created");
+        let meta = MetaTransaction::new_from_txn_with_price(&transaction, &chainspec, 1)
+            .expect("EVM transaction metadata should be created");
 
         assert_eq!(meta.hash(), transaction.hash());
         assert_eq!(meta.timestamp(), evm_transaction.timestamp());
@@ -615,12 +577,8 @@ mod tests {
             .set_wasm_lanes(vec![]);
         let transaction =
             Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000));
-        let error = MetaTransaction::from_transaction(
-            &transaction,
-            chainspec.core_config.pricing_handling,
-            &chainspec.transaction_config,
-        )
-        .expect_err("EVM transaction should need a lane");
+        let error = MetaTransaction::new_from_txn_with_price(&transaction, &chainspec, 1)
+            .expect_err("EVM transaction should need a lane");
         assert!(matches!(
             error,
             InvalidTransaction::Evm(EvmTransactionError::MissingTransactionLane)
@@ -661,7 +619,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: CHAIN_ID,
+                expected: _CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
         ));
@@ -722,7 +680,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: CHAIN_ID,
+                expected: _CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
         ));
@@ -792,7 +750,7 @@ mod tests {
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: CHAIN_ID,
+                expected: _CHAIN_ID,
                 actual
             })) if actual == CHAIN_ID + 1
         ));
@@ -899,10 +857,10 @@ mod tests {
     }
 
     fn evm_meta(chainspec: &Chainspec, evm_transaction: EvmTransaction) -> MetaTransaction {
-        MetaTransaction::from_transaction(
+        MetaTransaction::new_from_txn_with_price(
             &Transaction::from_evm(evm_transaction),
-            chainspec.core_config.pricing_handling,
-            &chainspec.transaction_config,
+            &chainspec,
+            1,
         )
         .expect("EVM transaction metadata should be created")
     }
@@ -1011,12 +969,18 @@ mod proptests {
     proptest! {
         #[test]
         fn construction_roundtrip(transaction in legal_transaction_arb()) {
+            let chainspec = {
             let mut transaction_config = TransactionConfig::default();
             transaction_config.transaction_v1_config.set_wasm_lanes(vec![
                 TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
                 TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
-            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
+                let mut chainspec = Chainspec::default();
+                chainspec.transaction_config = transaction_config;
+                chainspec.with_pricing_handling(PricingHandling::PaymentLimited);
+                chainspec
+            };
+            let maybe_transaction = MetaTransaction::new_from_txn_with_price(&transaction, &chainspec, 1);
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);
         }
     }

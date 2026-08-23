@@ -73,25 +73,31 @@ pub enum BalanceIdentifier {
 }
 
 /// Error converting a transaction initiator into a balance identifier.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum BalanceIdentifierFromInitiatorError {
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum BalanceIdentifierError {
+    /// Failed to derive balanced identifier from initiator addr.
+    TryFromInitiatorAddr(InitiatorAddr),
     /// EOA initiators require state-aware EVM origin resolution.
     Eoa(evm::Address),
 }
 
-impl Display for BalanceIdentifierFromInitiatorError {
+impl Display for BalanceIdentifierError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            BalanceIdentifierFromInitiatorError::Eoa(address) => write!(
+            BalanceIdentifierError::Eoa(address) => write!(
                 formatter,
                 "EOA initiator address {address:?} cannot directly identify a balance"
+            ),
+            BalanceIdentifierError::TryFromInitiatorAddr(init_addr) => write!(
+                formatter,
+                "failed to derive balance identifier from initiator address {init_addr:?}"
             ),
         }
     }
 }
 
 impl TryFrom<InitiatorAddr> for BalanceIdentifier {
-    type Error = BalanceIdentifierFromInitiatorError;
+    type Error = BalanceIdentifierError;
 
     fn try_from(value: InitiatorAddr) -> Result<Self, Self::Error> {
         match value {
@@ -99,7 +105,7 @@ impl TryFrom<InitiatorAddr> for BalanceIdentifier {
             InitiatorAddr::AccountHash(account_hash) => {
                 Ok(BalanceIdentifier::Account(account_hash))
             }
-            InitiatorAddr::Eoa(address) => Err(BalanceIdentifierFromInitiatorError::Eoa(address)),
+            InitiatorAddr::Eoa(address) => Err(BalanceIdentifierError::Eoa(address)),
         }
     }
 }

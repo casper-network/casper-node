@@ -1,6 +1,13 @@
 pub(crate) mod arg_handling;
 mod deploy;
 mod meta_transaction;
+pub(crate) use meta_transaction::{
+    wasm_v2_request::{
+        InvalidRequest as WasmV2InvalidRequest, WasmV2Error, WasmV2Request, WasmV2Result,
+    },
+    WasmV2TransactionInput,
+};
+
 mod transaction_footprint;
 pub(crate) use deploy::LegacyDeploy;
 #[cfg(test)]
