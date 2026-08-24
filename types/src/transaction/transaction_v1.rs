@@ -8,6 +8,9 @@ pub mod transaction_v1_payload;
 
 #[cfg(any(feature = "std", feature = "testing", test))]
 use super::InitiatorAddrAndSecretKey;
+#[cfg(any(feature = "std", test))]
+use crate::{Chainspec, Motes, PricingModeError};
+
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     crypto,
@@ -281,6 +284,26 @@ impl TransactionV1 {
         }
     }
 
+    /// Returns calculated gas cost.
+    #[cfg(any(feature = "std", test))]
+    pub fn gas_cost(
+        &self,
+        chainspec: &Chainspec,
+        lane_id: u8,
+        gas_price: u8,
+    ) -> Result<Motes, PricingModeError> {
+        if let Ok(TransactionTarget::Native) = self.get_transaction_target() {
+            // retro-compatibility for incentivized native transfer cost
+            if let Ok(TransactionEntryPoint::Transfer) = self.get_transaction_entry_point() {
+                return Ok(Motes::new(
+                    chainspec.system_costs_config.mint_costs().transfer,
+                ));
+            };
+        }
+        let pricing_mode = self.pricing_mode();
+        pricing_mode.gas_cost(chainspec, lane_id, gas_price)
+    }
+
     /// Returns a random, valid but possibly expired transaction.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -396,7 +419,7 @@ impl TransactionV1 {
         )
     }
 
-    /// Returns result of attempting to deserailize a field from the amorphic `fields` container.
+    /// Returns result of attempting to deserialize a field from the amorphic `fields` container.
     pub fn deserialize_field<T: FromBytes>(
         &self,
         index: u16,
@@ -524,7 +547,7 @@ impl TransactionV1 {
 }
 
 impl ToBytes for TransactionV1 {
-    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let expected_payload_sizes = self.serialized_field_lengths();
         CalltableSerializationEnvelopeBuilder::new(expected_payload_sizes)?
             .add_field(HASH_FIELD_INDEX, &self.hash)?

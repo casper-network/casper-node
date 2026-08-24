@@ -67,7 +67,7 @@ fn try_add_contract_version(
         let tx_args = txn
             .deserialize_field::<TransactionArgs>(ARGS_MAP_KEY)
             .unwrap();
-        let args = tx_args.as_named().unwrap();
+        let args = tx_args.as_named().unwrap().clone();
         let target = txn
             .deserialize_field::<TransactionTarget>(TARGET_MAP_KEY)
             .unwrap();
@@ -76,11 +76,11 @@ fn try_add_contract_version(
             .unwrap();
         let session_input_data = to_v1_session_input_data(
             is_standard_payment,
-            initiator_addr,
+            initiator_addr.clone(),
             args,
-            &target,
-            &entry_point,
-            &wrapped,
+            target,
+            entry_point,
+            wrapped,
         );
         assert_eq!(
             session_input_data.is_install_upgrade_allowed(),
@@ -173,33 +173,34 @@ fn build_transaction(
     transaction
 }
 
-fn to_v1_session_input_data<'a>(
+fn to_v1_session_input_data(
     is_standard_payment: bool,
-    initiator_addr: &'a InitiatorAddr,
-    args: &'a RuntimeArgs,
-    target: &'a TransactionTarget,
-    entry_point: &'a TransactionEntryPoint,
-    txn: &'a Transaction,
-) -> SessionInputData<'a> {
+    initiator_addr: InitiatorAddr,
+    args: RuntimeArgs,
+    target: TransactionTarget,
+    entry_point: TransactionEntryPoint,
+    txn: Transaction,
+) -> SessionInputData {
     let is_install_upgrade = match target {
         TransactionTarget::Session {
             is_install_upgrade, ..
-        } => *is_install_upgrade,
+        } => is_install_upgrade,
         _ => false,
     };
-    match txn {
+    match &txn {
         Transaction::Deploy(_) => panic!("unexpected deploy transaction"),
         Transaction::Evm(_) => panic!("unexpected EVM transaction"),
         Transaction::V1(transaction_v1) => {
+            let signers = txn.signers();
             let data = SessionDataV1::new(
                 args,
                 target,
                 entry_point,
                 is_install_upgrade,
-                transaction_v1.hash(),
-                transaction_v1.pricing_mode(),
+                *transaction_v1.hash(),
+                transaction_v1.pricing_mode().clone(),
                 initiator_addr,
-                txn.signers().clone(),
+                signers,
                 is_standard_payment,
             );
             SessionInputData::SessionDataV1 { data }

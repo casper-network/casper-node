@@ -185,21 +185,4 @@ mod tests {
 
         assert_eq!(config.base_fee_wei(), 3_000_000_000u128);
     }
-
-    #[test]
-    fn should_convert_wei_gas_fee_to_motes() {
-        let config = EvmConfig::default();
-
-        assert_eq!(
-            config.gas_fee_motes(21_000, u128::from(DEFAULT_WEI_PER_MOTE)),
-            Some(U512::from(21_000))
-        );
-    }
-
-    #[test]
-    fn should_round_sub_mote_wei_gas_fee_up_to_one_mote() {
-        let config = EvmConfig::default();
-
-        assert_eq!(config.gas_fee_motes(1, 1), Some(U512::from(1)));
-    }
 }

@@ -23,7 +23,7 @@ use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
 pub(crate) use block::{
-    compute_approvals_checksum, create_single_block_rewarded_signatures,
+    compute_transaction_ids_checksum, create_single_block_rewarded_signatures,
     BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock,
     InvalidProposalError, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };

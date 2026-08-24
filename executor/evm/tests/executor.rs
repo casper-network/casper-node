@@ -104,8 +104,8 @@ fn block() -> BlockContext {
         number: 1,
         timestamp: 1_714_000_000,
         beneficiary: evm::Address::ZERO,
-        gas_limit: None,
-        base_fee: None,
+        block_gas_limit: None,
+        base_fee_wei: None,
     }
 }
 
@@ -1793,7 +1793,7 @@ fn checked_calls_enforce_transaction_validation() {
     let (mut tracking_copy, _tempdir) = tracking_copy();
 
     let mut request = checked_call_request(from, Some(recipient), Vec::new(), CasperU256::zero());
-    request.block.base_fee = Some(1);
+    request.block.base_fee_wei = Some(1);
     assert!(matches!(
         executor.execute(&mut tracking_copy, request),
         Err(Error::Revm(_))

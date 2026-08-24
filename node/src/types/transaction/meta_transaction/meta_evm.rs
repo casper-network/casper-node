@@ -2,8 +2,8 @@ use std::fmt::{self, Display, Formatter};
 
 use casper_types::{
     bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
-    EvmTransactionKind, Gas, InitiatorAddr, InvalidTransaction, TimeDiff, Timestamp,
-    TransactionConfig, TransactionHash,
+    EvmTransactionKind, Gas, InitiatorAddr, InvalidTransaction, Motes, TimeDiff, Timestamp,
+    TransactionHash, U512,
 };
 use serde::Serialize;
 
@@ -12,15 +12,19 @@ use serde::Serialize;
 pub(crate) struct MetaEvmTransaction {
     transaction: EvmTransaction,
     lane_id: u8,
+    initial_cost: Motes,
+    gas_price: u8,
     payload_hash: Digest,
 }
 
 impl MetaEvmTransaction {
     pub(crate) fn from_evm_transaction(
         transaction: &EvmTransaction,
-        transaction_config: &TransactionConfig,
+        chainspec: &Chainspec,
+        gas_price: u8,
     ) -> Result<Self, InvalidTransaction> {
-        let lane_id = transaction_config
+        let lane_id = chainspec
+            .transaction_config
             .transaction_v1_config
             .wasm_lanes()
             .iter()
@@ -28,9 +32,22 @@ impl MetaEvmTransaction {
             .map(|lane| lane.id())
             .ok_or(EvmTransactionError::MissingTransactionLane)?;
         let payload_hash = Digest::hash(transaction.signing_payload()?);
+
+        let evm_config = &chainspec.evm_config;
+
+        let limit = transaction.gas_limit();
+        let effective_gas_price = transaction.effective_gas_price(evm_config.base_fee_wei());
+        let max_fee_amount = evm_config
+            .gas_fee_motes(limit, effective_gas_price)
+            .unwrap_or(U512::zero());
+
+        let initial_cost = Motes::from_price(max_fee_amount, gas_price).unwrap_or(Motes::zero());
+
         Ok(MetaEvmTransaction {
             transaction: transaction.clone(),
             lane_id,
+            initial_cost,
+            gas_price,
             payload_hash,
         })
     }
@@ -63,8 +80,24 @@ impl MetaEvmTransaction {
         self.lane_id
     }
 
+    pub(crate) fn initial_cost(&self) -> Motes {
+        self.initial_cost
+    }
+
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
+    }
+
+    pub(crate) fn required_balance(&self, fee_amount: U512) -> Option<U512> {
+        self.transaction.required_balance(fee_amount)
+    }
+
     pub(crate) fn gas_limit(&self) -> Gas {
         Gas::new(self.transaction.gas_limit())
+    }
+
+    pub(crate) fn effective_gas_cost(&self, base_fee: u128) -> u128 {
+        self.transaction.effective_gas_price(base_fee)
     }
 
     pub(crate) fn gas_price_tolerance(&self) -> u8 {

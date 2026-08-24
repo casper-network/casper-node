@@ -70,7 +70,7 @@ pub(crate) use meta_block::{
 type ValidatorFinalitySignature = FinalitySignature;
 
 /// Returns the hash of the bytesrepr-encoded deploy_ids.
-pub(crate) fn compute_approvals_checksum(
+pub(crate) fn compute_transaction_ids_checksum(
     txn_ids: Vec<TransactionId>,
 ) -> Result<Digest, bytesrepr::Error> {
     let bytes = txn_ids.into_bytes()?;

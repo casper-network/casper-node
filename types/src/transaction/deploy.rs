@@ -422,7 +422,7 @@ impl Deploy {
             // Not config compliant if V1 runtime is disabled.
             return Err(InvalidDeploy::InvalidRuntime);
         }
-        let pricing_handling = chainspec.core_config.pricing_handling;
+        let pricing_handling = &chainspec.core_config.pricing_handling;
         let v1_config = &chainspec.transaction_config.transaction_v1_config;
         let lane_id = calculate_lane_id_for_deploy(self, pricing_handling, v1_config)?;
         let lane_definition = v1_config
@@ -1505,7 +1505,7 @@ impl GasLimited for Deploy {
     }
 
     fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
-        let pricing_handling = chainspec.core_config.pricing_handling;
+        let pricing_handling = &chainspec.core_config.pricing_handling;
         let costs = &chainspec.system_costs_config;
         let gas_limit = match pricing_handling {
             PricingHandling::PaymentLimited => {
@@ -1735,7 +1735,7 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), InvalidDeploy> {
 /// Calculate lane id for deploy
 pub fn calculate_lane_id_for_deploy(
     deploy: &Deploy,
-    pricing_handling: PricingHandling,
+    pricing_handling: &PricingHandling,
     config: &TransactionV1Config,
 ) -> Result<u8, InvalidDeploy> {
     if deploy.is_transfer() {
@@ -2781,7 +2781,7 @@ mod tests {
         assert_eq!(
             calculate_lane_id_for_deploy(
                 &deploy,
-                chainspec.core_config.pricing_handling,
+                &chainspec.core_config.pricing_handling,
                 &config.transaction_v1_config,
             ),
             Ok(MINT_LANE_ID)

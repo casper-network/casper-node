@@ -2,11 +2,10 @@ use crate::types::transaction::arg_handling;
 use casper_types::{
     bytesrepr::ToBytes, calculate_transaction_lane, crypto, Approval, Chainspec,
     ContractRuntimeTag, Digest, DisplayIter, Gas, HashAddr, InitiatorAddr, InvalidTransaction,
-    InvalidTransactionV1, PricingHandling, PricingMode, TimeDiff, Timestamp, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
+    InvalidTransactionV1, Motes, PricingHandling, PricingMode, TimeDiff, Timestamp,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
     TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
-    TransactionV1Config, TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID,
-    MINT_LANE_ID, U512,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use datasize::DataSize;
@@ -33,6 +32,8 @@ pub(crate) struct MetaTransactionV1 {
     target: TransactionTarget,
     entry_point: TransactionEntryPoint,
     lane_id: u8,
+    initial_cost: Motes,
+    gas_price: u8,
     scheduling: TransactionScheduling,
     approvals: BTreeSet<Approval>,
     serialized_length: usize,
@@ -46,14 +47,14 @@ pub(crate) struct MetaTransactionV1 {
 impl MetaTransactionV1 {
     pub(crate) fn from_transaction_v1(
         v1: &TransactionV1,
-        transaction_v1_config: &TransactionV1Config,
+        chainspec: &Chainspec,
+        gas_price: u8,
     ) -> Result<MetaTransactionV1, InvalidTransaction> {
         if matches!(v1.initiator_addr(), InitiatorAddr::Eoa(_)) {
             return Err(InvalidTransaction::V1(
                 InvalidTransactionV1::InvalidInitiatorAddr,
             ));
         }
-
         let args_binary_len = v1
             .payload()
             .fields()
@@ -84,6 +85,8 @@ impl MetaTransactionV1 {
         let payload_hash = v1.payload_hash()?;
         let serialized_length = v1.serialized_length();
         let pricing_mode = v1.payload().pricing_mode();
+        let transaction_v1_config = &chainspec.transaction_config.transaction_v1_config;
+
         let lane_id = calculate_transaction_lane(
             &entry_point,
             &target,
@@ -92,6 +95,17 @@ impl MetaTransactionV1 {
             serialized_length as u64,
             args_binary_len as u64,
         )?;
+
+        let initial_cost = match v1.gas_cost(chainspec, lane_id, gas_price) {
+            Ok(motes) => motes,
+            Err(pme) => {
+                let msg = format!("{:?}", pme);
+                return Err(InvalidTransaction::V1(
+                    InvalidTransactionV1::PricingModeError { msg },
+                ));
+            }
+        };
+
         let has_valid_hash = v1.has_valid_hash();
         let approvals = v1.approvals().clone();
         Ok(MetaTransactionV1::new(
@@ -105,6 +119,8 @@ impl MetaTransactionV1 {
             target,
             entry_point,
             lane_id,
+            initial_cost,
+            gas_price,
             scheduling,
             serialized_length,
             payload_hash,
@@ -173,6 +189,8 @@ impl MetaTransactionV1 {
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
         lane_id: u8,
+        initial_cost: Motes,
+        gas_price: u8,
         scheduling: TransactionScheduling,
         serialized_length: usize,
         payload_hash: Digest,
@@ -190,6 +208,8 @@ impl MetaTransactionV1 {
             target,
             entry_point,
             lane_id,
+            initial_cost,
+            gas_price,
             scheduling,
             approvals,
             serialized_length,
@@ -781,6 +801,16 @@ impl MetaTransactionV1 {
         }
     }
 
+    /// Returns the initial_cost.
+    pub(crate) fn initial_cost(&self) -> Motes {
+        self.initial_cost
+    }
+
+    /// Returns gas price
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
+    }
+
     /// Returns the serialized length of the transaction.
     pub(crate) fn serialized_length(&self) -> usize {
         self.serialized_length
@@ -870,8 +900,8 @@ mod tests {
     use super::MetaTransactionV1;
     use crate::types::transaction::transaction_v1_builder::TransactionV1Builder;
     use casper_types::{
-        evm::Address, testing::TestRng, InvalidTransaction, InvalidTransactionV1, PricingMode,
-        SecretKey, TransactionInvocationTarget, TransactionLaneDefinition,
+        evm::Address, testing::TestRng, Chainspec, InvalidTransaction, InvalidTransactionV1,
+        PricingMode, SecretKey, TransactionInvocationTarget, TransactionLaneDefinition,
         TransactionRuntimeParams, TransactionV1Config,
     };
 
@@ -891,7 +921,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            MetaTransactionV1::from_transaction_v1(&transaction_v1, &build_v1_config()),
+            MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec_with_v1_config(), 1),
             Err(InvalidTransaction::V1(
                 InvalidTransactionV1::InvalidInitiatorAddr
             ))
@@ -918,10 +948,11 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config();
 
-        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config)
-            .expect("meta transaction should be valid");
+        let meta_transaction =
+            MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec, 1)
+                .expect("meta transaction should be valid");
         assert_eq!(meta_transaction.lane_id(), 4);
     }
 
@@ -945,9 +976,9 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config();
 
-        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config);
+        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec, 1);
         assert!(matches!(
             res,
             Err(InvalidTransaction::V1(InvalidTransactionV1::NoLaneMatch))
@@ -974,13 +1005,20 @@ mod tests {
         .with_secret_key(&secret_key)
         .build()
         .unwrap();
-        let mut config = TransactionV1Config::default();
-        config.set_wasm_lanes(vec![
-            TransactionLaneDefinition::new(3, 200, 100, 100, 10),
-            TransactionLaneDefinition::new(4, 500, 100, 10000, 10),
-        ]);
 
-        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config);
+        let chainspec = {
+            let mut config = TransactionV1Config::default();
+            config.set_wasm_lanes(vec![
+                TransactionLaneDefinition::new(3, 200, 100, 100, 10),
+                TransactionLaneDefinition::new(4, 500, 100, 10000, 10),
+            ]);
+
+            let mut chainspec = Chainspec::default();
+            chainspec.transaction_config.transaction_v1_config = config;
+            chainspec
+        };
+
+        let res = MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec, 1);
         assert!(matches!(
             res,
             Err(InvalidTransaction::V1(InvalidTransactionV1::NoLaneMatch))
@@ -1007,20 +1045,23 @@ mod tests {
         .with_pricing_mode(pricing_mode)
         .build()
         .unwrap();
-        let config = build_v1_config();
+        let chainspec = chainspec_with_v1_config();
 
-        let meta_transaction = MetaTransactionV1::from_transaction_v1(&transaction_v1, &config)
-            .expect("meta transaction should be valid");
+        let meta_transaction =
+            MetaTransactionV1::from_transaction_v1(&transaction_v1, &chainspec, 1)
+                .expect("meta transaction should be valid");
         assert_eq!(meta_transaction.lane_id(), 4);
     }
 
-    fn build_v1_config() -> TransactionV1Config {
+    fn chainspec_with_v1_config() -> Chainspec {
+        let mut chainspec = Chainspec::default();
         let mut config = TransactionV1Config::default();
         config.set_wasm_lanes(vec![
             TransactionLaneDefinition::new(3, 10000, 100, 100, 10),
             TransactionLaneDefinition::new(4, 10001, 100, 10000, 10),
             TransactionLaneDefinition::new(5, 10002, 100, 1000, 10),
         ]);
-        config
+        chainspec.transaction_config.transaction_v1_config = config;
+        chainspec
     }
 }

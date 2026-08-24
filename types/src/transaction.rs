@@ -501,20 +501,9 @@ impl Transaction {
             Transaction::Deploy(deploy) => deploy
                 .gas_cost(chainspec, gas_price)
                 .map_err(InvalidTransaction::from),
-            Transaction::V1(v1) => {
-                if let Ok(TransactionTarget::Native) = v1.get_transaction_target() {
-                    // retro-compatibility for incentivized native transfer cost
-                    if let Ok(TransactionEntryPoint::Transfer) = v1.get_transaction_entry_point() {
-                        return Ok(Motes::new(
-                            chainspec.system_costs_config.mint_costs().transfer,
-                        ));
-                    };
-                }
-                let pricing_mode = v1.pricing_mode();
-                pricing_mode
-                    .gas_cost(chainspec, lane_id, gas_price)
-                    .map_err(InvalidTransaction::from)
-            }
+            Transaction::V1(v1) => v1
+                .gas_cost(chainspec, lane_id, gas_price)
+                .map_err(InvalidTransaction::from),
             Transaction::Evm(txn) => {
                 // Use the EIP-1559 max-fee cap for generic upper-bound balance
                 // checks. Node config compliance separately rejects non-zero

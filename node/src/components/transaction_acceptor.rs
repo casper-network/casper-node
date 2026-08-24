@@ -133,10 +133,9 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-/// The `TransactionAcceptor` is the component which handles all new `Transaction`s immediately
-/// after they're received by this node, regardless of whether they were provided by a peer or a
-/// client, unless they were actively retrieved by this node via a fetch request (in which case the
-/// fetcher performs the necessary validation and stores it).
+/// The `TransactionAcceptor` is the component which handles all unsolicited `Transaction` records.
+/// Client and peer origin both route to this.
+/// Fetched Transactions explicitly asked for because they are in historical blocks do not.
 ///
 /// It validates a new `Transaction` as far as possible, stores it if valid, then announces the
 /// newly-accepted `Transaction`.
@@ -182,12 +181,8 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         trace!(%source, %input_transaction, "checking transaction before accepting");
         let verification_start_timestamp = Timestamp::now();
-        let transaction_config = &self.chainspec.as_ref().transaction_config;
-        let maybe_meta_transaction = MetaTransaction::from_transaction(
-            &input_transaction,
-            self.chainspec.as_ref().core_config.pricing_handling,
-            transaction_config,
-        );
+        let maybe_meta_transaction =
+            MetaTransaction::new_from_txn_with_price(&input_transaction, &self.chainspec, 1);
         let meta_transaction = match maybe_meta_transaction {
             Ok(transaction) => transaction,
             Err(err) => {
@@ -483,7 +478,7 @@ impl TransactionAcceptor {
         };
         let entity_addr = EntityAddr::Account(account_hash.value());
         // If the recovered signer already has a Casper account, client balance
-        // validation should use that account. Otherwise it uses the
+        // validation should use that account. Otherwise, it uses the
         // deterministic EVM purse, matching the account-creation plan runtime
         // will apply only after payment preconditions pass.
         effect_builder
@@ -831,16 +826,7 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         let session = match &event_metadata.meta_transaction {
             MetaTransaction::Deploy(meta_deploy) => meta_deploy.session(),
-            MetaTransaction::Evm(_) => {
-                error!("should only handle deploys in verify_deploy_session");
-                return self.reject_transaction(
-                    effect_builder,
-                    *event_metadata,
-                    Error::ExpectedDeploy,
-                );
-            }
-            MetaTransaction::V1(txn) => {
-                error!(%txn, "should only handle deploys in verify_deploy_session");
+            MetaTransaction::Evm(_) | MetaTransaction::V1(_) => {
                 return self.reject_transaction(
                     effect_builder,
                     *event_metadata,
@@ -931,6 +917,7 @@ impl TransactionAcceptor {
                 },
             ) => {
                 let maybe_package_version = package_identifier.version();
+
                 effect_builder
                     .get_package(*block_header.state_root_hash(), package_hash.value())
                     .event(move |maybe_package| Event::GetPackageResult {
@@ -963,19 +950,7 @@ impl TransactionAcceptor {
         }
 
         let next_step = match &event_metadata.meta_transaction {
-            MetaTransaction::Deploy(meta_deploy) => {
-                let deploy_hash = meta_deploy.deploy().hash();
-                error!(
-                    %deploy_hash,
-                    "should only handle version 1 transactions in verify_transaction_v1_body"
-                );
-                return self.reject_transaction(
-                    effect_builder,
-                    *event_metadata,
-                    Error::ExpectedTransactionV1,
-                );
-            }
-            MetaTransaction::Evm(_) => {
+            MetaTransaction::Deploy(_) | MetaTransaction::Evm(_) => {
                 error!("should only handle version 1 transactions in verify_transaction_v1_body");
                 return self.reject_transaction(
                     effect_builder,

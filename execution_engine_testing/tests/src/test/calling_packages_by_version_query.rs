@@ -518,13 +518,13 @@ fn builder_for_calling_entrypoint(
     };
     let initiator_addr = casper_types::InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR);
     let session_data_v1 = SessionDataV1::new(
-        &args,
-        &target,
-        &entry_point,
+        args,
+        target,
+        entry_point,
         true,
-        &v1_hash,
-        &pricing_mode,
-        &initiator_addr,
+        v1_hash,
+        pricing_mode,
+        initiator_addr,
         signers,
         true,
     );

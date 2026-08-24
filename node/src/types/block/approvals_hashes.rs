@@ -80,7 +80,7 @@ impl ApprovalsHashes {
         let computed_approvals_checksum = match block {
             Block::V1(v1_block) => compute_legacy_approvals_checksum(self.deploy_ids(v1_block))?,
             Block::V2(v2_block) => {
-                types::compute_approvals_checksum(self.transaction_ids(v2_block))
+                types::compute_transaction_ids_checksum(self.transaction_ids(v2_block))
                     .map_err(ApprovalsHashesValidationError::ApprovalsChecksum)?
             }
         };

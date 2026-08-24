@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Common state result errors.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub(crate) enum StateResultError {
     /// Invalid state root hash.
     #[error("invalid state root hash")]
@@ -62,10 +62,6 @@ pub(crate) enum ContractRuntimeError {
 /// An error during block execution.
 #[derive(Debug, Error, Serialize)]
 pub enum BlockExecutionError {
-    /// Currently the contract runtime can only execute one commit at a time, so we cannot handle
-    /// more than one execution result.
-    #[error("more than one execution result")]
-    MoreThanOneExecutionResult,
     /// Both the block to be executed and the execution pre-state specify the height of the next
     /// block. These must agree and this error will be thrown if they do not.
     #[error(
@@ -162,17 +158,8 @@ pub enum BlockExecutionError {
     // Error attempting to set block global data.
     #[error("Error while attempting to store block global data: {0}")]
     BlockGlobal(String),
-    #[error("No switch block header available for era: {0}")]
-    /// No switch block available
-    NoSwitchBlockHash(u64),
-    #[error("Unsupported execution kind: {0}")]
-    /// Unsupported execution kind
-    UnsupportedTransactionKind(u8),
     #[error("Error while converting transaction to internal representation: {0}")]
     TransactionConversion(String),
-    /// Invalid gas limit amount.
-    #[error("Invalid gas limit amount: {0}")]
-    InvalidGasLimit(U512),
     /// Invalid transaction variant.
     #[error("Invalid transaction variant")]
     InvalidTransactionVariant,

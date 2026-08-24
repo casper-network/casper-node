@@ -1,5 +1,5 @@
 use crate::tracking_copy::TrackingCopyError;
-use casper_types::{execution::Effects, BlockHash, BlockTime, Digest, ProtocolVersion};
+use casper_types::{execution::Effects, BlockTime, Digest, ProtocolVersion};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
@@ -14,12 +14,14 @@ pub enum BlockGlobalKind {
     ProtocolVersion(ProtocolVersion),
     /// Addressable entity flag.
     AddressableEntity(bool),
-    /// EIP-4788 parent block hash record.
-    Eip4788ParentHash {
-        /// EVM block timestamp in seconds.
-        timestamp_secs: u64,
-        /// Parent block hash associated with the timestamp.
-        parent_hash: BlockHash,
+    /// Block information.
+    BlockInfo {
+        /// Block time.
+        block_time: BlockTime,
+        /// Protocol version.
+        protocol_version: ProtocolVersion,
+        /// Addressable entity enabled.
+        addressable_entity_enabled: bool,
     },
 }
 
@@ -76,16 +78,17 @@ impl BlockGlobalRequest {
         }
     }
 
-    /// Returns an EIP-4788 parent block hash setting request.
-    pub fn set_eip4788_parent_hash(
+    /// Returns block info setting request.
+    pub fn set_block_info(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
-        timestamp_secs: u64,
-        parent_hash: BlockHash,
+        addressable_entity_enabled: bool,
     ) -> Self {
-        let block_global_kind = BlockGlobalKind::Eip4788ParentHash {
-            timestamp_secs,
-            parent_hash,
+        let block_global_kind = BlockGlobalKind::BlockInfo {
+            block_time,
+            protocol_version,
+            addressable_entity_enabled,
         };
         BlockGlobalRequest {
             state_hash,
@@ -124,6 +127,26 @@ pub enum BlockGlobalResult {
         /// The effects of putting the data to global state.
         effects: Box<Effects>,
     },
+}
+
+impl BlockGlobalResult {
+    /// Returns true if successful, else false.
+    pub fn is_success(&self) -> bool {
+        match self {
+            BlockGlobalResult::RootNotFound | BlockGlobalResult::Failure(_) => false,
+            BlockGlobalResult::Success { .. } => true,
+        }
+    }
+
+    /// Returns post_state_hash if available.
+    pub fn post_state_hash(&self) -> Option<Digest> {
+        match self {
+            BlockGlobalResult::RootNotFound | BlockGlobalResult::Failure(_) => None,
+            BlockGlobalResult::Success {
+                post_state_hash, ..
+            } => Some(*post_state_hash),
+        }
+    }
 }
 
 impl Display for BlockGlobalResult {
