@@ -22,6 +22,7 @@ where
 {
     data_access_layer: &'a DataAccessLayer<S>,
     tracking_copy: &'a mut TrackingCopy<R>,
+    wei_per_mote: u64,
 }
 
 impl<'a, R, S> CasperDb<'a, R, S>
@@ -31,17 +32,21 @@ where
     pub(crate) fn new(
         data_access_layer: &'a DataAccessLayer<S>,
         tracking_copy: &'a mut TrackingCopy<R>,
+        wei_per_mote: u64,
     ) -> Self {
         Self {
             data_access_layer,
             tracking_copy,
+            wei_per_mote,
         }
     }
 
     fn balance(&mut self, main_purse: casper_types::URef) -> Result<U256, DbError> {
         let key = Key::Balance(main_purse.addr());
         match self.tracking_copy.read(&key)? {
-            Some(StoredValue::CLValue(cl_value)) => cl_value_to_u256(key, cl_value),
+            Some(StoredValue::CLValue(cl_value)) => {
+                cl_value_to_u256(key, cl_value, self.wei_per_mote)
+            }
             Some(stored_value) => Err(DbError::TypeMismatch {
                 key: Box::new(key),
                 expected: "StoredValue::CLValue(U512)",
@@ -197,19 +202,20 @@ where
     }
 }
 
-fn cl_value_to_u256(key: Key, cl_value: CLValue) -> Result<U256, DbError> {
-    let balance = cl_value
+fn cl_value_to_u256(key: Key, cl_value: CLValue, wei_per_mote: u64) -> Result<U256, DbError> {
+    let balance_motes = cl_value
         .into_t::<U512>()
         .map_err(|error| DbError::BalanceDecode {
             key: Box::new(key),
             error: error.to_string(),
         })?;
 
-    if balance.bits() > 256 {
-        return Err(DbError::BalanceOverflow { key: Box::new(key) });
-    }
+    let balance_wei = balance_motes
+        .checked_mul(U512::from(wei_per_mote))
+        .filter(|balance| balance.bits() <= 256)
+        .ok_or_else(|| DbError::BalanceOverflow { key: Box::new(key) })?;
 
     let mut bytes = [0u8; 64];
-    balance.to_big_endian(&mut bytes);
+    balance_wei.to_big_endian(&mut bytes);
     Ok(U256::from_be_slice(&bytes[32..]))
 }
