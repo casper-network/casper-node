@@ -1,6 +1,7 @@
 //! Public executor entry point.
 
 use casper_storage::{
+    data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     TrackingCopy,
 };
@@ -13,8 +14,8 @@ use revm::{
 };
 
 use crate::{
-    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, BlockHashProvider, DbError, Error,
-    ExecuteKind, ExecuteRequest, ExecutionOutcome, NoBlockHashProvider, Result, SystemCallRequest,
+    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, DbError, Error, ExecuteKind,
+    ExecuteRequest, ExecutionOutcome, Result, SystemCallRequest,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -46,49 +47,14 @@ impl EvmExecutor {
     }
 
     /// Executes an EVM transaction or call against the supplied tracking copy.
-    pub fn execute<R>(
+    pub fn execute<R, S>(
         &self,
+        data_access_layer: &DataAccessLayer<S>,
         tracking_copy: &mut TrackingCopy<R>,
         request: ExecuteRequest,
     ) -> Result<ExecutionOutcome>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
-        let block_hash_provider = NoBlockHashProvider;
-        self.execute_with_block_hash_provider(tracking_copy, request, &block_hash_provider)
-    }
-
-    /// Executes a system call against the supplied tracking copy.
-    pub fn execute_system_call<R>(
-        &self,
-        tracking_copy: &mut TrackingCopy<R>,
-        request: SystemCallRequest,
-    ) -> Result<ExecutionOutcome>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
-        let block_hash_provider = NoBlockHashProvider;
-        self.execute_system_call_with_block_hash_provider(
-            tracking_copy,
-            request,
-            &block_hash_provider,
-        )
-    }
-
-    /// Executes with a provider for historical block hashes.
-    ///
-    /// The provider is used by the EVM `BLOCKHASH` opcode. Current/future
-    /// blocks and block numbers older than the EVM 256-block lookup window
-    /// return the zero hash before the provider is consulted.
-    pub fn execute_with_block_hash_provider<R, B>(
-        &self,
-        tracking_copy: &mut TrackingCopy<R>,
-        request: ExecuteRequest,
-        block_hash_provider: &B,
-    ) -> Result<ExecutionOutcome>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        B: BlockHashProvider + ?Sized,
     {
         if !self.config.enabled {
             return Err(Error::Disabled);
@@ -120,7 +86,7 @@ impl EvmExecutor {
         };
 
         let result_and_state = {
-            let db = CasperDb::new(tracking_copy, block_hash_provider, self.config.wei_per_mote);
+            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
             let mut evm = Context::mainnet()
                 .with_db(db)
                 .with_block(block)
@@ -146,16 +112,15 @@ impl EvmExecutor {
         ))
     }
 
-    /// Executes a system call with a provider for historical block hashes.
-    pub fn execute_system_call_with_block_hash_provider<R, B>(
+    /// Executes a system call against the supplied tracking copy.
+    pub fn execute_system_call<R, S>(
         &self,
+        data_access_layer: &DataAccessLayer<S>,
         tracking_copy: &mut TrackingCopy<R>,
         request: SystemCallRequest,
-        block_hash_provider: &B,
     ) -> Result<ExecutionOutcome>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        B: BlockHashProvider + ?Sized,
     {
         if !self.config.enabled {
             return Err(Error::Disabled);
@@ -166,7 +131,7 @@ impl EvmExecutor {
 
         let block = request.block.to_revm_block(&self.config)?;
         let result_and_state = {
-            let db = CasperDb::new(tracking_copy, block_hash_provider, self.config.wei_per_mote);
+            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
             let mut evm = Context::mainnet()
                 .with_db(db)
                 .with_block(block)

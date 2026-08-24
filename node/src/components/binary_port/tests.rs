@@ -524,9 +524,8 @@ fn got_requested_contract_runtime_request(event: &Event) -> bool {
         event,
         Event::ContractRuntimeRequest(ContractRuntimeRequest::SpeculativelyExecute {
             block_header,
-            block_hashes,
             ..
-        }) if block_header.height() == 1 && block_hashes.contains_key(&0)
+        }) if block_header.height() == 1
     )
 }
 

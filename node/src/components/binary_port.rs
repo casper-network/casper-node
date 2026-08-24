@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::{load_recent_evm_block_hashes, SpeculativeExecutionResult},
+    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -1389,10 +1389,8 @@ where
         return BinaryResponse::new_error(ErrorCode::UnsupportedRequest);
     }
 
-    let block_hashes = load_recent_evm_block_hashes(effect_builder, block_header.height()).await;
-
     let result = effect_builder
-        .speculatively_execute(Box::new(block_header), block_hashes, Box::new(transaction))
+        .speculatively_execute(Box::new(block_header), Box::new(transaction))
         .await;
 
     match result {

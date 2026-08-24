@@ -2271,7 +2271,6 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn speculatively_execute(
         self,
         block_header: Box<BlockHeader>,
-        block_hashes: BTreeMap<u64, BlockHash>,
         transaction: Box<Transaction>,
     ) -> SpeculativeExecutionResult
     where
@@ -2280,7 +2279,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativelyExecute {
                 block_header,
-                block_hashes,
                 transaction,
                 responder,
             },

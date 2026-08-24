@@ -29,8 +29,9 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
+    block_store::lmdb::LmdbBlockStore,
     data_access_layer::{
-        AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
+        AddressableEntityRequest, AddressableEntityResult, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
@@ -77,7 +78,6 @@ pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
-pub(crate) use utils::load_recent_evm_block_hashes;
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -113,6 +113,7 @@ impl Debug for ContractRuntime {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_dir: &Path,
+        block_store: LmdbBlockStore,
         contract_runtime_config: &Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
@@ -158,6 +159,7 @@ impl ContractRuntime {
         let data_access_layer = Arc::new(
             Self::new_data_access_layer(
                 storage_dir,
+                block_store,
                 contract_runtime_config,
                 enable_addressable_entity,
             )
@@ -213,6 +215,7 @@ impl ContractRuntime {
 
     fn new_data_access_layer(
         storage_dir: &Path,
+        block_store: LmdbBlockStore,
         contract_runtime_config: &Config,
         enable_addressable_entity: bool,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
@@ -229,8 +232,6 @@ impl ContractRuntime {
                 None,
                 DatabaseFlags::empty(),
             )?);
-
-            let block_store = BlockStore::new();
 
             let max_query_depth = contract_runtime_config.max_query_depth_or_default();
             let global_state = LmdbGlobalState::empty(
@@ -674,7 +675,6 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 block_header,
-                block_hashes,
                 transaction,
                 responder,
             } => {
@@ -688,7 +688,6 @@ impl ContractRuntime {
                             chainspec.as_ref(),
                             execution_engine_v1.as_ref(),
                             *block_header,
-                            block_hashes,
                             *transaction,
                         )
                     })
