@@ -1,6 +1,7 @@
 mod block_and_execution_artifacts;
 mod era_price;
 mod evm_origin_resolution;
+mod execute_block_context;
 mod execution_artifact;
 mod execution_pre_state;
 mod limits_and_costs;
@@ -15,6 +16,8 @@ pub(crate) use crate::components::contract_runtime::types::{
     block_and_execution_artifacts::BlockAndExecutionArtifacts,
     era_price::EraPrice,
     evm_origin_resolution::EvmOriginResolution,
+    execute_block_context::ExecuteBlockContext,
+    execute_block_context::ExecuteBlockContextError,
     execution_artifact::ExecutionArtifact,
     execution_pre_state::ExecutionPreState,
     limits_and_costs::LimitsAndCosts,
