@@ -2176,9 +2176,10 @@ fn checked_calls_enforce_transaction_validation() {
 fn prevrandao_uses_block_context() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         None,
@@ -2189,6 +2190,7 @@ fn prevrandao_uses_block_context() {
 
     let outcome = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         Some(contract),

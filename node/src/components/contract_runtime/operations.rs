@@ -81,6 +81,10 @@ fn evm_block_context(
     }
 }
 
+fn evm_prevrandao(parent_seed: Digest) -> EvmHash {
+    EvmHash::new(parent_seed.value())
+}
+
 fn write_eip4788_beacon_roots(
     scratch_state: &ScratchGlobalState,
     state_root_hash: Digest,
@@ -673,8 +677,7 @@ pub fn execute_finalized_block(
         }
     }
 
-    let prevrandao =
-        EvmHash::new(Digest::hash_pair(parent_seed, [executable_block.random_bit as u8]).value());
+    let prevrandao = evm_prevrandao(parent_seed);
     state_root_hash = write_eip4788_beacon_roots(
         &scratch_state,
         state_root_hash,
@@ -1179,9 +1182,6 @@ pub fn execute_finalized_block(
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-                    let random_bit = executable_block.random_bit;
-                    let prevrandao =
-                        EvmHash::new(Digest::hash_pair(parent_seed, [random_bit as u8]).value());
                     let block_context = evm_block_context(
                         chainspec,
                         block_height,
@@ -2158,7 +2158,7 @@ where
         beneficiary: EvmAddress::ZERO,
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(base_fee_wei),
-        prevrandao: EvmHash::new(block_header.accumulated_seed().value()),
+        prevrandao: evm_prevrandao(*block_header.accumulated_seed()),
     };
     let kind = if evm_transaction.is_unsigned_call() {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
@@ -2402,16 +2402,31 @@ mod tests {
     }
 
     #[test]
-    fn evm_prevrandao_matches_current_block_accumulated_seed() {
+    fn evm_prevrandao_uses_parent_block_accumulated_seed() {
         let parent_hash = BlockHash::new(Digest::from_raw([0x11; Digest::LENGTH]));
         let parent_seed = Digest::from_raw([0x22; Digest::LENGTH]);
         let state_root_hash = Digest::from_raw([0x33; Digest::LENGTH]);
-        let random_bit = true;
-        let block = BlockV2::new(
+        let block_with_zero_bit = BlockV2::new(
             parent_hash,
             parent_seed,
             state_root_hash,
-            random_bit,
+            false,
+            None,
+            Timestamp::zero(),
+            EraId::new(1),
+            1,
+            ProtocolVersion::V2_0_0,
+            PublicKey::System,
+            BTreeMap::new(),
+            Default::default(),
+            1,
+            None,
+        );
+        let block_with_one_bit = BlockV2::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            true,
             None,
             Timestamp::zero(),
             EraId::new(1),
@@ -2424,7 +2439,15 @@ mod tests {
             None,
         );
 
-        let prevrandao = EvmHash::new(Digest::hash_pair(parent_seed, [random_bit as u8]).value());
-        assert_eq!(prevrandao.as_ref(), block.accumulated_seed().as_ref());
+        let prevrandao = evm_prevrandao(parent_seed);
+        assert_eq!(prevrandao.as_ref(), parent_seed.as_ref());
+        assert_ne!(
+            prevrandao.as_ref(),
+            block_with_zero_bit.accumulated_seed().as_ref()
+        );
+        assert_ne!(
+            prevrandao.as_ref(),
+            block_with_one_bit.accumulated_seed().as_ref()
+        );
     }
 }
