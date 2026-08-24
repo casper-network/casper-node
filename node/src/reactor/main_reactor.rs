@@ -26,10 +26,9 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_binary_port::{LastProgress, NetworkName, Uptime};
-use casper_storage::block_store::{types::Tip, BlockStoreProvider, DataReader};
 use casper_types::{
-    bytesrepr, Block, BlockHash, BlockHeader, BlockV2, Chainspec, ChainspecRawBytes, EraId,
-    FinalitySignature, FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
+    bytesrepr, Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
 };
 
 #[cfg(test)]
@@ -1144,6 +1143,7 @@ impl reactor::Reactor for MainReactor {
 
         let contract_runtime = ContractRuntime::new(
             &storage_root,
+            block_store.clone(),
             &config.contract_runtime,
             chainspec.clone(),
             registry,
@@ -1153,11 +1153,12 @@ impl reactor::Reactor for MainReactor {
         // synchronously now. The resulting immediate switch block is *not* produced yet: that's
         // deferred until the node can actually sign and gossip it
         // (see `MainReactor::maybe_finish_pending_upgrade`).
-        let local_tip: Option<BlockHeader> = {
+        let local_tip = {
             let ro_txn = block_store
                 .checkout_ro()
                 .map_err(storage::FatalStorageError::from)?;
-            DataReader::<Tip, BlockHeader>::read(&ro_txn, Tip)
+            ro_txn
+                .read_tip_block_header()
                 .map_err(storage::FatalStorageError::from)?
         };
 

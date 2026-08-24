@@ -5,7 +5,8 @@ pub mod lmdb;
 /// Block store types.
 pub mod types;
 
-pub use block_provider::{BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter};
+pub use block_provider::{BlockStoreProvider, BlockStoreTransaction};
+pub(crate) use block_provider::{DataReader, DataWriter};
 pub use error::BlockStoreError;
 
 /// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or

@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::{load_recent_evm_block_hashes, SpeculativeExecutionResult},
+    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -1368,10 +1368,8 @@ where
         None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
     };
 
-    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
-
     let result = effect_builder
-        .speculatively_execute(Box::new(tip), block_hashes, Box::new(transaction))
+        .speculatively_execute(Box::new(tip), Box::new(transaction))
         .await;
 
     match result {

@@ -13,13 +13,13 @@ use crate::{components::contract_runtime::ContractRuntime, reactor::main_reactor
 /// protocol upgrade, once the node is ready to sign and gossip it.
 #[derive(Clone, DataSize, Debug)]
 pub(super) struct PendingImmediateSwitchBlock {
-    next_block_height: u64,
+    pub(super) next_block_height: u64,
     #[data_size(skip)]
-    post_state_hash: Digest,
-    parent_hash: BlockHash,
-    parent_seed: Digest,
-    era_id: EraId,
-    timestamp: Timestamp,
+    pub(super) post_state_hash: Digest,
+    pub(super) parent_hash: BlockHash,
+    pub(super) parent_seed: Digest,
+    pub(super) era_id: EraId,
+    pub(super) timestamp: Timestamp,
 }
 
 impl PendingImmediateSwitchBlock {

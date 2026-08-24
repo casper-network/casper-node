@@ -10,16 +10,11 @@ use std::{
 
 pub use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
 pub use block_hash_height_and_era::BlockHashHeightAndEra;
-use casper_types::{
-    execution::ExecutionResult, Approval, Block, BlockHash, BlockHeader, TransactionHash, Transfer,
-};
+use casper_types::{execution::ExecutionResult, Approval, BlockHash, TransactionHash, Transfer};
 
 pub(crate) use approvals_hashes::LegacyApprovalsHashes;
 pub(crate) use deploy_metadata_v1::DeployMetadataV1;
 pub(in crate::block_store) use transfers::Transfers;
-
-/// Exeuction results.
-pub type ExecutionResults = HashMap<TransactionHash, ExecutionResult>;
 
 /// Transaction finalized approvals.
 pub struct TransactionFinalizedApprovals {
@@ -34,7 +29,7 @@ pub struct BlockExecutionResults {
     /// Block info.
     pub block_info: BlockHashHeightAndEra,
     /// Execution results.
-    pub exec_results: ExecutionResults,
+    pub exec_results: HashMap<TransactionHash, ExecutionResult>,
 }
 
 /// Block transfers.
@@ -64,16 +59,10 @@ impl StateStoreKey {
 }
 
 /// Block tip anchor.
-pub struct Tip;
+pub(crate) struct Tip;
 
 /// Latest switch block anchor.
-pub struct LatestSwitchBlock;
+pub(crate) struct LatestSwitchBlock;
 
 /// Block height.
-pub type BlockHeight = u64;
-
-/// Switch block header alias.
-pub type SwitchBlockHeader = BlockHeader;
-
-/// Switch block alias.
-pub type SwitchBlock = Block;
+pub(crate) type BlockHeight = u64;
