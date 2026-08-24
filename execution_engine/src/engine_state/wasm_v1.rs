@@ -20,20 +20,20 @@ const DEFAULT_ENTRY_POINT: &str = "call";
 
 /// Structure that needs to be filled with data so the engine can assemble wasm for deploy.
 #[derive(Clone, Debug)]
-pub struct SessionDataDeploy<'a> {
-    deploy_hash: &'a DeployHash,
-    session: &'a ExecutableDeployItem,
-    initiator_addr: &'a InitiatorAddr,
+pub struct SessionDataDeploy {
+    deploy_hash: DeployHash,
+    session: ExecutableDeployItem,
+    initiator_addr: InitiatorAddr,
     signers: BTreeSet<AccountHash>,
     is_standard_payment: bool,
 }
 
-impl<'a> SessionDataDeploy<'a> {
+impl SessionDataDeploy {
     /// Constructor
     pub fn new(
-        deploy_hash: &'a DeployHash,
-        session: &'a ExecutableDeployItem,
-        initiator_addr: &'a InitiatorAddr,
+        deploy_hash: DeployHash,
+        session: ExecutableDeployItem,
+        initiator_addr: InitiatorAddr,
         signers: BTreeSet<AccountHash>,
         is_standard_payment: bool,
     ) -> Self {
@@ -47,18 +47,18 @@ impl<'a> SessionDataDeploy<'a> {
     }
 
     /// Deploy hash of the deploy
-    pub fn deploy_hash(&self) -> &DeployHash {
+    pub fn deploy_hash(&self) -> DeployHash {
         self.deploy_hash
     }
 
     /// executable item of the deploy
-    pub fn session(&self) -> &ExecutableDeployItem {
-        self.session
+    pub fn session(&self) -> ExecutableDeployItem {
+        self.session.clone()
     }
 
     /// initiator address of the deploy
-    pub fn initiator_addr(&self) -> &InitiatorAddr {
-        self.initiator_addr
+    pub fn initiator_addr(&self) -> InitiatorAddr {
+        self.initiator_addr.clone()
     }
 
     /// signers of the deploy
@@ -69,29 +69,29 @@ impl<'a> SessionDataDeploy<'a> {
 
 /// Structure that needs to be filled with data so the engine can assemble wasm for v1.
 #[derive(Clone, Debug)]
-pub struct SessionDataV1<'a> {
-    args: &'a RuntimeArgs,
-    target: &'a TransactionTarget,
-    entry_point: &'a TransactionEntryPoint,
+pub struct SessionDataV1 {
+    args: RuntimeArgs,
+    target: TransactionTarget,
+    entry_point: TransactionEntryPoint,
     is_install_upgrade: bool,
-    hash: &'a TransactionV1Hash,
-    pricing_mode: &'a PricingMode,
-    initiator_addr: &'a InitiatorAddr,
+    hash: TransactionV1Hash,
+    pricing_mode: PricingMode,
+    initiator_addr: InitiatorAddr,
     signers: BTreeSet<AccountHash>,
     is_standard_payment: bool,
 }
 
-impl<'a> SessionDataV1<'a> {
+impl SessionDataV1 {
     #[allow(clippy::too_many_arguments)]
     /// Constructor
     pub fn new(
-        args: &'a RuntimeArgs,
-        target: &'a TransactionTarget,
-        entry_point: &'a TransactionEntryPoint,
+        args: RuntimeArgs,
+        target: TransactionTarget,
+        entry_point: TransactionEntryPoint,
         is_install_upgrade: bool,
-        hash: &'a TransactionV1Hash,
-        pricing_mode: &'a PricingMode,
-        initiator_addr: &'a InitiatorAddr,
+        hash: TransactionV1Hash,
+        pricing_mode: PricingMode,
+        initiator_addr: InitiatorAddr,
         signers: BTreeSet<AccountHash>,
         is_standard_payment: bool,
     ) -> Self {
@@ -109,18 +109,18 @@ impl<'a> SessionDataV1<'a> {
     }
 
     /// Runtime args passed with the transaction.
-    pub fn args(&self) -> &RuntimeArgs {
-        self.args
+    pub fn args(&self) -> RuntimeArgs {
+        self.args.clone()
     }
 
     /// Target of the transaction.
-    pub fn target(&self) -> &TransactionTarget {
-        self.target
+    pub fn target(&self) -> TransactionTarget {
+        self.target.clone()
     }
 
     /// Entry point of the transaction
-    pub fn entry_point(&self) -> &TransactionEntryPoint {
-        self.entry_point
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        self.entry_point.clone()
     }
 
     /// Should session be allowed to perform install/upgrade operations
@@ -129,13 +129,13 @@ impl<'a> SessionDataV1<'a> {
     }
 
     /// Hash of the transaction
-    pub fn hash(&self) -> &TransactionV1Hash {
+    pub fn hash(&self) -> TransactionV1Hash {
         self.hash
     }
 
     /// initiator address of the transaction
-    pub fn initiator_addr(&self) -> &InitiatorAddr {
-        self.initiator_addr
+    pub fn initiator_addr(&self) -> InitiatorAddr {
+        self.initiator_addr.clone()
     }
 
     /// signers of the transaction
@@ -144,39 +144,39 @@ impl<'a> SessionDataV1<'a> {
     }
 
     /// Pricing mode of the transaction
-    pub fn pricing_mode(&self) -> &PricingMode {
-        self.pricing_mode
+    pub fn pricing_mode(&self) -> PricingMode {
+        self.pricing_mode.clone()
     }
 }
 
 /// Wrapper enum abstracting data for assmbling WasmV1Requests
 #[derive(Clone, Debug)]
-pub enum SessionInputData<'a> {
+pub enum SessionInputData {
     /// Variant for sessions created from deploy transactions
     DeploySessionData {
         /// Deploy session data
-        data: SessionDataDeploy<'a>,
+        data: SessionDataDeploy,
     },
     /// Variant for sessions created from v1 transactions
     SessionDataV1 {
         /// v1 session data
-        data: SessionDataV1<'a>,
+        data: SessionDataV1,
     },
 }
 
-impl SessionInputData<'_> {
+impl SessionInputData {
     /// Transaction hash for the session
     pub fn transaction_hash(&self) -> TransactionHash {
         match self {
             SessionInputData::DeploySessionData { data } => {
-                TransactionHash::Deploy(*data.deploy_hash())
+                TransactionHash::Deploy(data.deploy_hash())
             }
-            SessionInputData::SessionDataV1 { data } => TransactionHash::V1(*data.hash()),
+            SessionInputData::SessionDataV1 { data } => TransactionHash::V1(data.hash()),
         }
     }
 
     /// Initiator address for the session
-    pub fn initiator_addr(&self) -> &InitiatorAddr {
+    pub fn initiator_addr(&self) -> InitiatorAddr {
         match self {
             SessionInputData::DeploySessionData { data } => data.initiator_addr(),
             SessionInputData::SessionDataV1 { data } => data.initiator_addr(),
@@ -620,7 +620,7 @@ impl WasmV1Result {
     pub fn from_transfer_result(transfer_result: TransferResult, consumed: Gas) -> Option<Self> {
         // NOTE: for native / wasmless operations limit and consumed are always equal, and
         // we can get away with simplifying to one or the other here.
-        // this is NOT true of wasm based operations however.
+        // this is NOT true of wasm based operations, however.
         match transfer_result {
             TransferResult::RootNotFound => None,
             TransferResult::Success {
@@ -704,7 +704,7 @@ impl Executable for SessionInfo {
     }
 }
 
-impl TryFrom<&SessionInputData<'_>> for PaymentInfo {
+impl TryFrom<&SessionInputData> for PaymentInfo {
     type Error = InvalidRequest;
 
     fn try_from(input_data: &SessionInputData) -> Result<Self, Self::Error> {
@@ -715,7 +715,7 @@ impl TryFrom<&SessionInputData<'_>> for PaymentInfo {
     }
 }
 
-impl TryFrom<&SessionInputData<'_>> for SessionInfo {
+impl TryFrom<&SessionInputData> for SessionInfo {
     type Error = InvalidRequest;
 
     fn try_from(input_data: &SessionInputData) -> Result<Self, Self::Error> {
@@ -726,13 +726,12 @@ impl TryFrom<&SessionInputData<'_>> for SessionInfo {
     }
 }
 
-impl TryFrom<&SessionDataDeploy<'_>> for SessionInfo {
+impl TryFrom<&SessionDataDeploy> for SessionInfo {
     type Error = InvalidRequest;
 
     fn try_from(deploy_data: &SessionDataDeploy) -> Result<Self, Self::Error> {
-        let transaction_hash = TransactionHash::Deploy(*deploy_data.deploy_hash());
-        let session_item = deploy_data.session();
-        build_session_info_for_executable_item(session_item, transaction_hash)
+        let transaction_hash = TransactionHash::Deploy(deploy_data.deploy_hash());
+        build_session_info_for_executable_item(&deploy_data.session(), transaction_hash)
     }
 }
 
@@ -814,11 +813,11 @@ fn build_session_info_for_executable_item(
     }))
 }
 
-impl TryFrom<&SessionDataV1<'_>> for SessionInfo {
+impl TryFrom<&SessionDataV1> for SessionInfo {
     type Error = InvalidRequest;
 
     fn try_from(v1_txn: &SessionDataV1) -> Result<Self, Self::Error> {
-        let transaction_hash = TransactionHash::V1(*v1_txn.hash());
+        let transaction_hash = TransactionHash::V1(v1_txn.hash());
         let args = v1_txn.args().clone();
         let session = match v1_txn.target() {
             TransactionTarget::Native => {
@@ -842,7 +841,7 @@ impl TryFrom<&SessionDataV1<'_>> for SessionInfo {
                 }
             }
             TransactionTarget::Session { module_bytes, .. } => {
-                if *v1_txn.entry_point() != TransactionEntryPoint::Call {
+                if v1_txn.entry_point() != TransactionEntryPoint::Call {
                     return Err(InvalidRequest::InvalidEntryPoint(
                         transaction_hash,
                         v1_txn.entry_point().to_string(),
@@ -889,13 +888,12 @@ impl Executable for PaymentInfo {
     }
 }
 
-impl TryFrom<&SessionDataDeploy<'_>> for PaymentInfo {
+impl TryFrom<&SessionDataDeploy> for PaymentInfo {
     type Error = InvalidRequest;
 
     fn try_from(deploy_data: &SessionDataDeploy) -> Result<Self, Self::Error> {
-        let payment_item = deploy_data.session();
-        let transaction_hash = TransactionHash::Deploy(*deploy_data.deploy_hash());
-        build_payment_info_for_executable_item(payment_item, transaction_hash)
+        let transaction_hash = TransactionHash::Deploy(deploy_data.deploy_hash());
+        build_payment_info_for_executable_item(&deploy_data.session(), transaction_hash)
     }
 }
 
@@ -972,33 +970,35 @@ fn build_payment_info_for_executable_item(
     }
 }
 
-impl TryFrom<&SessionDataV1<'_>> for PaymentInfo {
+impl TryFrom<&SessionDataV1> for PaymentInfo {
     type Error = InvalidRequest;
 
     fn try_from(v1_txn: &SessionDataV1) -> Result<Self, Self::Error> {
-        let transaction_hash = TransactionHash::V1(*v1_txn.hash());
-        match v1_txn.pricing_mode() {
-            mode @ PricingMode::PaymentLimited {
+        let transaction_hash = TransactionHash::V1(v1_txn.hash());
+
+        let pricing_mode = v1_txn.pricing_mode();
+        match pricing_mode {
+            PricingMode::PaymentLimited {
                 standard_payment, ..
             } => {
-                if *standard_payment {
+                if standard_payment {
                     return Err(InvalidRequest::UnsupportedMode(
                         transaction_hash,
-                        mode.to_string(),
+                        pricing_mode.to_string(),
                     ));
                 }
             }
-            mode @ PricingMode::Fixed { .. } | mode @ PricingMode::Prepaid { .. } => {
+            PricingMode::Fixed { .. } | PricingMode::Prepaid { .. } => {
                 return Err(InvalidRequest::UnsupportedMode(
                     transaction_hash,
-                    mode.to_string(),
+                    pricing_mode.to_string(),
                 ));
             }
-        };
+        }
 
         let payment = match v1_txn.target() {
             TransactionTarget::Session { module_bytes, .. } => {
-                if *v1_txn.entry_point() != TransactionEntryPoint::Call {
+                if v1_txn.entry_point() != TransactionEntryPoint::Call {
                     return Err(InvalidRequest::InvalidEntryPoint(
                         transaction_hash,
                         v1_txn.entry_point().to_string(),

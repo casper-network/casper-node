@@ -323,17 +323,18 @@ impl ExecuteRequestBuilder {
         };
         let mut signers = BTreeSet::new();
         signers.insert(sender);
+        let is_standard_payment = pricing_mode.is_standard_payment();
         let session_input_data = SessionInputData::SessionDataV1 {
             data: SessionDataV1::new(
-                &args,
-                &target,
-                &entry_point,
+                args,
+                target,
+                entry_point,
                 false,
-                &hash,
-                &pricing_mode,
-                &initiator_addr,
+                hash,
+                pricing_mode,
+                initiator_addr,
                 signers,
-                pricing_mode.is_standard_payment(),
+                is_standard_payment,
             ),
         };
         Self::from_session_input_data(&session_input_data)
@@ -390,17 +391,18 @@ impl ExecuteRequestBuilder {
         };
         let mut signers = BTreeSet::new();
         signers.insert(sender);
+        let is_standard_payment = pricing_mode.is_standard_payment();
         let session_input_data = SessionInputData::SessionDataV1 {
             data: SessionDataV1::new(
-                &args,
-                &target,
-                &entry_point,
+                args,
+                target,
+                entry_point,
                 false,
-                &hash,
-                &pricing_mode,
-                &initiator_addr,
+                hash,
+                pricing_mode,
+                initiator_addr,
                 signers,
-                pricing_mode.is_standard_payment(),
+                is_standard_payment,
             ),
         };
         Self::from_session_input_data(&session_input_data)

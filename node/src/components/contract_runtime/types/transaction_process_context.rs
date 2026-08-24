@@ -659,7 +659,7 @@ impl TransactionProcessContext {
 impl TransactionProcessContext {
     // *************** FLOW CONTROL ****************
 
-    fn allow_execution(&self) -> bool {
+    pub(crate) fn allow_execution(&self) -> bool {
         if self.error_message.is_some() {
             return false;
         }
@@ -667,11 +667,7 @@ impl TransactionProcessContext {
         true
     }
 
-    pub(crate) fn has_error(&self) -> bool {
-        self.error_message.is_some()
-    }
-
-    pub(crate) fn process_request(&self) -> ProcessRequest<'_> {
+    pub(crate) fn process_request(&self) -> ProcessRequest {
         let txn = &self.meta_transaction;
         if !self.allow_execution() {
             let is_evm = txn.is_evm();

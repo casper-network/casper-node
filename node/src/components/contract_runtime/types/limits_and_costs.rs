@@ -23,6 +23,7 @@ pub(crate) struct LimitsAndCosts {
 }
 
 impl LimitsAndCosts {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         gas_limit: Gas,
         cost_estimate: U512,

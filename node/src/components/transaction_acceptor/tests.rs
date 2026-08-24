@@ -1511,12 +1511,7 @@ fn inject_balance_check_for_peer(
     let txn = txn.clone();
     let block = TestBlockBuilder::new().build(rng);
     let block_header = Box::new(block.header().clone().into());
-    let meta_transaction = MetaTransaction::new_from_txn_with_price(
-        &txn,
-        chainspec.core_config.pricing_handling,
-        &chainspec.transaction_config,
-    )
-    .unwrap();
+    let meta_transaction = MetaTransaction::new_from_txn_with_price(&txn, chainspec, 1).unwrap();
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(
             txn,

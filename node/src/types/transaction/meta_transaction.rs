@@ -11,16 +11,15 @@ use casper_types::InvalidTransactionV1;
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
     EvmTransactionError, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
-    InvalidTransaction, Motes, Phase, PricingMode, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionArgs, TransactionEntryPoint, TransactionHash, TransactionTarget,
-    INSTALL_UPGRADE_LANE_ID, U512,
+    InvalidTransaction, Motes, PublicKey, TimeDiff, Timestamp, Transaction, TransactionArgs,
+    TransactionEntryPoint, TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use meta_deploy::MetaDeploy;
 use meta_evm::MetaEvmTransaction;
 pub(crate) use meta_transaction_v1::MetaTransactionV1;
 use serde::Serialize;
-use std::{borrow::Cow, collections::BTreeSet};
+use std::collections::BTreeSet;
 pub(crate) use transaction_header::*;
 
 #[cfg(test)]
@@ -175,32 +174,17 @@ impl MetaTransaction {
 
     /// Should this transaction use standard payment processing?
     pub(crate) fn is_standard_payment(&self) -> bool {
-        match self {
-            MetaTransaction::Deploy(meta_deploy) => meta_deploy
-                .deploy()
-                .payment()
-                .is_standard_payment(Phase::Payment),
-            MetaTransaction::Evm(_) => true,
-            MetaTransaction::V1(v1) => {
-                if let PricingMode::PaymentLimited {
-                    standard_payment, ..
-                } = v1.pricing_mode()
-                {
-                    *standard_payment
-                } else {
-                    true
-                }
-            }
-        }
+        // custom payment is no longer supported
+        true
     }
 
     /// The session args.
-    pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
+    pub(crate) fn session_args(&self) -> TransactionArgs {
         match self {
-            MetaTransaction::Deploy(meta_deploy) => Cow::Owned(TransactionArgs::Named(
-                meta_deploy.deploy().session().args().clone(),
-            )),
-            MetaTransaction::V1(transaction_v1) => Cow::Borrowed(transaction_v1.args()),
+            MetaTransaction::Deploy(meta_deploy) => {
+                TransactionArgs::Named(meta_deploy.deploy().session().args().clone())
+            }
+            MetaTransaction::V1(transaction_v1) => transaction_v1.args().clone(),
             MetaTransaction::Evm(_) => {
                 unreachable!("This type of transaction does not have Casper session args")
             }
@@ -346,37 +330,40 @@ impl MetaTransaction {
         }
     }
 
-    pub(crate) fn to_transaction_info(&self) -> WasmV2TransactionInput<'_> {
+    pub(crate) fn to_transaction_info(&self) -> WasmV2TransactionInput {
         WasmV2TransactionInput::new(self)
     }
 
-    pub(crate) fn to_session_input_data(&self) -> SessionInputData<'_> {
-        let is_standard_payment = self.is_standard_payment();
-        match self {
+    pub(crate) fn to_session_input_data(&self) -> SessionInputData {
+        match &self {
             MetaTransaction::Deploy(meta_deploy) => {
                 let deploy = meta_deploy.deploy();
-                let initiator_addr = meta_deploy.initiator_addr();
+                let initiator_addr = meta_deploy.initiator_addr().clone();
                 let data = SessionDataDeploy::new(
-                    deploy.hash(),
-                    deploy.session(),
+                    *deploy.hash(),
+                    deploy.session().clone(),
                     initiator_addr,
                     self.authorization_keys().clone(),
-                    is_standard_payment,
+                    self.is_standard_payment(),
                 );
                 SessionInputData::DeploySessionData { data }
             }
             MetaTransaction::V1(v1) => {
-                let initiator_addr = v1.initiator_addr();
+                let initiator_addr = v1.initiator_addr().clone();
+                // TODO: there should not be an expect this deep in the logic
+                let runtime_args = v1.args().as_named().expect(
+                    "V1 wasm args should be named and validated at the transaction acceptor level",
+                ).clone();
                 let data = SessionDataV1::new(
-                    v1.args().as_named().expect("V1 wasm args should be named and validated at the transaction acceptor level"),
-                    v1.target(),
-                    v1.entry_point(),
+                    runtime_args,
+                    v1.target().clone(),
+                    v1.entry_point().clone(),
                     v1.lane_id() == INSTALL_UPGRADE_LANE_ID,
-                    v1.hash(),
-                    v1.pricing_mode(),
+                    *v1.hash(),
+                    v1.pricing_mode().clone(),
                     initiator_addr,
                     self.authorization_keys().clone(),
-                    is_standard_payment,
+                    self.is_standard_payment(),
                 );
                 SessionInputData::SessionDataV1 { data }
             }
@@ -467,7 +454,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
 
     match transaction {
         Transaction::Deploy(_) | Transaction::Evm(_) => {
-            let meta = MetaTransaction::new_from_txn_with_price(transaction, &chainspec, 1)?;
+            let meta = MetaTransaction::new_from_txn_with_price(transaction, chainspec, 1)?;
             Ok(meta.transaction_lane())
         }
         Transaction::V1(v1) => {
@@ -535,7 +522,6 @@ mod tests {
         assert_eq!(meta.gas_limit(&chainspec).unwrap(), Gas::new(21_000));
         assert_eq!(meta.gas_price_tolerance().unwrap(), u8::MAX);
         assert_eq!(meta.size_estimate(), evm_transaction.serialized_length());
-        assert!(meta.is_standard_payment());
         assert!(!meta.is_v1_wasm());
         assert!(!meta.is_v2_wasm());
         assert!(meta.seed().is_none());
@@ -604,16 +590,17 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_mismatched_chain_id() {
         let chainspec = chainspec();
+        let chain_id = CHAIN_ID;
         let meta = evm_meta(
             &chainspec,
-            legacy_transaction(Some(CHAIN_ID + 1), BASE_FEE_WEI, 21_000),
+            legacy_transaction(Some(chain_id + 1), BASE_FEE_WEI, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: _CHAIN_ID,
+                expected: chain_id,
                 actual
-            })) if actual == CHAIN_ID + 1
+            })) if actual == chain_id + 1
         ));
     }
 
@@ -665,16 +652,17 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_unsigned_call_mismatched_chain_id() {
         let chainspec = chainspec();
+        let chain_id = CHAIN_ID;
         let meta = evm_meta(
             &chainspec,
-            unsigned_call(CHAIN_ID + 1, BASE_FEE_WEI, 21_000),
+            unsigned_call(chain_id + 1, BASE_FEE_WEI, 21_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: _CHAIN_ID,
+                expected: chain_id,
                 actual
-            })) if actual == CHAIN_ID + 1
+            })) if actual == chain_id + 1
         ));
     }
 
@@ -735,16 +723,17 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_eip7702_mismatched_chain_id() {
         let chainspec = chainspec();
+        let chain_id = CHAIN_ID;
         let meta = evm_meta(
             &chainspec,
-            eip7702_transaction(CHAIN_ID + 1, BASE_FEE_WEI, 0, 60_000),
+            eip7702_transaction(chain_id + 1, BASE_FEE_WEI, 0, 60_000),
         );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: _CHAIN_ID,
+                expected: chain_id,
                 actual
-            })) if actual == CHAIN_ID + 1
+            })) if actual == chain_id + 1
         ));
     }
 
@@ -851,7 +840,7 @@ mod tests {
     fn evm_meta(chainspec: &Chainspec, evm_transaction: EvmTransaction) -> MetaTransaction {
         MetaTransaction::new_from_txn_with_price(
             &Transaction::from_evm(evm_transaction),
-            &chainspec,
+            chainspec,
             1,
         )
         .expect("EVM transaction metadata should be created")
@@ -967,8 +956,7 @@ mod proptests {
                 TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
                 TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
-                let mut chainspec = Chainspec::default();
-                chainspec.transaction_config = transaction_config;
+                let mut chainspec = Chainspec { transaction_config, ..Default::default() };
                 chainspec.with_pricing_handling(casper_types::PricingHandling::PaymentLimited);
                 chainspec
             };

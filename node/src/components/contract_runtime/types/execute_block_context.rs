@@ -398,10 +398,6 @@ impl ExecuteBlockContext {
     //         .map(move |artifact| &artifact.execution_result)
     // }
 
-    pub(crate) fn approval_hashes(&self) -> Vec<ApprovalsHash> {
-        self.approval_hashes.clone()
-    }
-
     pub(crate) fn block_height(&self) -> u64 {
         self.executable_block.height
     }
@@ -442,10 +438,6 @@ impl ExecuteBlockContext {
         self.executable_block.era_id
     }
 
-    pub(crate) fn native_runtime_config(&self) -> &NativeRuntimeConfig {
-        &self.native_runtime_config
-    }
-
     pub(crate) fn state_root_hash(&self) -> Digest {
         self.state_root_hash
     }
@@ -454,24 +446,8 @@ impl ExecuteBlockContext {
         self.pre_state.parent_hash()
     }
 
-    pub(crate) fn parent_seed(&self) -> Digest {
-        self.pre_state.parent_seed()
-    }
-
-    pub(crate) fn pre_state_root_hash(&self) -> Digest {
-        self.pre_state.pre_state_root_hash()
-    }
-
     pub(crate) fn network_name(&self) -> String {
         self.handling_settings.network_name()
-    }
-
-    pub(crate) fn insufficient_balance_handling(&self) -> InsufficientBalanceHandling {
-        self.handling_settings.insufficient_balance_handling()
-    }
-
-    pub(crate) fn balance_handling(&self) -> BalanceHandling {
-        self.handling_settings.balance_handling()
     }
 
     pub(crate) fn refund_handling(&self) -> RefundHandling {
@@ -932,7 +908,7 @@ impl ExecuteBlockContext {
         let equivocators = &era_report.equivocators;
         let inactive_validators = &era_report.inactive_validators;
         let evict_items = inactive_validators
-            .into_iter()
+            .iter()
             .chain(equivocators)
             .map(|validator_id: &PublicKey| EvictItem::new(validator_id.clone()))
             .collect();

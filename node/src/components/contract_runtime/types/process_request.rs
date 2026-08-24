@@ -1,24 +1,24 @@
 use crate::types::transaction::WasmV2TransactionInput;
 use casper_execution_engine::engine_state::SessionInputData;
 use casper_types::{EvmTransaction, TransactionArgs, TransactionEntryPoint};
-use std::{borrow::Cow, fmt::Formatter};
+use std::fmt::Formatter;
 
 #[derive(Clone, Debug)]
-pub(crate) enum ProcessRequest<'a> {
+pub(crate) enum ProcessRequest {
     Unknown,
     NativeMint {
-        session_args: Cow<'a, TransactionArgs>,
+        session_args: TransactionArgs,
         entry_point: TransactionEntryPoint,
     },
     NativeAuction {
-        session_args: Cow<'a, TransactionArgs>,
+        session_args: TransactionArgs,
         entry_point: TransactionEntryPoint,
     },
     WasmV1 {
-        session_input_data: SessionInputData<'a>,
+        session_input_data: SessionInputData,
     },
     WasmV2 {
-        transaction_input: WasmV2TransactionInput<'a>,
+        transaction_input: WasmV2TransactionInput,
     },
     EvmV1 {
         evm_txn: EvmTransaction,
@@ -32,7 +32,7 @@ pub(crate) enum ProcessRequest<'a> {
     NoExec,
 }
 
-impl<'a> ProcessRequest<'a> {
+impl ProcessRequest {
     pub(crate) fn requires_processing_hold(&self) -> bool {
         match self {
             ProcessRequest::NativeMint { .. }
@@ -47,7 +47,7 @@ impl<'a> ProcessRequest<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for ProcessRequest<'a> {
+impl std::fmt::Display for ProcessRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ProcessRequest::Unknown => {

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 use crate::types::MetaTransaction;
 use bytes::Bytes;
@@ -29,17 +29,17 @@ use thiserror::Error;
 use tracing::info;
 
 #[derive(Clone, Debug)]
-pub(crate) struct TransactionInput<'a> {
+pub(crate) struct TransactionInput {
     transaction_hash: TransactionHash,
     initiator_addr: InitiatorAddr,
-    session_args: Cow<'a, TransactionArgs>,
+    session_args: TransactionArgs,
     transferred_value: Option<u64>,
     target: Option<TransactionTarget>,
     entry_point: TransactionEntryPoint,
     timestamp: BlockTime,
 }
-impl<'a> TransactionInput<'a> {
-    pub(crate) fn new(transaction: &'a MetaTransaction) -> Self {
+impl TransactionInput {
+    pub(crate) fn new(transaction: &MetaTransaction) -> Self {
         TransactionInput {
             transaction_hash: transaction.hash(),
             initiator_addr: transaction.initiator_addr(),
@@ -62,7 +62,7 @@ impl<'a> TransactionInput<'a> {
     }
 
     /// The session args.
-    pub(crate) fn session_args(&self) -> Cow<'_, TransactionArgs> {
+    pub(crate) fn session_args(&self) -> TransactionArgs {
         self.session_args.clone()
     }
 

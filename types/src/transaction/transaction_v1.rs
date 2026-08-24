@@ -8,9 +8,12 @@ pub mod transaction_v1_payload;
 
 #[cfg(any(feature = "std", feature = "testing", test))]
 use super::InitiatorAddrAndSecretKey;
+#[cfg(any(feature = "std", test))]
+use crate::{Chainspec, Motes, PricingModeError};
+
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    crypto, Chainspec, Motes, PricingModeError,
+    crypto,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, TransactionConfig, LARGE_WASM_LANE_ID};
@@ -282,6 +285,7 @@ impl TransactionV1 {
     }
 
     /// Returns calculated gas cost.
+    #[cfg(any(feature = "std", test))]
     pub fn gas_cost(
         &self,
         chainspec: &Chainspec,
@@ -415,7 +419,7 @@ impl TransactionV1 {
         )
     }
 
-    /// Returns result of attempting to deserailize a field from the amorphic `fields` container.
+    /// Returns result of attempting to deserialize a field from the amorphic `fields` container.
     pub fn deserialize_field<T: FromBytes>(
         &self,
         index: u16,
@@ -543,7 +547,7 @@ impl TransactionV1 {
 }
 
 impl ToBytes for TransactionV1 {
-    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let expected_payload_sizes = self.serialized_field_lengths();
         CalltableSerializationEnvelopeBuilder::new(expected_payload_sizes)?
             .add_field(HASH_FIELD_INDEX, &self.hash)?

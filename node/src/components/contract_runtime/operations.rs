@@ -50,6 +50,62 @@ use crate::{
     types::{Chunkable, ExecutableBlock, MetaTransaction},
 };
 
+// fn process_request(txn_process_ctx: &TransactionProcessContext) -> ProcessRequest {
+//     if !txn_process_ctx.allow_execution() {
+//         let is_evm = txn_process_ctx.is_evm();
+//         if is_evm {
+//             let effective_gas_price = txn_process_ctx.evm_effective_gas_price().unwrap_or(0u128);
+//             return ProcessRequest::NoExecEvm {
+//                 effective_gas_price,
+//             };
+//         }
+//         return ProcessRequest::NoExec;
+//     }
+//
+//     let lane = txn_process_ctx.transaction_lane();
+//     if lane == MINT_LANE_ID {
+//         return ProcessRequest::NativeMint {
+//             session_args: txn_process_ctx.session_args(),
+//             entry_point: txn_process_ctx.entry_point(),
+//         };
+//     }
+//     if lane == AUCTION_LANE_ID {
+//         return ProcessRequest::NativeAuction {
+//             session_args: txn_process_ctx.session_args(),
+//             entry_point: txn_process_ctx.entry_point(),
+//         };
+//     }
+//     if txn_process_ctx.is_v1_wasm() {
+//         return ProcessRequest::WasmV1 {
+//             session_input_data: txn_process_ctx.to_session_input_data(),
+//         };
+//     }
+//     if txn_process_ctx.is_v2_wasm() {
+//         return ProcessRequest::WasmV2 {
+//             transaction_input: txn_process_ctx.to_transaction_info(),
+//         };
+//     }
+//     match txn_process_ctx.as_evm() {
+//         Some(evm_txn) => {
+//             let effective_gas_price = match txn_process_ctx.evm_effective_gas_price() {
+//                 Some(effective_gas_price) => effective_gas_price,
+//                 None => return ProcessRequest::Unknown,
+//             };
+//
+//             let block_gas_limit = txn_process_ctx.evm_block_gas_limit();
+//             let base_fee_wei = txn_process_ctx.evm_base_fee_wei();
+//
+//             ProcessRequest::EvmV1 {
+//                 evm_txn: evm_txn.clone(),
+//                 base_fee_wei,
+//                 effective_gas_price,
+//                 block_gas_limit,
+//             }
+//         }
+//         None => ProcessRequest::Unknown,
+//     }
+// }
+
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn execute_finalized_block(
@@ -214,28 +270,27 @@ pub(super) fn execute_finalized_block(
         txn_process_ctx.with_exec_attempt();
 
         // PROCESS TRANSACTION
+        //let process_request = process_request(&txn_process_ctx);
         let process_request = txn_process_ctx.process_request();
         trace!(%transaction_hash, %process_request, "process_request created");
 
-        {
-            // PLACE PROCESSING HOLD TO PREVENT DOUBLE SPEND, IF REQUIRED
-            let requires_hold = process_request.requires_processing_hold();
-            if requires_hold {
-                let hold_amount = txn_process_ctx.cost_to_use();
-                let hold_result = scratch_state.balance_hold(
-                    exec_ctx.balance_hold_request(balance_identifier.clone(), hold_amount),
-                );
+        // PLACE PROCESSING HOLD TO PREVENT DOUBLE SPEND, IF REQUIRED
+        let requires_hold = process_request.requires_processing_hold();
+        if requires_hold {
+            let hold_amount = txn_process_ctx.cost_to_use();
+            let hold_result = scratch_state.balance_hold(
+                exec_ctx.balance_hold_request(balance_identifier.clone(), hold_amount),
+            );
 
-                exec_ctx.with_state_root_hash(
-                    scratch_state
-                        .commit_effects(exec_ctx.state_root_hash(), hold_result.effects().clone())
-                        .map_err(BlockExecutionError::Lmdb)?,
-                );
+            exec_ctx.with_state_root_hash(
+                scratch_state
+                    .commit_effects(exec_ctx.state_root_hash(), hold_result.effects().clone())
+                    .map_err(BlockExecutionError::Lmdb)?,
+            );
 
-                txn_process_ctx
-                    .with_balance_hold_result(&hold_result)
-                    .map_err(|_| exec_ctx.root_not_found())?;
-            }
+            txn_process_ctx
+                .with_balance_hold_result(&hold_result)
+                .map_err(|_| exec_ctx.root_not_found())?;
         }
 
         // PROCESS TRANSACTION
