@@ -19,7 +19,7 @@ Only EIPs referenced by this document or the current code are listed here.
 | [EIP-155][eip-155] | <https://eips.ethereum.org/EIPS/eip-155> | Replay protection for legacy transactions by including a chain ID in the signing payload. EVM transactions must carry the configured Casper EVM chain ID. |
 | [EIP-2718][eip-2718] | <https://eips.ethereum.org/EIPS/eip-2718> | Typed transaction envelope format used by post-legacy Ethereum transaction types. The decoder accepts typed envelopes through Alloy. |
 | [EIP-2930][eip-2930] | <https://eips.ethereum.org/EIPS/eip-2930> | Optional access-list transaction type. Empty access-list transactions decode; non-empty access lists are rejected for now. |
-| [EIP-1559][eip-1559] | <https://eips.ethereum.org/EIPS/eip-1559> | Dynamic-fee transaction type with max fee and priority fee. Casper accepts this envelope for tooling compatibility only when the priority fee is zero. |
+| [EIP-1559][eip-1559] | <https://eips.ethereum.org/EIPS/eip-1559> | Dynamic-fee transaction type with max fee and priority fee. Casper accepts this envelope when its effective priority fee is zero. |
 | [EIP-1153][eip-1153] | <https://eips.ethereum.org/EIPS/eip-1153> | Cancun transient storage opcodes, `TLOAD` and `TSTORE`. |
 | [EIP-4844][eip-4844] | <https://eips.ethereum.org/EIPS/eip-4844> | Blob transaction support. Rejected because blob sidecars, blob gas, and KZG data are not modeled. |
 | [EIP-5656][eip-5656] | <https://eips.ethereum.org/EIPS/eip-5656> | Cancun `MCOPY` memory-copying opcode. |
@@ -38,7 +38,7 @@ Only EIPs referenced by this document or the current code are listed here.
 | [EIP-7642][eip-7642] | <https://eips.ethereum.org/EIPS/eip-7642> | `eth/69` networking cleanup. Not contract-visible for Casper EVM. |
 | [EIP-7685][eip-7685] | <https://eips.ethereum.org/EIPS/eip-7685> | Prague execution-layer requests and `requests_hash` commitment. |
 | [EIP-7691][eip-7691] | <https://eips.ethereum.org/EIPS/eip-7691> | Prague blob throughput increase. |
-| [EIP-7702][eip-7702] | <https://eips.ethereum.org/EIPS/eip-7702> | Set-code transactions for EOAs. Type `0x04` transactions are accepted with non-empty authorization lists; Casper still rejects non-empty access lists and non-zero priority fees. |
+| [EIP-7702][eip-7702] | <https://eips.ethereum.org/EIPS/eip-7702> | Set-code transactions for EOAs. Type `0x04` transactions are accepted with non-empty authorization lists; Casper still rejects non-empty access lists and positive effective priority fees. |
 | [EIP-7840][eip-7840] | <https://eips.ethereum.org/EIPS/eip-7840> | Blob schedule in execution-layer config files. |
 
 ## Current Status
@@ -70,11 +70,13 @@ Implemented in this workspace:
 Implemented in the sidecar workspace for validation:
 
 - Minimal Ethereum JSON-RPC methods on the existing `/rpc` endpoint:
-  `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`,
+  `eth_chainId`, `net_version`, `eth_blockNumber`, `eth_getBlockByNumber`,
+  `eth_getBlockByHash`, `eth_getBalance`, `eth_getCode`,
   `eth_getTransactionCount`, `eth_sendRawTransaction`,
   `eth_getTransactionReceipt`, `eth_getLogs`, `eth_call`,
-  `eth_newFilter`, `eth_getFilterChanges`, `eth_getFilterLogs`,
-  `eth_uninstallFilter`, and `eth_subscribe`.
+  `eth_estimateGas`, `eth_gasPrice`, `eth_feeHistory`,
+  `eth_maxPriorityFeePerGas`, `eth_newFilter`, `eth_getFilterChanges`,
+  `eth_getFilterLogs`, `eth_uninstallFilter`, and `eth_subscribe`.
 - `eth_getTransactionReceipt` projects logs stored in
   `ExecutionResult::Evm` as Ethereum receipt log entries.
 - `eth_getBlockByNumber` projects `parentBeaconBlockRoot` as the parent Casper
@@ -85,13 +87,12 @@ Implemented in the sidecar workspace for validation:
 Not implemented yet:
 
 - Native Ethereum JSON-RPC in node.
-- `eth_estimateGas`, `eth_getBalance`, `eth_getCode`, `eth_getStorageAt`,
-  `eth_getBlockByHash`, `eth_getTransactionByHash`, `eth_gasPrice`,
-  `eth_feeHistory`, `eth_maxPriorityFeePerGas`, `eth_blobBaseFee`,
-  historical `eth_call`, and full transaction objects in block responses.
+- `eth_getStorageAt`, `eth_getTransactionByHash`, `eth_blobBaseFee`, and full
+  transaction objects in block responses.
 - [EIP-4844][eip-4844] blob transactions.
 - Non-empty [EIP-2930][eip-2930]/[EIP-1559][eip-1559] access lists.
-- Non-empty [EIP-7702][eip-7702] access lists and non-zero priority fees.
+- Non-empty [EIP-7702][eip-7702] access lists and positive effective priority
+  fees.
 - EVM log indexing optimized for historical queries.
 
 ### Prague Compatibility Matrix
@@ -114,7 +115,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | [EIP-7623][eip-7623] calldata floor cost | Partial. | `revm` Prague should enforce checked execution semantics, but Casper needs acceptor/max-cost tests and pre-inclusion validation coverage for calldata-heavy transactions. |
 | [EIP-7685][eip-7685] execution-layer requests | Missing / decision needed. | Casper block headers do not carry Ethereum `requests_hash`; needed if EIP-6110, EIP-7002, or EIP-7251 are implemented with Ethereum semantics. |
 | [EIP-7691][eip-7691] blob throughput | Missing / blocked. | Blob throughput is moot while [EIP-4844][eip-4844] blob transactions are rejected. |
-| [EIP-7702][eip-7702] set-code transactions | Partial. | Type `0x04` decode, authorization-list storage, and `revm` execution are implemented. Non-empty access lists and non-zero priority fees are rejected by Casper policy. |
+| [EIP-7702][eip-7702] set-code transactions | Partial. | Type `0x04` decode, authorization-list storage, and `revm` execution are implemented. Non-empty access lists and positive effective priority fees are rejected by Casper policy. |
 | [EIP-7840][eip-7840] blob schedule config | Missing / blocked. | Requires blob support and Prague blob schedule configuration. |
 | [EIP-7642][eip-7642] `eth/69` networking | Not applicable. | Ethereum devp2p execution-layer networking is outside Casper EVM smart-contract compatibility. |
 | [EIP-1153][eip-1153] transient storage | Delegated to `revm`. | Expected to work under Prague; add Casper-owned tests for `TLOAD`, `TSTORE`, revert behavior, and static-call restrictions. |
@@ -137,29 +138,30 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | `CHAINID` | Implemented. | Transaction chain ID is enforced against chainspec `[evm].chain_id`. |
 | `PREVRANDAO` | Weak / missing semantic mapping. | Casper does not plumb a randomness field into the EVM block context, so contracts should not treat it as Ethereum beacon randomness. |
 | `BLOBHASH` and blob-related block context | Missing / misleading. | No accepted blob transactions means no meaningful blob versioned hashes, blob gas, or blob fee context. |
-| Fee charging | Casper-specific. | `revm` fee charging is disabled; Casper hold, refund, and fee accounting owns balance effects. |
+| Fee charging | Casper-specific. | `revm` fee charging is disabled; Casper hold, refund, and fee accounting owns balance effects according to the chainspec. |
 
 | Transaction / admission surface | Current status | Casper-specific gotchas / limitations |
 | --- | --- | --- |
-| Legacy transactions | Implemented. | Casper requires a chain ID; unprotected legacy transactions are rejected. Gas price must cover configured EVM base fee. |
+| Legacy transactions | Implemented. | Casper requires a chain ID; unprotected legacy transactions are rejected. Signed gas price must equal the configured EVM base fee. |
 | [EIP-2930][eip-2930] access-list transactions | Partial. | Empty access-list envelopes work; non-empty access lists are rejected. |
-| [EIP-1559][eip-1559] dynamic-fee transactions | Partial. | Accepted only when `max_priority_fee_per_gas == 0`; Casper does not order transactions by EVM priority fee. |
-| [EIP-7702][eip-7702] set-code transactions | Partial. | Authorization-list behavior is implemented, but access lists and non-zero priority fees are rejected. |
+| [EIP-1559][eip-1559] dynamic-fee transactions | Partial. | Accepted when the effective priority fee is zero; a non-zero cap is allowed when the max fee leaves no tip headroom. |
+| [EIP-7702][eip-7702] set-code transactions | Partial. | Authorization-list behavior is implemented, but access lists and positive effective priority fees are rejected. |
 | [EIP-4844][eip-4844] blob transactions | Missing. | Type `0x03` transactions are rejected before execution. |
 | Non-empty access lists | Missing. | This affects EIP-2930, EIP-1559, and EIP-7702 tooling compatibility. |
-| Non-zero priority fees | Casper policy limitation. | Rejecting non-zero tips avoids charging users for a priority signal the node does not honor, but it differs from Ethereum admission policy. |
+| Positive effective priority fees | Casper policy limitation. | Rejecting effective tips avoids charging users for a priority signal the node does not honor, but it differs from Ethereum admission policy. |
 
 | Sidecar / JSON-RPC surface | Current status | Casper-specific gotchas / limitations |
 | --- | --- | --- |
-| [`eth_getBlockByNumber`][execution-apis] | Partial. | Projects `parentBeaconBlockRoot` as the parent Casper block hash. `fullTransactions=true` is unsupported, several fields are placeholders or Casper-derived, and blob fields are absent. |
-| [`eth_call`][execution-apis] | Partial. | Uses binary-port speculative execution. Historical state, state overrides, block overrides, access lists, and EIP-1559 fee fields are missing. |
+| [`eth_getBlockByNumber`][execution-apis], [`eth_getBlockByHash`][execution-apis] | Partial. | Project `parentBeaconBlockRoot` as the parent Casper block hash. `fullTransactions=true` is unsupported, several fields are placeholders or Casper-derived, and blob fields are absent. |
+| [`eth_call`][execution-apis] | Partial. | Uses binary-port speculative execution. Numeric historical block heights are supported; pending state, state overrides, block overrides, access lists, and EIP-1559 fee fields are missing. |
 | [`eth_getTransactionReceipt`][execution-apis] | Implemented / partial. | Projects stored EVM receipts for transaction types `0`, `1`, `2`, and `4`; no blob transaction receipts. |
 | [`eth_getLogs`][execution-apis], [`eth_newFilter`][execution-apis], [`eth_getFilterChanges`][execution-apis], [`eth_getFilterLogs`][execution-apis], [`eth_uninstallFilter`][execution-apis], [`eth_subscribe`][geth-pubsub] | Implemented / partial. | Filters are process-local and range-limited; log scans are not optimized for large historical ranges; `removed` is always `false`. |
 | [`eth_getTransactionCount`][execution-apis] | Partial. | Reads latest EVM nonce; block selectors are not historical. |
-| [`eth_getBalance`][execution-apis], [`eth_getCode`][execution-apis], [`eth_getStorageAt`][execution-apis] | Missing. | These are required by common wallets, explorers, and contract tooling, including inspection of EVM predeploy state. |
-| [`eth_estimateGas`][execution-apis] | Missing. | Needs execution simulation plus [EIP-7623][eip-7623] calldata floor behavior. |
-| [`eth_gasPrice`][execution-apis], [`eth_feeHistory`][execution-apis], [`eth_maxPriorityFeePerGas`][execution-apis], [`eth_blobBaseFee`][execution-apis] | Missing / placeholder. | Casper fee policy is not Ethereum's priority-fee market; blob fee RPC is blocked on blob support. |
-| [`eth_getBlockByHash`][execution-apis], [`eth_getTransactionByHash`][execution-apis] | Missing. | Expected by ordinary Ethereum tooling. |
+| [`eth_getBalance`][execution-apis], [`eth_getCode`][execution-apis] | Implemented in sidecar. | Standard tags and numeric block heights are supported. |
+| [`eth_getStorageAt`][execution-apis] | Missing. | Required for general contract storage inspection. |
+| [`eth_estimateGas`][execution-apis] | Implemented in sidecar. | Uses speculative EVM execution and reports the simulated gas use. |
+| [`eth_gasPrice`][execution-apis], [`eth_feeHistory`][execution-apis], [`eth_maxPriorityFeePerGas`][execution-apis] | Implemented in sidecar. | Reports the fixed base fee and zero priority rewards; [`eth_blobBaseFee`][execution-apis] remains blocked on blob support. |
+| [`eth_getTransactionByHash`][execution-apis] | Missing. | Expected by ordinary Ethereum tooling. |
 
 ## Prague Compatibility
 
@@ -345,19 +347,23 @@ For client-submitted EVM transactions, the acceptor currently validates:
 4. `evm_transaction.chain_id()` must be present.
 5. The EVM chain ID must equal `[evm].chain_id`.
 6. The EVM gas limit must not exceed `[evm].block_gas_limit`.
-7. Legacy and [EIP-2930][eip-2930] gas price must be at least
+7. Signed legacy and [EIP-2930][eip-2930] gas price must equal
    `[evm].base_fee * [evm].wei_per_mote`.
 8. [EIP-1559][eip-1559] `max_fee_per_gas` must be at least
    `[evm].base_fee * [evm].wei_per_mote`.
-9. [EIP-1559][eip-1559] `max_priority_fee_per_gas` must be zero because
-   Casper does not currently prioritize transactions based on transaction gas
-   parameters.
-10. The EVM account identity for `from` must resolve to a balance, or the
+9. [EIP-1559][eip-1559] `max_priority_fee_per_gas` must not exceed
+   `max_fee_per_gas`, and the resulting effective priority fee must be zero.
+   A non-zero cap is valid when `max_fee_per_gas` equals the base fee.
+10. The transaction value must be exactly convertible from wei to motes using
+    `[evm].wei_per_mote`. This conversion is used for ingress validation and
+    required-balance accounting only; values containing a fractional mote are
+    rejected rather than rounded.
+11. The EVM account identity for `from` must resolve to a balance, or the
     recovered secp256k1 signer must resolve to a Casper account balance or the
     address's deterministic EVM purse balance.
-11. The transaction nonce must match the EVM nonce in global state, defaulting
+12. The transaction nonce must match the EVM nonce in global state, defaulting
     to `0` before the first EVM transaction for that address.
-12. That balance must meet the chain baseline motes requirement.
+13. That balance must meet the chain baseline motes requirement.
 
 The acceptor does not require a Casper `AddressableEntity` for every EVM
 address. The EVM sender identity is `transaction.from()`. If the EVM address is
@@ -427,9 +433,15 @@ When execution proceeds:
    - `[evm].base_fee * [evm].wei_per_mote`.
 5. Runtime calls `casper-executor-evm`.
 6. `revm` executes EVM account, nonce, code, storage, log, create, and value
-   transfer semantics. The `BASEFEE` opcode observes
+   transfer semantics entirely in wei. Signed transaction values are passed
+   into `revm` unchanged after whole-mote ingress validation, while unchecked
+   call simulations may use arbitrary wei values. Casper purse balances are
+   multiplied by `[evm].wei_per_mote` when exposed to `BALANCE`,
+   `SELFBALANCE`, and EVM value-transfer accounting. The `BASEFEE` opcode observes
    `[evm].base_fee * [evm].wei_per_mote`, denominated in wei per EVM gas.
-7. Runtime commits EVM tracking-copy effects into scratch global state.
+7. The executor resolves final changed-account balances back to motes, reports
+   aggregate quantization dust, and runtime commits the EVM tracking-copy
+   effects into scratch global state.
 8. `ExecutionArtifactBuilder` records the EVM receipt, EVM effects, and the
    consumed amount.
 9. Runtime clears the processing hold.
@@ -443,51 +455,50 @@ owns fee and refund policy.
 ## Fee And Refund Policy
 
 EVM transactions deliberately use Casper chain-level fee and refund policy,
-rather than silently emulating Ethereum's full gas escrow semantics.
+rather than silently emulating Ethereum's full gas escrow semantics. The
+chainspec's configured `refund_handling` and `fee_handling` apply to both EVM
+and native Casper transactions.
 
 Runtime computes:
 
 ```text
 base_fee_wei = [evm].base_fee * [evm].wei_per_mote
 effective_gas_price_wei = transaction.effective_gas_price(base_fee_wei)
-max_fee_amount_motes = ceil(gas_limit * effective_gas_price_wei / [evm].wei_per_mote)
+maximum_fee_per_gas_wei = transaction.maximum_fee_per_gas()
+max_fee_amount_motes = ceil(gas_limit * maximum_fee_per_gas_wei / [evm].wei_per_mote)
 ```
 
 The current chainspec base fee and conversion ratio are:
 
 ```text
-[evm].base_fee = 1_000_000 motes per EVM gas
+[evm].base_fee = 5_000 motes per EVM gas
 [evm].wei_per_mote = 1_000_000_000 wei per mote
 ```
 
-At the current `evm.block_gas_limit` of 30,000,000 gas, filling the EVM block
-gas limit costs 30,000 CSPR before any refund policy is applied:
+A standard 21,000-gas transfer costs 0.105 CSPR. At the current
+`evm.block_gas_limit` of 30,000,000 gas, filling the EVM block gas limit costs
+150 CSPR:
 
 ```text
-30,000,000 gas * 1,000,000 motes/gas = 30,000,000,000,000 motes
-30,000,000,000,000 motes / 1,000,000,000 = 30,000 CSPR
+21,000 gas * 5,000 motes/gas = 105,000,000 motes = 0.105 CSPR
+30,000,000 gas * 5,000 motes/gas = 150,000,000,000 motes = 150 CSPR
 ```
 
 For legacy and [EIP-2930][eip-2930] transactions, the effective gas price is
-the signed gas price. For [EIP-1559][eip-1559] transactions, the acceptor
-requires `max_priority_fee_per_gas == 0` because Casper does not currently
-prioritize transactions based on transaction gas parameters. Accepted EIP-1559
-transactions therefore pay `[evm].base_fee * [evm].wei_per_mote` in
-wei-denominated transaction fee accounting; `max_fee_per_gas` is only a sender
-cap and must be high enough to cover the scaled base fee.
+the signed gas price, which signed transactions must set exactly to the base
+fee. For [EIP-1559][eip-1559] and [EIP-7702][eip-7702], the acceptor rejects a
+positive effective priority fee because Casper does not order transactions by
+that signal. A non-zero signed priority cap remains valid when
+`max_fee_per_gas == base_fee`, matching the fallback transaction shape emitted
+by MetaMask for custom networks.
 
 The maximum fee is held from the resolved EVM payer. After execution:
 
-- Successful execution consumes
+- Successful and reverted execution consume
   `ceil(gas_used * effective_gas_price_wei / [evm].wei_per_mote)`.
-- Failed/reverted/halted execution consumes the full held amount.
+- An exceptional halt consumes the full gas limit at the base fee.
 - The unconsumed portion is processed through Casper `RefundHandling`.
 - The final fee is processed through Casper `FeeHandling`.
-
-This keeps EVM transactions aligned with the same chain policy knobs used by
-Deploy and native Transaction::V1 payloads. The EVM gas price is converted to
-motes after multiplying by gas used, before calling the balance/fee/refund
-machinery.
 
 In the shared accounting loop, EVM cost is already expressed as motes. Refund
 calculation therefore uses `cost_to_use()` with an effective runtime gas price
@@ -495,6 +506,20 @@ of `1` for the refund-mode call, instead of multiplying by Casper's current
 native transaction gas price again. This prevents double scaling while still
 allowing `RefundHandling::{NoRefund,Burn,Refund}` and
 `FeeHandling::{NoFee,Burn,PayToProposer,Accumulate}` to apply uniformly.
+
+This policy can intentionally differ from Ethereum. Standard Ethereum receipts
+expose `gasUsed` and `effectiveGasPrice`, but have no field for a Casper
+partial-refund penalty. When the chainspec does not fully return unused gas and
+maximum-fee headroom, tools deriving the transaction fee as
+`gasUsed * effectiveGasPrice` can report a value smaller than the sender's
+actual debit. `FeeHandling::NoFee` can create the opposite discrepancy, while
+the other fee-handling variants may route the charge differently from
+Ethereum's base-fee burn without changing the sender's debit. Wallets that
+query `eth_getBalance` after confirmation will receive the authoritative
+balance, but wallets, explorers, and accounting tools that project balances or
+fees from the receipt may show confusing or inconsistent values. This tradeoff
+should be revisited if strict Ethereum fee semantics become a compatibility
+requirement.
 
 EVM does not support Casper custom payment or refund-purse selection in this
 prototype. That is intentional: Ethereum payloads do not carry Casper payment
@@ -519,9 +544,21 @@ EVM state is stored in Casper global state using typed keys and values:
 
 `StoredValue::Evm` is not part of the current layout.
 
-Balances are Casper purse balances. EVM balance reads and writes reconcile
-through either the linked Casper account main purse or the EVM-native purse and
-`Key::Balance(main_purse.addr())`.
+Balances are Casper purse balances, persisted in motes. EVM balance reads
+resolve either the linked Casper account main purse or the EVM-native purse,
+read `Key::Balance(main_purse.addr())`, and multiply the result by
+`[evm].wei_per_mote` before exposing it to `revm`.
+
+After execution and removal of disabled `revm` fee transfers, the executor
+quantizes final changed-account balances once. It first computes each
+`balance_wei / wei_per_mote` and `balance_wei % wei_per_mote` without writing
+state, then checked-sums all remainders. The aggregate must be divisible by
+`wei_per_mote`; otherwise execution fails deterministically before balance
+writes. Rounded-down whole-mote balances are then persisted and
+`ExecutionOutcome.dust_motes` reports the aggregate whole-mote amount discarded
+by quantization. That outcome value is intended for a subsequent supply-burning
+step; the executor does not itself reduce total supply and the dust is not part
+of the Ethereum receipt.
 
 Genesis does not create EVM account records for Casper genesis accounts.
 Funding an EVM identity is explicit: a native Casper transfer can use a
@@ -824,18 +861,19 @@ forge create --broadcast \
     --rpc-url http://127.0.0.1:11101/rpc \
     --private-key 0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8 \
     --legacy \
-    --gas-price 1000000000000000 \
+    --gas-price 5000000000000 \
     --gas-limit 3000000 \
     --nonce 0 \
     smart_contracts/evm_contracts/Counter.sol:Counter
 ```
 
-The current validation uses `--legacy` because the minimum RPC surface does
-not yet include gas estimation or dynamic-fee helper methods, and Casper only
-accepts [EIP-1559][eip-1559] transactions when
-`max_priority_fee_per_gas == 0`. Passing an explicit legacy gas price equal to
-`[evm].base_fee * [evm].wei_per_mote` keeps the transaction shape simple and
-avoids underpriced transaction rejection.
+The explicit `--legacy` example keeps the transaction shape simple. The RPC
+surface also supports gas estimation and dynamic-fee helpers. Casper accepts
+[EIP-1559][eip-1559] transactions when their effective priority fee is zero,
+including a non-zero priority cap when `max_fee_per_gas == base_fee`.
+Passing an explicit legacy gas price equal to
+`[evm].base_fee * [evm].wei_per_mote` avoids both underpriced transactions and
+positive effective priority fees.
 
 Expected output:
 
@@ -854,7 +892,7 @@ The corresponding receipt should contain:
 status             0x1
 contractAddress    0x6c0704679ca22b83778ef815607359cf6f5352b6
 gasUsed            <non-zero gas used>
-effectiveGasPrice  0xf4240
+effectiveGasPrice  0x48c27395000
 ```
 
 ### Read Counter
@@ -881,7 +919,7 @@ cast send "$COUNTER_ADDRESS" \
     --rpc-url http://127.0.0.1:11101/rpc \
     --private-key 0xb6cc5d5faa7c3c37db4bf9a1566023aaa9a1d716fe78ed1a6fb79a690b9400e8 \
     --legacy \
-    --gas-price 1000000000000000 \
+    --gas-price 5000000000000 \
     --gas-limit 100000 \
     --nonce 1
 ```
@@ -891,7 +929,7 @@ Expected receipt highlights:
 ```text
 status               1 (success)
 type                 0
-effectiveGasPrice    1000000000000000
+effectiveGasPrice    5000000000000
 gasUsed              <non-zero gas used, including the event LOG cost>
 to                   0x6c0704679CA22b83778Ef815607359cf6F5352B6
 transactionHash      0x042ff975ec4b8fa8012f486bb7bd930e69978782b8b3c107ca2a276a43d7f293
@@ -1001,8 +1039,9 @@ export SET_CODE_AUTH=$(cast wallet sign-auth "$COUNTER_ADDRESS" \
 
 Submit the set-code transaction. Do not pass `--legacy`; the authorization list
 causes Foundry to build an EIP-7702 transaction. Pass
-`--priority-gas-price 0` because Casper currently rejects non-zero priority
-fees.
+`--priority-gas-price 0` because Casper rejects positive effective priority
+fees. Non-zero caps are accepted only when the maximum total fee leaves no tip
+headroom.
 
 ```bash
 cast send "$AUTHORITY_ADDRESS" \
@@ -1010,7 +1049,7 @@ cast send "$AUTHORITY_ADDRESS" \
     --rpc-url "$RPC_URL" \
     --private-key "$USER_PRIVATE_KEY" \
     --auth "$SET_CODE_AUTH" \
-    --gas-price 1000000000000000 \
+    --gas-price 5000000000000 \
     --priority-gas-price 0 \
     --gas-limit 300000 \
     --nonce "$USER_NONCE" \
@@ -1035,7 +1074,7 @@ Expected highlights:
 ```text
 type               0x4
 status             0x1
-effectiveGasPrice  0xf4240
+effectiveGasPrice  0x48c27395000
 from               0x24790c4849ccae43c0c1749e2c5b8d00cc63ab80
 to                 $AUTHORITY_ADDRESS
 logs[0].address    $AUTHORITY_ADDRESS
@@ -1076,7 +1115,7 @@ cast send "$AUTHORITY_ADDRESS" \
     --rpc-url "$RPC_URL" \
     --private-key "$USER_PRIVATE_KEY" \
     --legacy \
-    --gas-price 1000000000000000 \
+    --gas-price 5000000000000 \
     --gas-limit 100000 \
     --nonce "$USER_NONCE" \
     --json | tee /tmp/casper-eip7702-persisted-delegation.json
@@ -1102,8 +1141,10 @@ backing purse, not from `user-1`'s Casper account purse:
 casper-cli account balance devnet:user-1
 ```
 
-With `--gas-price 1000000000000000`, every 1,000 gas consumed is 1 CSPR
-before refund policy is applied.
+With `--gas-price 5000000000000`, every 1,000 gas consumed is 0.005 CSPR.
+The final charge also depends on the chainspec's `refund_handling`: unused gas
+and maximum-fee headroom are not necessarily returned in full. The resulting
+fee is processed according to `fee_handling`.
 
 ## Useful Checks
 

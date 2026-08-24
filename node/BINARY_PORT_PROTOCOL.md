@@ -44,4 +44,4 @@ Currently, there are 3 supported types of requests, but the request model can be
     - An `AllItems` request asking for all items given a `KeyTag`
     - A `Trie` request asking for a trie given a `Digest`
 - A `TryAcceptTransaction` request for a transaction to be accepted and executed
-- A `TrySpeculativeExec` request for a transaction to be executed speculatively, without saving the transaction effects in global state
+- A `TrySpeculativeExec` request for a transaction to be executed speculatively, without saving the transaction effects in global state. Its optional block identifier selects the state to use; `None` uses the latest complete block.

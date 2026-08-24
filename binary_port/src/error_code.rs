@@ -379,6 +379,12 @@ pub enum ErrorCode {
     /// EOA initiators are not valid for V1 transactions.
     #[error("invalid initiator address for Transaction::V1")]
     InvalidTransactionInvalidInitiatorAddr = 120,
+    /// EVM transaction has a positive effective priority fee per gas.
+    #[error("the EVM transaction effective priority fee per gas is unsupported")]
+    InvalidTransactionEvmPositiveEffectivePriorityFeePerGas = 121,
+    /// EVM transaction maximum priority fee per gas exceeds its maximum total fee per gas.
+    #[error("the EVM transaction maximum priority fee per gas exceeds its maximum fee per gas")]
+    InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas = 122,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -409,6 +415,12 @@ impl From<InvalidTransaction> for ErrorCode {
             InvalidTransaction::Evm(EvmTransactionError::InvalidNonce { .. }) => {
                 ErrorCode::InvalidTransactionEvmInvalidNonce
             }
+            InvalidTransaction::Evm(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                ..
+            }) => ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas,
+            InvalidTransaction::Evm(
+                EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas { .. },
+            ) => ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas,
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
         }
     }
@@ -646,6 +658,38 @@ mod tests {
             ErrorCode::from(error),
             ErrorCode::InvalidTransactionEvmInvalidNonce
         );
+    }
+
+    #[test]
+    fn evm_positive_effective_priority_fee_has_specific_error_code() {
+        let error =
+            InvalidTransaction::Evm(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                priority_fee_per_gas: 1,
+            });
+        let code = ErrorCode::from(error);
+
+        assert_eq!(
+            code,
+            ErrorCode::InvalidTransactionEvmPositiveEffectivePriorityFeePerGas
+        );
+        assert_eq!(code as u16, 121);
+    }
+
+    #[test]
+    fn evm_priority_cap_above_max_fee_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(
+            EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas {
+                max_priority_fee_per_gas: 2,
+                max_fee_per_gas: 1,
+            },
+        );
+        let code = ErrorCode::from(error);
+
+        assert_eq!(
+            code,
+            ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
+        );
+        assert_eq!(code as u16, 122);
     }
 
     #[test]

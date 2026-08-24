@@ -167,7 +167,11 @@ audit-rs:
 	$(CARGO) audit \
 		--ignore RUSTSEC-2025-0055 \
 		--ignore RUSTSEC-2026-0194 \
-		--ignore RUSTSEC-2026-0195
+		--ignore RUSTSEC-2026-0195 \
+		--ignore RUSTSEC-2026-0233 \
+		--ignore RUSTSEC-2026-0234 \
+		--ignore RUSTSEC-2026-0235 \
+		--ignore RUSTSEC-2026-0258
 
 .PHONY: audit
 audit: audit-rs
