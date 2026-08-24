@@ -1,9 +1,9 @@
 use crate::types::transaction::WasmV2TransactionInput;
 use casper_execution_engine::engine_state::SessionInputData;
 use casper_types::{EvmTransaction, TransactionArgs, TransactionEntryPoint};
-use std::borrow::Cow;
-use std::fmt::Formatter;
+use std::{borrow::Cow, fmt::Formatter};
 
+#[derive(Clone, Debug)]
 pub(crate) enum ProcessRequest<'a> {
     Unknown,
     NativeMint {
@@ -18,7 +18,7 @@ pub(crate) enum ProcessRequest<'a> {
         session_input_data: SessionInputData<'a>,
     },
     WasmV2 {
-        transaction_info: WasmV2TransactionInput<'a>,
+        transaction_input: WasmV2TransactionInput<'a>,
     },
     EvmV1 {
         evm_txn: EvmTransaction,
@@ -30,6 +30,21 @@ pub(crate) enum ProcessRequest<'a> {
         effective_gas_price: u128,
     },
     NoExec,
+}
+
+impl<'a> ProcessRequest<'a> {
+    pub(crate) fn requires_processing_hold(&self) -> bool {
+        match self {
+            ProcessRequest::NativeMint { .. }
+            | ProcessRequest::NativeAuction { .. }
+            | ProcessRequest::WasmV1 { .. }
+            | ProcessRequest::WasmV2 { .. }
+            | ProcessRequest::EvmV1 { .. } => true,
+            ProcessRequest::NoExecEvm { .. } | ProcessRequest::NoExec | ProcessRequest::Unknown => {
+                false
+            }
+        }
+    }
 }
 
 impl<'a> std::fmt::Display for ProcessRequest<'a> {

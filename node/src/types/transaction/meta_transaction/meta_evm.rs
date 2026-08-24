@@ -13,6 +13,7 @@ pub(crate) struct MetaEvmTransaction {
     transaction: EvmTransaction,
     lane_id: u8,
     initial_cost: Motes,
+    gas_price: u8,
     payload_hash: Digest,
 }
 
@@ -46,6 +47,7 @@ impl MetaEvmTransaction {
             transaction: transaction.clone(),
             lane_id,
             initial_cost,
+            gas_price,
             payload_hash,
         })
     }
@@ -80,6 +82,10 @@ impl MetaEvmTransaction {
 
     pub(crate) fn initial_cost(&self) -> Motes {
         self.initial_cost
+    }
+
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
     }
 
     pub(crate) fn required_balance(&self, fee_amount: U512) -> Option<U512> {

@@ -28,6 +28,7 @@ use casper_types::{
 use thiserror::Error;
 use tracing::info;
 
+#[derive(Clone, Debug)]
 pub(crate) struct TransactionInput<'a> {
     transaction_hash: TransactionHash,
     initiator_addr: InitiatorAddr,
@@ -159,7 +160,6 @@ impl WasmV2Request {
         parent_block_hash: BlockHash,
         block_height: u64,
         txn_input: TransactionInput,
-        //transaction: &MetaTransaction,
     ) -> Result<Self, InvalidRequest> {
         let value = txn_input
             .transferred_value()

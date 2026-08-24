@@ -43,6 +43,12 @@ impl FeeHandling {
     pub fn is_no_fee(&self) -> bool {
         matches!(self, FeeHandling::NoFee)
     }
+
+    /// Returns true if fee handling requires a balance hold.
+    pub fn requires_hold(&self) -> bool {
+        // currently, only no fee requires a hold
+        matches!(self, FeeHandling::NoFee)
+    }
 }
 
 impl ToBytes for FeeHandling {

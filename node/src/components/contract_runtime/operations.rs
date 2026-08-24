@@ -1,26 +1,21 @@
-use crate::types::transaction::{WasmV2Request, WasmV2Result};
+use crate::types::transaction::WasmV2Result;
 use casper_executor_wasm::ExecutorV2;
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
 };
 use casper_executor_evm::{
-    BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
+    BlockContext as EvmV1Request, BlockHashProvider as EvmBlockHashProvider,
     CallRequest as EvmExecutorCallRequest, CallValidation as EvmCallValidation, EvmExecutor,
     ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
 };
-use casper_storage::data_access_layer::BalanceResult;
 use casper_storage::{
-    block_store::types::ApprovalsHashes,
     data_access_layer::{
-        mint::BurnRequest, AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier,
-        BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
+        AuctionMethod, BalanceHoldKind, BalanceIdentifier, BalanceResult, BlockGlobalResult,
         BlockRewardsResult, DataAccessLayer, EntryPointRequest, EntryPointResult,
-        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
-        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest, ProofHandling,
-        PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
+        EraValidatorsResult, FeeResult, FlushRequest, PruneResult, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -35,10 +30,9 @@ use casper_types::{
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     evm::{Address as EvmAddress, IdentityInstruction as EvmIdentityInstruction},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
-    BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EntityAddr,
-    EraEndV2, EraId, EvmTransactionError, FeeHandling, Gas, HashAddr, InvalidTransaction,
-    InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff,
-    Transaction, TransactionEntryPoint, U512,
+    BlockHash, BlockHeader, CLValue, Chainspec, ChecksumRegistry, Digest, EntityAddr,
+    EvmTransactionError, Gas, HashAddr, InvalidTransaction, InvalidTransactionV1, Key,
+    ProtocolVersion, PublicKey, StoredValue, TimeDiff, Transaction, TransactionEntryPoint, U512,
 };
 
 use super::{
@@ -47,15 +41,13 @@ use super::{
     BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics, StateResultError,
     APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
-use crate::contract_runtime::types::{
-    ExecuteBlockContext, ExecuteBlockContextError, InitialBalanceIdentifierResult,
-};
 use crate::{
     contract_runtime::types::{
-        BalanceIdentifierResolution, EvmOriginResolution, ProcessRequest,
-        StaticEvmBlockHashProvider, TransactionProcessContext,
+        BalanceIdentifierResolution, EvmOriginResolution, ExecuteBlockContext,
+        ExecuteBlockContextError, ExecuteBlockOutcome, InitialBalanceIdentifierResult,
+        ProcessRequest, StaticEvmBlockHashProvider, TransactionProcessContext,
     },
-    types::{Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
+    types::{Chunkable, ExecutableBlock, MetaTransaction},
 };
 
 /// Executes a finalized block.
@@ -78,7 +70,9 @@ pub(super) fn execute_finalized_block(
         &executable_block,
         &execution_pre_state,
         chainspec,
+        current_gas_price,
         next_era_gas_price,
+        last_switch_block_hash,
         data_access_layer.enable_addressable_entity,
     ) {
         Ok(exec_ctx) => exec_ctx,
@@ -104,40 +98,13 @@ pub(super) fn execute_finalized_block(
         }
     };
 
-    // pre-processing is finished
-    if let Some(metrics) = metrics.as_ref() {
-        metrics
-            .exec_block_pre_processing
-            .observe(exec_ctx.pre_process_elapsed());
-    }
-
-    exec_ctx.process_starting();
-
-    let block_height = exec_ctx.block_height();
-    let protocol_version = exec_ctx.protocol_version();
-    let activation_point_era_id = exec_ctx.activation_point_era_id();
-    let prune_batch_size = exec_ctx.prune_batch_size();
-    let native_runtime_config = exec_ctx.native_runtime_config().clone();
-    let block_time = exec_ctx.block_time();
-    let proposer = exec_ctx.proposer();
-    let era_id = exec_ctx.era_id();
-    let parent_block_hash = exec_ctx.parent_block_hash();
-    let parent_seed = exec_ctx.parent_seed();
-
-    // mutable variables
-    let mut state_root_hash = exec_ctx.pre_state_root_hash(); // initial state root is parent's state root
-    let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
-
     // NOTE this must occur prior to any block processing as subsequent logic
     // will refer to the values being written to GS.
-    match data_access_layer.block_global(BlockGlobalRequest::set_block_info(
-        state_root_hash,
-        block_time,
-        protocol_version,
-        exec_ctx.addressable_entity_enabled(),
-    )) {
+    match data_access_layer.block_global(exec_ctx.block_global_request()) {
         BlockGlobalResult::RootNotFound => {
-            return Err(BlockExecutionError::RootNotFound(state_root_hash));
+            return Err(BlockExecutionError::RootNotFound(
+                exec_ctx.state_root_hash(),
+            ));
         }
         BlockGlobalResult::Failure(err) => {
             return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
@@ -145,13 +112,22 @@ pub(super) fn execute_finalized_block(
         BlockGlobalResult::Success {
             post_state_hash, ..
         } => {
-            state_root_hash = post_state_hash;
+            exec_ctx.with_state_root_hash(post_state_hash);
         }
+    }
+
+    // pre-processing is finished
+    if let Some(metrics) = metrics.as_ref() {
+        metrics
+            .exec_block_pre_processing
+            .observe(exec_ctx.pre_process_elapsed());
     }
 
     // scratch_state must be used for all processing and post-processing data
     // from here on out, until the effects are applied at the end.
     let scratch_state = data_access_layer.get_scratch_global_state();
+
+    exec_ctx.process_starting();
 
     for txn in executable_block.transactions {
         let mut txn_process_ctx =
@@ -169,21 +145,13 @@ pub(super) fn execute_finalized_block(
                 "lane_id is currently not supported"
             );
             // record it and move on.
-            artifacts.push(txn_process_ctx.into_execution_artifact());
+            exec_ctx.with_artifact(txn_process_ctx.into_execution_artifact());
             continue;
         }
 
-        let initiator_addr = txn_process_ctx.initiator_addr().clone();
-
         let balance_identifier = {
-            let ret = txn_initial_balance_identifier(
-                &txn_process_ctx,
-                &scratch_state,
-                state_root_hash,
-                protocol_version,
-                exec_ctx.addressable_entity_enabled(),
-            )
-            .map_err(|err| {
+            let ret = txn_initial_balance_identifier(&scratch_state, &exec_ctx, &txn_process_ctx)
+                .map_err(|err| {
                 error!(
                     %transaction_hash,
                     ?err,
@@ -194,7 +162,7 @@ pub(super) fn execute_finalized_block(
             if let Some(state_err) = ret.state_result_error() {
                 txn_process_ctx
                     .with_state_result_error(state_err.clone())
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                    .map_err(|_| exec_ctx.root_not_found())?;
             }
             if let Some(evm_err) = ret.evm_transaction_error() {
                 txn_process_ctx.with_evm_error(evm_err.clone());
@@ -211,66 +179,66 @@ pub(super) fn execute_finalized_block(
                     %transaction_hash,
                     "unknown initial balance identifier"
                 );
-                artifacts.push(txn_process_ctx.into_execution_artifact());
+                exec_ctx.with_artifact(txn_process_ctx.into_execution_artifact());
                 continue;
             }
         };
 
-        // we do a check for initial min balance to determine if we should proceed or not
-        let initial_balance_result = scratch_state.balance(BalanceRequest::new(
-            state_root_hash,
-            protocol_version,
-            balance_identifier.clone(),
-            exec_ctx.balance_handling(),
-            ProofHandling::NoProofs,
-        ));
+        txn_process_ctx.with_initial_balance_identifier(balance_identifier.clone());
 
-        if let BalanceResult::RootNotFound = initial_balance_result {
-            return Err(BlockExecutionError::RootNotFound(state_root_hash));
+        // INITIAL BALANCE
+        {
+            let initial_balance_result =
+                scratch_state.balance(exec_ctx.balance_request(balance_identifier.clone()));
+
+            if let BalanceResult::RootNotFound = initial_balance_result {
+                return Err(BlockExecutionError::RootNotFound(
+                    exec_ctx.state_root_hash(),
+                ));
+            }
+            txn_process_ctx.with_initial_balance_result(initial_balance_result);
         }
 
-        txn_process_ctx.with_initial_balance_result(&initial_balance_result);
+        // CHECK FOR MINIMUM BALANCE
+        if !txn_process_ctx.has_sufficient_minimum() {
+            // the purse does not have enough to cover the minimum, just record it and move on.
+            info!(
+                %transaction_hash,
+                "Has less than minimum balance"
+            );
+            exec_ctx.with_artifact(txn_process_ctx.into_execution_artifact());
+            continue;
+        }
 
-        let required_balance = match txn_process_ctx.cost_estimate() {
-            Some(cost_estimate) => cost_estimate,
-            None => {
-                error!(
-                    %transaction_hash,
-                    "failed to determine cost_estimate"
-                );
-                // record it and move on.
-                artifacts.push(txn_process_ctx.into_execution_artifact());
-                continue;
-            }
-        };
-        txn_process_ctx
-            .with_is_sufficient_balance(initial_balance_result.is_sufficient(required_balance));
-        txn_process_ctx.with_is_penalized(balance_identifier.is_penalty());
+        // REGISTER EXEC ATTEMPT (from this point onward we charge for success and failure)
         txn_process_ctx.with_exec_attempt();
 
-        // last point beyond which we don't charge
-        // place a processing hold on the paying account to prevent double spend.
-        let hold_amount = txn_process_ctx.cost_to_use();
-        let hold_request = BalanceHoldRequest::new_processing_hold(
-            state_root_hash,
-            protocol_version,
-            balance_identifier.clone(),
-            hold_amount,
-            exec_ctx.insufficient_balance_handling(),
-        );
-        let hold_result = scratch_state.balance_hold(hold_request);
-        state_root_hash = scratch_state
-            .commit_effects(state_root_hash, hold_result.effects().clone())
-            .map_err(BlockExecutionError::Lmdb)?;
-        txn_process_ctx
-            .with_balance_hold_result(&hold_result)
-            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-
-        let authorization_keys = txn_process_ctx.authorization_keys();
-        // TODO: consider early skip if authorization_keys is empty
-
+        // PROCESS TRANSACTION
         let process_request = txn_process_ctx.process_request();
         trace!(%transaction_hash, %process_request, "process_request created");
+
+        {
+            // PLACE PROCESSING HOLD TO PREVENT DOUBLE SPEND, IF REQUIRED
+            let requires_hold = process_request.requires_processing_hold();
+            if requires_hold {
+                let hold_amount = txn_process_ctx.cost_to_use();
+                let hold_result = scratch_state.balance_hold(
+                    exec_ctx.balance_hold_request(balance_identifier.clone(), hold_amount),
+                );
+
+                exec_ctx.with_state_root_hash(
+                    scratch_state
+                        .commit_effects(exec_ctx.state_root_hash(), hold_result.effects().clone())
+                        .map_err(BlockExecutionError::Lmdb)?,
+                );
+
+                txn_process_ctx
+                    .with_balance_hold_result(&hold_result)
+                    .map_err(|_| exec_ctx.root_not_found())?;
+            }
+        }
+
+        // PROCESS TRANSACTION
         match process_request {
             ProcessRequest::NoExec => {
                 // noop
@@ -293,46 +261,41 @@ pub(super) fn execute_finalized_block(
                 session_args,
                 entry_point,
             } => {
-                // let transaction_args = txn_process_ctx.session_args();
                 let runtime_args = session_args
                     .as_named()
                     .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
-                // let entry_point = txn_process_ctx.entry_point();
                 if let TransactionEntryPoint::Transfer = entry_point {
-                    let transfer_result =
-                        scratch_state.transfer(TransferRequest::with_runtime_args(
-                            native_runtime_config.clone(),
-                            state_root_hash,
-                            protocol_version,
-                            transaction_hash,
-                            initiator_addr.clone(),
-                            authorization_keys,
-                            runtime_args.clone(),
-                        ));
-                    state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, transfer_result.effects().clone())
-                        .map_err(BlockExecutionError::Lmdb)?;
+                    let transfer_request =
+                        exec_ctx.transfer_request(&txn_process_ctx, runtime_args.clone());
+                    let transfer_result = scratch_state.transfer(transfer_request);
+                    exec_ctx.with_state_root_hash(
+                        scratch_state
+                            .commit_effects(
+                                exec_ctx.state_root_hash(),
+                                transfer_result.effects().clone(),
+                            )
+                            .map_err(BlockExecutionError::Lmdb)?,
+                    );
                     txn_process_ctx
                         .with_gas_limit_consumed()
                         .with_transfer_result(transfer_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                        .map_err(|_| exec_ctx.root_not_found())?;
                 } else if let TransactionEntryPoint::Burn = entry_point {
-                    let burn_result = scratch_state.burn(BurnRequest::with_runtime_args(
-                        native_runtime_config.clone(),
-                        state_root_hash,
-                        protocol_version,
-                        transaction_hash,
-                        initiator_addr.clone(),
-                        authorization_keys,
-                        runtime_args.clone(),
-                    ));
-                    state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, burn_result.effects().clone())
-                        .map_err(BlockExecutionError::Lmdb)?;
+                    let burn_request =
+                        exec_ctx.burn_request(&txn_process_ctx, runtime_args.clone());
+                    let burn_result = scratch_state.burn(burn_request);
+                    exec_ctx.with_state_root_hash(
+                        scratch_state
+                            .commit_effects(
+                                exec_ctx.state_root_hash(),
+                                burn_result.effects().clone(),
+                            )
+                            .map_err(BlockExecutionError::Lmdb)?,
+                    );
                     txn_process_ctx
                         .with_gas_limit_consumed()
                         .with_burn_result(burn_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                        .map_err(|_| exec_ctx.root_not_found())?;
                 } else {
                     txn_process_ctx.with_error_message(format!(
                         "Attempt to call unsupported native mint entrypoint: {}",
@@ -344,29 +307,25 @@ pub(super) fn execute_finalized_block(
                 session_args,
                 entry_point,
             } => {
-                // let transaction_args = txn_process_ctx.session_args();
                 let runtime_args = session_args
                     .as_named()
                     .ok_or(BlockExecutionError::InvalidTransactionArgs)?;
-                // let entry_point = txn_process_ctx.entry_point();
-                match AuctionMethod::from_parts(entry_point, runtime_args, chainspec) {
+                match AuctionMethod::from_parts(entry_point.clone(), runtime_args, chainspec) {
                     Ok(auction_method) => {
-                        let bidding_result = scratch_state.bidding(BiddingRequest::new(
-                            native_runtime_config.clone(),
-                            state_root_hash,
-                            protocol_version,
-                            transaction_hash,
-                            initiator_addr.clone(),
-                            authorization_keys,
-                            auction_method,
-                        ));
-                        state_root_hash = scratch_state
-                            .commit_effects(state_root_hash, bidding_result.effects().clone())
-                            .map_err(BlockExecutionError::Lmdb)?;
+                        let bidding_result = scratch_state
+                            .bidding(exec_ctx.bidding_request(&txn_process_ctx, auction_method));
+                        exec_ctx.with_state_root_hash(
+                            scratch_state
+                                .commit_effects(
+                                    exec_ctx.state_root_hash(),
+                                    bidding_result.effects().clone(),
+                                )
+                                .map_err(BlockExecutionError::Lmdb)?,
+                        );
                         txn_process_ctx
                             .with_gas_limit_consumed()
                             .with_bidding_result(bidding_result)
-                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                            .map_err(|_| exec_ctx.root_not_found())?;
                     }
                     Err(ame) => {
                         error!(
@@ -379,30 +338,25 @@ pub(super) fn execute_finalized_block(
                 };
             }
             ProcessRequest::WasmV1 { session_input_data } => {
-                let wasm_v1_start = Instant::now();
-                match WasmV1Request::new_session(
-                    BlockInfo::new(
-                        state_root_hash,
-                        block_time,
-                        parent_block_hash,
-                        block_height,
-                        protocol_version,
-                    ),
-                    txn_process_ctx.gas_limit(),
-                    &session_input_data,
-                ) {
+                exec_ctx.wasm_v1_starting();
+                match exec_ctx.wasm_v1_session_request(&txn_process_ctx, &session_input_data) {
                     Ok(wasm_v1_request) => {
                         trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
                         let wasm_v1_result =
                             execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                         trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
-                        state_root_hash = scratch_state
-                            .commit_effects(state_root_hash, wasm_v1_result.effects().clone())
-                            .map_err(BlockExecutionError::Lmdb)?;
+                        exec_ctx.with_state_root_hash(
+                            scratch_state
+                                .commit_effects(
+                                    exec_ctx.state_root_hash(),
+                                    wasm_v1_result.effects().clone(),
+                                )
+                                .map_err(BlockExecutionError::Lmdb)?,
+                        );
                         // note: consumed is scraped from wasm_v1_result along w/ other fields
                         txn_process_ctx
                             .with_wasm_v1_result(wasm_v1_result)
-                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                            .map_err(|_| exec_ctx.root_not_found())?;
                     }
                     Err(ire) => {
                         debug!(%transaction_hash, ?lane_id, ?ire, "unable to get wasm v1 request");
@@ -410,47 +364,39 @@ pub(super) fn execute_finalized_block(
                     }
                 };
                 if let Some(metrics) = metrics.as_ref() {
-                    metrics
-                        .exec_wasm_v1
-                        .observe(wasm_v1_start.elapsed().as_secs_f64());
+                    metrics.exec_wasm_v1.observe(exec_ctx.wasm_v1_elapsed());
                 }
             }
-            ProcessRequest::WasmV2 { transaction_info } => {
-                let wasm_v2_start = Instant::now();
-                match WasmV2Request::new(
-                    txn_process_ctx.gas_limit(),
-                    chainspec.network_config.name.clone(),
-                    state_root_hash,
-                    parent_block_hash,
-                    block_height,
-                    transaction_info,
-                ) {
+            ProcessRequest::WasmV2 { transaction_input } => {
+                exec_ctx.wasm_v2_starting();
+                match exec_ctx.wasm_v2_request(&txn_process_ctx, transaction_input.clone()) {
                     Ok(wasm_v2_request) => {
+                        let pre_root = exec_ctx.state_root_hash();
                         match wasm_v2_request.execute(
                             &execution_engine_v2,
-                            state_root_hash,
+                            pre_root,
                             &scratch_state,
                         ) {
                             Ok(wasm_v2_result) => {
                                 match &wasm_v2_result {
                                     WasmV2Result::Install(install_result) => {
                                         info!(
-                                            contract_hash=base16::encode_lower(&install_result.smart_contract_addr()),
-                                            pre_state_root_hash=%state_root_hash,
-                                            post_state_root_hash=%install_result.post_state_hash(),
-                                            "install contract result");
+                                                contract_hash=base16::encode_lower(&install_result.smart_contract_addr()),
+                                                pre_state_root_hash=%pre_root,
+                                                post_state_root_hash=%install_result.post_state_hash(),
+                                                "install contract result");
                                     }
 
                                     WasmV2Result::Execute(execute_result) => {
                                         info!(
-                                            pre_state_root_hash=%state_root_hash,
-                                            post_state_root_hash=%execute_result.post_state_hash(),
-                                            host_error=?execute_result.host_error.as_ref(),
-                                            "execute contract result");
+                                                pre_state_root_hash=%pre_root,
+                                                post_state_root_hash=%execute_result.post_state_hash(),
+                                                host_error=?execute_result.host_error.as_ref(),
+                                                "execute contract result");
                                     }
                                 }
 
-                                state_root_hash = wasm_v2_result.post_state_hash();
+                                exec_ctx.with_state_root_hash(wasm_v2_result.post_state_hash());
                                 txn_process_ctx.with_wasm_v2_result(wasm_v2_result);
                             }
                             Err(wasm_v2_error) => {
@@ -464,9 +410,7 @@ pub(super) fn execute_finalized_block(
                     }
                 }
                 if let Some(metrics) = metrics.as_ref() {
-                    metrics
-                        .exec_wasm_v2
-                        .observe(wasm_v2_start.elapsed().as_secs_f64());
+                    metrics.exec_wasm_v2.observe(exec_ctx.wasm_v2_elapsed());
                 }
             }
             ProcessRequest::EvmV1 {
@@ -475,23 +419,13 @@ pub(super) fn execute_finalized_block(
                 effective_gas_price,
                 block_gas_limit,
             } => {
-                let evm_v1_start = Instant::now();
-                let block_context = EvmBlockContext::new(
-                    block_height,
-                    block_time,
-                    block_gas_limit,
-                    base_fee_wei,
-                    EvmAddress::from_block_proposer_public_key(&proposer),
-                );
-                let request = EvmExecuteRequest {
-                    block: block_context,
-                    kind: EvmExecuteKind::Transaction(Box::new(evm_txn)),
-                };
+                exec_ctx.evm_v1_starting();
 
+                let pre_hash = exec_ctx.state_root_hash();
                 let mut tracking_copy = scratch_state
-                    .tracking_copy(state_root_hash)
+                    .tracking_copy(pre_hash)
                     .map_err(BlockExecutionError::Lmdb)?
-                    .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+                    .ok_or(BlockExecutionError::RootNotFound(pre_hash))?;
 
                 // TODO: move origin resolution to before txn process request
                 // if let Some(resolution) = &evm_origin_resolution {
@@ -506,17 +440,22 @@ pub(super) fn execute_finalized_block(
                 //         resolution.identity_plan(),
                 //     )?;
                 // }
-                // apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
+                // apply_evm_proposer_identity(&mut tracking_copy, protocol_version,
+                // &proposer)?;
 
+                let evm_v1_request =
+                    exec_ctx.evm_v1_request(evm_txn.clone(), block_gas_limit, base_fee_wei);
                 let outcome = EvmExecutor::new(chainspec.evm_config)
-                    .execute(&mut tracking_copy, request)
+                    .execute(&mut tracking_copy, evm_v1_request)
                     .map_err(|error| {
                         BlockExecutionError::TransactionConversion(error.to_string())
                     })?;
                 let execution_effects = tracking_copy.effects();
-                state_root_hash = scratch_state
-                    .commit_effects(state_root_hash, execution_effects.clone())
-                    .map_err(BlockExecutionError::Lmdb)?;
+                exec_ctx.with_state_root_hash(
+                    scratch_state
+                        .commit_effects(pre_hash, execution_effects.clone())
+                        .map_err(BlockExecutionError::Lmdb)?,
+                );
 
                 txn_process_ctx.with_evm_execution_outcome(
                     outcome,
@@ -524,9 +463,7 @@ pub(super) fn execute_finalized_block(
                     execution_effects,
                 );
                 if let Some(metrics) = metrics.as_ref() {
-                    metrics
-                        .exec_evm_v1
-                        .observe(evm_v1_start.elapsed().as_secs_f64());
+                    metrics.exec_evm_v1.observe(exec_ctx.evm_v1_elapsed());
                 }
             }
             ProcessRequest::Unknown => {
@@ -535,189 +472,88 @@ pub(super) fn execute_finalized_block(
             }
         }
 
-        // clear all holds on the balance_identifier purse before payment processing
+        // CLEAR ALL EXPIRED BALANCE HOLDS
         {
-            let hold_request = BalanceHoldRequest::new_clear(
-                state_root_hash,
-                protocol_version,
-                BalanceHoldKind::All,
-                balance_identifier.clone(),
-            );
+            let hold_request = exec_ctx
+                .clear_balance_hold_request(BalanceHoldKind::All, balance_identifier.clone());
             let hold_result = scratch_state.balance_hold(hold_request);
-            state_root_hash = scratch_state
-                .commit_effects(state_root_hash, hold_result.effects().clone())
-                .map_err(BlockExecutionError::Lmdb)?;
+            exec_ctx.with_state_root_hash(
+                scratch_state
+                    .commit_effects(exec_ctx.state_root_hash(), hold_result.effects().clone())
+                    .map_err(BlockExecutionError::Lmdb)?,
+            );
             txn_process_ctx
                 .with_balance_hold_result(&hold_result)
-                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                .map_err(|_| exec_ctx.root_not_found())?;
         }
 
-        // handle refunds per the chainspec determined setting.
-        let refund_amount = {
-            let consumed = if balance_identifier.is_penalty() || txn_process_ctx.has_error() {
-                txn_process_ctx.cost_to_use() // no refund for penalty
-            } else {
-                txn_process_ctx.consumed()
-            };
-
-            let available = txn_process_ctx.available().unwrap_or(U512::zero());
-
-            let refund_mode = match exec_ctx.refund_handling() {
-                RefundHandling::NoRefund => None,
-                RefundHandling::Burn { refund_ratio } => {
-                    let (limit, cost, gas_price) = txn_process_ctx.refund_amounts();
-                    Some(HandleRefundMode::Burn {
-                        limit,
-                        gas_price,
-                        cost,
-                        consumed,
-                        source: Box::new(balance_identifier.clone()),
-                        ratio: refund_ratio,
-                        available,
-                    })
-                }
-                RefundHandling::Refund { refund_ratio } => {
-                    // in normal payment handling we put a temporary processing hold
-                    // on the paying purse rather than take the token up front.
-                    // thus, here we only want to determine the refund amount rather than
-                    // attempt to process a refund on something we haven't actually taken yet.
-                    // later in the flow when the processing hold is released and payment is
-                    // finalized we reduce the amount taken by the refunded amount. This avoids
-                    // the churn of taking the token up front via transfer (which writes
-                    // multiple permanent records) and then transfer some of it back (which
-                    // writes more permanent records).
-                    let (limit, cost, gas_price) = txn_process_ctx.refund_amounts();
-                    Some(HandleRefundMode::CalculateAmount {
-                        limit,
-                        gas_price,
-                        consumed,
-                        cost,
-                        ratio: refund_ratio,
-                        available,
-                    })
-                }
-            };
-            match refund_mode {
-                Some(refund_mode) => {
-                    let handle_refund_request = HandleRefundRequest::new(
-                        native_runtime_config.clone(),
-                        state_root_hash,
-                        protocol_version,
-                        transaction_hash,
-                        refund_mode,
-                    );
-                    let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
-                    let refunded_amount = handle_refund_result.refund_amount();
-                    state_root_hash = scratch_state
-                        .commit_effects(state_root_hash, handle_refund_result.effects().clone())
-                        .map_err(BlockExecutionError::Lmdb)?;
-                    txn_process_ctx
-                        .with_handle_refund_result(&handle_refund_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-
-                    refunded_amount
-                }
-                None => U512::zero(),
+        // HANDLE REFUND (IF ANY)
+        match exec_ctx.refund_mode(&txn_process_ctx) {
+            None => {
+                txn_process_ctx.with_refund_amount(U512::zero());
             }
-        };
-        txn_process_ctx.with_refund_amount(refund_amount);
-
-        // take the lower of the difference between cost - refund OR available
-        let fee_amount = txn_process_ctx
-            .cost_to_use()
-            .saturating_sub(refund_amount)
-            .min(txn_process_ctx.available().unwrap_or(U512::zero()));
-
-        // handle fees per the chainspec determined setting.
-        let handle_fee_result = match exec_ctx.fee_handling() {
-            FeeHandling::NoFee => {
-                // in this mode, a gas hold is placed on the payer's purse.
-                let hold_request = BalanceHoldRequest::new_gas_hold(
-                    state_root_hash,
-                    protocol_version,
-                    balance_identifier,
-                    fee_amount,
-                    exec_ctx.insufficient_balance_handling(),
+            Some(refund_mode) => {
+                let handle_refund_request =
+                    exec_ctx.handle_refund_request(&txn_process_ctx, refund_mode);
+                let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+                let refunded_amount = handle_refund_result.refund_amount();
+                exec_ctx.with_state_root_hash(
+                    scratch_state
+                        .commit_effects(
+                            exec_ctx.state_root_hash(),
+                            handle_refund_result.effects().clone(),
+                        )
+                        .map_err(BlockExecutionError::Lmdb)?,
                 );
-                let hold_result = scratch_state.balance_hold(hold_request);
-                state_root_hash = scratch_state
-                    .commit_effects(state_root_hash, hold_result.effects().clone())
-                    .map_err(BlockExecutionError::Lmdb)?;
                 txn_process_ctx
-                    .with_balance_hold_result(&hold_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    protocol_version,
-                    transaction_hash,
-                    HandleFeeMode::credit(proposer.clone(), fee_amount, era_id),
-                );
-                scratch_state.handle_fee(handle_fee_request)
+                    .with_handle_refund_result(&handle_refund_result)
+                    .map_err(|_| exec_ctx.root_not_found())?;
+
+                txn_process_ctx.with_refund_amount(refunded_amount);
             }
-            FeeHandling::Burn => {
-                // in this mode, the fee portion is burned.
-                let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    protocol_version,
-                    transaction_hash,
-                    HandleFeeMode::burn(balance_identifier, Some(fee_amount)),
+        }
+
+        // HANDLE FEE (IF ANY)
+        match exec_ctx.fee_mode(&txn_process_ctx) {
+            None => {}
+            Some(fee_mode) => {
+                if fee_mode.requires_hold() {
+                    let hold_request =
+                        exec_ctx.gas_hold_request(balance_identifier, txn_process_ctx.fee_amount());
+                    let hold_result = scratch_state.balance_hold(hold_request);
+                    exec_ctx.with_state_root_hash(
+                        scratch_state
+                            .commit_effects(
+                                exec_ctx.state_root_hash(),
+                                hold_result.effects().clone(),
+                            )
+                            .map_err(BlockExecutionError::Lmdb)?,
+                    );
+                    txn_process_ctx
+                        .with_balance_hold_result(&hold_result)
+                        .map_err(|_| exec_ctx.root_not_found())?;
+                }
+                let handle_fee_request = exec_ctx.handle_fee_request(&txn_process_ctx, fee_mode);
+                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+                exec_ctx.with_state_root_hash(
+                    scratch_state
+                        .commit_effects(
+                            exec_ctx.state_root_hash(),
+                            handle_fee_result.effects().clone(),
+                        )
+                        .map_err(BlockExecutionError::Lmdb)?,
                 );
-                scratch_state.handle_fee(handle_fee_request)
-            }
-            FeeHandling::PayToProposer => {
-                // in this mode, the consumed gas is paid as a fee to the block proposer
-                let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    protocol_version,
-                    transaction_hash,
-                    HandleFeeMode::pay(
-                        initiator_addr
-                            .account_hash()
-                            .map(|_| Box::new(initiator_addr.clone())),
-                        balance_identifier,
-                        BalanceIdentifier::Public(*(proposer.clone())),
-                        fee_amount,
-                    ),
-                );
-                scratch_state.handle_fee(handle_fee_request)
-            }
-            FeeHandling::Accumulate => {
-                // in this mode, consumed gas is accumulated into a single purse
-                // for later distribution
-                let handle_fee_request = HandleFeeRequest::new(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    protocol_version,
-                    transaction_hash,
-                    HandleFeeMode::pay(
-                        initiator_addr
-                            .account_hash()
-                            .map(|_| Box::new(initiator_addr.clone())),
-                        balance_identifier,
-                        BalanceIdentifier::Accumulate,
-                        fee_amount,
-                    ),
-                );
-                scratch_state.handle_fee(handle_fee_request)
+                txn_process_ctx
+                    .with_handle_fee_result(&handle_fee_result)
+                    .map_err(|_| exec_ctx.root_not_found())?;
             }
         };
-
-        state_root_hash = scratch_state
-            .commit_effects(state_root_hash, handle_fee_result.effects().clone())
-            .map_err(BlockExecutionError::Lmdb)?;
-
-        txn_process_ctx
-            .with_handle_fee_result(&handle_fee_result)
-            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
         if let Some(err_msg) = txn_process_ctx.error_message() {
             debug!(%transaction_hash, ?err_msg, "transaction error");
         }
 
-        artifacts.push(txn_process_ctx.into_execution_artifact());
+        exec_ctx.with_artifact(txn_process_ctx.into_execution_artifact());
     }
 
     // transaction processing is finished
@@ -729,11 +565,14 @@ pub(super) fn execute_finalized_block(
 
     exec_ctx.post_process_starting();
 
+    // REGISTER CHECKSUMS
     {
         // the canonical full set of approvals and metadata must be historically verifiable.
         // to allow this, we must calculate and store checksums for approvals and execution effects
         //   across all transactions in the block.
         // block synchronization uses these checksums to ensure correct complete block data.
+        // TODO: shift this to an iterator if possible
+        let artifacts = exec_ctx.execution_artifacts();
         let execution_results_checksum = compute_execution_results_checksum(
             artifacts.iter().map(|artifact| &artifact.execution_result),
         )?;
@@ -753,7 +592,7 @@ pub(super) fn execute_finalized_block(
             ),
         ));
         scratch_state
-            .commit_effects(state_root_hash, effects)
+            .commit_effects(exec_ctx.state_root_hash(), effects)
             .map_err(BlockExecutionError::Lmdb)?;
     };
 
@@ -770,78 +609,69 @@ pub(super) fn execute_finalized_block(
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
-        let block_rewards_payout_start = Instant::now();
+        exec_ctx.block_rewards_starting();
+
         // Pay out block fees, if relevant. This auto-commits
         {
-            let fee_req = FeeRequest::new(
-                native_runtime_config.clone(),
-                state_root_hash,
-                protocol_version,
-                block_time,
-            );
-            debug!(?fee_req, "distributing fees");
-            match scratch_state.distribute_fees(fee_req) {
+            let fee_request = exec_ctx.block_fee_request();
+            debug!(?fee_request, "distributing block fees");
+            match scratch_state.distribute_fees(fee_request) {
                 FeeResult::RootNotFound => {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                    return Err(exec_ctx.root_not_found());
                 }
                 FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
                 FeeResult::Success {
                     post_state_hash, ..
                 } => {
                     debug!("fee distribution success");
-                    state_root_hash = post_state_hash;
+                    exec_ctx.with_state_root_hash(post_state_hash);
                 }
             }
         }
 
-        let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            rewards.clone(),
-        );
-        debug!(?rewards_req, "distributing rewards");
-        match scratch_state.distribute_block_rewards(rewards_req) {
-            BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-            }
-            BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre));
-            }
-            BlockRewardsResult::Success {
-                post_state_hash, ..
-            } => {
-                debug!("rewards distribution success");
-                state_root_hash = post_state_hash;
+        // Pay out block rewards, if relevant. This auto-commits
+        {
+            let rewards_request = exec_ctx.block_rewards_request(rewards.clone());
+            debug!(?rewards_request, "distributing block rewards");
+            match scratch_state.distribute_block_rewards(rewards_request) {
+                BlockRewardsResult::RootNotFound => {
+                    return Err(exec_ctx.root_not_found());
+                }
+                BlockRewardsResult::Failure(bre) => {
+                    return Err(BlockExecutionError::DistributeBlockRewards(bre));
+                }
+                BlockRewardsResult::Success {
+                    post_state_hash, ..
+                } => {
+                    debug!("rewards distribution success");
+                    exec_ctx.with_state_root_hash(post_state_hash);
+                }
             }
         }
+
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .block_rewards_payout
-                .observe(block_rewards_payout_start.elapsed().as_secs_f64());
+                .observe(exec_ctx.block_rewards_elapsed());
         }
     }
 
     // if era report is some, this is a switch block. a series of end-of-era extra processing must
     // transpire before this block is entirely finished.
-    let step_outcome = if let Some(era_report) = &executable_block.era_report {
+    if let Some(era_report) = &executable_block.era_report {
         // step processing starts now
-        let step_processing_start = Instant::now();
+        exec_ctx.step_starting();
+
+        let step_request = exec_ctx.step_request(era_report);
 
         debug!("committing step");
-        let step_effects = match commit_step(
-            native_runtime_config.clone(),
-            &scratch_state,
-            metrics.clone(),
-            protocol_version,
-            state_root_hash,
-            era_report.clone(),
-            block_time.value(),
-            executable_block.era_id.successor(),
-        ) {
+        let step_result = scratch_state.step(step_request);
+        debug_assert!(step_result.is_success(), "{:?}", step_result);
+        trace!(?step_result, "step response");
+
+        let step_effects = match step_result {
             StepResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                return Err(exec_ctx.root_not_found());
             }
             StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
             StepResult::Success {
@@ -849,16 +679,22 @@ pub(super) fn execute_finalized_block(
                 post_state_hash,
                 ..
             } => {
-                state_root_hash = post_state_hash;
+                exec_ctx.with_state_root_hash(post_state_hash);
                 effects
             }
         };
         debug!("step committed");
 
-        let era_validators_req = EraValidatorsRequest::new(state_root_hash);
-        let era_validators_result = data_access_layer.era_validators(era_validators_req);
+        if let Some(metrics) = metrics.as_ref() {
+            let elapsed = exec_ctx.step_elapsed();
+            metrics.commit_step.observe(elapsed);
+            metrics.latest_commit_step.set(elapsed);
+        }
 
-        let upcoming_era_validators = match era_validators_result {
+        let era_validators_request = exec_ctx.era_validators_request();
+
+        let upcoming_era_validators = match data_access_layer.era_validators(era_validators_request)
+        {
             EraValidatorsResult::RootNotFound => {
                 panic!("root not found");
             }
@@ -878,54 +714,58 @@ pub(super) fn execute_finalized_block(
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .exec_block_step_processing
-                .observe(step_processing_start.elapsed().as_secs_f64());
+                .observe(exec_ctx.step_elapsed());
         }
-        Some(StepOutcome {
+
+        exec_ctx.with_step_outcome(StepOutcome {
             step_effects,
             upcoming_era_validators,
-        })
-    } else {
-        None
-    };
+        });
+    }
 
     // Pruning -- this is orthogonal to the contents of the block, but we deliberately do it
     // at the end to avoid a read ordering issue during block execution.
-    if let Some(previous_block_height) = block_height.checked_sub(1) {
+    if let Some(previous_block_height) = exec_ctx.prev_block_height() {
+        let activation_point_era_id = exec_ctx.activation_point_era_id();
+        let prune_batch_size = exec_ctx.prune_batch_size();
+
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
             previous_block_height,
             prune_batch_size,
         ) {
-            let pruning_start = Instant::now();
+            exec_ctx.prune_starting();
 
             let first_key = keys_to_prune.first().copied();
             let last_key = keys_to_prune.last().copied();
+            let prune_root = exec_ctx.state_root_hash();
             info!(
                 previous_block_height,
                 %key_block_height_for_activation_point,
-                %state_root_hash,
+                %prune_root,
                 first_key=?first_key,
                 last_key=?last_key,
                 "commit prune: preparing prune config"
             );
-            let request = PruneRequest::new(state_root_hash, keys_to_prune);
-            match scratch_state.prune(request) {
+            let prune_request = exec_ctx.prune_request(keys_to_prune);
+            match scratch_state.prune(prune_request) {
                 PruneResult::RootNotFound => {
                     error!(
                         previous_block_height,
-                        %state_root_hash,
+                        %prune_root,
                         "commit prune: root not found"
                     );
-                    panic!(
-                        "Root {} not found while performing a prune.",
-                        state_root_hash
-                    );
+                    return Err(exec_ctx.root_not_found());
+                }
+                PruneResult::Failure(tce) => {
+                    error!(?tce, "commit prune: failure");
+                    return Err(tce.into());
                 }
                 PruneResult::MissingKey => {
                     warn!(
                         previous_block_height,
-                        %state_root_hash,
+                        %prune_root,
                         "commit prune: key does not exist"
                     );
                 }
@@ -935,44 +775,39 @@ pub(super) fn execute_finalized_block(
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,
-                        %state_root_hash,
+                        %prune_root,
                         %post_state_hash,
                         first_key=?first_key,
                         last_key=?last_key,
                         "commit prune: success"
                     );
-                    state_root_hash = post_state_hash;
-                }
-                PruneResult::Failure(tce) => {
-                    error!(?tce, "commit prune: failure");
-                    return Err(tce.into());
+                    exec_ctx.with_state_root_hash(post_state_hash);
                 }
             }
             if let Some(metrics) = metrics.as_ref() {
-                metrics
-                    .pruning_time
-                    .observe(pruning_start.elapsed().as_secs_f64());
+                metrics.pruning_time.observe(exec_ctx.prune_elapsed());
             }
         }
     }
 
     {
-        let database_write_start = Instant::now();
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
-        state_root_hash = data_access_layer
-            .write_scratch_to_db(state_root_hash, scratch_state)
-            .map_err(BlockExecutionError::Lmdb)?;
+        exec_ctx.db_write_starting();
+        exec_ctx.with_state_root_hash(
+            data_access_layer
+                .write_scratch_to_db(exec_ctx.state_root_hash(), scratch_state)
+                .map_err(BlockExecutionError::Lmdb)?,
+        );
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .scratch_lmdb_write_time
-                .observe(database_write_start.elapsed().as_secs_f64());
+                .observe(exec_ctx.db_write_elapsed());
         }
 
         // Flush once, after all data mutation.
-        let database_flush_start = Instant::now();
-        let flush_req = FlushRequest::new();
-        let flush_result = data_access_layer.flush(flush_req);
+        exec_ctx.db_flush_starting();
+        let flush_result = data_access_layer.flush(FlushRequest::new());
         if let Err(gse) = flush_result.as_error() {
             error!("failed to flush lmdb");
             return Err(BlockExecutionError::Lmdb(gse));
@@ -980,84 +815,12 @@ pub(super) fn execute_finalized_block(
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .database_flush_time
-                .observe(database_flush_start.elapsed().as_secs_f64());
+                .observe(exec_ctx.db_flush_elapsed());
         }
     }
 
-    // the rest of this is post process, picking out data bits to return to caller
-    let next_era_id = executable_block.era_id.successor();
-    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> =
-        match step_outcome.as_ref() {
-            None => None,
-            Some(effects_and_validators) => {
-                match effects_and_validators
-                    .upcoming_era_validators
-                    .get(&next_era_id)
-                    .cloned()
-                {
-                    Some(validators) => next_era_gas_price.map(|gas_price| (validators, gas_price)),
-                    None => None,
-                }
-            }
-        };
-
-    let era_end = match (
-        executable_block.era_report,
-        maybe_next_era_validator_weights,
-    ) {
-        (None, None) => None,
-        (
-            Some(InternalEraReport {
-                equivocators,
-                inactive_validators,
-            }),
-            Some((next_era_validator_weights, next_era_gas_price)),
-        ) => Some(EraEndV2::new(
-            equivocators,
-            inactive_validators,
-            next_era_validator_weights,
-            executable_block.rewards.unwrap_or_default(),
-            next_era_gas_price,
-        )),
-        (maybe_era_report, maybe_next_era_validator_weights) => {
-            if maybe_era_report.is_none() {
-                error!(
-                    "era_end {}: maybe_era_report is none",
-                    executable_block.era_id
-                );
-            }
-            if maybe_next_era_validator_weights.is_none() {
-                error!(
-                    "era_end {}: maybe_next_era_validator_weights is none",
-                    executable_block.era_id
-                );
-            }
-            return Err(BlockExecutionError::FailedToCreateEraEnd {
-                maybe_era_report,
-                maybe_next_era_validator_weights,
-            });
-        }
-    };
-
-    let block = Arc::new(BlockV2::new(
-        parent_block_hash,
-        parent_seed,
-        state_root_hash,
-        executable_block.random_bit,
-        era_end,
-        executable_block.timestamp,
-        executable_block.era_id,
-        block_height,
-        protocol_version,
-        (*proposer).clone(),
-        executable_block.transaction_map,
-        executable_block.rewarded_signatures,
-        current_gas_price,
-        last_switch_block_hash,
-    ));
-
-    let proof_of_checksum_registry = match data_access_layer
-        .tracking_copy(state_root_hash)
+    let merkle_proof = match data_access_layer
+        .tracking_copy(exec_ctx.state_root_hash())
         .map_err(BlockExecutionError::Lmdb)?
     {
         Some(tc) => match tc
@@ -1068,30 +831,36 @@ pub(super) fn execute_finalized_block(
             Some(proof) => proof,
             None => return Err(BlockExecutionError::MissingChecksumRegistry),
         },
-        None => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+        None => return Err(exec_ctx.root_not_found()),
     };
 
-    let transaction_approvals_hashes = exec_ctx.approval_hashes();
-    let approvals_hashes = Box::new(ApprovalsHashes::new(
-        *block.hash(),
-        transaction_approvals_hashes,
-        proof_of_checksum_registry,
-    ));
-
-    // processing is finished now
     if let Some(metrics) = metrics.as_ref() {
         metrics
             .exec_block_post_processing
             .observe(exec_ctx.post_process_elapsed());
-        metrics.exec_block_total.observe(exec_ctx.elapsed());
     }
 
-    Ok(BlockAndExecutionArtifacts {
-        block,
-        approvals_hashes,
-        execution_artifacts: artifacts,
-        step_outcome,
-    })
+    let outcome = exec_ctx.into_outcome(merkle_proof);
+
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.exec_block_total.observe(outcome.total_elapsed());
+    }
+
+    match outcome {
+        ExecuteBlockOutcome::FailedToCreateEraEnd {
+            err_msg,
+            maybe_era_report,
+            maybe_next_era_validator_weights,
+            ..
+        } => {
+            error!("{}", err_msg);
+            Err(BlockExecutionError::FailedToCreateEraEnd {
+                maybe_era_report,
+                maybe_next_era_validator_weights,
+            })
+        }
+        ExecuteBlockOutcome::Success { ret, .. } => Ok(ret),
+    }
 }
 
 /// Execute the transaction without committing the effects.
@@ -1279,7 +1048,7 @@ where
     let base_fee = u128::from(chainspec.evm_config.base_fee);
     let wei_per_mote = u128::from(chainspec.evm_config.wei_per_mote);
     let base_fee_wei = base_fee * wei_per_mote;
-    let block_context = EvmBlockContext {
+    let block_context = EvmV1Request {
         number: block_header.height(),
         timestamp: block_time.millis() / 1000,
         beneficiary: EvmAddress::ZERO,
@@ -1336,50 +1105,6 @@ where
             Bytes::from(outcome.output),
         ),
     ))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn commit_step(
-    native_runtime_config: NativeRuntimeConfig,
-    scratch_state: &ScratchGlobalState,
-    maybe_metrics: Option<Arc<Metrics>>,
-    protocol_version: ProtocolVersion,
-    state_hash: Digest,
-    InternalEraReport {
-        equivocators,
-        inactive_validators,
-    }: InternalEraReport,
-    era_end_timestamp_millis: u64,
-    next_era_id: EraId,
-) -> StepResult {
-    // Both inactive validators and equivocators are evicted
-    let evict_items = inactive_validators
-        .into_iter()
-        .chain(equivocators)
-        .map(EvictItem::new)
-        .collect();
-
-    let step_request = StepRequest::new(
-        native_runtime_config,
-        state_hash,
-        protocol_version,
-        vec![], // <-- casper mainnet currently does not slash
-        evict_items,
-        next_era_id,
-        era_end_timestamp_millis,
-    );
-
-    // Commit the step.
-    let start = Instant::now();
-    let result = scratch_state.step(step_request);
-    debug_assert!(result.is_success(), "{:?}", result);
-    if let Some(metrics) = maybe_metrics {
-        let elapsed = start.elapsed().as_secs_f64();
-        metrics.commit_step.observe(elapsed);
-        metrics.latest_commit_step.set(elapsed);
-    }
-    trace!(?result, "step response");
-    result
 }
 
 /// Computes the checksum of the given set of execution results.
@@ -1478,16 +1203,18 @@ fn invoked_contract_will_pay(
 }
 
 fn txn_initial_balance_identifier(
-    ctx: &TransactionProcessContext,
     state_provider: &ScratchGlobalState,
-    state_root_hash: Digest,
-    protocol_version: ProtocolVersion,
-    addressable_entity_enabled: bool,
+    exec_ctx: &ExecuteBlockContext,
+    txn_ctx: &TransactionProcessContext,
 ) -> Result<InitialBalanceIdentifierResult, BlockExecutionError> {
-    let transaction_hash = ctx.transaction_hash();
-    let initiator_addr = ctx.initiator_addr().clone();
+    let state_root_hash = exec_ctx.state_root_hash();
+    let protocol_version = exec_ctx.protocol_version();
+    let addressable_entity_enabled = exec_ctx.addressable_entity_enabled();
 
-    match ctx.balance_identifier_resolution() {
+    let transaction_hash = txn_ctx.transaction_hash();
+    let initiator_addr = txn_ctx.initiator_addr().clone();
+
+    match txn_ctx.balance_identifier_resolution() {
         Ok(resolution) => {
             match resolution {
                 BalanceIdentifierResolution::Identifier(bi) => {
@@ -1502,7 +1229,7 @@ fn txn_initial_balance_identifier(
                         match invoked_contract_will_pay(
                             state_provider,
                             state_root_hash,
-                            ctx.contract_direct_address(),
+                            txn_ctx.contract_direct_address(),
                         ) {
                             Ok(Some(entity_addr)) => {
                                 let entity_bi = BalanceIdentifier::Entity(entity_addr);
@@ -1529,7 +1256,7 @@ fn txn_initial_balance_identifier(
                     }
                 }
                 BalanceIdentifierResolution::CheckEvmAccount(_initiator_bi) => {
-                    let signer = match ctx.evm_signer() {
+                    let signer = match txn_ctx.evm_signer() {
                         Some(Ok(signer)) => signer,
                         Some(Err(evm_err)) => {
                             trace!(%transaction_hash, "failed to resolve evm transaction identifier");
@@ -1551,7 +1278,7 @@ fn txn_initial_balance_identifier(
                         }
                     };
 
-                    let evm_address = match ctx.evm_address() {
+                    let evm_address = match txn_ctx.evm_address() {
                         Some(addr) => addr,
                         None => {
                             trace!(%transaction_hash, "failed to resolve evm transaction identifier");

@@ -72,6 +72,12 @@ impl HandleFeeMode {
             era_id,
         }
     }
+
+    /// Returns true if fee handling requires a balance hold.
+    pub fn requires_hold(&self) -> bool {
+        // currently, only credit requires a hold
+        matches!(self, HandleFeeMode::Credit { .. })
+    }
 }
 
 /// Handle fee request.

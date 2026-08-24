@@ -1,7 +1,6 @@
-use crate::contract_runtime::types::{LimitsAndCosts, ProcessRequest};
 use crate::{
     contract_runtime::{
-        types::{EvmOriginResolution, ExecutionArtifact},
+        types::{EvmOriginResolution, ExecutionArtifact, LimitsAndCosts, ProcessRequest},
         StateResultError,
     },
     types::{
@@ -88,6 +87,7 @@ pub(crate) enum TransactionProcessContextError {
     MissingHeader,
     MissingEvmGasLimit,
     MissingMetaTransaction,
+    MissingCostEstimate,
     FailedToSetCost,
     FailedToSetEvmCost,
     EvmFeeOverflow,
@@ -97,30 +97,22 @@ pub(crate) enum TransactionProcessContextError {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TransactionProcessContext {
-    effects: Effects,
     transaction_hash: TransactionHash,
     header: TransactionHeader,
-    error_message: Option<String>,
-    messages: Messages,
-    transfers: Vec<Transfer>,
-    initiator: InitiatorAddr,
-
-    limits_and_costs: LimitsAndCosts,
-    // current_price: u8,
-    // gas_limit: Gas,
-    // initial_cost: U512,
-    // min_cost: U512,
-    //consumed: Gas,
-    //refund: U512,
-    // available: Option<U512>,
-    size_estimate: u64,
     meta_transaction: MetaTransaction,
+    limits_and_costs: LimitsAndCosts,
 
-    is_penalized: Option<bool>,
-    is_sufficient_balance: Option<bool>,
+    initial_balance_identifier: Option<BalanceIdentifier>,
+    initial_balance_result: Option<BalanceResult>,
 
     evm_origin_resolution: Option<EvmOriginResolution>,
     evm_receipt: Option<EvmReceipt>,
+
+    exec_attempted: bool,
+    error_message: Option<String>,
+    effects: Effects,
+    messages: Messages,
+    transfers: Vec<Transfer>,
 }
 
 impl TransactionProcessContext {
@@ -141,19 +133,18 @@ impl TransactionProcessContext {
             effects: Effects::new(),
             transaction_hash: txn.hash(),
             header: txn.into(),
-            initiator: meta_transaction.initiator_addr(),
-            size_estimate: meta_transaction.size_estimate() as u64,
             meta_transaction,
-
             limits_and_costs,
 
+            initial_balance_identifier: None,
+            initial_balance_result: None,
+            evm_receipt: None,
+            evm_origin_resolution: None,
+
+            exec_attempted: false,
             error_message: None,
             transfers: vec![],
             messages: Default::default(),
-            is_penalized: None,
-            is_sufficient_balance: None,
-            evm_receipt: None,
-            evm_origin_resolution: None,
         })
     }
 
@@ -161,8 +152,12 @@ impl TransactionProcessContext {
         self.transaction_hash
     }
 
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
-        &self.initiator
+    pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
+        self.meta_transaction.initiator_addr().clone()
+    }
+
+    pub(crate) fn initial_balance_identifier(&self) -> Option<&BalanceIdentifier> {
+        self.initial_balance_identifier.as_ref()
     }
 
     pub(crate) fn contract_direct_address(&self) -> Option<(HashAddr, String)> {
@@ -173,15 +168,31 @@ impl TransactionProcessContext {
         self.meta_transaction.authorization_keys()
     }
 
-    pub(crate) fn gas_limit(&self) -> Gas {
-        self.limits_and_costs.gas_limit()
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.limits_and_costs.gas_price()
     }
 
-    pub(crate) fn limit(&self) -> U512 {
-        self.limits_and_costs.gas_limit().value()
+    pub(crate) fn gas_limit(&self) -> Gas {
+        let is_evm = self.meta_transaction.is_evm();
+        if is_evm {
+            Gas::new(self.cost_to_use())
+        } else {
+            self.limits_and_costs.gas_limit()
+        }
     }
 
     pub(crate) fn consumed(&self) -> U512 {
+        if self.error_message.is_some() {
+            return self.cost_to_use();
+        }
+        match &self.initial_balance_identifier {
+            Some(bi) => {
+                if bi.is_penalty() {
+                    return self.cost_to_use();
+                }
+            }
+            None => return U512::zero(), // can't consume if no purse
+        }
         self.limits_and_costs.consumed().unwrap_or_default().value()
     }
 
@@ -189,8 +200,23 @@ impl TransactionProcessContext {
         self.limits_and_costs.available()
     }
 
-    pub(crate) fn cost_estimate(&self) -> Option<U512> {
-        self.meta_transaction.cost_estimate()
+    pub(crate) fn refund_amount(&self) -> U512 {
+        self.limits_and_costs.refund()
+    }
+
+    pub(crate) fn has_sufficient_minimum(&self) -> bool {
+        self.has_sufficient_balance(self.limits_and_costs.min_cost())
+    }
+
+    pub(crate) fn has_sufficient_estimated(&self) -> bool {
+        self.has_sufficient_balance(self.limits_and_costs.cost_estimate())
+    }
+
+    pub(crate) fn has_sufficient_balance(&self, amount: U512) -> bool {
+        match self.limits_and_costs.available() {
+            Some(available) => available >= amount,
+            None => false,
+        }
     }
 
     pub(crate) fn cost_to_use(&self) -> U512 {
@@ -221,18 +247,12 @@ impl TransactionProcessContext {
         }
     }
 
-    pub(crate) fn refund_amounts(&self) -> (U512, U512, u8) {
-        let is_evm = self.meta_transaction.is_evm();
+    pub(crate) fn fee_amount(&self) -> U512 {
         let cost_to_use = self.cost_to_use();
-        if is_evm {
-            (cost_to_use, cost_to_use, 1)
-        } else {
-            (
-                self.limit(),
-                cost_to_use,
-                self.limits_and_costs.current_price(),
-            )
-        }
+        let refund_amount = self.refund_amount();
+        let available = self.available().unwrap_or(U512::zero());
+        // take the lower of the difference between cost - refund OR available
+        cost_to_use.saturating_sub(refund_amount).min(available)
     }
 
     pub(crate) fn transaction_lane(&self) -> u8 {
@@ -253,7 +273,7 @@ impl TransactionProcessContext {
     }
 
     pub(crate) fn evm_address(&self) -> Option<evm::Address> {
-        if let Some(addr) = &self.initiator.evm_address() {
+        if let Some(addr) = &self.initiator_addr().evm_address() {
             return Some(*addr);
         }
         None
@@ -320,9 +340,17 @@ impl TransactionProcessContext {
         self
     }
 
+    pub(crate) fn with_initial_balance_identifier(
+        &mut self,
+        identifier: BalanceIdentifier,
+    ) -> &mut Self {
+        self.initial_balance_identifier = Some(identifier);
+        self
+    }
+
     pub(crate) fn with_initial_balance_result(
         &mut self,
-        balance_result: &BalanceResult,
+        balance_result: BalanceResult,
     ) -> &mut Self {
         // there is no point recording BalanceResult::RootNotFound because it is unrecoverable
         if let (None, Some(err)) = (&self.error_message, balance_result.error()) {
@@ -333,7 +361,7 @@ impl TransactionProcessContext {
             let is_sufficient = balance_result.is_sufficient(minimum_amount);
             if !is_sufficient {
                 self.error_message = Some(format!(
-                    "Purse {} has less than {}",
+                    "Purse {} has less than minimum amount {}",
                     base16::encode_lower(&purse),
                     minimum_amount
                 ));
@@ -341,6 +369,7 @@ impl TransactionProcessContext {
         }
         let available = balance_result.available_balance().copied();
         self.limits_and_costs.with_available(available);
+        self.initial_balance_result = Some(balance_result);
         self
     }
 
@@ -427,7 +456,7 @@ impl TransactionProcessContext {
         if let BalanceHoldResult::Success { effects, .. } = hold_result {
             self.with_appended_effects(*effects.clone());
         }
-        if let (None, BalanceHoldResult::Failure(_)) = (&self.error_message, hold_result) {
+        if let (None, BalanceHoldResult::Failure(_)) = (&self.error_message, &hold_result) {
             self.error_message = hold_result.error_message();
             return Ok(self);
         }
@@ -565,16 +594,6 @@ impl TransactionProcessContext {
         Ok(self)
     }
 
-    pub(crate) fn with_is_penalized(&mut self, penalized: bool) -> &mut Self {
-        self.is_penalized = Some(penalized);
-        self
-    }
-
-    pub(crate) fn with_is_sufficient_balance(&mut self, sufficient_balance: bool) -> &mut Self {
-        self.is_sufficient_balance = Some(sufficient_balance);
-        self
-    }
-
     /// Adds the error message from a `InvalidRequest` to the artifact.
     pub(crate) fn with_invalid_wasm_v2_request(&mut self, ire: WasmV2InvalidRequest) -> &mut Self {
         if self.error_message.is_none() {
@@ -602,22 +621,28 @@ impl TransactionProcessContext {
     }
 
     pub(crate) fn with_exec_attempt(&mut self) -> &mut Self {
-        let is_penalized = match self.is_penalized {
-            Some(true) => true,
-            Some(false) | None => return self,
-        };
-        let is_insufficient_balance = match self.is_sufficient_balance {
-            Some(false) => true,
-            Some(true) | None => return self,
-        };
+        self.exec_attempted = true;
+        if self.error_message.is_some() {
+            return self;
+        }
+        match &self.initial_balance_identifier {
+            Some(bi) => {
+                if bi.is_penalty() {
+                    self.with_error_message("exec attempt while penalized".to_string());
+                    return self;
+                }
+            }
+            None => {
+                let err_msg = "exec attempt without initial balance identifier".to_string();
+                self.with_error_message(err_msg);
+                return self;
+            }
+        }
 
-        let err_msg = format!(
-            "exec attempt while penalized: {} or insufficient balance: {}",
-            is_penalized, is_insufficient_balance
-        );
-
-        if self.error_message.is_none() {
+        if !self.has_sufficient_estimated() {
+            let err_msg = "exec attempt with less than estimated balance".to_string();
             self.with_error_message(err_msg);
+            return self;
         }
         self
     }
@@ -637,16 +662,6 @@ impl TransactionProcessContext {
     fn allow_execution(&self) -> bool {
         if self.error_message.is_some() {
             return false;
-        }
-        if let Some(penalized) = self.is_penalized {
-            if penalized {
-                return false;
-            }
-        }
-        if let Some(is_sufficient_balance) = self.is_sufficient_balance {
-            if is_sufficient_balance == false {
-                return false;
-            }
         }
 
         true
@@ -689,7 +704,7 @@ impl TransactionProcessContext {
         }
         if txn.is_v2_wasm() {
             return ProcessRequest::WasmV2 {
-                transaction_info: txn.to_transaction_info(),
+                transaction_input: txn.to_transaction_info(),
             };
         }
         match txn.as_evm() {
@@ -752,15 +767,16 @@ impl TransactionProcessContext {
     // *************** TAKE ****************
     pub(crate) fn into_execution_artifact(self) -> ExecutionArtifact {
         let actual_cost = self.cost_to_use();
-
+        let initiator_addr = self.initiator_addr().clone();
+        let size_estimate = self.meta_transaction.size_estimate() as u64;
         let execution_result = if let Some((initiator, receipt)) = &self.evm_addr_receipt() {
             let result = EvmExecutionResult {
                 initiator: *initiator,
-                current_price: self.limits_and_costs.current_price(),
+                current_price: self.limits_and_costs.gas_price(),
                 limit: self.limits_and_costs.gas_limit(),
                 cost: actual_cost,
                 refund: self.limits_and_costs.refund(),
-                size_estimate: self.size_estimate,
+                size_estimate,
                 effects: self.effects,
                 receipt: receipt.clone(),
             };
@@ -769,13 +785,13 @@ impl TransactionProcessContext {
             let result = ExecutionResultV2 {
                 effects: self.effects,
                 transfers: self.transfers,
-                initiator: self.initiator,
+                initiator: initiator_addr,
                 refund: self.limits_and_costs.refund(),
                 limit: self.limits_and_costs.gas_limit(),
                 consumed: self.limits_and_costs.consumed().unwrap_or_default(),
                 cost: actual_cost,
-                current_price: self.limits_and_costs.current_price(),
-                size_estimate: self.size_estimate,
+                current_price: self.limits_and_costs.gas_price(),
+                size_estimate,
                 error_message: self.error_message,
             };
             ExecutionResult::V2(Box::new(result))

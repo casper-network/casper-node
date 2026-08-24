@@ -19,6 +19,7 @@ use crate::engine_state::Error as EngineError;
 const DEFAULT_ENTRY_POINT: &str = "call";
 
 /// Structure that needs to be filled with data so the engine can assemble wasm for deploy.
+#[derive(Clone, Debug)]
 pub struct SessionDataDeploy<'a> {
     deploy_hash: &'a DeployHash,
     session: &'a ExecutableDeployItem,
@@ -67,6 +68,7 @@ impl<'a> SessionDataDeploy<'a> {
 }
 
 /// Structure that needs to be filled with data so the engine can assemble wasm for v1.
+#[derive(Clone, Debug)]
 pub struct SessionDataV1<'a> {
     args: &'a RuntimeArgs,
     target: &'a TransactionTarget,
@@ -148,6 +150,7 @@ impl<'a> SessionDataV1<'a> {
 }
 
 /// Wrapper enum abstracting data for assmbling WasmV1Requests
+#[derive(Clone, Debug)]
 pub enum SessionInputData<'a> {
     /// Variant for sessions created from deploy transactions
     DeploySessionData {

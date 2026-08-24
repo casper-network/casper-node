@@ -33,6 +33,7 @@ pub(crate) struct MetaTransactionV1 {
     entry_point: TransactionEntryPoint,
     lane_id: u8,
     initial_cost: Motes,
+    gas_price: u8,
     scheduling: TransactionScheduling,
     approvals: BTreeSet<Approval>,
     serialized_length: usize,
@@ -119,6 +120,7 @@ impl MetaTransactionV1 {
             entry_point,
             lane_id,
             initial_cost,
+            gas_price,
             scheduling,
             serialized_length,
             payload_hash,
@@ -188,6 +190,7 @@ impl MetaTransactionV1 {
         entry_point: TransactionEntryPoint,
         lane_id: u8,
         initial_cost: Motes,
+        gas_price: u8,
         scheduling: TransactionScheduling,
         serialized_length: usize,
         payload_hash: Digest,
@@ -206,6 +209,7 @@ impl MetaTransactionV1 {
             entry_point,
             lane_id,
             initial_cost,
+            gas_price,
             scheduling,
             approvals,
             serialized_length,
@@ -800,6 +804,11 @@ impl MetaTransactionV1 {
     /// Returns the initial_cost.
     pub(crate) fn initial_cost(&self) -> Motes {
         self.initial_cost
+    }
+
+    /// Returns gas price
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
     }
 
     /// Returns the serialized length of the transaction.

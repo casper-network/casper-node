@@ -250,6 +250,15 @@ impl MetaTransaction {
         }
     }
 
+    /// Returns the gas_price.
+    pub(crate) fn gas_price(&self) -> u8 {
+        match self {
+            MetaTransaction::Deploy(md) => md.gas_price(),
+            MetaTransaction::Evm(met) => met.gas_price(),
+            MetaTransaction::V1(mv1) => mv1.gas_price(),
+        }
+    }
+
     /// Returns the cost_estimate.
     pub(crate) fn cost_estimate(&self) -> Option<U512> {
         match self {

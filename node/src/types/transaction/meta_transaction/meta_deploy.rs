@@ -18,6 +18,9 @@ pub(crate) struct MetaDeploy {
     initial_cost: Motes,
     #[data_size(skip)]
     #[serde(skip)]
+    gas_price: u8,
+    #[data_size(skip)]
+    #[serde(skip)]
     initiator_addr: OnceCell<InitiatorAddr>,
 }
 
@@ -39,6 +42,7 @@ impl MetaDeploy {
             deploy,
             lane_id,
             initial_cost,
+            gas_price,
             initiator_addr,
         })
     }
@@ -54,6 +58,10 @@ impl MetaDeploy {
 
     pub(crate) fn initial_cost(&self) -> Motes {
         self.initial_cost
+    }
+
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
     }
 
     pub(crate) fn session(&self) -> &ExecutableDeployItem {
