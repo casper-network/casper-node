@@ -127,6 +127,7 @@ fn block() -> BlockContext {
         beneficiary: evm::Address::ZERO,
         gas_limit: None,
         base_fee: None,
+        prevrandao: evm::Hash::new([0x99; evm::HASH_LENGTH]),
     }
 }
 
@@ -202,6 +203,24 @@ fn blockhash_contract_init_code() -> Vec<u8> {
         0,
         opcode::MSTORE,
         // return abi.encode(hash);
+        opcode::PUSH1,
+        32,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code_returning(runtime)
+}
+
+fn prevrandao_contract_init_code() -> Vec<u8> {
+    let runtime = vec![
+        // bytes32 value = prevrandao();
+        opcode::DIFFICULTY,
+        // mstore(0, value);
+        opcode::PUSH1,
+        0,
+        opcode::MSTORE,
+        // return abi.encode(value);
         opcode::PUSH1,
         32,
         opcode::PUSH1,
@@ -2670,4 +2689,32 @@ fn checked_calls_enforce_transaction_validation() {
         executor.execute(&data_access_layer, &mut tracking_copy, request),
         Err(Error::Revm(_))
     ));
+}
+
+#[test]
+fn prevrandao_uses_block_context() {
+    let executor = executor(EvmSpec::Prague);
+    let from = evm::Address::new([1; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let contract = execute_call(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        None,
+        prevrandao_contract_init_code(),
+    )
+    .created_contract_address
+    .expect("deploy should return a contract address");
+
+    let outcome = execute_call(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        Some(contract),
+        Vec::new(),
+    );
+
+    assert_eq!(outcome.output.as_slice(), block().prevrandao.as_ref());
 }

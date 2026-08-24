@@ -15,7 +15,7 @@ use casper_executor_evm::{
     ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
-    block_store::types::ApprovalsHashes,
+    block_store::{lmdb::LmdbBlockStore, types::ApprovalsHashes},
     data_access_layer::{
         balance::BalanceHandling,
         mint::{BalanceIdentifierTransferArgs, BurnRequest},
@@ -41,7 +41,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     evm::{
-        Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
+        Address as EvmAddress, HaltReason as EvmHaltReason, Hash as EvmHash, Receipt as EvmReceipt,
         ReceiptStatus as EvmReceiptStatus,
     },
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
@@ -69,6 +69,7 @@ fn evm_block_context(
     block_height: u64,
     block_time: BlockTime,
     proposer: &PublicKey,
+    prevrandao: EvmHash,
 ) -> EvmBlockContext {
     EvmBlockContext {
         number: block_height,
@@ -76,7 +77,37 @@ fn evm_block_context(
         beneficiary: EvmAddress::from_block_proposer_public_key(proposer),
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(chainspec.evm_config.base_fee_wei()),
+        prevrandao,
     }
+}
+
+fn evm_prevrandao(parent_seed: Digest) -> EvmHash {
+    EvmHash::new(parent_seed.value())
+}
+
+fn speculative_evm_prevrandao(
+    block_store: &LmdbBlockStore,
+    block_header: &BlockHeader,
+    is_unsigned_call: bool,
+) -> Result<EvmHash, String> {
+    if !is_unsigned_call {
+        return Ok(evm_prevrandao(*block_header.accumulated_seed()));
+    }
+    if block_header.height() == 0 {
+        // The genesis block has no parent, so there is no PREVRANDAO value to return.
+        return Ok(EvmHash::ZERO);
+    }
+
+    let parent_hash = *block_header.parent_hash();
+    let transaction = block_store
+        .checkout_ro()
+        .map_err(|error| format!("failed to open block store for PREVRANDAO: {error}"))?;
+    let parent_header = transaction
+        .read_block_header_by_hash(parent_hash)
+        .map_err(|error| format!("failed to read PREVRANDAO parent {parent_hash}: {error}"))?
+        .ok_or_else(|| format!("PREVRANDAO parent block {parent_hash} not found"))?;
+
+    Ok(evm_prevrandao(*parent_header.accumulated_seed()))
 }
 
 fn write_eip4788_beacon_roots(
@@ -678,12 +709,13 @@ pub fn execute_finalized_block(
         }
     }
 
+    let prevrandao = evm_prevrandao(parent_seed);
     state_root_hash = write_eip4788_beacon_roots(
         &scratch_state,
         state_root_hash,
         chainspec,
         protocol_version,
-        evm_block_context(chainspec, block_height, block_time, &proposer),
+        evm_block_context(chainspec, block_height, block_time, &proposer, prevrandao),
         parent_hash,
     )?;
 
@@ -1180,8 +1212,13 @@ pub fn execute_finalized_block(
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-                    let block_context =
-                        evm_block_context(chainspec, block_height, block_time, &proposer);
+                    let block_context = evm_block_context(
+                        chainspec,
+                        block_height,
+                        block_time,
+                        &proposer,
+                        prevrandao,
+                    );
                     let request = EvmExecuteRequest {
                         block: block_context,
                         kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
@@ -2107,6 +2144,7 @@ fn speculative_evm_block_context(
     chainspec: &Chainspec,
     block_header: &BlockHeader,
     is_unsigned_call: bool,
+    prevrandao: EvmHash,
 ) -> EvmBlockContext {
     if is_unsigned_call {
         let beneficiary = match block_header {
@@ -2121,6 +2159,7 @@ fn speculative_evm_block_context(
             beneficiary,
             gas_limit: Some(chainspec.evm_config.block_gas_limit),
             base_fee: Some(chainspec.evm_config.base_fee_wei()),
+            prevrandao,
         }
     } else {
         let block_time = block_header
@@ -2132,6 +2171,7 @@ fn speculative_evm_block_context(
             beneficiary: EvmAddress::ZERO,
             gas_limit: Some(chainspec.evm_config.block_gas_limit),
             base_fee: Some(chainspec.evm_config.base_fee_wei()),
+            prevrandao,
         }
     }
 }
@@ -2179,7 +2219,20 @@ where
     };
     let base_fee_wei = chainspec.evm_config.base_fee_wei();
     let is_unsigned_call = evm_transaction.is_unsigned_call();
-    let block_context = speculative_evm_block_context(chainspec, &block_header, is_unsigned_call);
+    let prevrandao = match speculative_evm_prevrandao(
+        &data_access_layer.block_store,
+        &block_header,
+        is_unsigned_call,
+    ) {
+        Ok(prevrandao) => prevrandao,
+        Err(error) => {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+                casper_types::EvmTransactionError::Decode(error),
+            ))
+        }
+    };
+    let block_context =
+        speculative_evm_block_context(chainspec, &block_header, is_unsigned_call, prevrandao);
     let kind = if is_unsigned_call {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
             from: evm_transaction.from(),
@@ -2353,7 +2406,9 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
+    use casper_storage::{
+        block_store::BlockStoreTransaction, global_state::state, tracking_copy::TrackingCopyExt,
+    };
     use casper_types::{BlockHeaderV2, EvmConfig, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
@@ -2419,12 +2474,30 @@ mod tests {
         };
         let timestamp = Timestamp::from(123_456_789);
         let proposer = PublicKey::System;
+        let parent_seed = Digest::from_raw([0x44; Digest::LENGTH]);
+        let parent_header = BlockHeader::V2(BlockHeaderV2::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            false,
+            parent_seed,
+            Default::default(),
+            Timestamp::from(123_455_789),
+            Default::default(),
+            41,
+            chainspec.protocol_version(),
+            proposer.clone(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ));
+        let selected_seed = Digest::hash_pair(parent_seed, [1]);
         let block_header = BlockHeader::V2(BlockHeaderV2::new(
+            parent_header.block_hash(),
             Default::default(),
             Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
+            true,
+            selected_seed,
             Default::default(),
             timestamp,
             Default::default(),
@@ -2435,14 +2508,33 @@ mod tests {
             Default::default(),
             Default::default(),
         ));
+        let mut block_store =
+            LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create block store");
+        let mut transaction = block_store
+            .checkout_rw()
+            .expect("should check out write transaction");
+        transaction
+            .write_block_header(&parent_header)
+            .expect("should write parent header");
+        transaction.commit().expect("should commit parent header");
 
-        let context = speculative_evm_block_context(&chainspec, &block_header, true);
+        let prevrandao = speculative_evm_prevrandao(&block_store, &block_header, true)
+            .expect("should resolve parent seed");
+        let context = speculative_evm_block_context(&chainspec, &block_header, true, prevrandao);
 
         assert_eq!(context.number, 42);
         assert_eq!(context.timestamp, timestamp.millis() / 1_000);
         assert_eq!(
             context.beneficiary,
             EvmAddress::from_block_proposer_public_key(&proposer)
+        );
+        assert_eq!(context.prevrandao, evm_prevrandao(parent_seed));
+        assert_ne!(context.prevrandao, evm_prevrandao(selected_seed));
+
+        assert_eq!(
+            speculative_evm_prevrandao(&block_store, &block_header, false)
+                .expect("should use selected seed for next-block execution"),
+            evm_prevrandao(selected_seed)
         );
     }
 
@@ -2463,7 +2555,8 @@ mod tests {
             state::lmdb::make_temporary_global_state([]);
         let scratch_state = global_state.create_scratch();
         let block_time = BlockTime::new(2_000);
-        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
+        let block_context =
+            evm_block_context(&chainspec, 1, block_time, &PublicKey::System, EvmHash::ZERO);
         let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
 
         let updated_state_root_hash = write_eip4788_beacon_roots(
@@ -2484,5 +2577,55 @@ mod tests {
             .expect("EIP-4788 beacon root should be readable");
 
         assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
+    }
+
+    #[test]
+    fn evm_prevrandao_uses_parent_block_accumulated_seed() {
+        let parent_hash = BlockHash::new(Digest::from_raw([0x11; Digest::LENGTH]));
+        let parent_seed = Digest::from_raw([0x22; Digest::LENGTH]);
+        let state_root_hash = Digest::from_raw([0x33; Digest::LENGTH]);
+        let block_with_zero_bit = BlockV2::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            false,
+            None,
+            Timestamp::zero(),
+            EraId::new(1),
+            1,
+            ProtocolVersion::V2_0_0,
+            PublicKey::System,
+            BTreeMap::new(),
+            Default::default(),
+            1,
+            None,
+        );
+        let block_with_one_bit = BlockV2::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            true,
+            None,
+            Timestamp::zero(),
+            EraId::new(1),
+            1,
+            ProtocolVersion::V2_0_0,
+            PublicKey::System,
+            BTreeMap::new(),
+            Default::default(),
+            1,
+            None,
+        );
+
+        let prevrandao = evm_prevrandao(parent_seed);
+        assert_eq!(prevrandao.as_ref(), parent_seed.as_ref());
+        assert_ne!(
+            prevrandao.as_ref(),
+            block_with_zero_bit.accumulated_seed().as_ref()
+        );
+        assert_ne!(
+            prevrandao.as_ref(),
+            block_with_one_bit.accumulated_seed().as_ref()
+        );
     }
 }
