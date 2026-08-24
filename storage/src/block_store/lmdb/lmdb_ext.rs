@@ -12,7 +12,8 @@
 
 use std::{any::TypeId, collections::BTreeSet};
 
-use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
+use lmdb::{Cursor, Database, RwTransaction, Transaction, WriteFlags};
+use lmdb_sys::MDB_LAST;
 use serde::de::DeserializeOwned;
 #[cfg(test)]
 use serde::Serialize;
@@ -407,6 +408,128 @@ pub(super) fn deserialize_bytesrepr<T: FromBytes + 'static>(raw: &[u8]) -> Resul
             error!("deserialize_bytesrepr failed to deserialize: {}", type_name);
             Err(LmdbExtError::DataCorrupted(Box::new(BytesreprError(err))))
         }
+    }
+}
+
+/// Converts a `u64` into big-endian bytes suitable for use as an LMDB key where the natural
+/// byte-lexicographic ordering of keys must match the numeric ordering of the values.
+///
+/// `bytesrepr` encodes integers little-endian, which does not have this property, so keys for
+/// indexes that need ordered ("get last") lookups (e.g. the tip of the block-height index) are
+/// stored using this encoding instead of `serialize_bytesrepr`.
+#[inline(always)]
+fn be_key_bytes(key: u64) -> [u8; 8] {
+    key.to_be_bytes()
+}
+
+/// Helper function to load a `bytesrepr`-serialized value keyed by a big-endian-encoded `u64`.
+pub(super) fn get_by_be_u64_key<Tx: Transaction, V: FromBytes + 'static>(
+    txn: &Tx,
+    db: Database,
+    key: u64,
+) -> Result<Option<V>, LmdbExtError> {
+    match txn.get(db, &be_key_bytes(key)) {
+        Ok(raw) => deserialize_bytesrepr(raw).map(Some),
+        Err(lmdb::Error::NotFound) => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Helper function to write a `bytesrepr`-serialized value keyed by a big-endian-encoded `u64`.
+pub(super) fn put_by_be_u64_key<V: ToBytes>(
+    txn: &mut RwTransaction,
+    db: Database,
+    key: u64,
+    value: &V,
+) -> Result<(), LmdbExtError> {
+    let serialized_value = serialize_bytesrepr(value)?;
+    txn.put(
+        db,
+        &be_key_bytes(key),
+        &serialized_value,
+        WriteFlags::empty(),
+    )?;
+    Ok(())
+}
+
+/// Deletes the value keyed by a big-endian-encoded `u64`, tolerating a missing entry.
+pub(super) fn delete_by_be_u64_key(
+    txn: &mut RwTransaction,
+    db: Database,
+    key: u64,
+) -> Result<(), LmdbExtError> {
+    match txn.del(db, &be_key_bytes(key), None) {
+        Ok(()) | Err(lmdb::Error::NotFound) => Ok(()),
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Deletes the value keyed by a `bytesrepr`-serialized key, tolerating a missing entry.
+pub(super) fn delete_value_bytesrepr<K: ToBytes>(
+    txn: &mut RwTransaction,
+    db: Database,
+    key: &K,
+) -> Result<(), LmdbExtError> {
+    let serialized_key = serialize_bytesrepr(key)?;
+    match txn.del(db, &serialized_key, None) {
+        Ok(()) | Err(lmdb::Error::NotFound) => Ok(()),
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Helper function to write a `bytesrepr`-serialized value keyed by a big-endian-encoded `u64`,
+/// using LMDB's `APPEND` flag for fast bulk loading.
+///
+/// Callers MUST insert keys in strictly increasing order (e.g. by iterating a `BTreeMap` in its
+/// natural order) and the key must be greater than any key already in the database (e.g. the
+/// database was just cleared) — otherwise LMDB returns an error rather than corrupting data.
+pub(super) fn append_by_be_u64_key<V: ToBytes>(
+    txn: &mut RwTransaction,
+    db: Database,
+    key: u64,
+    value: &V,
+) -> Result<(), LmdbExtError> {
+    let serialized_value = serialize_bytesrepr(value)?;
+    txn.put(
+        db,
+        &be_key_bytes(key),
+        &serialized_value,
+        WriteFlags::APPEND,
+    )?;
+    Ok(())
+}
+
+/// Helper function to write a `bytesrepr`-serialized value keyed by a `bytesrepr`-serialized key,
+/// using LMDB's `APPEND` flag for fast bulk loading.
+///
+/// Callers MUST insert keys in strictly increasing order (by the key type's `Ord` impl, which
+/// must agree with the byte-lexicographic order of its `bytesrepr` encoding — e.g. by iterating a
+/// `BTreeMap` in its natural order) and the key must be greater than any key already in the
+/// database (e.g. the database was just cleared) — otherwise LMDB returns an error rather than
+/// corrupting data.
+pub(super) fn append_value_bytesrepr<K: ToBytes, V: ToBytes>(
+    txn: &mut RwTransaction,
+    db: Database,
+    key: &K,
+    value: &V,
+) -> Result<(), LmdbExtError> {
+    let serialized_key = serialize_bytesrepr(key)?;
+    let serialized_value = serialize_bytesrepr(value)?;
+    txn.put(db, &serialized_key, &serialized_value, WriteFlags::APPEND)?;
+    Ok(())
+}
+
+/// Returns the `bytesrepr`-deserialized value associated with the highest big-endian-encoded
+/// `u64` key in the database, if any (i.e. the equivalent of `BTreeMap::values().last()`).
+pub(super) fn get_last_by_be_u64_key<Tx: Transaction, V: FromBytes + 'static>(
+    txn: &Tx,
+    db: Database,
+) -> Result<Option<V>, LmdbExtError> {
+    let cursor = txn.open_ro_cursor(db)?;
+    match cursor.get(None, None, MDB_LAST) {
+        Ok((_, raw)) => deserialize_bytesrepr(raw).map(Some),
+        Err(lmdb::Error::NotFound) => Ok(None),
+        Err(err) => Err(err.into()),
     }
 }
 

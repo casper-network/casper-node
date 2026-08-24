@@ -66,6 +66,10 @@ pub(crate) enum Error {
     /// `BinaryPort` component error.
     #[error("binary port: {0}")]
     BinaryPort(#[from] BinaryPortInitializationError),
+
+    /// Failed to commit a protocol upgrade.
+    #[error("failed to commit protocol upgrade: {0}")]
+    ProtocolUpgrade(String),
 }
 
 impl From<bytesrepr::Error> for Error {

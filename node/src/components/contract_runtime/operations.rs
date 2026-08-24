@@ -10,8 +10,7 @@ use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
 };
 use casper_executor_evm::{
-    BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
-    BlockHashProviderResult as EvmBlockHashProviderResult, CallRequest as EvmExecutorCallRequest,
+    BlockContext as EvmBlockContext, CallRequest as EvmExecutorCallRequest,
     CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
     ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
 };
@@ -64,17 +63,6 @@ use crate::{
     contract_runtime::types::ExecutionArtifactBuilder,
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
-
-#[derive(Default)]
-struct StaticEvmBlockHashProvider {
-    block_hashes: BTreeMap<u64, BlockHash>,
-}
-
-impl EvmBlockHashProvider for StaticEvmBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> EvmBlockHashProviderResult<Option<BlockHash>> {
-        Ok(self.block_hashes.get(&block_height).copied())
-    }
-}
 
 fn evm_block_context(
     chainspec: &Chainspec,
@@ -539,7 +527,6 @@ pub fn execute_finalized_block(
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
-    evm_block_hash_provider: &dyn EvmBlockHashProvider,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
@@ -1223,11 +1210,7 @@ pub fn execute_finalized_block(
                     }
                     apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
                     let outcome = EvmExecutor::new(chainspec.evm_config)
-                        .execute_with_block_hash_provider(
-                            &mut tracking_copy,
-                            request,
-                            evm_block_hash_provider,
-                        )
+                        .execute(data_access_layer, &mut tracking_copy, request)
                         .map_err(|error| {
                             BlockExecutionError::TransactionConversion(error.to_string())
                         })?;
@@ -1993,11 +1976,10 @@ pub fn execute_finalized_block(
 ///
 /// Returns effects of the execution.
 pub(super) fn speculatively_execute<S>(
-    state_provider: &S,
+    data_access_layer: &DataAccessLayer<S>,
     chainspec: &Chainspec,
     execution_engine_v1: &ExecutionEngineV1,
     block_header: BlockHeader,
-    block_hashes: BTreeMap<u64, BlockHash>,
     input_transaction: Transaction,
 ) -> SpeculativeExecutionResult
 where
@@ -2049,7 +2031,7 @@ where
                 }
             };
 
-            let result = state_provider.transfer(TransferRequest::with_runtime_args(
+            let result = data_access_layer.transfer(TransferRequest::with_runtime_args(
                 native_runtime_config.clone(),
                 *state_root_hash,
                 protocol_version,
@@ -2077,7 +2059,9 @@ where
                 gas_limit,
                 &session_input_data,
             ) {
-                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+                Ok(wasm_v1_request) => {
+                    execution_engine_v1.execute(data_access_layer, wasm_v1_request)
+                }
                 Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
             };
             SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
@@ -2106,7 +2090,7 @@ where
             gas_limit,
             &session_input_data,
         ) {
-            Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+            Ok(wasm_v1_request) => execution_engine_v1.execute(data_access_layer, wasm_v1_request),
             Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
         };
         SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
@@ -2114,13 +2098,7 @@ where
             block_header.block_hash(),
         )))
     } else if let Some(evm_transaction) = transaction.as_evm() {
-        speculatively_execute_evm(
-            state_provider,
-            chainspec,
-            block_header,
-            block_hashes,
-            evm_transaction,
-        )
+        speculatively_execute_evm(data_access_layer, chainspec, block_header, evm_transaction)
     } else {
         // TODO: placeholder error
         SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::V1(
@@ -2130,10 +2108,9 @@ where
 }
 
 fn speculatively_execute_evm<S>(
-    state_provider: &S,
+    data_access_layer: &DataAccessLayer<S>,
     chainspec: &Chainspec,
     block_header: BlockHeader,
-    block_hashes: BTreeMap<u64, BlockHash>,
     evm_transaction: &casper_types::EvmTransaction,
 ) -> SpeculativeExecutionResult
 where
@@ -2154,7 +2131,7 @@ where
     }
 
     let state_root_hash = block_header.state_root_hash();
-    let mut tracking_copy = match state_provider.tracking_copy(*state_root_hash) {
+    let mut tracking_copy = match data_access_layer.tracking_copy(*state_root_hash) {
         Ok(Some(tracking_copy)) => tracking_copy,
         Ok(None) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
@@ -2201,11 +2178,10 @@ where
         block: block_context,
         kind,
     };
-    let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
-    let outcome = match EvmExecutor::new(chainspec.evm_config).execute_with_block_hash_provider(
+    let outcome = match EvmExecutor::new(chainspec.evm_config).execute(
+        data_access_layer,
         &mut tracking_copy,
         execute_request,
-        &block_hash_provider,
     ) {
         Ok(outcome) => outcome,
         Err(error) => {

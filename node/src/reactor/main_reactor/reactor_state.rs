@@ -21,9 +21,7 @@ use serde::{Deserialize, Serialize};
 ///     CatchUp --> ShutdownAfterCatchingUp
 ///     KeepUp --> ShutdownForUpgrade
 ///     Validate --> ShutdownForUpgrade
-///     CatchUp --> Upgrading
 ///     CatchUp -->|at genesis| Validate
-///     Upgrading --> CatchUp
 ///     ShutdownForUpgrade --> End
 /// ```
 /// ```mermaid
@@ -63,8 +61,6 @@ pub enum ReactorState {
     Initialize,
     /// Orient to the network and attempt to catch up to tip.
     CatchUp,
-    /// Running commit upgrade and creating immediate switch block.
-    Upgrading,
     /// Stay caught up with tip.
     KeepUp,
     /// Node is currently caught up and is an active validator.

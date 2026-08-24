@@ -91,6 +91,11 @@ pub struct NodeConfig {
 
     /// If true, prevents a node from shutting down if it is supposed to be a validator in the era.
     pub prevent_validator_shutdown: bool,
+
+    /// If true, skips committing a protocol upgrade locally when the node's tip is the last
+    /// block before the activation point, and instead lets the node acquire the post-upgrade
+    /// chain via the ordinary block-synchronizer fetch path, as if it were catching up.
+    pub skip_protocol_upgrade: bool,
 }
 
 impl Default for NodeConfig {
@@ -105,6 +110,7 @@ impl Default for NodeConfig {
             shutdown_for_upgrade_timeout: DEFAULT_SHUTDOWN_FOR_UPGRADE_TIMEOUT.parse().unwrap(),
             upgrade_timeout: DEFAULT_UPGRADE_TIMEOUT.parse().unwrap(),
             prevent_validator_shutdown: false,
+            skip_protocol_upgrade: false,
         }
     }
 }

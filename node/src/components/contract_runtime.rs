@@ -14,7 +14,6 @@ mod utils;
 
 use std::{
     cmp::Ordering,
-    collections::BTreeMap,
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
@@ -30,10 +29,11 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
+    block_store::lmdb::LmdbBlockStore,
     data_access_layer::{
-        AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
+        AddressableEntityRequest, AddressableEntityResult, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, TrieRequest,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
@@ -44,13 +44,13 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    EntityAddr, EraId, Key, PublicKey,
+    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest,
+    EntityAddr, EraId, Key, ProtocolUpgradeConfig,
 };
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
+    contract_runtime::types::EraPrice,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -62,10 +62,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{
-        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
-        TrieOrChunk, TrieOrChunkId,
-    },
+    types::{TrieOrChunk, TrieOrChunkId},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -81,7 +78,6 @@ pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
-pub(crate) use utils::load_recent_evm_block_hashes;
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -117,6 +113,7 @@ impl Debug for ContractRuntime {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_dir: &Path,
+        block_store: LmdbBlockStore,
         contract_runtime_config: &Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
@@ -162,6 +159,7 @@ impl ContractRuntime {
         let data_access_layer = Arc::new(
             Self::new_data_access_layer(
                 storage_dir,
+                block_store,
                 contract_runtime_config,
                 enable_addressable_entity,
             )
@@ -217,6 +215,7 @@ impl ContractRuntime {
 
     fn new_data_access_layer(
         storage_dir: &Path,
+        block_store: LmdbBlockStore,
         contract_runtime_config: &Config,
         enable_addressable_entity: bool,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
@@ -233,8 +232,6 @@ impl ContractRuntime {
                 None,
                 DatabaseFlags::empty(),
             )?);
-
-            let block_store = BlockStore::new();
 
             let max_query_depth = contract_runtime_config.max_query_depth_or_default();
             let global_state = LmdbGlobalState::empty(
@@ -305,6 +302,47 @@ impl ContractRuntime {
             }
         }
         result
+    }
+
+    /// Commits a protocol upgrade against global state and flushes it to disk.
+    ///
+    /// The commit itself runs on the blocking thread-pool (via `run_intensive_task`), since it
+    /// can take a long time; this lets the caller bound the wait with a timeout instead of
+    /// stalling its task indefinitely.
+    pub(crate) async fn commit_protocol_upgrade(
+        &self,
+        upgrade_config: ProtocolUpgradeConfig,
+    ) -> Result<Digest, String> {
+        debug!(?upgrade_config, "upgrade");
+        let start = Instant::now();
+        let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+
+        let data_access_layer = Arc::clone(&self.data_access_layer);
+        let metrics = Arc::clone(&self.metrics);
+        run_intensive_task(move || {
+            let result = data_access_layer.protocol_upgrade(upgrade_request);
+            if result.is_success() {
+                info!("committed upgrade");
+                metrics
+                    .commit_upgrade
+                    .observe(start.elapsed().as_secs_f64());
+                let flush_req = FlushRequest::new();
+                if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
+                    return Err(format!("{:?}", err));
+                }
+            }
+
+            match result {
+                ProtocolUpgradeResult::RootNotFound => {
+                    Err("Root not found for protocol upgrade".to_string())
+                }
+                ProtocolUpgradeResult::Failure(err) => Err(format!("{:?}", err)),
+                ProtocolUpgradeResult::Success {
+                    post_state_hash, ..
+                } => Ok(post_state_hash),
+            }
+        })
+        .await
     }
 
     /// Handles a contract runtime request.
@@ -546,91 +584,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
-                let next_block_height = new_pre_state.next_block_height();
-                self.set_execution_pre_state(new_pre_state);
-                let current_price = self.current_gas_price.gas_price();
-                async move {
-                    let block_header = match effect_builder
-                        .get_highest_complete_block_header_from_storage()
-                        .await
-                    {
-                        Some(header)
-                            if header.is_switch_block()
-                                && (header.height() + 1 == next_block_height) =>
-                        {
-                            header
-                        }
-                        Some(_) => {
-                            return fatal!(
-                                effect_builder,
-                                "Latest complete block is not a switch block to update state"
-                            )
-                            .await;
-                        }
-                        None => {
-                            return fatal!(
-                                effect_builder,
-                                "No complete block header found to update post upgrade state"
-                            )
-                            .await;
-                        }
-                    };
-
-                    let payload = BlockPayload::new(
-                        BTreeMap::new(),
-                        vec![],
-                        Default::default(),
-                        false,
-                        current_price,
-                    );
-
-                    let finalized_block = FinalizedBlock::new(
-                        payload,
-                        Some(InternalEraReport::default()),
-                        block_header.timestamp(),
-                        block_header.next_block_era_id(),
-                        next_block_height,
-                        PublicKey::System,
-                    );
-
-                    info!("Enqueuing block for execution post state refresh");
-
-                    effect_builder
-                        .enqueue_block_for_execution(
-                            ExecutableBlock::from_finalized_block_and_transactions(
-                                finalized_block,
-                                vec![],
-                            ),
-                            MetaBlockState::new_not_to_be_gossiped(),
-                        )
-                        .await;
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::DoProtocolUpgrade {
-                protocol_upgrade_config,
-                next_block_height,
-                parent_hash,
-                parent_seed,
-            } => {
-                let mut effects = Effects::new();
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                let metrics = Arc::clone(&self.metrics);
-                effects.extend(
-                    handle_protocol_upgrade(
-                        effect_builder,
-                        data_access_layer,
-                        metrics,
-                        *protocol_upgrade_config,
-                        next_block_height,
-                        parent_hash,
-                        parent_seed,
-                    )
-                    .ignore(),
-                );
-                effects
-            }
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 executable_block,
                 key_block_height_for_activation_point,
@@ -722,7 +675,6 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 block_header,
-                block_hashes,
                 transaction,
                 responder,
             } => {
@@ -736,7 +688,6 @@ impl ContractRuntime {
                             chainspec.as_ref(),
                             execution_engine_v1.as_ref(),
                             *block_header,
-                            block_hashes,
                             *transaction,
                         )
                     })
@@ -846,6 +797,10 @@ impl ContractRuntime {
     #[cfg(test)]
     pub(crate) fn current_era_price(&self) -> EraPrice {
         self.current_gas_price
+    }
+
+    pub(crate) fn current_gas_price(&self) -> u8 {
+        self.current_gas_price.gas_price()
     }
 }
 

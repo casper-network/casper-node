@@ -4,7 +4,6 @@
 //! `revm` details behind internal adapter modules.
 
 mod account_state;
-mod block_hash;
 mod db;
 mod error;
 mod executor;
@@ -14,10 +13,6 @@ mod request;
 mod state;
 mod tx;
 
-pub use block_hash::{
-    BlockHashProvider, BlockHashProviderError, BlockHashProviderResult,
-    IndexedLmdbBlockHashProvider, NoBlockHashProvider,
-};
 pub use error::{DbError, Error, Result};
 pub use executor::EvmExecutor;
 pub use outcome::{ExecutionOutcome, ExecutionStatus};

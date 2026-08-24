@@ -309,13 +309,6 @@
           ]
         },
         {
-          "description": "Running commit upgrade and creating immediate switch block.",
-          "type": "string",
-          "enum": [
-            "Upgrading"
-          ]
-        },
-        {
           "description": "Stay caught up with tip.",
           "type": "string",
           "enum": [

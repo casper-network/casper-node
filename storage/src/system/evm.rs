@@ -7,7 +7,7 @@ use casper_types::{
 use thiserror::Error;
 
 use crate::{
-    eip4788,
+    eip2935, eip4788,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
 };
@@ -53,66 +53,105 @@ impl From<CLValueError> for EvmPredeployError {
     }
 }
 
-/// Returns whether EIP-4788 should be installed for the supplied EVM config.
-pub(crate) fn should_upsert_eip4788_predeploy(config: &EvmConfig) -> bool {
+#[derive(Clone, Copy)]
+struct EvmPredeploy {
+    name: &'static str,
+    address: evm::Address,
+    code: &'static [u8],
+    code_hash: evm::Hash,
+}
+
+impl EvmPredeploy {
+    fn eip2935() -> Self {
+        Self {
+            name: "EIP-2935",
+            address: eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+            code: eip2935::BLOCK_HASH_HISTORY_CODE,
+            code_hash: eip2935::block_hash_history_code_hash(),
+        }
+    }
+
+    fn eip4788() -> Self {
+        Self {
+            name: "EIP-4788",
+            address: eip4788::BEACON_ROOTS_ADDRESS,
+            code: eip4788::BEACON_ROOTS_CODE,
+            code_hash: eip4788::beacon_roots_code_hash(),
+        }
+    }
+
+    fn code_hash_key(self) -> Key {
+        Key::Evm(EvmAddr::CodeHash(self.address))
+    }
+
+    fn byte_code_key(self) -> Key {
+        Key::Evm(EvmAddr::ByteCode(self.code_hash))
+    }
+
+    fn code_hash_value(self) -> Result<StoredValue, EvmPredeployError> {
+        Ok(StoredValue::CLValue(CLValue::from_t(self.code_hash)?))
+    }
+
+    fn byte_code_value(self) -> StoredValue {
+        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, self.code.to_vec()))
+    }
+}
+
+fn prague_predeploys() -> [EvmPredeploy; 2] {
+    [EvmPredeploy::eip4788(), EvmPredeploy::eip2935()]
+}
+
+/// Returns whether Prague EVM predeploys should be installed for the supplied EVM config.
+pub(crate) fn should_upsert_prague_predeploys(config: &EvmConfig) -> bool {
     config.enabled && config.spec >= EvmSpec::Prague
 }
 
-/// Idempotently installs the EIP-4788 beacon roots predeploy.
-pub(crate) fn upsert_eip4788_predeploy<R>(
+/// Idempotently installs the Prague EVM predeploys.
+pub(crate) fn upsert_prague_predeploys<R>(
     tracking_copy: &mut TrackingCopy<R>,
 ) -> Result<(), EvmPredeployError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    upsert_beacon_roots_code_hash(tracking_copy)?;
-    upsert_beacon_roots_byte_code(tracking_copy)?;
+    for predeploy in prague_predeploys() {
+        upsert_code_hash(tracking_copy, predeploy)?;
+        upsert_byte_code(tracking_copy, predeploy)?;
+    }
     Ok(())
 }
 
-fn beacon_roots_code_hash_key() -> Key {
-    Key::Evm(EvmAddr::CodeHash(eip4788::BEACON_ROOTS_ADDRESS))
-}
-
-fn beacon_roots_byte_code_key() -> Key {
-    Key::Evm(EvmAddr::ByteCode(eip4788::beacon_roots_code_hash()))
-}
-
-fn beacon_roots_code_hash_value() -> Result<StoredValue, EvmPredeployError> {
-    Ok(StoredValue::CLValue(CLValue::from_t(
-        eip4788::beacon_roots_code_hash(),
-    )?))
-}
-
-fn beacon_roots_byte_code_value() -> StoredValue {
-    StoredValue::ByteCode(ByteCode::new(
-        ByteCodeKind::EvmPrague,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
-    ))
-}
-
 #[cfg(test)]
-fn beacon_roots_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmPredeployError> {
+fn predeploy_entries(
+    predeploy: EvmPredeploy,
+) -> Result<Vec<(Key, StoredValue)>, EvmPredeployError> {
     Ok(vec![
-        (
-            beacon_roots_code_hash_key(),
-            beacon_roots_code_hash_value()?,
-        ),
-        (beacon_roots_byte_code_key(), beacon_roots_byte_code_value()),
+        (predeploy.code_hash_key(), predeploy.code_hash_value()?),
+        (predeploy.byte_code_key(), predeploy.byte_code_value()),
     ])
 }
 
-fn upsert_beacon_roots_code_hash<R>(
+#[cfg(test)]
+fn prague_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmPredeployError> {
+    prague_predeploys()
+        .iter()
+        .copied()
+        .map(predeploy_entries)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|entries| entries.into_iter().flatten().collect())
+}
+
+fn upsert_code_hash<R>(
     tracking_copy: &mut TrackingCopy<R>,
+    predeploy: EvmPredeploy,
 ) -> Result<(), EvmPredeployError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    let key = beacon_roots_code_hash_key();
-    let expected = eip4788::beacon_roots_code_hash();
+    let key = predeploy.code_hash_key();
+    let expected = predeploy.code_hash;
     match tracking_copy.read(&key)? {
         None => {
-            tracking_copy.write(key, beacon_roots_code_hash_value()?);
+            tracking_copy.write(key, predeploy.code_hash_value()?);
         }
         Some(StoredValue::CLValue(cl_value)) => {
             let actual = cl_value.to_t::<evm::Hash>()?;
@@ -120,7 +159,7 @@ where
                 return Ok(());
             }
             if actual == evm::EMPTY_CODE_HASH || actual.is_zero() {
-                tracking_copy.write(key, beacon_roots_code_hash_value()?);
+                tracking_copy.write(key, predeploy.code_hash_value()?);
                 return Ok(());
             }
             return Err(EvmPredeployError::ConflictingCodeHash { actual });
@@ -136,27 +175,27 @@ where
     Ok(())
 }
 
-fn upsert_beacon_roots_byte_code<R>(
+fn upsert_byte_code<R>(
     tracking_copy: &mut TrackingCopy<R>,
+    predeploy: EvmPredeploy,
 ) -> Result<(), EvmPredeployError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    let key = beacon_roots_byte_code_key();
+    let key = predeploy.byte_code_key();
     match tracking_copy.read(&key)? {
         None => {
-            tracking_copy.write(key, beacon_roots_byte_code_value());
+            tracking_copy.write(key, predeploy.byte_code_value());
         }
         Some(StoredValue::ByteCode(byte_code)) => {
-            if byte_code.kind() == ByteCodeKind::EvmPrague
-                && byte_code.bytes() == eip4788::BEACON_ROOTS_CODE
-            {
+            if byte_code.kind() == ByteCodeKind::EvmPrague && byte_code.bytes() == predeploy.code {
                 return Ok(());
             }
             return Err(EvmPredeployError::ConflictingByteCode {
                 key: Box::new(key),
                 details: format!(
-                    "expected Prague EIP-4788 bytecode, found kind {} with {} bytes",
+                    "expected Prague {} bytecode, found kind {} with {} bytes",
+                    predeploy.name,
                     byte_code.kind(),
                     byte_code.bytes().len()
                 ),
@@ -199,65 +238,76 @@ mod tests {
             .expect("value should exist")
     }
 
+    fn assert_predeploy_present(
+        tracking_copy: &mut TrackingCopy<LmdbGlobalStateView>,
+        predeploy: EvmPredeploy,
+    ) {
+        assert_eq!(
+            read(tracking_copy, &predeploy.code_hash_key()),
+            predeploy
+                .code_hash_value()
+                .expect("code hash value should build")
+        );
+        assert_eq!(
+            read(tracking_copy, &predeploy.byte_code_key()),
+            predeploy.byte_code_value()
+        );
+    }
+
     #[test]
-    fn should_upsert_for_enabled_prague_or_later_evm() {
-        assert!(!should_upsert_eip4788_predeploy(&EvmConfig::default()));
+    fn should_upsert_prague_predeploys_for_enabled_prague_or_later_evm() {
+        assert!(!should_upsert_prague_predeploys(&EvmConfig::default()));
 
         let config = EvmConfig {
             enabled: true,
             ..Default::default()
         };
-        assert!(should_upsert_eip4788_predeploy(&config));
+        assert!(should_upsert_prague_predeploys(&config));
     }
 
     #[test]
-    fn upsert_creates_missing_predeploy() {
+    fn upsert_creates_missing_prague_predeploys() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
 
-        upsert_eip4788_predeploy(&mut tracking_copy).expect("upsert should succeed");
+        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
-        assert_eq!(
-            read(&mut tracking_copy, &beacon_roots_code_hash_key()),
-            beacon_roots_code_hash_value().expect("code hash value should build")
-        );
-        assert_eq!(
-            read(&mut tracking_copy, &beacon_roots_byte_code_key()),
-            beacon_roots_byte_code_value()
-        );
+        assert_predeploy_present(&mut tracking_copy, EvmPredeploy::eip4788());
+        assert_predeploy_present(&mut tracking_copy, EvmPredeploy::eip2935());
     }
 
     #[test]
-    fn upsert_repairs_missing_bytecode() {
+    fn upsert_repairs_missing_eip2935_bytecode() {
+        let predeploy = EvmPredeploy::eip2935();
         let (mut tracking_copy, _tempdir) = tracking_copy([(
-            beacon_roots_code_hash_key(),
-            beacon_roots_code_hash_value().expect("code hash value should build"),
+            predeploy.code_hash_key(),
+            predeploy
+                .code_hash_value()
+                .expect("code hash value should build"),
         )]);
 
-        upsert_eip4788_predeploy(&mut tracking_copy).expect("upsert should succeed");
+        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
-        assert_eq!(
-            read(&mut tracking_copy, &beacon_roots_byte_code_key()),
-            beacon_roots_byte_code_value()
-        );
+        assert_predeploy_present(&mut tracking_copy, predeploy);
     }
 
     #[test]
-    fn upsert_noops_when_predeploy_is_present() {
+    fn upsert_noops_when_prague_predeploys_are_present() {
         let (mut tracking_copy, _tempdir) =
-            tracking_copy(beacon_roots_predeploy_entries().expect("entries should build"));
+            tracking_copy(prague_predeploy_entries().expect("entries should build"));
 
-        upsert_eip4788_predeploy(&mut tracking_copy).expect("upsert should succeed");
+        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
     }
 
     #[test]
-    fn upsert_rejects_conflicting_non_empty_code_hash() {
+    fn upsert_rejects_conflicting_eip2935_non_empty_code_hash() {
+        let predeploy = EvmPredeploy::eip2935();
         let conflicting_hash = evm::Hash::new([1; evm::HASH_LENGTH]);
         let (mut tracking_copy, _tempdir) = tracking_copy([(
-            beacon_roots_code_hash_key(),
+            predeploy.code_hash_key(),
             StoredValue::CLValue(CLValue::from_t(conflicting_hash).expect("hash should encode")),
         )]);
 
-        let error = upsert_eip4788_predeploy(&mut tracking_copy)
+        let error = upsert_prague_predeploys(&mut tracking_copy)
             .expect_err("conflicting code hash should fail");
 
         assert!(matches!(
@@ -269,19 +319,22 @@ mod tests {
     }
 
     #[test]
-    fn upsert_rejects_conflicting_bytecode() {
+    fn upsert_rejects_conflicting_eip2935_bytecode() {
+        let predeploy = EvmPredeploy::eip2935();
         let (mut tracking_copy, _tempdir) = tracking_copy([
             (
-                beacon_roots_code_hash_key(),
-                beacon_roots_code_hash_value().expect("code hash value should build"),
+                predeploy.code_hash_key(),
+                predeploy
+                    .code_hash_value()
+                    .expect("code hash value should build"),
             ),
             (
-                beacon_roots_byte_code_key(),
+                predeploy.byte_code_key(),
                 StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, vec![0xfe])),
             ),
         ]);
 
-        let error = upsert_eip4788_predeploy(&mut tracking_copy)
+        let error = upsert_prague_predeploys(&mut tracking_copy)
             .expect_err("conflicting bytecode should fail");
 
         assert!(matches!(
@@ -291,33 +344,34 @@ mod tests {
     }
 
     #[test]
-    fn upsert_repairs_empty_code_hash() {
+    fn upsert_repairs_empty_eip2935_code_hash() {
+        let predeploy = EvmPredeploy::eip2935();
         let (mut tracking_copy, _tempdir) = tracking_copy([(
-            beacon_roots_code_hash_key(),
+            predeploy.code_hash_key(),
             StoredValue::CLValue(
                 CLValue::from_t(evm::EMPTY_CODE_HASH).expect("hash should encode"),
             ),
         )]);
 
-        upsert_eip4788_predeploy(&mut tracking_copy).expect("upsert should succeed");
+        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
-        assert_eq!(
-            read(&mut tracking_copy, &beacon_roots_code_hash_key()),
-            beacon_roots_code_hash_value().expect("code hash value should build")
-        );
+        assert_predeploy_present(&mut tracking_copy, predeploy);
     }
 
     #[test]
-    fn upsert_rejects_unexpected_code_hash_value() {
+    fn upsert_rejects_unexpected_eip2935_code_hash_value() {
+        let predeploy = EvmPredeploy::eip2935();
         let (mut tracking_copy, _tempdir) = tracking_copy([(
-            beacon_roots_code_hash_key(),
+            predeploy.code_hash_key(),
             StoredValue::CLValue(
-                CLValue::from_t(Key::Evm(EvmAddr::Account(eip4788::BEACON_ROOTS_ADDRESS)))
-                    .expect("key should encode"),
+                CLValue::from_t(Key::Evm(EvmAddr::Account(
+                    eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+                )))
+                .expect("key should encode"),
             ),
         )]);
 
-        let error = upsert_eip4788_predeploy(&mut tracking_copy)
+        let error = upsert_prague_predeploys(&mut tracking_copy)
             .expect_err("invalid code hash value should fail");
 
         assert!(matches!(error, EvmPredeployError::CLValue(_)));

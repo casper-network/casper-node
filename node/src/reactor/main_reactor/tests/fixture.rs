@@ -122,6 +122,31 @@ impl TestFixture {
         stakes: BTreeMap<PublicKey, (U512, U512)>,
         spec_override: Option<ConfigsOverride>,
     ) -> Self {
+        Self::new_with_keys_and_storage_dirs(rng, secret_keys, stakes, spec_override, None).await
+    }
+
+    /// As [`Self::new_with_keys`], but if `existing_storage_dirs` is given, each node's storage
+    /// is pointed at the corresponding entry (by index, matching `secret_keys`) instead of a
+    /// fresh, empty temp dir -- used to boot the network from a pre-existing block store, e.g.
+    /// one produced by a different build of the node, to exercise on-disk backward-compatibility
+    /// behavior (such as rebuilding indexes that an older node version never persisted).
+    ///
+    /// As with [`Self::new`], runs the network until all nodes leave `ReactorState::Initialize`;
+    /// when resuming from non-empty storage this does not re-run genesis.
+    pub(crate) async fn new_with_keys_and_storage_dirs(
+        rng: TestRng,
+        secret_keys: Vec<Arc<SecretKey>>,
+        stakes: BTreeMap<PublicKey, (U512, U512)>,
+        spec_override: Option<ConfigsOverride>,
+        existing_storage_dirs: Option<Vec<Arc<TempDir>>>,
+    ) -> Self {
+        if let Some(dirs) = &existing_storage_dirs {
+            assert_eq!(
+                dirs.len(),
+                secret_keys.len(),
+                "existing_storage_dirs must have one entry per secret key"
+            );
+        }
         testing::init_logging();
 
         // Load the `local` chainspec.
@@ -250,12 +275,16 @@ impl TestFixture {
             chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
         };
 
-        for secret_key in secret_keys {
-            let (config, storage_dir) = fixture.create_node_config(
+        for (idx, secret_key) in secret_keys.into_iter().enumerate() {
+            let existing_storage_dir = existing_storage_dirs
+                .as_ref()
+                .map(|dirs| Arc::clone(&dirs[idx]));
+            let (config, storage_dir) = fixture.create_node_config_with_storage_dir(
                 secret_key.as_ref(),
                 None,
                 storage_multiplier,
                 node_config_override.clone(),
+                existing_storage_dir,
             );
             fixture.add_node(secret_key, config, storage_dir).await;
         }
@@ -383,6 +412,28 @@ impl TestFixture {
         storage_multiplier: u8,
         node_config_override: NodeConfigOverride,
     ) -> (Config, Arc<TempDir>) {
+        self.create_node_config_with_storage_dir(
+            secret_key,
+            maybe_trusted_hash,
+            storage_multiplier,
+            node_config_override,
+            None,
+        )
+    }
+
+    /// As [`Self::create_node_config`], but if `existing_storage_dir` is given, points the node's
+    /// storage config at that directory instead of allocating a fresh, empty one -- used to boot
+    /// a node from a pre-existing block store (e.g. one produced by a different build of the
+    /// node, to exercise on-disk migration/backward-compatibility behavior).
+    #[track_caller]
+    pub(crate) fn create_node_config_with_storage_dir(
+        &mut self,
+        secret_key: &SecretKey,
+        maybe_trusted_hash: Option<BlockHash>,
+        storage_multiplier: u8,
+        node_config_override: NodeConfigOverride,
+        existing_storage_dir: Option<Arc<TempDir>>,
+    ) -> (Config, Arc<TempDir>) {
         // Set the network configuration.
         let network_cfg = match self.node_contexts.first() {
             Some(first_node) => {
@@ -417,8 +468,25 @@ impl TestFixture {
             cfg.node.idle_tolerance = idle
         }
 
-        // Additionally set up storage in a temporary directory.
-        let (storage_cfg, temp_dir) = storage::Config::new_for_tests(storage_multiplier);
+        // Additionally set up storage, either in a fresh temporary directory or, if given, an
+        // existing one already populated with a block store to resume from.
+        let (storage_cfg, temp_dir) = match existing_storage_dir {
+            Some(temp_dir) => {
+                let storage_cfg = storage::Config {
+                    path: temp_dir.path().join("lmdb"),
+                    max_block_store_size: 1024 * 1024 * storage_multiplier as usize,
+                    max_deploy_store_size: 1024 * 1024 * storage_multiplier as usize,
+                    max_deploy_metadata_store_size: 1024 * 1024 * storage_multiplier as usize,
+                    max_state_store_size: 12 * 1024 * storage_multiplier as usize,
+                    ..Default::default()
+                };
+                (storage_cfg, temp_dir)
+            }
+            None => {
+                let (storage_cfg, temp_dir) = storage::Config::new_for_tests(storage_multiplier);
+                (storage_cfg, Arc::new(temp_dir))
+            }
+        };
         // ...and the secret key for our validator.
         {
             let secret_key_path = temp_dir.path().join("secret_key");
@@ -432,7 +500,7 @@ impl TestFixture {
         cfg.contract_runtime.max_global_state_size =
             Some(1024 * 1024 * storage_multiplier as usize);
 
-        (cfg, Arc::new(temp_dir))
+        (cfg, temp_dir)
     }
 
     /// Adds a node to the network.
@@ -452,6 +520,42 @@ impl TestFixture {
                 WithDir::new(RESOURCES_PATH.join("local"), config.clone()),
                 Arc::clone(&self.chainspec),
                 Arc::clone(&self.chainspec_raw_bytes),
+                &mut self.rng,
+            )
+            .await
+            .expect("could not add node to reactor");
+        let node_context = NodeContext {
+            id,
+            secret_key,
+            config,
+            storage_dir,
+        };
+        self.node_contexts.push(node_context);
+        info!("added node {} with id {}", self.node_contexts.len() - 1, id);
+        id
+    }
+
+    /// Adds a node to the network, running under the given chainspec rather than the fixture's
+    /// own -- used to simulate a node restarting with a new binary/chainspec version, e.g. after
+    /// a protocol upgrade.
+    ///
+    /// As with [`Self::add_node`], if re-adding a previously-removed node, the `secret_key`,
+    /// `config` and `storage_dir` returned in the `NodeContext` during removal should be used
+    /// here so the same storage dir is reused across both executions.
+    pub(crate) async fn add_node_with_chainspec(
+        &mut self,
+        secret_key: Arc<SecretKey>,
+        config: Config,
+        storage_dir: Arc<TempDir>,
+        chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    ) -> NodeId {
+        let (id, _) = self
+            .network
+            .add_node_with_config_and_chainspec(
+                WithDir::new(RESOURCES_PATH.join("local"), config.clone()),
+                chainspec,
+                chainspec_raw_bytes,
                 &mut self.rng,
             )
             .await
@@ -684,12 +788,29 @@ impl TestFixture {
     }
 
     pub(crate) async fn schedule_upgrade_for_era_two(&mut self) {
+        self.schedule_upgrade(ERA_TWO, ProtocolVersion::from_parts(999, 0, 0))
+            .await;
+    }
+
+    /// Announces an upcoming upgrade to every node's upgrade watcher, without touching its
+    /// chainspec -- as a real node would learn of one by picking up a new chainspec file dropped
+    /// alongside its current binary, ahead of the new binary itself being deployed. Each node
+    /// keeps running under its current protocol version until it reaches the switch block just
+    /// before `activation_era`, at which point it transitions to `ReactorState::ShutdownForUpgrade`
+    /// (see [`Self::run_until`] with a `ShutdownForUpgrade` condition, then restart the nodes with
+    /// a chainspec whose `activation_point` is `activation_era`, e.g. via
+    /// [`Self::add_node_with_chainspec`]).
+    pub(crate) async fn schedule_upgrade(
+        &mut self,
+        activation_era: EraId,
+        new_protocol_version: ProtocolVersion,
+    ) {
         for runner in self.network.runners_mut() {
             runner
                 .process_injected_effects(|effect_builder| {
                     let upgrade = NextUpgrade::new(
-                        ActivationPoint::EraId(ERA_TWO),
-                        ProtocolVersion::from_parts(999, 0, 0),
+                        ActivationPoint::EraId(activation_era),
+                        new_protocol_version,
                     );
                     effect_builder
                         .upgrade_watcher_announcement(Some(upgrade))
