@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
-    error::Error,
-    fs, io,
+    fs,
     iter::{self, FromIterator},
     str,
     sync::{
@@ -13,7 +12,6 @@ use std::{
 
 use bytes::{Buf, Bytes};
 use futures::{join, StreamExt};
-use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use schemars::schema_for;
@@ -493,7 +491,7 @@ async fn handle_response(
     final_event_id: Id,
     client_id: &str,
 ) -> Result<Vec<ReceivedEvent>, reqwest::Error> {
-    if response.status() == StatusCode::SERVICE_UNAVAILABLE {
+    if response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
         debug!("{} rejected by server: too many clients", client_id);
         assert_eq!(
             response.text().await.unwrap(),
@@ -810,18 +808,8 @@ async fn lagging_clients_should_be_disconnected() {
 
     // Ensure both slow clients' streams terminated with an `UnexpectedEof` error.
     let check_error = |result: Result<(), reqwest::Error>| {
-        let kind = result
-            .unwrap_err()
-            .source()
-            .expect("reqwest::Error should have source")
-            .downcast_ref::<hyper::Error>()
-            .expect("reqwest::Error's source should be a hyper::Error")
-            .source()
-            .expect("hyper::Error should have source")
-            .downcast_ref::<io::Error>()
-            .expect("hyper::Error's source should be a std::io::Error")
-            .kind();
-        assert!(matches!(kind, io::ErrorKind::UnexpectedEof));
+        let err = result.unwrap_err();
+        assert!(err.is_decode(), "expected decode error (EoF)");
     };
     check_error(result_slow);
 }
@@ -848,7 +836,12 @@ async fn should_handle_bad_url_path() {
     let expected_body = format!("invalid path: expected '/{0}'", ROOT_PATH);
     for url in &urls {
         let response = reqwest::get(url).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "URL: {}", url);
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "URL: {}",
+            url
+        );
         assert_eq!(
             response.text().await.unwrap().trim(),
             &expected_body,
@@ -886,7 +879,7 @@ async fn should_handle_bad_url_query() {
         let response = reqwest::get(url).await.unwrap();
         assert_eq!(
             response.status(),
-            StatusCode::UNPROCESSABLE_ENTITY,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
             "URL: {}",
             url
         );

@@ -744,7 +744,9 @@ impl From<GetLaneError> for InvalidTransactionV1 {
     fn from(value: GetLaneError) -> Self {
         match value {
             GetLaneError::NoLaneMatch => InvalidTransactionV1::NoLaneMatch,
-            GetLaneError::PricingModeNotSupported => InvalidTransactionV1::PricingModeNotSupported,
+            GetLaneError::PricingModeNotSupported => InvalidTransactionV1::PricingModeError {
+                msg: "Pricing Mode not supported".to_string(),
+            },
         }
     }
 }

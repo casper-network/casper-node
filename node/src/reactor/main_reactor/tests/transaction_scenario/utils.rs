@@ -27,6 +27,7 @@ use crate::{
     types::transaction::transaction_v1_builder::TransactionV1Builder,
 };
 
+#[derive(Debug)]
 pub(crate) struct TestStateSnapshot {
     pub(crate) exec_infos: BTreeMap<TransactionHash, ExecutionInfo>,
     pub(crate) balances: BTreeMap<AccountHash, BalanceAmount>,

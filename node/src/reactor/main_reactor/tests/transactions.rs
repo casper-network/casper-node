@@ -5383,10 +5383,17 @@ async fn should_charge_for_insufficient_funds_deploy_payment_limited_refund_fee(
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
 
-    assert!(!result.effects.is_empty(), "should have effects");
+    // with the removal of custom payment, we can cleanly skip if the initiator
+    // has less than the minimum in their main purse. thus, there are no effects.
+    assert!(result.effects.is_empty(), "should NOT have effects");
     let expected_cost: U512 = charlie_balance;
 
-    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert!(result
+        .error_message
+        .as_deref()
+        .unwrap()
+        .starts_with("Insufficient funds"));
+
     assert_eq!(result.cost, expected_cost);
 }
 
@@ -5465,10 +5472,16 @@ async fn should_charge_for_marginal_insufficient_funds_deploy_payment_limited_re
         panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
     };
 
-    assert!(!result.effects.is_empty(), "should have effects");
+    // with the removal of custom payment, we can cleanly skip if the initiator
+    // has less than the minimum in their main purse. thus, there are no effects.
+    assert!(result.effects.is_empty(), "should NOT have effects");
     let expected_cost: U512 = charlie_balance;
 
-    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert!(result
+        .error_message
+        .as_deref()
+        .unwrap()
+        .starts_with("Insufficient funds"));
     assert_eq!(result.cost, expected_cost);
 }
 
@@ -5551,13 +5564,19 @@ async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_ref
             let ExecutionResult::V2(exec_result) = exec_result else {
                 panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
             };
-            assert!(!exec_result.effects.is_empty(), "should have effects");
+
+            // with the removal of custom payment, we can cleanly skip if the initiator
+            // has less than the minimum in their main purse. thus, there are no effects.
+            assert!(exec_result.effects.is_empty(), "should NOT have effects");
+
             let expected_cost: U512 = dan_base_amount.into();
 
-            assert_eq!(
-                exec_result.error_message.as_deref(),
-                Some("Insufficient funds")
-            );
+            assert!(exec_result
+                .error_message
+                .as_deref()
+                .unwrap()
+                .starts_with("Insufficient funds"));
+
             assert_eq!(
                 exec_result.cost, expected_cost,
                 "cost should be expected val"
@@ -5589,13 +5608,17 @@ async fn should_charge_new_account_insufficient_funds_deploy_payment_limited_ref
             let ExecutionResult::V2(exec_result) = exec_result else {
                 panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
             };
-            assert!(!exec_result.effects.is_empty(), "should have effects");
+
+            // with the removal of custom payment, we can cleanly skip if the initiator
+            // has less than the minimum in their main purse. thus, there are no effects.
+            assert!(exec_result.effects.is_empty(), "should NOT have effects");
             let expected_cost: U512 = dan_base_amount.into();
 
-            assert_eq!(
-                exec_result.error_message.as_deref(),
-                Some("Insufficient funds")
-            );
+            assert!(exec_result
+                .error_message
+                .as_deref()
+                .unwrap()
+                .starts_with("Insufficient funds"));
             assert_eq!(
                 exec_result.cost, expected_cost,
                 "cost should be expected val"
@@ -6052,10 +6075,12 @@ async fn should_penalize_failed_custom_payment() {
 
     assert_ne!(exec_result.error_message(), None);
 
+    // this test previously proved custom payment insufficient amounts were handled.
+    // however, now custom payment is no longer supported in the first place
     assert!(exec_result
         .error_message()
         .expect("should have err message")
-        .starts_with("Insufficient custom payment"))
+        .starts_with("ApiError::HandlePayment"))
 }
 
 #[tokio::test]
@@ -6143,10 +6168,15 @@ async fn gh_5082_install_upgrade_should_allow_adding_new_version() {
 
     let (_txn_hash, _block_height, exec_result_2) = test.send_transaction(txn_2).await;
 
+    // previously, this tested for ApiError::NotAllowedToAddContractVersion [48]
+    // to prove that adding new contract version during payment was not allowed
+    // however, now that custom payment is no longer supported at all,
+    // it is now impossible to even attempt it.
     assert_eq!(
         exec_result_2.error_message(),
-        Some("ApiError::NotAllowedToAddContractVersion [48]".to_string())
-    ); // should not succeed, adding new contract version during payment is not allowed.
+        Some("ApiError::HandlePayment(IncompatiblePaymentSettings) [65318]".to_string()),
+        "custom payment is no longer supported"
+    );
 }
 
 #[tokio::test]

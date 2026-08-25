@@ -159,8 +159,8 @@ pub enum ErrorCode {
     /// The transaction sent to the network had an insufficient transfer amount
     #[error("the transaction sent to the network had an insufficient transfer amount")]
     InvalidTransactionInsufficientTransferAmount = 47,
-    /// The transaction sent to the network had a custom entry point when it should have a non
-    /// custom entry point.
+    /// The transaction sent to the network had a custom entry point when it should have a
+    /// non-custom entry point.
     #[error("the native transaction sent to the network should not have a custom entry point")]
     InvalidTransactionEntryPointCannotBeCustom = 48,
     /// The transaction sent to the network had a standard entry point when it must be custom.
@@ -298,7 +298,7 @@ pub enum ErrorCode {
     #[error("not enough bytes to read version of the binary request header")]
     TooLittleBytesForRequestHeaderVersion = 92,
     /// Malformed command header version
-    #[error("malformed commnd header version")]
+    #[error("malformed command header version")]
     MalformedCommandHeaderVersion = 93,
     /// Malformed header
     #[error("malformed command header")]
@@ -327,9 +327,9 @@ pub enum ErrorCode {
     /// Missing seed field in transaction
     #[error("Missing seed field in transaction")]
     InvalidTransactionMissingSeed = 102,
-    /// Pricing mode not supported
-    #[error("Pricing mode not supported")]
-    PricingModeNotSupported = 103,
+    /// Pricing mode error
+    #[error("Pricing mode error")]
+    PricingModeError = 103,
     /// Gas limit not supported
     #[error("Gas limit not supported")]
     InvalidDeployGasLimitNotSupported = 104,
@@ -465,7 +465,7 @@ impl From<InvalidDeploy> for ErrorCode {
                 ErrorCode::InvalidDeployExceededWasmLaneGasLimit
             }
             InvalidDeploy::InvalidPaymentAmount => ErrorCode::InvalidDeployInvalidPaymentAmount,
-            InvalidDeploy::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
+            InvalidDeploy::PricingModeNotSupported => ErrorCode::PricingModeError,
             _ => ErrorCode::InvalidDeployUnspecified,
         }
     }
@@ -527,6 +527,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::InvalidPricingMode { .. } => {
                 ErrorCode::InvalidTransactionPricingMode
             }
+            InvalidTransactionV1::PricingModeError { .. } => ErrorCode::PricingModeError,
             InvalidTransactionV1::EntryPointCannotBeCall => {
                 ErrorCode::InvalidTransactionEntryPointCannotBeCall
             }
@@ -557,7 +558,6 @@ impl From<InvalidTransactionV1> for ErrorCode {
                 ErrorCode::InvalidTransactionExpectedBytesArguments
             }
             InvalidTransactionV1::MissingSeed => ErrorCode::InvalidTransactionMissingSeed,
-            InvalidTransactionV1::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
             InvalidTransactionV1::InsufficientBurnAmount { .. } => {
                 ErrorCode::InvalidTransactionInsufficientBurnAmount
             }

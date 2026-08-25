@@ -102,7 +102,7 @@ pub(crate) struct TransactionProcessContext {
     meta_transaction: MetaTransaction,
     limits_and_costs: LimitsAndCosts,
 
-    initial_balance_identifier: Option<BalanceIdentifier>,
+    balance_identifier: Option<BalanceIdentifier>,
     initial_balance_result: Option<BalanceResult>,
 
     evm_origin_resolution: Option<EvmOriginResolution>,
@@ -136,7 +136,7 @@ impl TransactionProcessContext {
             meta_transaction,
             limits_and_costs,
 
-            initial_balance_identifier: None,
+            balance_identifier: None,
             initial_balance_result: None,
             evm_receipt: None,
             evm_origin_resolution: None,
@@ -156,8 +156,8 @@ impl TransactionProcessContext {
         self.meta_transaction.initiator_addr().clone()
     }
 
-    pub(crate) fn initial_balance_identifier(&self) -> Option<&BalanceIdentifier> {
-        self.initial_balance_identifier.as_ref()
+    pub(crate) fn balance_identifier(&self) -> Option<&BalanceIdentifier> {
+        self.balance_identifier.as_ref()
     }
 
     pub(crate) fn contract_direct_address(&self) -> Option<(HashAddr, String)> {
@@ -185,7 +185,7 @@ impl TransactionProcessContext {
         if self.error_message.is_some() {
             return self.cost_to_use();
         }
-        match &self.initial_balance_identifier {
+        match &self.balance_identifier {
             Some(bi) => {
                 if bi.is_penalty() {
                     return self.cost_to_use();
@@ -259,6 +259,10 @@ impl TransactionProcessContext {
         self.meta_transaction.transaction_lane()
     }
 
+    pub(crate) fn is_standard_payment(&self) -> bool {
+        self.meta_transaction.is_standard_payment()
+    }
+
     pub(crate) fn error_message(&self) -> Option<String> {
         self.error_message.clone()
     }
@@ -320,6 +324,17 @@ impl TransactionProcessContext {
         self
     }
 
+    pub(crate) fn with_non_standard_payment(&mut self) -> &mut Self {
+        if self.error_message.is_none() {
+            let err = casper_types::ApiError::HandlePayment(
+                casper_types::system::handle_payment::Error::IncompatiblePaymentSettings as u8,
+            );
+            let msg = format!("{:?}", err);
+            self.error_message = Some(msg);
+        }
+        self
+    }
+
     pub(crate) fn with_state_result_error(
         &mut self,
         error: StateResultError,
@@ -344,7 +359,7 @@ impl TransactionProcessContext {
         &mut self,
         identifier: BalanceIdentifier,
     ) -> &mut Self {
-        self.initial_balance_identifier = Some(identifier);
+        self.balance_identifier = Some(identifier);
         self
     }
 
@@ -355,20 +370,29 @@ impl TransactionProcessContext {
         // there is no point recording BalanceResult::RootNotFound because it is unrecoverable
         if let (None, Some(err)) = (&self.error_message, balance_result.error()) {
             self.error_message = Some(format!("{}", err));
+            self.initial_balance_result = Some(balance_result);
+            return self;
         }
-        if let Some(purse) = balance_result.purse_addr() {
-            let minimum_amount = self.limits_and_costs.min_cost();
-            let is_sufficient = balance_result.is_sufficient(minimum_amount);
-            if !is_sufficient {
-                self.error_message = Some(format!(
-                    "Purse {} has less than minimum amount {}",
-                    base16::encode_lower(&purse),
-                    minimum_amount
-                ));
-            }
-        }
+
         let available = balance_result.available_balance().copied();
         self.limits_and_costs.with_available(available);
+        let minimum_amount = self.limits_and_costs.min_cost();
+        let is_sufficient = balance_result.is_sufficient(minimum_amount);
+        if !is_sufficient {
+            let err_msg = match balance_result.purse_addr() {
+                Some(purse) => {
+                    format!(
+                        "Insufficient funds: purse {} has {} available, which is less than minimum amount {}",
+                        base16::encode_lower(&purse),
+                        available.unwrap_or(U512::zero()),
+                        minimum_amount
+                    )
+                }
+                None => "Missing purse".to_string(),
+            };
+
+            self.error_message = Some(err_msg);
+        }
         self.initial_balance_result = Some(balance_result);
         self
     }
@@ -468,12 +492,7 @@ impl TransactionProcessContext {
         self
     }
 
-    pub(crate) fn with_zero_cost(&mut self) -> &mut Self {
-        self.limits_and_costs.with_zero_cost();
-        self
-    }
-
-    pub(crate) fn with_evm_execution_outcome(
+    pub(crate) fn with_evm_consumed(
         &mut self,
         outcome: casper_executor_evm::ExecutionOutcome,
         effective_gas_price: u128,
@@ -625,7 +644,7 @@ impl TransactionProcessContext {
         if self.error_message.is_some() {
             return self;
         }
-        match &self.initial_balance_identifier {
+        match &self.balance_identifier {
             Some(bi) => {
                 if bi.is_penalty() {
                     self.with_error_message("exec attempt while penalized".to_string());

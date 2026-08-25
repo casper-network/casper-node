@@ -285,7 +285,7 @@ impl TransactionV1 {
     }
 
     /// Returns calculated gas cost.
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn gas_cost(
         &self,
         chainspec: &Chainspec,

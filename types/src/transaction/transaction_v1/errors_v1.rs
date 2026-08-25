@@ -229,8 +229,6 @@ pub enum InvalidTransaction {
     },
     /// The transaction is missing a seed field.
     MissingSeed,
-    // Pricing mode not implemented yet.
-    PricingModeNotSupported,
     // Pricing mode error.
     PricingModeError {
         msg: String,
@@ -433,9 +431,6 @@ impl Display for InvalidTransaction {
                     "pricing mode error: {msg}"
                 )
             }
-            InvalidTransaction::PricingModeNotSupported => {
-                write!(formatter, "Pricing mode not supported")
-            }
             InvalidTransaction::InvalidTransactionLane(kind) => {
                                                 write!(
                                                     formatter,
@@ -586,7 +581,6 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::PricingModeError { .. }
-            | InvalidTransaction::PricingModeNotSupported
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionLane(_)
             | InvalidTransaction::CannotCalculateFieldsHash

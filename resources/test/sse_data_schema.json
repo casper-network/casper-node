@@ -5694,6 +5694,13 @@
           ]
         },
         {
+          "description": "No execution attempted.",
+          "type": "string",
+          "enum": [
+            "NoExec"
+          ]
+        },
+        {
           "description": "Halt reason was not recognized by this version.",
           "type": "string",
           "enum": [

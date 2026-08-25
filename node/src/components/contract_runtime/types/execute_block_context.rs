@@ -767,7 +767,7 @@ impl ExecuteBlockContext {
         &self,
         txn_ctx: &TransactionProcessContext,
     ) -> Option<HandleRefundMode> {
-        let balance_identifier = match txn_ctx.initial_balance_identifier() {
+        let balance_identifier = match txn_ctx.balance_identifier() {
             Some(balance_identifier) => balance_identifier.clone(),
             None => return None,
         };
@@ -825,11 +825,15 @@ impl ExecuteBlockContext {
         )
     }
 
+    pub(crate) fn is_gas_hold(&self) -> bool {
+        self.handling_settings.fee_handling.requires_hold()
+    }
+
     pub(crate) fn fee_mode(&self, txn_ctx: &TransactionProcessContext) -> Option<HandleFeeMode> {
         let fee_amount = txn_ctx.fee_amount();
 
         let proposer = self.proposer().clone();
-        let balance_identifier = match txn_ctx.initial_balance_identifier() {
+        let balance_identifier = match txn_ctx.balance_identifier() {
             Some(balance_identifier) => balance_identifier.clone(),
             None => return None,
         };
@@ -837,7 +841,7 @@ impl ExecuteBlockContext {
         match self.fee_handling() {
             FeeHandling::NoFee => Some(HandleFeeMode::credit(proposer, fee_amount, self.era_id())),
             FeeHandling::Burn => {
-                let balance_identifier = match txn_ctx.initial_balance_identifier() {
+                let balance_identifier = match txn_ctx.balance_identifier() {
                     Some(balance_identifier) => balance_identifier.clone(),
                     None => return None,
                 };

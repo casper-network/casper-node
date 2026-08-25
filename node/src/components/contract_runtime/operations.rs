@@ -192,6 +192,18 @@ pub(super) fn execute_finalized_block(
 
         let transaction_hash = txn_process_ctx.transaction_hash();
 
+        if !txn_process_ctx.is_standard_payment() {
+            // this transaction should not have been allowed in the block
+            error!(
+                %transaction_hash,
+                "non-standard payment not supported"
+            );
+            // record it and move on.
+            txn_process_ctx.with_non_standard_payment();
+            exec_ctx.with_artifact(txn_process_ctx.into_execution_artifact());
+            continue;
+        }
+
         let lane_id = txn_process_ctx.transaction_lane();
         if !chainspec.is_supported(lane_id) {
             // this transaction should not have been allowed in the block
@@ -296,16 +308,14 @@ pub(super) fn execute_finalized_block(
         // PROCESS TRANSACTION
         match process_request {
             ProcessRequest::NoExec => {
-                // noop
+                txn_process_ctx.with_gas_limit_consumed();
                 debug!(%transaction_hash, "no exec");
             }
             ProcessRequest::NoExecEvm {
                 effective_gas_price,
             } => {
-                txn_process_ctx.with_zero_cost();
-                let outcome = casper_executor_evm::ExecutionOutcome::no_exec();
-                txn_process_ctx.with_evm_execution_outcome(
-                    outcome,
+                txn_process_ctx.with_evm_consumed(
+                    casper_executor_evm::ExecutionOutcome::no_exec(),
                     effective_gas_price,
                     Effects::new(),
                 );
@@ -512,11 +522,7 @@ pub(super) fn execute_finalized_block(
                         .map_err(BlockExecutionError::Lmdb)?,
                 );
 
-                txn_process_ctx.with_evm_execution_outcome(
-                    outcome,
-                    effective_gas_price,
-                    execution_effects,
-                );
+                txn_process_ctx.with_evm_consumed(outcome, effective_gas_price, execution_effects);
                 if let Some(metrics) = metrics.as_ref() {
                     metrics.exec_evm_v1.observe(exec_ctx.evm_v1_elapsed());
                 }
@@ -569,39 +575,33 @@ pub(super) fn execute_finalized_block(
         }
 
         // HANDLE FEE (IF ANY)
-        match exec_ctx.fee_mode(&txn_process_ctx) {
-            None => {}
-            Some(fee_mode) => {
-                if fee_mode.requires_hold() {
-                    let hold_request =
-                        exec_ctx.gas_hold_request(balance_identifier, txn_process_ctx.fee_amount());
-                    let hold_result = scratch_state.balance_hold(hold_request);
-                    exec_ctx.with_state_root_hash(
-                        scratch_state
-                            .commit_effects(
-                                exec_ctx.state_root_hash(),
-                                hold_result.effects().clone(),
-                            )
-                            .map_err(BlockExecutionError::Lmdb)?,
-                    );
-                    txn_process_ctx
-                        .with_balance_hold_result(&hold_result)
-                        .map_err(|_| exec_ctx.root_not_found())?;
-                }
-                let handle_fee_request = exec_ctx.handle_fee_request(&txn_process_ctx, fee_mode);
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                exec_ctx.with_state_root_hash(
-                    scratch_state
-                        .commit_effects(
-                            exec_ctx.state_root_hash(),
-                            handle_fee_result.effects().clone(),
-                        )
-                        .map_err(BlockExecutionError::Lmdb)?,
-                );
-                txn_process_ctx
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| exec_ctx.root_not_found())?;
-            }
+        if exec_ctx.is_gas_hold() {
+            let hold_request =
+                exec_ctx.gas_hold_request(balance_identifier, txn_process_ctx.fee_amount());
+            let hold_result = scratch_state.balance_hold(hold_request);
+            exec_ctx.with_state_root_hash(
+                scratch_state
+                    .commit_effects(exec_ctx.state_root_hash(), hold_result.effects().clone())
+                    .map_err(BlockExecutionError::Lmdb)?,
+            );
+            txn_process_ctx
+                .with_balance_hold_result(&hold_result)
+                .map_err(|_| exec_ctx.root_not_found())?;
+        }
+        if let Some(fee_mode) = exec_ctx.fee_mode(&txn_process_ctx) {
+            let handle_fee_request = exec_ctx.handle_fee_request(&txn_process_ctx, fee_mode);
+            let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+            exec_ctx.with_state_root_hash(
+                scratch_state
+                    .commit_effects(
+                        exec_ctx.state_root_hash(),
+                        handle_fee_result.effects().clone(),
+                    )
+                    .map_err(BlockExecutionError::Lmdb)?,
+            );
+            txn_process_ctx
+                .with_handle_fee_result(&handle_fee_result)
+                .map_err(|_| exec_ctx.root_not_found())?;
         };
 
         if let Some(err_msg) = txn_process_ctx.error_message() {

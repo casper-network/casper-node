@@ -654,7 +654,7 @@ fn name_to_string(name: &X509NameRef) -> SslResult<String> {
     for entry in name.entries() {
         output.push_str(entry.object().nid().long_name()?);
         output.push('=');
-        output.push_str(entry.data().as_utf8()?.as_ref());
+        output.push_str(entry.data().to_string()?.as_ref());
         output.push(' ');
     }
 

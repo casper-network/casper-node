@@ -119,12 +119,6 @@ impl LimitsAndCosts {
         self
     }
 
-    pub(crate) fn with_zero_cost(&mut self) -> &mut Self {
-        self.initial_cost = U512::zero();
-        self.min_cost = U512::zero();
-        self
-    }
-
     pub(crate) fn wei_per_mote(&self) -> u128 {
         self.wei_per_mote
     }

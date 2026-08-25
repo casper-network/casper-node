@@ -11,8 +11,9 @@ use casper_types::InvalidTransactionV1;
 use casper_types::{
     account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
     EvmTransactionError, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
-    InvalidTransaction, Motes, PublicKey, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionEntryPoint, TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID, U512,
+    InvalidTransaction, Motes, Phase, PricingMode, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    INSTALL_UPGRADE_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use meta_deploy::MetaDeploy;
@@ -174,8 +175,23 @@ impl MetaTransaction {
 
     /// Should this transaction use standard payment processing?
     pub(crate) fn is_standard_payment(&self) -> bool {
-        // custom payment is no longer supported
-        true
+        match self {
+            MetaTransaction::Deploy(meta_deploy) => meta_deploy
+                .deploy()
+                .payment()
+                .is_standard_payment(Phase::Payment),
+            MetaTransaction::V1(v1) => {
+                if let PricingMode::PaymentLimited {
+                    standard_payment, ..
+                } = v1.pricing_mode()
+                {
+                    *standard_payment
+                } else {
+                    true
+                }
+            }
+            MetaTransaction::Evm(_) => true,
+        }
     }
 
     /// The session args.
@@ -268,6 +284,9 @@ impl MetaTransaction {
         gas_limit: U512,
         baseline_motes_amount: U512,
     ) -> Result<Motes, InvalidTransaction> {
+        if self.is_native() {
+            return Ok(Motes::new(gas_limit));
+        }
         let floor = if self.is_evm() {
             gas_limit.min(baseline_motes_amount)
         } else {

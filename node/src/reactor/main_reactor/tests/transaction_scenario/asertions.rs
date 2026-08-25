@@ -248,6 +248,9 @@ impl Assertion for PublicKeyTotalMeetsAvailable {
         let balance = after.balances.get(&account_hash).unwrap();
         let after_total = balance.total;
         let after_available = balance.available;
-        assert_eq!(after_total, after_available);
+        assert_eq!(
+            after_total, after_available,
+            "after_total should match expected"
+        );
     }
 }
