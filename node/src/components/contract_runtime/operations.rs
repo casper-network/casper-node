@@ -47,9 +47,9 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, EvmSpec, FeeHandling, Gas, InvalidTransaction,
-    InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff,
-    Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
+    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -108,38 +108,6 @@ fn speculative_evm_prevrandao(
         .ok_or_else(|| format!("PREVRANDAO parent block {parent_hash} not found"))?;
 
     Ok(evm_prevrandao(*parent_header.accumulated_seed()))
-}
-
-fn write_eip4788_beacon_roots(
-    scratch_state: &ScratchGlobalState,
-    state_root_hash: Digest,
-    chainspec: &Chainspec,
-    protocol_version: ProtocolVersion,
-    block_context: EvmBlockContext,
-    parent_hash: BlockHash,
-) -> Result<Digest, BlockExecutionError> {
-    if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
-        return Ok(state_root_hash);
-    }
-
-    if block_context.number == 0 {
-        return Ok(state_root_hash);
-    }
-
-    match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
-        state_root_hash,
-        protocol_version,
-        block_context.timestamp,
-        parent_hash,
-    )) {
-        BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
-        BlockGlobalResult::Failure(err) => {
-            Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
-        }
-        BlockGlobalResult::Success {
-            post_state_hash, ..
-        } => Ok(post_state_hash),
-    }
 }
 
 fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
@@ -709,16 +677,6 @@ pub fn execute_finalized_block(
         }
     }
 
-    let prevrandao = evm_prevrandao(parent_seed);
-    state_root_hash = write_eip4788_beacon_roots(
-        &scratch_state,
-        state_root_hash,
-        chainspec,
-        protocol_version,
-        evm_block_context(chainspec, block_height, block_time, &proposer, prevrandao),
-        parent_hash,
-    )?;
-
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
@@ -1212,6 +1170,7 @@ pub fn execute_finalized_block(
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
+                    let prevrandao = evm_prevrandao(parent_seed);
                     let block_context = evm_block_context(
                         chainspec,
                         block_height,
@@ -2406,10 +2365,8 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::{
-        block_store::BlockStoreTransaction, global_state::state, tracking_copy::TrackingCopyExt,
-    };
-    use casper_types::{BlockHeaderV2, EvmConfig, Timestamp, DEFAULT_WEI_PER_MOTE};
+    use casper_storage::block_store::BlockStoreTransaction;
+    use casper_types::{BlockHeaderV2, EvmConfig, EvmSpec, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
@@ -2535,97 +2492,6 @@ mod tests {
             speculative_evm_prevrandao(&block_store, &block_header, false)
                 .expect("should use selected seed for next-block execution"),
             evm_prevrandao(selected_seed)
-        );
-    }
-
-    #[test]
-    fn eip4788_hook_writes_beacon_roots_without_transactions() {
-        let chainspec = Chainspec {
-            evm_config: EvmConfig {
-                enabled: true,
-                chain_id: 7,
-                spec: EvmSpec::Prague,
-                block_gas_limit: 30_000_000,
-                base_fee: 0,
-                wei_per_mote: DEFAULT_WEI_PER_MOTE,
-            },
-            ..Default::default()
-        };
-        let (global_state, state_root_hash, _tempdir) =
-            state::lmdb::make_temporary_global_state([]);
-        let scratch_state = global_state.create_scratch();
-        let block_time = BlockTime::new(2_000);
-        let block_context =
-            evm_block_context(&chainspec, 1, block_time, &PublicKey::System, EvmHash::ZERO);
-        let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
-
-        let updated_state_root_hash = write_eip4788_beacon_roots(
-            &scratch_state,
-            state_root_hash,
-            &chainspec,
-            ProtocolVersion::V1_0_0,
-            block_context.clone(),
-            parent_hash,
-        )
-        .expect("EIP-4788 hook should succeed");
-        let tracking_copy = scratch_state
-            .tracking_copy(updated_state_root_hash)
-            .expect("tracking copy should not fail")
-            .expect("state root should exist");
-        let entry = tracking_copy
-            .get_eip4788_parent_hash(block_context.timestamp)
-            .expect("EIP-4788 beacon root should be readable");
-
-        assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
-    }
-
-    #[test]
-    fn evm_prevrandao_uses_parent_block_accumulated_seed() {
-        let parent_hash = BlockHash::new(Digest::from_raw([0x11; Digest::LENGTH]));
-        let parent_seed = Digest::from_raw([0x22; Digest::LENGTH]);
-        let state_root_hash = Digest::from_raw([0x33; Digest::LENGTH]);
-        let block_with_zero_bit = BlockV2::new(
-            parent_hash,
-            parent_seed,
-            state_root_hash,
-            false,
-            None,
-            Timestamp::zero(),
-            EraId::new(1),
-            1,
-            ProtocolVersion::V2_0_0,
-            PublicKey::System,
-            BTreeMap::new(),
-            Default::default(),
-            1,
-            None,
-        );
-        let block_with_one_bit = BlockV2::new(
-            parent_hash,
-            parent_seed,
-            state_root_hash,
-            true,
-            None,
-            Timestamp::zero(),
-            EraId::new(1),
-            1,
-            ProtocolVersion::V2_0_0,
-            PublicKey::System,
-            BTreeMap::new(),
-            Default::default(),
-            1,
-            None,
-        );
-
-        let prevrandao = evm_prevrandao(parent_seed);
-        assert_eq!(prevrandao.as_ref(), parent_seed.as_ref());
-        assert_ne!(
-            prevrandao.as_ref(),
-            block_with_zero_bit.accumulated_seed().as_ref()
-        );
-        assert_ne!(
-            prevrandao.as_ref(),
-            block_with_one_bit.accumulated_seed().as_ref()
         );
     }
 }

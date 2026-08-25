@@ -82,12 +82,14 @@ where
             && inputs.bytecode_address == beacon_roots_address
             && matches!(inputs.scheme, CallScheme::Call | CallScheme::StaticCall)
         {
-            // Copy the input before borrowing the database mutably.  The input may be backed by
-            // revm's shared memory buffer.
-            let input = inputs.input.bytes(context);
-            let lookup_result = context.db_mut().eip4788_get(&input);
-            let result =
-                native_get_result(context, lookup_result, inputs.gas_limit, inputs.reservoir);
+            // Casper does not support Ethereum beacon-chain roots. Keep the predeploy callable
+            // without maintaining placeholder state.
+            let result = native_get_result(
+                context,
+                Ok(Some(B256::ZERO)),
+                inputs.gas_limit,
+                inputs.reservoir,
+            );
             return Ok(Some(result));
         }
 
