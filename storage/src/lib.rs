@@ -16,7 +16,7 @@ pub mod block_store;
 pub mod data_access_layer;
 /// EIP-2935 block hash history predeploy support.
 pub mod eip2935;
-/// EIP-4788 beacon roots storage support.
+/// EIP-4788 beacon roots predeploy support.
 pub mod eip4788;
 /// Global state logic.
 pub mod global_state;

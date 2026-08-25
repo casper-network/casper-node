@@ -4,7 +4,6 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     eip2935,
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::TrackingCopyExt,
     TrackingCopy,
 };
 use casper_types::{evm, CLValue, EvmAddr, Key, StoredValue, U512};
@@ -91,38 +90,6 @@ where
             return Ok(None);
         };
         self.block_hash_at_height(requested_height).map(Some)
-    }
-
-    /// Executes the native EIP-4788 `get` operation.
-    ///
-    /// The lookup is backed only by the current tracking copy; EVM execution must not depend on
-    /// locally retained block history.
-    pub(crate) fn eip4788_get(&mut self, input: &[u8]) -> Result<Option<B256>, DbError> {
-        // EIP-4788 accepts one uint256 timestamp.  Values wider than u64 must revert rather
-        // than truncate to a colliding ring-buffer timestamp.
-        if input.len() != 32 || input[..24].iter().any(|byte| *byte != 0) {
-            return Ok(None);
-        }
-
-        let timestamp = u64::from_be_bytes(
-            input[24..]
-                .try_into()
-                .expect("the final 8 bytes of a 32-byte input have fixed length"),
-        );
-        if timestamp == 0 {
-            return Ok(None);
-        }
-
-        let Some((stored_timestamp, block_hash)) =
-            self.tracking_copy.get_eip4788_parent_hash(timestamp)?
-        else {
-            return Ok(None);
-        };
-        if stored_timestamp != timestamp {
-            return Ok(None);
-        }
-
-        Ok(Some(tx::to_revm_block_hash(block_hash)))
     }
 }
 

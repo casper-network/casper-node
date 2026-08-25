@@ -88,6 +88,7 @@ pub struct BlockContext {
     ///
     /// Defaults to chainspec `[evm].base_fee * [evm].wei_per_mote`.
     pub base_fee: Option<u128>,
+    /// Casper parent-block accumulated seed exposed through the `PREVRANDAO` opcode.
     pub prevrandao: evm::Hash,
 }
 

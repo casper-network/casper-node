@@ -61,9 +61,9 @@ Implemented in this workspace:
   creating or funding the corresponding EVM-native purse identity.
 - [EIP-7702][eip-7702] type `0x04` set-code transactions, with authorization
   lists passed through to `revm` for Prague execution.
-- [EIP-4788][eip-4788] beacon roots predeploy, native pre-block state update,
-  and native direct-call lookup. Casper stores the parent Casper block hash as
-  the root value.
+- [EIP-4788][eip-4788] beacon roots predeploy with a native direct-call
+  shortcut that returns a zero root. Casper does not support beacon-root
+  history or pre-block state updates.
 - [EIP-2935][eip-2935] block-hash history predeploy and native direct-call
   lookup backed by indexed Casper block headers.
 
@@ -80,7 +80,8 @@ Implemented in the sidecar workspace for validation:
 - `eth_getTransactionReceipt` projects logs stored in
   `ExecutionResult::Evm` as Ethereum receipt log entries.
 - `eth_getBlockByNumber` projects `parentBeaconBlockRoot` as the parent Casper
-  block hash, matching Casper's [EIP-4788][eip-4788] system-contract value.
+  block hash. This sidecar projection is independent of the zero-valued
+  [EIP-4788][eip-4788] contract shortcut.
 - Development-only Cargo patches pointing sidecar at this node workspace for
   unreleased `casper-types` and `casper-binary-port` changes.
 
@@ -107,7 +108,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | `EvmSpec::Prague` / `revm::SpecId::PRAGUE` | Implemented. | Execution behavior is delegated to `revm`; Casper does not maintain its own EVM interpreter. |
 | [EIP-2537][eip-2537] BLS12-381 precompiles | Delegated to `revm`. | Expected at `0x0b` through `0x11`, but Casper-owned conformance tests are still needed for gas costs, malformed input, subgroup checks, and failure behavior. |
 | [EIP-2935][eip-2935] block-hash history contract | Implemented with Casper storage semantics. | The standard address, bytecode, and 8191-block interface are present, but direct calls read indexed LMDB block headers instead of Merkleized contract storage. There is no pre-block system call or gradual ring-buffer fill. |
-| [EIP-4788][eip-4788] beacon roots contract | Implemented. | The standard address, bytecode, and interface are present. Casper writes and reads the parent Casper block hash natively through block-global state rather than executing the predeploy bytecode. |
+| [EIP-4788][eip-4788] beacon roots contract | Intentionally unsupported (non-goal). | The standard address and bytecode are present, but direct `CALL` and `STATICCALL` lookups are intercepted and always return an all-zero root. Casper does not write beacon-root history. Do not treat this product decision as an open compatibility gap. |
 | [EIP-6110][eip-6110] validator deposit requests | Missing / decision needed. | Ethereum-specific deposit-log-to-request flow. Full support requires [EIP-7685][eip-7685] request construction and commitment. |
 | [EIP-7002][eip-7002] withdrawal request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x00000961Ef480Eb55e80D19ad83579A64c007002` is absent. Full support requires queue/fee state, post-block extraction, and [EIP-7685][eip-7685] request output. |
 | [EIP-7251][eip-7251] consolidation request predeploy | Missing / decision needed. | Contract-visible predeploy at `0x0000BBdDc7CE488642fb579F8B00f3a590007251` is absent. Full support has the same request-output dependency as EIP-7002. |
@@ -136,7 +137,7 @@ Ethereum JSON-RPC method names below refer to the Ethereum
 | `NUMBER`, `TIMESTAMP`, `GASLIMIT`, `BASEFEE` | Implemented. | Timestamp is Casper block time in seconds. Base fee is chainspec-configured and wei-denominated through `wei_per_mote`, not Ethereum's dynamic base-fee adjustment. |
 | `COINBASE` | Implemented with Casper semantics. | The address is derived from the Casper block proposer public key. |
 | `CHAINID` | Implemented. | Transaction chain ID is enforced against chainspec `[evm].chain_id`. |
-| `PREVRANDAO` | Weak / missing semantic mapping. | Casper does not plumb a randomness field into the EVM block context, so contracts should not treat it as Ethereum beacon randomness. |
+| `PREVRANDAO` | Implemented with Casper semantics. | The value is derived from the parent Casper block's accumulated seed. It provides Casper randomness, not Ethereum beacon-chain RANDAO semantics. |
 | `BLOBHASH` and blob-related block context | Missing / misleading. | No accepted blob transactions means no meaningful blob versioned hashes, blob gas, or blob fee context. |
 | Fee charging | Casper-specific. | `revm` fee charging is disabled; Casper hold, refund, and fee accounting owns balance effects according to the chainspec. |
 
@@ -181,17 +182,19 @@ executor.
 previous Cancun/Dencun upgrade. It is included in this review because a Prague
 Ethereum-compatible environment has this contract. In this branch, Casper
 installs the exact EIP-4788 runtime bytecode at
-`0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`, writes the parent hash natively
-before user transactions, and serves direct calls through the Casper
-precompile provider. It uses:
+`0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`. Direct `CALL` and `STATICCALL`
+lookups are intercepted by the Casper precompile provider and currently
+return:
 
 ```text
-parentBeaconBlockRoot := parent Casper block hash
+parentBeaconBlockRoot := 0x0000000000000000000000000000000000000000000000000000000000000000
 ```
 
-This gives contracts a deterministic consensus-root oracle for Casper. It is
-not strict Ethereum beacon-chain semantics. The detailed, audited compatibility
-matrix is in [Current Status](#current-status).
+Casper does not support Ethereum beacon-chain roots, run the EIP-4788 pre-block
+system call, or persist its ring buffer. The zero-valued response is not strict
+EIP-4788 semantics. This is an intentional product non-goal, not an open gap;
+revisit it only if the product decision changes. The detailed, audited
+compatibility matrix is in [Current Status](#current-status).
 
 Casper installs the exact EIP-2935 runtime bytecode at
 `0x0000F90827F1C53a10cb7A02335B175320002935`. Direct `CALL` and `STATICCALL`
@@ -199,8 +202,8 @@ lookups are intercepted natively and read indexed Casper block headers through
 the data access layer. Casper does not execute an EIP-2935 block-boundary
 system call or populate the standard contract-storage ring.
 
-The highest-priority smart-contract-visible gaps after EIP-4788 and EIP-2935
-are request predeploy decisions for [EIP-7002][eip-7002] and
+The highest-priority smart-contract-visible gaps are request predeploy
+decisions for [EIP-7002][eip-7002] and
 [EIP-7251][eip-7251], and explicit Prague conformance coverage for
 [EIP-2537][eip-2537], [EIP-7623][eip-7623], and [EIP-7702][eip-7702].
 

@@ -293,7 +293,6 @@ pub fn block_global_addr_arb() -> impl Strategy<Value = BlockGlobalAddr> {
         Just(BlockGlobalAddr::MessageCount),
         Just(BlockGlobalAddr::ProtocolVersion),
         Just(BlockGlobalAddr::AddressableEntity),
-        any::<u64>().prop_map(|slot| BlockGlobalAddr::BlockParentHash { slot }),
     ]
 }
 

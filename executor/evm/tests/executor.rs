@@ -24,15 +24,14 @@ use casper_storage::{
             CommitProvider, StateProvider, StateReader,
         },
     },
-    tracking_copy::TrackingCopyExt,
     TrackingCopy,
 };
 use casper_types::{
-    contracts::NamedKeys, evm, AccessRights, Account, BlockGlobalAddr, BlockHash, BlockHeader,
-    BlockHeaderV2, ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr,
-    EvmConfig, EvmSpec, EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key,
-    Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
-    Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
+    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, BlockHeader, BlockHeaderV2,
+    ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, EvmSpec,
+    EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
+    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
 use once_cell::sync::OnceCell;
 use revm::bytecode::opcode;
@@ -842,16 +841,6 @@ fn seed_evm_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     );
 }
 
-fn seed_eip4788_parent_hash<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
-    tracking_copy: &mut TrackingCopy<R>,
-    timestamp: u64,
-    parent_hash: BlockHash,
-) {
-    tracking_copy
-        .set_eip4788_parent_hash(timestamp, parent_hash)
-        .expect("EIP-4788 tuple should encode");
-}
-
 fn read_evm_nonce<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy: &mut TrackingCopy<R>,
     address: evm::Address,
@@ -920,204 +909,28 @@ fn prague_bls12_g1_add_precompile_delegates_to_revm() {
 }
 
 #[test]
-fn eip4788_native_lookup_bypasses_predeploy_bytecode() {
+fn eip4788_native_shortcut_always_returns_zero() {
     let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let root = [0xab; evm::HASH_LENGTH];
 
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw(root)),
-    );
-    // A direct call must use the native lookup even when the installed code
-    // would revert, proving that the bytecode is not executed.
+    // The shortcut must bypass the installed bytecode and avoid all state reads.
     seed_evm_code(
         &mut tracking_copy,
         eip4788::BEACON_ROOTS_ADDRESS,
         reverting_runtime(),
     );
 
-    let query = execute_call(
-        &executor,
-        &data_access_layer,
-        &mut tracking_copy,
-        evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(timestamp).to_vec(),
-    );
-    assert_eq!(query.output, root);
-}
-
-#[test]
-fn eip4788_returns_a_matching_zero_parent_hash() {
-    let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let zero_hash = [0; evm::HASH_LENGTH];
-
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw(zero_hash)),
-    );
-    seed_evm_code(
-        &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        reverting_runtime(),
-    );
-
-    let query = execute_call(
-        &executor,
-        &data_access_layer,
-        &mut tracking_copy,
-        evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(timestamp).to_vec(),
-    );
-
-    assert_eq!(query.output, zero_hash);
-}
-
-#[test]
-fn eip4788_unknown_and_overwritten_timestamps_revert() {
-    let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let replacement_timestamp = timestamp + eip4788::HISTORY_BUFFER_LENGTH;
-    let replacement_root = [0xcd; evm::HASH_LENGTH];
-
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw([0xab; evm::HASH_LENGTH])),
-    );
-    seed_evm_code(
-        &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
-    );
-
-    let unknown = executor
-        .execute(
+    for input in [vec![], word(block().timestamp).to_vec(), vec![0xff; 33]] {
+        let query = execute_call(
+            &executor,
             &data_access_layer,
             &mut tracking_copy,
-            call_request(
-                evm::Address::ZERO,
-                Some(eip4788::BEACON_ROOTS_ADDRESS),
-                word(timestamp + 1).to_vec(),
-                CasperU256::zero(),
-            ),
-        )
-        .expect("EVM call should execute");
-    assert_eq!(unknown.status, ExecutionStatus::Revert);
-
-    // Writing a timestamp one full ring ahead overwrites the same Global
-    // State key.  The old timestamp must now revert rather than return the
-    // new root.
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        replacement_timestamp,
-        BlockHash::new(Digest::from_raw(replacement_root)),
-    );
-
-    let stale = executor
-        .execute(
-            &data_access_layer,
-            &mut tracking_copy,
-            call_request(
-                evm::Address::ZERO,
-                Some(eip4788::BEACON_ROOTS_ADDRESS),
-                word(timestamp).to_vec(),
-                CasperU256::zero(),
-            ),
-        )
-        .expect("EVM call should execute");
-    assert_eq!(stale.status, ExecutionStatus::Revert);
-
-    let query = execute_call(
-        &executor,
-        &data_access_layer,
-        &mut tracking_copy,
-        evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(replacement_timestamp).to_vec(),
-    );
-    assert_eq!(query.output, replacement_root);
-}
-
-#[test]
-fn eip4788_rejects_invalid_calldata() {
-    let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw([0xab; evm::HASH_LENGTH])),
-    );
-    seed_evm_code(
-        &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
-    );
-
-    let mut oversized_timestamp = word(timestamp);
-    oversized_timestamp[0] = 1;
-    for input in [
-        vec![],
-        vec![0; 31],
-        vec![0; 32],
-        oversized_timestamp.to_vec(),
-    ] {
-        let outcome = executor
-            .execute(
-                &data_access_layer,
-                &mut tracking_copy,
-                call_request(
-                    evm::Address::ZERO,
-                    Some(eip4788::BEACON_ROOTS_ADDRESS),
-                    input,
-                    CasperU256::zero(),
-                ),
-            )
-            .expect("EVM call should execute");
-        assert_eq!(outcome.status, ExecutionStatus::Revert);
+            evm::Address::ZERO,
+            Some(eip4788::BEACON_ROOTS_ADDRESS),
+            input,
+        );
+        assert_eq!(query.output, vec![0; evm::HASH_LENGTH]);
     }
-}
-
-#[test]
-fn eip4788_preserves_tracking_copy_errors() {
-    let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    seed_evm_code(
-        &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
-    );
-    tracking_copy.write(
-        Key::BlockGlobal(BlockGlobalAddr::BlockParentHash {
-            slot: timestamp % eip4788::HISTORY_BUFFER_LENGTH,
-        }),
-        StoredValue::CLValue(CLValue::from_t(1u64).expect("value should encode")),
-    );
-
-    let error = executor
-        .execute(
-            &data_access_layer,
-            &mut tracking_copy,
-            call_request(
-                evm::Address::ZERO,
-                Some(eip4788::BEACON_ROOTS_ADDRESS),
-                word(timestamp).to_vec(),
-                CasperU256::zero(),
-            ),
-        )
-        .expect_err("malformed EIP-4788 state should fail execution");
-    assert!(matches!(error, Error::Database(DbError::TrackingCopy(_))));
 }
 
 #[test]
