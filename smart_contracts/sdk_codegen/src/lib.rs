@@ -100,7 +100,7 @@ impl Codegen {
                 if !self.schema.definitions.has_definition(state) {
                     panic!(
                         "Missing state definition. Expected to find a definition for {}.",
-                        &state
+                        state
                     )
                 };
             }
@@ -434,9 +434,10 @@ impl Codegen {
                                     .line("}");
                             }
                             Some(Specialized::Option { some }) => {
-                                let some_type = self.type_mapping.get(&some).unwrap_or_else(|| {
-                                    panic!("Missing type mapping for {}", &some)
-                                });
+                                let some_type = self
+                                    .type_mapping
+                                    .get(&some)
+                                    .unwrap_or_else(|| panic!("Missing type mapping for {}", some));
 
                                 let impl_block = scope
                                     .new_impl(&enum_name)
@@ -508,7 +509,7 @@ impl Codegen {
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 func.ret(Type::new(format!(
                     "Result<{}, casper_contract_sdk::types::CallError>",
-                    &struct_name
+                    struct_name
                 )))
                 .generic("C")
                 .bound("C", "casper_contract_sdk::Contract");
@@ -531,7 +532,7 @@ impl Codegen {
             func.line("let value = 0; // TODO: Transferring values");
 
             let input_struct_name =
-                format!("{}_{}", slugify_type(&self.schema.name), &entry_point.name);
+                format!("{}_{}", slugify_type(&self.schema.name), entry_point.name);
 
             if entry_point.arguments.is_empty() {
                 func.line(format!(r#"let call_data = {input_struct_name};"#));
@@ -552,7 +553,7 @@ impl Codegen {
 
                 func.line(format!(
                     r#"let result = {struct_name} {{ address: create_result.contract_address }};"#,
-                    struct_name = &struct_name
+                    struct_name = struct_name
                 ));
                 func.line("Ok(result)");
                 continue;
@@ -563,7 +564,7 @@ impl Codegen {
 
         for entry_point in &self.schema.entry_points {
             // Generate arg structure similar to what casper-contract-macros is doing
-            let struct_name = format!("{}_{}", &self.schema.name, &entry_point.name);
+            let struct_name = format!("{}_{}", self.schema.name, entry_point.name);
             let input_struct = scope.new_struct(&struct_name);
 
             for trait_name in DEFAULT_DERIVED_TRAITS {
@@ -574,7 +575,7 @@ impl Codegen {
                 let mapped_type = self.type_mapping.get(&argument.decl).unwrap_or_else(|| {
                     panic!(
                         "Missing type mapping for {} when generating input arg {}",
-                        argument.decl, &struct_name
+                        argument.decl, struct_name
                     )
                 });
                 input_struct.push_field(Field::new(&argument.name, Type::new(mapped_type)));

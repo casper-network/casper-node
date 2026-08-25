@@ -165,7 +165,7 @@ mod partial_tries {
                     write_environment,
                     writable_store,
                     current_root,
-                    &[leaf.to_owned()],
+                    std::slice::from_ref(leaf),
                 )?;
                 assert_eq!(1, results.len());
                 match results[0] {

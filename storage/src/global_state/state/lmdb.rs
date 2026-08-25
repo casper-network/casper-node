@@ -212,10 +212,8 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         );
         let mut ret = Vec::new();
         for result in keys_iter {
-            match result {
-                Ok(key) => ret.push(key),
-                Err(error) => return Err(error),
-            }
+            let key = result?;
+            ret.push(key)
         }
         txn.commit()?;
         Ok(ret)

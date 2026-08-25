@@ -1554,6 +1554,7 @@ fn inject_balance_check_for_peer(
     }
 }
 
+#[allow(clippy::result_large_err)]
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
 ) -> Result<(), super::Error> {
@@ -1921,6 +1922,7 @@ async fn run_transaction_acceptor_without_timeout(
     txn_receiver.await.unwrap()
 }
 
+#[allow(clippy::result_large_err)]
 async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), super::Error> {
     time::timeout(
         TIMEOUT,

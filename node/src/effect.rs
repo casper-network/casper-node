@@ -853,6 +853,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Try to accept a transaction received from the JSON-RPC server.
+    #[allow(clippy::result_large_err)]
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,

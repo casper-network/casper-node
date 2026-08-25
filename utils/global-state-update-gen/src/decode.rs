@@ -41,7 +41,7 @@ pub(crate) fn decode_file(matches: &ArgMatches<'_>) {
     let config: GlobalStateUpdateConfig = toml::from_str(&contents).unwrap();
     let update_data: GlobalStateUpdate = config.try_into().unwrap();
 
-    println!("validators = {:#?}", &update_data.validators);
+    println!("validators = {:#?}", update_data.validators);
     let entries: BTreeMap<_, _> = update_data
         .entries
         .iter()

@@ -1,3 +1,2 @@
 [toolchain]
-channel = "1.91.0"
-components = ["rust-analyzer"]
+channel = "1.98.0"

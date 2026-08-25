@@ -1,5 +1,4 @@
 use thiserror::Error;
-use tracing::error;
 
 use casper_types::{crypto, BlockHash, BlockValidationError, EraId};
 

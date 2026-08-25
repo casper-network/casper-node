@@ -19,7 +19,6 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
-use tracing::error;
 
 use crate::{
     global_state::{

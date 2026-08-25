@@ -10,7 +10,7 @@ pub fn build_impl(
     output_dir: Option<PathBuf>,
     embed_schema: bool,
 ) -> Result<(), anyhow::Error> {
-    // Build the contract package targetting wasm32-unknown-unknown without
+    // Build the contract package targetting wasm32v1-none without
     // extra feature flags - this is the production contract wasm file.
     //
     // Optionally (but by default) create an entrypoint in the wasm that will have
@@ -31,10 +31,7 @@ pub fn build_impl(
             None,
             vec![("__CARGO_CASPER_INJECT_SCHEMA_MARKER", &contract_schema)],
         )
-        .dispatch(
-            "wasm32-unknown-unknown",
-            ["casper-contract-sdk/__embed_schema"],
-        )
+        .dispatch("wasm32v1-none", ["casper-contract-sdk/__embed_schema"])
         .context("Failed to compile user wasm")?
         .get_artifact_by_extension("wasm")
         .context("Build artifacts for contract wasm didn't include a wasm file")?;
@@ -53,7 +50,7 @@ pub fn build_impl(
         // Compile and move to specified output directory
         eprintln!("🔨 Step 2: Building contract...");
         CompileJob::new(package_name, None, vec![])
-            .dispatch("wasm32-unknown-unknown", Option::<String>::None)
+            .dispatch("wasm32v1-none", Option::<String>::None)
             .context("Failed to compile user wasm")?
             .get_artifact_by_extension("wasm")
             .context("Failed extracting build artifacts to directory")?

@@ -6,7 +6,6 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},

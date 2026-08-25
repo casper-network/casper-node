@@ -637,7 +637,7 @@ fn valid_wasm_txn(
     let contract_file = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join(format!("{name}.wasm"));
     let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));

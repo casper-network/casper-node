@@ -682,8 +682,8 @@ async fn run_rewards_network_scenario(
                     .iter()
                     .fold(U512::zero(), |acc, reward| U512::from(*reward.1) + acc),
                 Rewards::V2(v2_rewards) => v2_rewards
-                    .iter()
-                    .flat_map(|(_key, amounts)| amounts)
+                    .values()
+                    .flatten()
                     .fold(U512::zero(), |acc, reward| *reward + acc),
             };
             let recomputed_total_rewards: U512 = rewards

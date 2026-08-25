@@ -58,7 +58,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     assert!(
         matches!(&no_such_method_2, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
         "{:?}",
-        &no_such_method_2
+        no_such_method_2
     );
 
     // Can't call abstract entry point "decrease" on the factory.
@@ -78,7 +78,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     assert!(
         matches!(&no_such_method_3, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
         "{:?}",
-        &no_such_method_3
+        no_such_method_3
     );
 }
 

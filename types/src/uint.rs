@@ -32,7 +32,13 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     clippy::range_plus_one,
     clippy::transmute_ptr_to_ptr,
     clippy::reversed_empty_ranges,
-    clippy::manual_div_ceil
+    clippy::manual_div_ceil,
+    // `construct_uint!` expands to code using the deprecated `iN::max_value()` associated
+    // functions instead of the `MAX` associated constant, and to a macro-generated trailing
+    // semicolon in expression position; both are internal to the `uint` crate's macro and
+    // outside our control.
+    deprecated,
+    semicolon_in_expressions_from_non_local_macros
 )]
 mod macro_code {
     #[cfg(feature = "datasize")]
