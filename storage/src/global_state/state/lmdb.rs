@@ -212,10 +212,8 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         );
         let mut ret = Vec::new();
         for result in keys_iter {
-            match result {
-                Ok(key) => ret.push(key),
-                Err(error) => return Err(error),
-            }
+            let key = result?;
+            ret.push(key)
         }
         txn.commit()?;
         Ok(ret)
@@ -541,9 +539,7 @@ pub fn make_temporary_global_state(
 mod tests {
     use casper_types::{account::AccountHash, execution::TransformKindV2, CLValue, Digest};
 
-    use crate::global_state::state::{
-        scratch::tests::TestPair, CommitProvider as _, StateProvider as _,
-    };
+    use crate::global_state::state::scratch::tests::TestPair;
 
     use super::*;
 

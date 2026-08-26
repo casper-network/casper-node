@@ -3,13 +3,11 @@ CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 CARGO_AUDIT = $(or $(shell which cargo-audit), $(HOME)/.cargo/bin/cargo-audit)
 
-PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
 CARGO_AUDIT_VERSION := 0.22.1
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
-CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
@@ -21,19 +19,22 @@ CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -
 EVM_CONTRACTS    = $(shell find ./smart_contracts/evm_contracts -mindepth 1 -maxdepth 1 -name '*.sol' -exec basename {} .sol \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
-WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C target-cpu=mvp -C target-feature=-bulk-memory"
+# panic=abort is set explicitly here (rather than via a [profile] in smart_contracts/contract's
+# own Cargo.toml) because workspace member manifests can't declare profiles; only the workspace
+# root's Cargo.toml can.
+WASM_RUSTC_FLAGS = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir -C link-arg=--import-undefined -C panic=abort"
 CARGO_TEST_PROFILE_ENV ?=
 
-CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
+CONTRACT_TARGET_DIR       = target/wasm32v1-none/release
 EVM_CONTRACT_TARGET_DIR   = target/evm-contracts
 
 build-contract-rs/%:
-	cd smart_contracts/contracts && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	cd smart_contracts/contracts && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 build-vm2-contract-rs/%:
 	CMAKE_POLICY_VERSION_MINIMUM=3.5 $(CARGO) build -p cargo-casper --bin cargo-casper
 	RUSTFLAGS=$(RUSTC_FLAGS) $(CURDIR)/target/debug/cargo-casper build-schema --package $*
-	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release -Z build-std=std,core,alloc,panic_abort $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	cd smart_contracts/contracts/vm2 && RUSTFLAGS=$(WASM_RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 .PHONY: build-vm2-contracts-rs
 build-vm2-contracts-rs: $(patsubst %, build-vm2-contract-rs/%, $(VM2_CONTRACTS))
@@ -134,11 +135,11 @@ check-testing-features:
 
 .PHONY: check-format
 check-format:
-	$(CARGO_PINNED_NIGHTLY) fmt --all -- --check
+	$(CARGO) fmt --all -- --check
 
 .PHONY: format
 format:
-	$(CARGO_PINNED_NIGHTLY) fmt --all
+	$(CARGO) fmt --all
 
 lint-contracts-rs:
 	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -A renamed_and_removed_lints
@@ -178,8 +179,8 @@ audit: audit-rs
 
 .PHONY: doc
 doc:
-	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
-	cd smart_contracts/contract && RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
+	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(RUSTUP) run nightly $(CARGO) doc --all-features $(CARGO_FLAGS) --no-deps
+	cd smart_contracts/contract && RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(RUSTUP) run nightly $(CARGO) doc --all-features $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs
 check: \
@@ -223,12 +224,11 @@ setup-cargo-packagers:
 .PHONY: setup-rs
 setup-rs:
 	$(RUSTUP) update
-	$(RUSTUP) toolchain install $(PINNED_STABLE) $(PINNED_NIGHTLY)
-	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32-unknown-unknown
-	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
-	$(RUSTUP) component add --toolchain $(PINNED_NIGHTLY) rustfmt clippy-preview
+	$(RUSTUP) toolchain install $(PINNED_STABLE) nightly
+	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32v1-none wasm32-unknown-unknown
+	$(RUSTUP) component add --toolchain $(PINNED_STABLE) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
-	$(RUSTUP) component add rust-src --toolchain $(PINNED_NIGHTLY)
+	$(RUSTUP) component add rust-src --toolchain $(PINNED_STABLE)
 	$(CARGO_AUDIT) --version 2>/dev/null | grep -q ' $(CARGO_AUDIT_VERSION)$$' || \
 		$(CARGO) install cargo-audit --version '=$(CARGO_AUDIT_VERSION)'
 

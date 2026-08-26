@@ -540,8 +540,8 @@ impl GlobalStateSynchronizer {
         self.tries_awaiting_children = still_incomplete;
 
         let mut effects: Effects<Event> = ready_tries
-            .into_iter()
-            .flat_map(|(_, trie_awaiting)| {
+            .into_values()
+            .flat_map(|trie_awaiting| {
                 let trie_raw = trie_awaiting.into_trie_raw();
                 let request = PutTrieRequest::new(trie_raw.clone());
                 effect_builder

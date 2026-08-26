@@ -32,11 +32,11 @@ static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     path.to_path_buf()
 });
 // The location of compiled Wasm files if compiled from the Rust sources within the casper-node
-// repo, i.e. 'casper-node/target/wasm32-unknown-unknown/release/'.
+// repo, i.e. 'casper-node/target/wasm32v1-none/release/'.
 static RUST_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
     assert!(
         path.exists() || RUST_TOOL_WASM_PATH.exists(),
@@ -54,14 +54,12 @@ static RUST_TOOL_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 // The location of compiled Wasm files if compiled from the Rust sources within the casper-node
 // repo where `CARGO_TARGET_DIR` is set, i.e.
-// '<CARGO_TARGET_DIR>/wasm32-unknown-unknown/release/'.
+// '<CARGO_TARGET_DIR>/wasm32v1-none/release/'.
 static MAYBE_CARGO_TARGET_DIR_WASM_PATH: Lazy<Option<PathBuf>> = Lazy::new(|| {
     let maybe_target = std::env::var("CARGO_TARGET_DIR").ok();
-    maybe_target.as_ref().map(|path| {
-        Path::new(path)
-            .join("wasm32-unknown-unknown")
-            .join("release")
-    })
+    maybe_target
+        .as_ref()
+        .map(|path| Path::new(path).join("wasm32v1-none").join("release"))
 });
 static WASM_PATHS: Lazy<Vec<PathBuf>> = Lazy::new(get_compiled_wasm_paths);
 

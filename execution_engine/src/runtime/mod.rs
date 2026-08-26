@@ -4199,7 +4199,7 @@ where
             }
 
             // Remove group if it is not referenced by at least one entry_point in active versions.
-            for (_version, contract_hash) in contract_package.versions().iter() {
+            for contract_hash in contract_package.versions().values() {
                 let entry_points = {
                     self.context
                         .get_casper_vm_v1_entry_point(Key::contract_entity_key(

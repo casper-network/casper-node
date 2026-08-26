@@ -532,10 +532,6 @@ fn generate_impl_for_contract(
                         let mut instance: #struct_name = casper_contract_sdk::casper::read_state().unwrap();
                         let _ret = instance.#func_name(#(args.#arg_names,)*);
                     }
-                } else if method_attribute.constructor {
-                    quote! {
-                        let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
-                    }
                 } else {
                     quote! {
                         let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);

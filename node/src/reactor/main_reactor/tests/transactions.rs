@@ -61,7 +61,7 @@ pub(crate) static CHARLIE_PUBLIC_KEY: Lazy<PublicKey> =
 // The amount of gas it takes to execute the generated do_nothing.wasm.
 // Passing this around as a constant is brittle and should be replaced
 // with a more sustainable solution in the future.
-const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 116445_u64;
+const DO_NOTHING_WASM_EXECUTION_GAS: u64 = 117180_u64;
 pub(crate) const MIN_GAS_PRICE: u8 = 1;
 const CHAIN_NAME: &str = "single-transaction-test-net";
 
@@ -3474,7 +3474,7 @@ async fn should_burn_fee_refund_unconsumed_custom_payment() {
     let contract_file = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("ee_601_regression.wasm");
     let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
@@ -3574,7 +3574,7 @@ async fn should_allow_norefund_nofee_custom_payment() {
     let contract_file = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("ee_601_regression.wasm");
     let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
@@ -4287,7 +4287,7 @@ fn valid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Trans
     let contract_file = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("do_nothing.wasm");
     let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
@@ -5031,7 +5031,7 @@ async fn insufficient_funds_transfer_from_purse() {
     let purse_create_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("transfer_main_purse_to_new_purse.wasm");
     let module_bytes =
@@ -5155,7 +5155,7 @@ async fn charge_when_session_code_succeeds() {
     let contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("transfer_purse_to_account.wasm");
     let module_bytes = Bytes::from(std::fs::read(contract).expect("cannot read module bytes"));
@@ -5226,7 +5226,7 @@ async fn charge_when_session_code_fails_with_user_error() {
     let revert_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("revert.wasm");
     let module_bytes =
@@ -5294,7 +5294,7 @@ async fn charge_when_session_code_runs_out_of_gas() {
     let revert_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("endless_loop.wasm");
     let module_bytes =
@@ -5368,7 +5368,7 @@ async fn successful_purse_to_purse_transfer() {
     let purse_create_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("transfer_main_purse_to_new_purse.wasm");
     let module_bytes =
@@ -5471,7 +5471,7 @@ async fn successful_purse_to_account_transfer() {
     let purse_create_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("transfer_main_purse_to_new_purse.wasm");
     let module_bytes =
@@ -5958,7 +5958,7 @@ async fn out_of_gas_txn_does_not_produce_effects() {
     let revert_contract = RESOURCES_PATH
         .join("..")
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release")
         .join("endless_loop_with_effects.wasm");
     let module_bytes =
@@ -6216,7 +6216,7 @@ async fn gh_5058_regression_custom_payment_with_deploy_variant_works() {
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let payment_amount = U512::from(2_500_000_000u64);
@@ -6289,7 +6289,7 @@ async fn should_penalize_failed_custom_payment() {
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let payment_amount = U512::from(1_000_000u64);
@@ -6369,7 +6369,7 @@ async fn gh_5082_install_upgrade_should_allow_adding_new_version() {
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let txn_1 = {
@@ -6460,7 +6460,7 @@ async fn should_allow_custom_payment() {
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let payment_amount = U512::from(2_500_000_000u64);
@@ -6692,7 +6692,7 @@ async fn run_sizing_scenario(sizing_scenario: SizingScenario) {
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let (payment_1, session_1) = match sizing_scenario {
@@ -6916,7 +6916,7 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
         .parent()
         .unwrap()
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
 
     let mut wasm_lanes = fixture

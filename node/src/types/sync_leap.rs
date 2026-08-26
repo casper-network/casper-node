@@ -9,7 +9,6 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::error;
 
 use casper_types::{
     crypto, BlockHash, BlockHeader, BlockHeaderWithSignatures,
@@ -1520,7 +1519,6 @@ mod tests {
             .block_headers_with_signatures
             .iter()
             .take(2)
-            .cloned()
             .map(|block_header_with_signatures| block_header_with_signatures.block_header().clone())
             .collect();
 

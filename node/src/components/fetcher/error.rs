@@ -1,7 +1,6 @@
 use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::error;
 
 use crate::{components::fetcher::FetchItem, types::NodeId};
 

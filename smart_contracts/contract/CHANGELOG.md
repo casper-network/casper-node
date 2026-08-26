@@ -9,7 +9,13 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## Unreleased
 
+### Changed
+* Smart-contract Wasm builds in this workspace now target `wasm32v1-none` instead of `wasm32-unknown-unknown`. `smart_contracts/contracts/.cargo/config.toml` sets `target = "wasm32v1-none"` and replaces the old `-C target-feature=-bulk-memory` rustflag with `-C link-arg=--import-undefined`; all other flags were dropped since `wasm32v1-none` enforces the Wasm MVP feature set on its own. The repo-root `rust-toolchain.toml` and `smart_contracts/rust-toolchain` were bumped accordingly, moving this workspace off its previously pinned dated nightly onto the `1.98.0` stable channel.
+* `wasm32v1-none` and `-C link-arg=--import-undefined` require a Rust toolchain no older than `nightly-2025-08-03`. This workspace now builds with `1.98.0` stable, which postdates that requirement, but third-party contracts built against this crate's API on their own nightly toolchain must bump to at least `nightly-2025-08-03` (or a later toolchain) to keep building.
+
+## 5.1.1
 
 ## 4.0.0
 

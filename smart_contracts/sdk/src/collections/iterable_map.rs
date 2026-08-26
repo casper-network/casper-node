@@ -292,20 +292,16 @@ where
             let prefix = self.create_prefix_from_ptr(&bucket_ptr);
             let keyspace = Keyspace::Context(&prefix);
 
-            if let Some(entry) = self.get_entry(keyspace) {
-                // Existing value, check if the keys match
-                if entry.key == *key && entry.value.is_some() {
-                    // We have found a slot where this key lives, return it
-                    return Some((bucket_ptr, entry));
-                } else {
-                    // We found a slot for this key hash, but either the keys mismatch,
-                    // or it's vacant, so we need to probe further.
-                    bucket_ptr.index += 1;
-                    continue;
-                }
+            let entry = self.get_entry(keyspace)?;
+            // Existing value, check if the keys match
+            if entry.key == *key && entry.value.is_some() {
+                // We have found a slot where this key lives, return it
+                return Some((bucket_ptr, entry));
             } else {
-                // We've reached empty address space, so the slot doesn't actually exist.
-                return None;
+                // We found a slot for this key hash, but either the keys mismatch,
+                // or it's vacant, so we need to probe further.
+                bucket_ptr.index += 1;
+                continue;
             }
         }
     }

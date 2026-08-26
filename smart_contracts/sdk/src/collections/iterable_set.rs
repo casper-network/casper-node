@@ -163,7 +163,7 @@ mod tests {
             assert!(set.contains(&val2));
 
             let mut collected: Vec<_> = set.iter().collect();
-            collected.sort_by(|a, b| a.field1.cmp(&b.field1));
+            collected.sort_by_key(|a| a.field1);
             assert_eq!(collected, vec![val1, val2]);
         })
         .unwrap();

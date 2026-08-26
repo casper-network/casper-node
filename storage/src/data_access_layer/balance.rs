@@ -152,12 +152,10 @@ impl BalanceIdentifier {
                 }
             }
             BalanceIdentifier::Entity(entity_addr) => {
-                match tc.runtime_footprint_by_entity_addr(*entity_addr) {
-                    Ok(entity) => entity
-                        .main_purse()
-                        .ok_or(TrackingCopyError::Authorization)?,
-                    Err(tce) => return Err(tce),
-                }
+                let entity = tc.runtime_footprint_by_entity_addr(*entity_addr)?;
+                entity
+                    .main_purse()
+                    .ok_or(TrackingCopyError::Authorization)?
             }
             BalanceIdentifier::Refund => {
                 self.get_system_purse(tc, HANDLE_PAYMENT, REFUND_PURSE_KEY)?

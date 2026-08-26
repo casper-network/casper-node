@@ -6,7 +6,7 @@
 //! ## Application structure
 //!
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
-//! its core event loop is found inside the [reactor](reactor/index.html).
+//! its core event loop is found inside the [reactor].
 
 #![doc(html_root_url = "https://docs.rs/casper-node/2.2.0")]
 #![doc(

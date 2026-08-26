@@ -13,7 +13,7 @@ CONTRACTS = ["mint", "pos", "standard_payment", "auction"]
 
 
 #: Relative directory to be appended to basedir in case WASM dir is not specified.
-DEFAULT_WASM_SUBDIR = ["target", "wasm32-unknown-unknown", "release"]
+DEFAULT_WASM_SUBDIR = ["target", "wasm32v1-none", "release"]
 
 
 #: The port the node is reachable on.
