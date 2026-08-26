@@ -1988,7 +1988,6 @@ where
         for account_key in hash_keys.iter() {
             if let Ok(Some(StoredValue::ContractPackage(_))) = self.tracking_copy.read(account_key)
             {
-                println!("migrating {account_key}");
                 match self
                     .tracking_copy
                     .migrate_package(*account_key, protocol_version)
