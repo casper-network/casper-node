@@ -853,11 +853,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Try to accept a transaction received from the JSON-RPC server.
-    #[allow(clippy::result_large_err)]
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-    ) -> Result<(), transaction_acceptor::Error>
+    ) -> Result<(), Box<transaction_acceptor::Error>>
     where
         REv: From<AcceptTransactionRequest>,
     {
@@ -869,6 +868,7 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Api,
         )
         .await
+        .map_err(Box::new)
     }
 
     /// Announces that a transaction not previously stored has now been accepted and stored.

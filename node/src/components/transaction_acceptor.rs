@@ -733,7 +733,7 @@ impl TransactionAcceptor {
         // Only deploys need their payment code checked.
         let payment_identifier = if let Transaction::Deploy(deploy) = &event_metadata.transaction {
             if let Err(error) = deploy_payment_is_valid(deploy.payment(), &block_header) {
-                return self.reject_transaction(effect_builder, *event_metadata, error);
+                return self.reject_transaction(effect_builder, *event_metadata, *error);
             }
             deploy.payment().identifier()
         } else {
@@ -1627,33 +1627,32 @@ fn is_authorized_entity(
 }
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
-#[allow(clippy::result_large_err)]
 fn deploy_payment_is_valid(
     payment: &ExecutableDeployItem,
     block_header: &BlockHeader,
-) -> Result<(), Error> {
+) -> Result<(), Box<Error>> {
     match payment {
         ExecutableDeployItem::Transfer { .. } => {
-            return Err(Error::parameter_failure(
+            return Err(Box::new(Error::parameter_failure(
                 block_header,
                 DeployParameterFailure::InvalidPaymentVariant.into(),
-            ));
+            )));
         }
         ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
             // module bytes being empty implies the payment executable is standard payment.
             if module_bytes.is_empty() {
                 if let Some(value) = args.get(ARG_AMOUNT) {
                     if value.to_t::<U512>().is_err() {
-                        return Err(Error::parameter_failure(
+                        return Err(Box::new(Error::parameter_failure(
                             block_header,
                             DeployParameterFailure::FailedToParsePaymentAmount.into(),
-                        ));
+                        )));
                     }
                 } else {
-                    return Err(Error::parameter_failure(
+                    return Err(Box::new(Error::parameter_failure(
                         block_header,
                         DeployParameterFailure::MissingPaymentAmount.into(),
-                    ));
+                    )));
                 }
             }
         }

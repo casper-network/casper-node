@@ -36,6 +36,8 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
+#[cfg(test)]
+use tracing::error;
 use tracing::warn;
 
 use crate::types::NodeId;
@@ -378,7 +380,7 @@ pub(crate) async fn wait_for_arc_drop<T>(
         tokio::time::sleep(retry_delay).await;
     }
 
-    tracing::error!(
+    error!(
         attempts, ?retry_delay, ty=%any::type_name::<T>(),
         "failed to clean up shared reference"
     );

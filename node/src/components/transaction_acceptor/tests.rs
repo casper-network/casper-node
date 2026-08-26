@@ -1554,10 +1554,9 @@ fn inject_balance_check_for_peer(
     }
 }
 
-#[allow(clippy::result_large_err)]
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
-) -> Result<(), super::Error> {
+) -> Result<(), Box<super::Error>> {
     let _ = logging::init();
     let rng = &mut TestRng::new();
 
@@ -1919,7 +1918,7 @@ async fn run_transaction_acceptor_without_timeout(
         }
     }
 
-    txn_receiver.await.unwrap()
+    txn_receiver.await.unwrap().map_err(Box::new)
 }
 
 #[allow(clippy::result_large_err)]
@@ -1930,6 +1929,7 @@ async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), sup
     )
     .await
     .unwrap()
+    .map_err(|b_e| *b_e)
 }
 
 #[tokio::test]

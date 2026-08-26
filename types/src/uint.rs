@@ -36,9 +36,12 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     // `construct_uint!` expands to code using the deprecated `iN::max_value()` associated
     // functions instead of the `MAX` associated constant, and to a macro-generated trailing
     // semicolon in expression position; both are internal to the `uint` crate's macro and
-    // outside our control.
-    deprecated,
-    semicolon_in_expressions_from_non_local_macros
+    // outside our control. `semicolon_in_expressions_from_non_local_macros` doesn't exist on
+    // stable, so `unknown_lints` is needed there; on nightly (e.g. `make doc`) it silences the
+    // real lint, which fires even outside of rustdoc, so this can't be gated on `cfg(docsrs)`.
+    unknown_lints,
+    semicolon_in_expressions_from_non_local_macros,
+    deprecated
 )]
 mod macro_code {
     #[cfg(feature = "datasize")]

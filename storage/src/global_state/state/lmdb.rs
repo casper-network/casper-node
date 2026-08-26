@@ -539,9 +539,7 @@ pub fn make_temporary_global_state(
 mod tests {
     use casper_types::{account::AccountHash, execution::TransformKindV2, CLValue, Digest};
 
-    use crate::global_state::state::{
-        scratch::tests::TestPair, CommitProvider as _, StateProvider as _,
-    };
+    use crate::global_state::state::scratch::tests::TestPair;
 
     use super::*;
 
