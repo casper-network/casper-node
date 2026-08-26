@@ -156,9 +156,7 @@ impl ExecutorV2 {
         <R as StateProvider>::Reader: 'static,
     {
         let mut tracking_copy = match state_provider.checkout(state_root_hash) {
-            Ok(Some(tracking_copy)) => {
-                TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity())
-            }
+            Ok(Some(tracking_copy)) => TrackingCopy::new(tracking_copy, 1),
             Ok(None) => {
                 return Err(InstallContractError::GlobalState(
                     GlobalStateError::RootNotFound,
@@ -795,7 +793,7 @@ impl ExecutorV2 {
             Err(global_state_error) => return Err(global_state_error.into()),
         };
 
-        let tracking_copy = TrackingCopy::new(tracking_copy, 1, state_provider.enable_entity());
+        let tracking_copy = TrackingCopy::new(tracking_copy, 1);
 
         match self.execute_with_tracking_copy(tracking_copy, execute_request) {
             Ok(ExecuteResult {

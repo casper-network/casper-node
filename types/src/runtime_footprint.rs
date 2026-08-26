@@ -198,7 +198,7 @@ impl RuntimeFootprint {
             );
             ret.insert(
                 Action::DeployManagement as u8,
-                entity.action_thresholds().key_management,
+                entity.action_thresholds().deployment,
             );
             ret.insert(
                 Action::UpgradeManagement as u8,

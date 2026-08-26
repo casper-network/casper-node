@@ -51,7 +51,7 @@ pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// Default entity flag.
-pub const DEFAULT_ENABLE_ENTITY: bool = false;
+pub const DEFAULT_ENABLE_ENTITY: bool = true;
 
 pub(crate) const DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION: bool = false;
 

@@ -15,7 +15,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
     bytesrepr::{Bytes, FromBytes},
-    contracts::ContractPackageHash,
+    contracts::{ContractHash, ContractPackageHash},
     runtime_args,
     system::{auction::MINIMUM_DELEGATION_RATE_KEY, mint::MINT_SUSTAIN_PURSE_KEY},
     AccessRights, AddressableEntityHash, CLValue, EntityAddr, EntityVersion, EraId,
@@ -1179,6 +1179,13 @@ fn should_correctly_retain_disabled_contract_version() {
         .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
 
+    let config = EngineConfigBuilder::new()
+        .with_protocol_version(new_protocol_version)
+        .with_enable_entity(true)
+        .build();
+
+    builder.with_engine_config(config);
+
     let exec_request = {
         let contract_name = format!("{}.wasm", "do_nothing_stored_upgrader");
         ExecuteRequestBuilder::standard(
@@ -1191,16 +1198,18 @@ fn should_correctly_retain_disabled_contract_version() {
 
     builder.exec(exec_request).expect_success().commit();
 
+    let package_hash = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity")
+        .named_keys()
+        .get("do_nothing_package_hash")
+        .expect("must have key")
+        .into_hash_addr()
+        .expect("must get hash haddr");
+
     let contract_package = builder
-        .query(
-            None,
-            Key::Account(*DEFAULT_ACCOUNT_ADDR),
-            &["do_nothing_package_hash".to_string()],
-        )
-        .expect("must have stored value")
-        .as_contract_package()
-        .expect("must have contract_package")
-        .clone();
+        .get_package(PackageHash::new(package_hash))
+        .expect("must have package");
 
     assert_eq!(contract_package.versions().len(), 3);
 
@@ -1316,11 +1325,12 @@ fn setup_state_for_version_tests(
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_enable_addressable_entity(true)
         .build();
 
     let config = EngineConfigBuilder::new()
         .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
+        .with_enable_entity(true)
         .build();
 
     builder
@@ -1330,14 +1340,9 @@ fn setup_state_for_version_tests(
 
     builder.with_engine_config(config);
 
-    let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("must have account as stored value")
-        .as_account()
-        .expect("have account")
-        .to_owned();
-
-    let contract_package_hash = account
+    let contract_package_hash = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity")
         .named_keys()
         .get("purse_holder")
         .expect("must have key")
@@ -1468,18 +1473,19 @@ fn execute_no_major_some_entity_version_calls(trap_on_ambiguous_entity_version: 
     builder.exec(exec_request).expect_success().commit();
 
     let contract_package = builder
-        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .query(None, Key::SmartContract(contract_package_hash.value()), &[])
         .expect("must have contract package as stored value")
-        .into_contract_package()
+        .into_package()
         .expect("must get contract package");
 
     let disable_hash = contract_package
-        .current_contract_hash()
-        .expect("must get hash");
+        .current_entity_hash()
+        .expect("must get hash")
+        .value();
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
-        "contract_hash" => disable_hash,
+        "contract_hash" => ContractHash::new(disable_hash),
     };
 
     let contract_name = format!("{}.wasm", "disable_contract_by_contract_hash");
@@ -1667,7 +1673,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_enable_addressable_entity(true)
         .with_rewards_handling(rewards_handling)
         .build();
 
@@ -1703,6 +1709,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
 
     let config = EngineConfigBuilder::new()
         .with_protocol_version(new_protocol_version)
+        .with_enable_entity(true)
         .with_trap_on_ambiguous_entity_version(trap)
         .build();
 
@@ -1724,12 +1731,12 @@ fn should_not_require_subsequent_cases(trap: bool) {
     builder.exec(exec_request).expect_success().commit();
 
     let contract_package = builder
-        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .query(None, Key::SmartContract(contract_package_hash.value()), &[])
         .expect("must get package as stored value")
-        .into_contract_package()
+        .into_package()
         .expect("must get package");
     let current_version = contract_package
-        .current_contract_version()
+        .current_entity_version()
         .expect("must have the latest current version");
 
     assert_eq!(current_version.protocol_version_major(), 3);

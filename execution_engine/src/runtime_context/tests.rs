@@ -48,7 +48,7 @@ fn new_tracking_copy(
             StoredValue::CLValue(entity_key_cl_value),
         ),
     ];
-    new_temporary_tracking_copy(initial_data, None, true)
+    new_temporary_tracking_copy(initial_data, None)
 }
 
 fn new_addressable_entity_with_purse(

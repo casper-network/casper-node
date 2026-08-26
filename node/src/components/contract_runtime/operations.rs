@@ -26,7 +26,8 @@ use casper_storage::{
         EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
         HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
         InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
-        StepResult, TransferRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -884,7 +885,12 @@ pub fn execute_finalized_block(
                     addressable_entity_enabled && transaction.is_contract_by_hash_invocation();
 
                 if contract_might_pay {
-                    match invoked_contract_will_pay(&scratch_state, state_root_hash, &transaction) {
+                    match invoked_contract_will_pay(
+                        &scratch_state,
+                        state_root_hash,
+                        protocol_version,
+                        &transaction,
+                    ) {
                         Ok(Some(entity_addr)) => BalanceIdentifier::Entity(entity_addr),
                         Ok(None) => {
                             // the initiating account pays using its main purse
@@ -2246,6 +2252,7 @@ where
 fn invoked_contract_will_pay(
     state_provider: &ScratchGlobalState,
     state_root_hash: Digest,
+    protocol_version: ProtocolVersion,
     transaction: &MetaTransaction,
 ) -> Result<Option<EntityAddr>, StateResultError> {
     let (hash_addr, entry_point_name) = match transaction.contract_direct_address() {
@@ -2256,6 +2263,32 @@ fn invoked_contract_will_pay(
         }
         Some((hash_addr, entry_point_name)) => (hash_addr, entry_point_name),
     };
+
+    let registry_request = SystemEntityRegistryRequest::new(
+        state_root_hash,
+        protocol_version,
+        SystemEntityRegistrySelector::All,
+        state_provider.enable_addressable_entity,
+    );
+    let registry = state_provider.system_entity_registry(registry_request);
+    match registry {
+        SystemEntityRegistryResult::RootNotFound => {}
+        SystemEntityRegistryResult::SystemEntityRegistryNotFound => {}
+        SystemEntityRegistryResult::NamedEntityNotFound(_) => {}
+        SystemEntityRegistryResult::Success { payload, .. } => match payload {
+            SystemEntityRegistryPayload::All(registry) => {
+                if registry.exists(&hash_addr) {
+                    return Ok(None);
+                }
+            }
+            SystemEntityRegistryPayload::EntityKey(_) => {
+                let msg = "unable to get registry".to_string();
+                return Err(StateResultError::ValueNotFound(msg));
+            }
+        },
+        SystemEntityRegistryResult::Failure(tce) => return Err(StateResultError::Failure(tce)),
+    }
+
     let entity_addr = EntityAddr::new_smart_contract(hash_addr);
     let entry_point_request = EntryPointRequest::new(state_root_hash, entry_point_name, hash_addr);
     let entry_point_response = state_provider.entry_point(entry_point_request);

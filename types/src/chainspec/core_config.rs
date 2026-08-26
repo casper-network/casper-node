@@ -59,7 +59,7 @@ pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHa
 pub const DEFAULT_GAS_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// Default enable entity setting.
-pub const DEFAULT_ENABLE_ENTITY: bool = false;
+pub const DEFAULT_ENABLE_ENTITY: bool = true;
 
 /// Default baseline motes amount.
 pub const DEFAULT_BASELINE_MOTES_AMOUNT: u64 = 2_500_000_000;

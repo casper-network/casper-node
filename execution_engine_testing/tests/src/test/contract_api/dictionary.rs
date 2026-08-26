@@ -11,8 +11,8 @@ use casper_execution_engine::{engine_state::Error as EngineError, execution::Exe
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, AccessRights,
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
-    StoredValue,
+    AddressableEntityHash, ApiError, CLType, CLValue, EntityAddr, GenesisAccount, Key, Motes,
+    RuntimeArgs, StoredValue,
 };
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
@@ -633,7 +633,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::Hash(entity_hash.value()),
+            Key::AddressableEntity(EntityAddr::SmartContract(entity_hash.value())),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )

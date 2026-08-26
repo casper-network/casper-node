@@ -244,12 +244,13 @@ fn should_allow_1x_user_to_add_contract_version_via_transaction_v1_installer_upg
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let account_as_1x = builder
+    let account_as_entity = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("must have stored value")
-        .as_account()
+        .as_cl_value()
         .is_some();
 
-    assert!(account_as_1x);
+    // With the one time upgrade, this is no longer a valid assertion
+    assert!(account_as_entity);
     try_add_contract_version(true, true, builder)
 }

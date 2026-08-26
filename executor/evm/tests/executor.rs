@@ -101,11 +101,7 @@ fn tracking_copy() -> (
         max_query_depth: 5,
         enable_addressable_entity: false,
     };
-    (
-        TrackingCopy::new(reader, 5, false),
-        data_access_layer,
-        tempdir,
-    )
+    (TrackingCopy::new(reader, 5), data_access_layer, tempdir)
 }
 
 fn executor(spec: EvmSpec) -> EvmExecutor {

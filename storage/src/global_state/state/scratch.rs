@@ -477,11 +477,7 @@ impl StateProvider for ScratchGlobalState {
         hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
         match self.checkout(hash)? {
-            Some(tc) => Ok(Some(TrackingCopy::new(
-                tc,
-                self.max_query_depth,
-                self.enable_addressable_entity,
-            ))),
+            Some(tc) => Ok(Some(TrackingCopy::new(tc, self.max_query_depth))),
             None => Ok(None),
         }
     }

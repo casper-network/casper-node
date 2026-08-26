@@ -1817,7 +1817,7 @@ fn should_distribute_uneven_delegation_rate_zero_with_sustain_turned_on() {
     };
 
     let sustain_purse = builder
-        .get_account(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
+        .get_entity_with_named_keys_by_account_hash(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
         .expect("must have sustain account as part of genesis setup")
         .main_purse();
 
@@ -2488,7 +2488,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator_with_sustain_
     rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     let sustain_purse = builder
-        .get_account(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
+        .get_entity_with_named_keys_by_account_hash(DEFAULT_SUSTAIN_PUBLIC_KEY.to_account_hash())
         .expect("must have sustain account as part of genesis setup")
         .main_purse();
 

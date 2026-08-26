@@ -4,10 +4,9 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::{ContractHash, ContractPackageHash},
     runtime_args,
     system::{Caller, CallerInfo},
-    CLValue, EntityAddr,
+    CLValue, EntityAddr, PackageHash,
 };
 
 const CONTRACT_GET_CALLER: &str = "get_caller.wasm";
@@ -227,12 +226,12 @@ fn should_load_caller_information_based_on_action() {
         .get(LOAD_CALLER_INFO_PACKAGE_HASH)
         .expect("must get package key")
         .into_hash_addr()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .expect("must get package hash");
 
-    let frame = CallerInfo::try_from(Caller::smart_contract(
+    let frame = CallerInfo::try_from(Caller::entity(
         package_hash,
-        ContractHash::new(caller_info_entity_hash.value()),
+        EntityAddr::new_smart_contract(caller_info_entity_hash.value()),
     ))
     .expect("must get frame");
     let expected_stack = vec![expected_caller, frame];

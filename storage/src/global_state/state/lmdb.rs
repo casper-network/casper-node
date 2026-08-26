@@ -322,11 +322,7 @@ impl StateProvider for LmdbGlobalState {
         hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
         match self.checkout(hash)? {
-            Some(reader) => Ok(Some(TrackingCopy::new(
-                reader,
-                self.max_query_depth,
-                self.enable_entity,
-            ))),
+            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
             None => Ok(None),
         }
     }

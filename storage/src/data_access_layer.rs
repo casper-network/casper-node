@@ -162,11 +162,7 @@ where
         hash: Digest,
     ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
         match self.state.checkout(hash)? {
-            Some(reader) => Ok(Some(TrackingCopy::new(
-                reader,
-                self.max_query_depth,
-                self.enable_addressable_entity,
-            ))),
+            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
             None => Ok(None),
         }
     }
