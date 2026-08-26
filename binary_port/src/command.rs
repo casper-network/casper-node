@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Transaction,
+    BlockIdentifier, Transaction,
 };
 
 use crate::get_request::GetRequest;
@@ -115,6 +115,8 @@ pub enum Command {
     TrySpeculativeExec {
         /// Transaction to execute.
         transaction: Transaction,
+        /// Block against whose state to execute, or the latest complete block if omitted.
+        block_identifier: Option<BlockIdentifier>,
     },
 }
 
@@ -137,6 +139,9 @@ impl Command {
             },
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
+                block_identifier: rng
+                    .gen::<bool>()
+                    .then(|| BlockIdentifier::Height(rng.gen())),
             },
         }
     }
@@ -153,7 +158,13 @@ impl ToBytes for Command {
         match self {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
-            Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
+            Command::TrySpeculativeExec {
+                transaction,
+                block_identifier,
+            } => {
+                transaction.write_bytes(writer)?;
+                block_identifier.write_bytes(writer)
+            }
         }
     }
 
@@ -161,7 +172,10 @@ impl ToBytes for Command {
         match self {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
-            Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
+            Command::TrySpeculativeExec {
+                transaction,
+                block_identifier,
+            } => transaction.serialized_length() + block_identifier.serialized_length(),
         }
     }
 }
@@ -181,7 +195,14 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
             }
             CommandTag::TrySpeculativeExec => {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::TrySpeculativeExec { transaction }, remainder)
+                let (block_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                (
+                    Command::TrySpeculativeExec {
+                        transaction,
+                        block_identifier,
+                    },
+                    remainder,
+                )
             }
         };
         if !remainder.is_empty() {
@@ -258,5 +279,28 @@ mod tests {
         let val = Command::random(rng);
         let bytes = val.to_bytes().expect("should serialize");
         assert_eq!(Command::try_from((val.tag(), &bytes[..])), Ok(val));
+    }
+
+    #[test]
+    fn speculative_exec_block_identifier_roundtrips() {
+        let rng = &mut TestRng::new();
+        for block_identifier in [
+            None,
+            Some(BlockIdentifier::Height(rng.gen())),
+            Some(BlockIdentifier::Hash(casper_types::BlockHash::new(
+                rng.gen(),
+            ))),
+        ] {
+            let command = Command::TrySpeculativeExec {
+                transaction: Transaction::random(rng),
+                block_identifier,
+            };
+            let bytes = command.to_bytes().expect("should serialize command");
+
+            assert_eq!(
+                Command::try_from((CommandTag::TrySpeculativeExec, &bytes[..])),
+                Ok(command)
+            );
+        }
     }
 }

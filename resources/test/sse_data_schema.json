@@ -5493,7 +5493,7 @@
           "minimum": 0.0
         },
         "effective_gas_price": {
-          "description": "Effective gas price used for Ethereum receipt projection and Casper EVM fee accounting.\n\nFor accepted EIP-1559 transactions this is the configured EVM base fee capped by `max_fee_per_gas`, since non-zero priority fees are rejected while Casper does not prioritize transactions based on transaction gas parameters.",
+          "description": "Effective gas price used for Ethereum receipt projection and Casper EVM fee accounting.\n\nFor accepted EIP-1559 transactions this is the configured EVM base fee capped by `max_fee_per_gas`. Transactions with a positive effective priority fee are rejected because Casper does not prioritize transactions based on transaction gas parameters.",
           "type": "integer",
           "format": "uint128",
           "minimum": 0.0

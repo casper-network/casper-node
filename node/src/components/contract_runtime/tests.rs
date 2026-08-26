@@ -1,12 +1,23 @@
 use std::{collections::BTreeMap, iter, path::PathBuf, sync::Arc, time::Duration};
 
-use casper_storage::data_access_layer::{QueryRequest, QueryResult};
+use casper_storage::{
+    block_store::BlockStoreTransaction,
+    data_access_layer::{QueryRequest, QueryResult},
+};
 use derive_more::{Display, From};
 use fs_extra::dir;
 use prometheus::Registry;
 use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
+
+use casper_types::{
+    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, BlockHeader,
+    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction,
+    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey,
+    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionConfig,
+    TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
+};
 
 use super::*;
 use crate::{
@@ -60,6 +71,8 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
+    #[from]
+    NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement),
 }
 
 impl ReactorEvent for Event {
@@ -87,8 +100,6 @@ impl Unhandled for FatalAnnouncement {}
 impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
-
-impl Unhandled for NonExecutableBlockAnnouncement {}
 
 struct TestConfig {
     config: Config,
@@ -123,9 +134,19 @@ impl reactor::Reactor for Reactor {
         }
 
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_withdir, "test").unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            chainspec.protocol_version(),
+        )
+        .unwrap();
+        let contract_runtime_block_store = storage_block_store.clone();
+        let mut storage = Storage::new(
             &storage_withdir,
-            None,
+            storage_root,
+            storage_block_store,
             chainspec.protocol_version(),
             EraId::default(),
             "test",
@@ -136,9 +157,15 @@ impl reactor::Reactor for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
-        let contract_runtime =
-            ContractRuntime::new(storage.root_path(), &config.config, chainspec, registry)?;
+        let contract_runtime = ContractRuntime::new(
+            storage.root_path(),
+            contract_runtime_block_store,
+            &config.config,
+            chainspec,
+            registry,
+        )?;
 
         let reactor = Reactor {
             storage,
@@ -183,6 +210,10 @@ impl reactor::Reactor for Reactor {
                 info!("{announcement}");
                 Effects::new()
             }
+            Event::NonExecutableBlockAnnouncement(announcement) => {
+                info!("{announcement}");
+                Effects::new()
+            }
         }
     }
 }
@@ -211,6 +242,182 @@ fn execution_started(event: &Event) -> bool {
 /// A function to be used a condition check, indicating that execution has completed.
 fn execution_completed(event: &Event) -> bool {
     matches!(event, Event::MetaBlockAnnouncement(_))
+}
+
+#[tokio::test]
+async fn block_hash_history_guard_only_applies_to_evm_blocks() {
+    testing::init_logging();
+
+    let config = TestConfig {
+        config: Config::default(),
+        fixture_name: None,
+    };
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let chainspec = Arc::new(chainspec);
+    let chainspec_raw_bytes = Arc::new(chainspec_raw_bytes);
+
+    let mut rng = crate::new_rng();
+    let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
+        config,
+        Arc::clone(&chainspec),
+        Arc::clone(&chainspec_raw_bytes),
+        &mut rng,
+    )
+    .await
+    .unwrap();
+
+    let post_commit_genesis_state_hash = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .commit_genesis(chainspec.as_ref(), chainspec_raw_bytes.as_ref())
+        .as_legacy()
+        .expect("should commit genesis")
+        .0;
+    // Start at height 1 without storing a block header at height 0.
+    runner
+        .reactor_mut()
+        .inner_mut()
+        .contract_runtime
+        .set_execution_pre_state(ExecutionPreState::new(
+            1,
+            post_commit_genesis_state_hash,
+            BlockHash::default(),
+            Digest::default(),
+        ));
+
+    // A non-EVM block bypasses the history preflight and executes.
+    let non_evm_block = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(0),
+            1,
+            PublicKey::System,
+        ),
+        vec![],
+    );
+    runner
+        .process_injected_effects(execute_block(non_evm_block))
+        .await;
+    runner
+        .crank_until(&mut rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    let pre_state_after_non_evm_block = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+    assert_eq!(pre_state_after_non_evm_block.next_block_height(), 2);
+
+    // Store every header in the 256-block BLOCKHASH window for height 257 while leaving height 0
+    // absent. This distinguishes the EIP-2935 window from the shorter opcode window.
+    {
+        let mut block_store = runner
+            .reactor()
+            .inner()
+            .contract_runtime
+            .data_access_layer
+            .block_store
+            .clone();
+        let mut transaction = block_store
+            .checkout_rw()
+            .expect("should check out block-store write transaction");
+        for height in 2..=256 {
+            let block = TestBlockBuilder::new().height(height).build(&mut rng);
+            let header = BlockHeader::V2(block.header().clone());
+            transaction
+                .write_block_header(&header)
+                .expect("should store block header");
+        }
+        transaction.commit().expect("should commit block headers");
+    }
+    runner
+        .reactor_mut()
+        .inner_mut()
+        .contract_runtime
+        .set_execution_pre_state(ExecutionPreState::new(
+            257,
+            pre_state_after_non_evm_block.pre_state_root_hash(),
+            BlockHash::default(),
+            Digest::default(),
+        ));
+    let initial_pre_state = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+
+    // The EVM block at height 257 requires headers in 0..257, so it must be refused even though
+    // the complete 256-block BLOCKHASH window is present.
+    let transaction = Transaction::from_evm(EvmTransaction::new_unsigned_call(
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+        1,
+        evm::Address::new([1; 20]),
+        Some(evm::Address::new([2; 20])),
+        U256::zero(),
+        vec![],
+        21_000,
+        1,
+    ));
+    let evm_block = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(0),
+            257,
+            PublicKey::System,
+        ),
+        vec![transaction],
+    );
+
+    runner
+        .process_injected_effects(execute_block(evm_block))
+        .await;
+
+    runner
+        .crank_until(
+            &mut rng,
+            |event| {
+                assert!(
+                    !matches!(event, Event::MetaBlockAnnouncement(_)),
+                    "block with missing EVM block hash history should not be executed"
+                );
+                matches!(
+                    event,
+                    Event::NonExecutableBlockAnnouncement(NonExecutableBlockAnnouncement(257))
+                )
+            },
+            TEST_TIMEOUT,
+        )
+        .await;
+
+    let actual_pre_state = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state();
+    assert_eq!(
+        actual_pre_state.next_block_height(),
+        initial_pre_state.next_block_height()
+    );
+    assert_eq!(
+        actual_pre_state.pre_state_root_hash(),
+        initial_pre_state.pre_state_root_hash()
+    );
+    assert_eq!(
+        actual_pre_state.parent_hash(),
+        initial_pre_state.parent_hash()
+    );
+    assert_eq!(
+        actual_pre_state.parent_seed(),
+        initial_pre_state.parent_seed()
+    );
 }
 
 #[tokio::test]
@@ -872,6 +1079,7 @@ mod test_mod {
 
     use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
     use casper_storage::{
+        block_store::lmdb::LmdbBlockStore,
         data_access_layer::{EntryPointExistsRequest, EntryPointExistsResult},
         global_state::{
             state::{CommitProvider, StateProvider},
@@ -1051,8 +1259,10 @@ mod test_mod {
             system_costs_config: Default::default(),
             ..Chainspec::random(rng)
         };
+        let block_store = LmdbBlockStore::new(temp_dir.path(), 64 * 1024 * 1024).unwrap();
         let contract_runtime = ContractRuntime::new(
             temp_dir.path(),
+            block_store,
             &ContractRuntimeConfig::default(),
             Arc::new(chainspec),
             &Registry::default(),

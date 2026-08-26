@@ -1,6 +1,7 @@
 //! Public executor entry point.
 
 use casper_storage::{
+    data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
     TrackingCopy,
 };
@@ -13,8 +14,8 @@ use revm::{
 };
 
 use crate::{
-    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, BlockHashProvider, DbError, Error,
-    ExecuteKind, ExecuteRequest, ExecutionOutcome, NoBlockHashProvider, Result, SystemCallRequest,
+    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, DbError, Error, ExecuteKind,
+    ExecuteRequest, ExecutionOutcome, Result, SystemCallRequest,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -46,52 +47,20 @@ impl EvmExecutor {
     }
 
     /// Executes an EVM transaction or call against the supplied tracking copy.
-    pub fn execute<R>(
+    pub fn execute<R, S>(
         &self,
+        data_access_layer: &DataAccessLayer<S>,
         tracking_copy: &mut TrackingCopy<R>,
         request: ExecuteRequest,
     ) -> Result<ExecutionOutcome>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
-        let block_hash_provider = NoBlockHashProvider;
-        self.execute_with_block_hash_provider(tracking_copy, request, &block_hash_provider)
-    }
-
-    /// Executes a system call against the supplied tracking copy.
-    pub fn execute_system_call<R>(
-        &self,
-        tracking_copy: &mut TrackingCopy<R>,
-        request: SystemCallRequest,
-    ) -> Result<ExecutionOutcome>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
-        let block_hash_provider = NoBlockHashProvider;
-        self.execute_system_call_with_block_hash_provider(
-            tracking_copy,
-            request,
-            &block_hash_provider,
-        )
-    }
-
-    /// Executes with a provider for historical block hashes.
-    ///
-    /// The provider is used by the EVM `BLOCKHASH` opcode. Current/future
-    /// blocks and block numbers older than the EVM 256-block lookup window
-    /// return the zero hash before the provider is consulted.
-    pub fn execute_with_block_hash_provider<R, B>(
-        &self,
-        tracking_copy: &mut TrackingCopy<R>,
-        request: ExecuteRequest,
-        block_hash_provider: &B,
-    ) -> Result<ExecutionOutcome>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        B: BlockHashProvider + ?Sized,
     {
         if !self.config.enabled {
             return Err(Error::Disabled);
+        }
+        if self.config.wei_per_mote == 0 {
+            return Err(Error::InvalidWeiPerMote);
         }
 
         if let ExecuteKind::Transaction(transaction) = &request.kind {
@@ -117,7 +86,7 @@ impl EvmExecutor {
         };
 
         let result_and_state = {
-            let db = CasperDb::new(tracking_copy, block_hash_provider);
+            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
             let mut evm = Context::mainnet()
                 .with_db(db)
                 .with_block(block)
@@ -130,35 +99,39 @@ impl EvmExecutor {
             evm.transact(tx_env).map_err(map_revm_error)?
         };
 
-        let outcome = ExecutionOutcome::from_revm_result(&result_and_state.result);
         let mut state = result_and_state.state;
         // revm skips the upfront fee debit but still applies the
         // post-execution gas reimbursement and beneficiary reward.
         let disabled_fee_transfers =
             disabled_fee_transfers(&self.config, &request, &result_and_state.result);
         state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
-        state::apply(tracking_copy, state)?;
-        Ok(outcome)
+        let dust_motes = state::apply(tracking_copy, state, self.config.wei_per_mote)?;
+        Ok(ExecutionOutcome::from_revm_result(
+            &result_and_state.result,
+            dust_motes,
+        ))
     }
 
-    /// Executes a system call with a provider for historical block hashes.
-    pub fn execute_system_call_with_block_hash_provider<R, B>(
+    /// Executes a system call against the supplied tracking copy.
+    pub fn execute_system_call<R, S>(
         &self,
+        data_access_layer: &DataAccessLayer<S>,
         tracking_copy: &mut TrackingCopy<R>,
         request: SystemCallRequest,
-        block_hash_provider: &B,
     ) -> Result<ExecutionOutcome>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        B: BlockHashProvider + ?Sized,
     {
         if !self.config.enabled {
             return Err(Error::Disabled);
         }
+        if self.config.wei_per_mote == 0 {
+            return Err(Error::InvalidWeiPerMote);
+        }
 
         let block = request.block.to_revm_block(&self.config)?;
         let result_and_state = {
-            let db = CasperDb::new(tracking_copy, block_hash_provider);
+            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
             let mut evm = Context::mainnet()
                 .with_db(db)
                 .with_block(block)
@@ -175,9 +148,15 @@ impl EvmExecutor {
             .map_err(map_revm_error)?
         };
 
-        let outcome = ExecutionOutcome::from_revm_result(&result_and_state.result);
-        state::apply(tracking_copy, result_and_state.state)?;
-        Ok(outcome)
+        let dust_motes = state::apply(
+            tracking_copy,
+            result_and_state.state,
+            self.config.wei_per_mote,
+        )?;
+        Ok(ExecutionOutcome::from_revm_result(
+            &result_and_state.result,
+            dust_motes,
+        ))
     }
 }
 
@@ -220,9 +199,9 @@ fn disabled_fee_transfers(
         ),
     };
 
-    let reimbursed_gas = gas_limit
-        .saturating_sub(gas.total_gas_spent())
-        .saturating_add(gas.inner_refunded());
+    // `tx_gas_used` applies both refunds and the EIP-7623 calldata floor, matching
+    // the amount revm uses when reimbursing the caller after execution.
+    let reimbursed_gas = gas_limit.saturating_sub(gas.tx_gas_used());
     let caller_reimbursement = U256::from(effective_gas_price) * U256::from(reimbursed_gas);
     let coinbase_gas_price = effective_gas_price.saturating_sub(base_fee);
     let beneficiary_reward = U256::from(coinbase_gas_price) * U256::from(gas.tx_gas_used());

@@ -1,6 +1,3 @@
-use casper_executor_evm::{
-    BlockHashProvider as EvmBlockHashProvider, BlockHashProviderResult, BLOCK_HASH_HISTORY,
-};
 use casper_executor_wasm::ExecutorV2;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -10,7 +7,6 @@ use std::{
     fmt::Debug,
     ops::Range,
     sync::{Arc, Mutex},
-    time::Instant,
 };
 use tracing::{debug, error, info};
 
@@ -36,15 +32,11 @@ use crate::{
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
-    data_access_layer::{
-        DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        TransferResult,
-    },
-    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    data_access_layer::{DataAccessLayer, TransferResult},
+    eip2935,
+    global_state::state::lmdb::LmdbGlobalState,
 };
-use casper_types::{
-    BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig, Transaction,
-};
+use casper_types::{BlockHash, Chainspec, EraId, Gas, Key};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -54,45 +46,8 @@ const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
 static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
     Lazy::new(|| tokio::sync::Semaphore::new(MAX_PARALLEL_INTENSIVE_TASKS));
 
-#[derive(Clone, Debug, Default)]
-struct RecentBlockHashProvider {
-    block_hashes: BTreeMap<u64, BlockHash>,
-}
-
-impl RecentBlockHashProvider {
-    async fn load<REv>(effect_builder: EffectBuilder<REv>, current_block_height: u64) -> Self
-    where
-        REv: From<StorageRequest>,
-    {
-        let block_hashes = load_recent_evm_block_hashes(effect_builder, current_block_height).await;
-        RecentBlockHashProvider { block_hashes }
-    }
-}
-
-impl EvmBlockHashProvider for RecentBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<BlockHash>> {
-        Ok(self.block_hashes.get(&block_height).copied())
-    }
-}
-
-pub(crate) async fn load_recent_evm_block_hashes<REv>(
-    effect_builder: EffectBuilder<REv>,
-    current_block_height: u64,
-) -> BTreeMap<u64, BlockHash>
-where
-    REv: From<StorageRequest>,
-{
-    let earliest_block_height = current_block_height.saturating_sub(BLOCK_HASH_HISTORY);
-    let mut block_hashes = BTreeMap::new();
-    for block_height in earliest_block_height..current_block_height {
-        if let Some(header) = effect_builder
-            .get_block_header_at_height_from_storage(block_height, true)
-            .await
-        {
-            block_hashes.insert(block_height, header.block_hash());
-        }
-    }
-    block_hashes
+fn block_hash_history_range(block_height: u64) -> Range<u64> {
+    block_height.saturating_sub(eip2935::HISTORY_BUFFER_LENGTH)..block_height
 }
 
 /// Asynchronously runs a resource intensive task.
@@ -266,6 +221,49 @@ pub(super) async fn exec_and_check_next<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
 
+    if executable_block
+        .transactions
+        .iter()
+        .any(|transaction| transaction.as_evm().is_some())
+    {
+        let block_height = executable_block.height;
+        let block_history_range = block_hash_history_range(block_height);
+        let block_history_start = block_history_range.start;
+        let first_missing_block_header_height = {
+            // Keep the read transaction out of the async announcement and fatal paths below.
+            match data_access_layer.block_store.checkout_ro() {
+                Ok(txn) => txn.first_missing_block_header_height(block_history_range),
+                Err(error) => Err(error),
+            }
+        };
+
+        match first_missing_block_header_height {
+            Ok(Some(missing_block_height)) => {
+                info!(
+                    %block_height,
+                    %missing_block_height,
+                    %block_history_start,
+                    "ContractRuntime: not enough block history to execute block containing EVM \
+                    transactions. Abandoning the execution."
+                );
+                effect_builder
+                    .announce_not_executing_block(block_height)
+                    .await;
+                return;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return fatal!(
+                    effect_builder,
+                    "failed to check EVM block hash history for block {}: {}",
+                    block_height,
+                    error
+                )
+                .await;
+            }
+        }
+    }
+
     // FIRST determine if we are aware of the last switch block header
     let era_id = executable_block.era_id;
     let last_switch_block_hash = match era_id.predecessor() {
@@ -320,15 +318,6 @@ pub(super) async fn exec_and_check_next<REv>(
     };
 
     let current_gas_price = executable_block.current_gas_price;
-    let evm_block_hash_provider = if executable_block
-        .transactions
-        .iter()
-        .any(|transaction| matches!(transaction, Transaction::Evm(_)))
-    {
-        RecentBlockHashProvider::load(effect_builder, executable_block.height).await
-    } else {
-        RecentBlockHashProvider::default()
-    };
     let contract_runtime_metrics = metrics.clone();
     let task = move || {
         debug!("ContractRuntime: execute_finalized_block");
@@ -339,7 +328,6 @@ pub(super) async fn exec_and_check_next<REv>(
             chainspec.as_ref(),
             Some(contract_runtime_metrics),
             current_pre_state,
-            &evm_block_hash_provider,
             executable_block,
             key_block_height_for_activation_point,
             current_gas_price,
@@ -493,75 +481,6 @@ pub(super) async fn exec_and_check_next<REv>(
     }
 }
 
-pub(super) async fn handle_protocol_upgrade<REv>(
-    effect_builder: EffectBuilder<REv>,
-    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
-    metrics: Arc<Metrics>,
-    upgrade_config: ProtocolUpgradeConfig,
-    next_block_height: u64,
-    parent_hash: BlockHash,
-    parent_seed: Digest,
-) where
-    REv: From<ContractRuntimeRequest>
-        + From<ContractRuntimeAnnouncement>
-        + From<StorageRequest>
-        + From<MetaBlockAnnouncement>
-        + From<FatalAnnouncement>
-        + Send,
-{
-    debug!(?upgrade_config, "upgrade");
-    let start = Instant::now();
-    let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
-
-    let result = run_intensive_task(move || {
-        let result = data_access_layer.protocol_upgrade(upgrade_request);
-        if result.is_success() {
-            info!("committed upgrade");
-            metrics
-                .commit_upgrade
-                .observe(start.elapsed().as_secs_f64());
-            let flush_req = FlushRequest::new();
-            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-                return Err(format!("{:?}", err));
-            }
-        }
-
-        Ok(result)
-    })
-    .await;
-
-    match result {
-        Err(error_msg) => {
-            // The only way this happens is if there is a problem in the flushing.
-            error!(%error_msg, ":Error in post upgrade flush");
-            fatal!(effect_builder, "{}", error_msg).await;
-        }
-        Ok(result) => match result {
-            ProtocolUpgradeResult::RootNotFound => {
-                let error_msg = "Root not found for protocol upgrade";
-                fatal!(effect_builder, "{}", error_msg).await;
-            }
-            ProtocolUpgradeResult::Failure(err) => {
-                fatal!(effect_builder, "{:?}", err).await;
-            }
-            ProtocolUpgradeResult::Success {
-                post_state_hash, ..
-            } => {
-                let post_upgrade_state = ExecutionPreState::new(
-                    next_block_height,
-                    post_state_hash,
-                    parent_hash,
-                    parent_seed,
-                );
-
-                effect_builder
-                    .update_contract_runtime_state(post_upgrade_state)
-                    .await
-            }
-        },
-    }
-}
-
 fn generate_range_by_index(
     highest_era: u64,
     batch_size: u64,
@@ -653,6 +572,14 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn block_hash_history_ranges_cover_boundary_heights() {
+        assert_eq!(block_hash_history_range(0), 0..0);
+        assert_eq!(block_hash_history_range(1), 0..1);
+        assert_eq!(block_hash_history_range(8_191), 0..8_191);
+        assert_eq!(block_hash_history_range(8_192), 1..8_192);
+    }
 
     #[test]
     fn calculation_is_safe_with_invalid_input() {

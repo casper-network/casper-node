@@ -27,7 +27,7 @@ pub trait BlockStoreTransaction {
 }
 
 /// Data reader definition.
-pub trait DataReader<K, T> {
+pub(crate) trait DataReader<K, T> {
     /// Read item at key.
     fn read(&self, key: K) -> Result<Option<T>, BlockStoreError>;
     /// Returns true if item exists at key, else false.
@@ -35,7 +35,7 @@ pub trait DataReader<K, T> {
 }
 
 /// Data write definition.
-pub trait DataWriter<K, T> {
+pub(crate) trait DataWriter<K, T> {
     /// Write item to store and return key.
     fn write(&mut self, data: &T) -> Result<K, BlockStoreError>;
     /// Delete item at key from store.

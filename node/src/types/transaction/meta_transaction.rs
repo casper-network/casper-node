@@ -544,7 +544,9 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_consensus::{SignableTransaction, TxEip1559, TxEip7702, TxEnvelope, TxLegacy};
+    use alloy_consensus::{
+        SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
+    };
     use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
     use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
     use casper_types::{
@@ -684,6 +686,23 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_rejects_legacy_positive_effective_priority_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI + 1, 21_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                    priority_fee_per_gas: 1
+                }
+            ))
+        ));
+    }
+
+    #[test]
     fn evm_config_compliance_rejects_legacy_priority_fee() {
         let chainspec = chainspec();
         let transaction = legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000);
@@ -705,11 +724,46 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_accepts_eip2930_at_base_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(&chainspec, eip2930_transaction(BASE_FEE_WEI, 21_000));
+
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("EIP-2930 gas price equal to base fee should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip2930_positive_effective_priority_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(&chainspec, eip2930_transaction(BASE_FEE_WEI + 1, 21_000));
+
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                    priority_fee_per_gas: 1
+                }
+            ))
+        ));
+    }
+
+    #[test]
     fn evm_config_compliance_accepts_unsigned_call() {
         let chainspec = chainspec();
         let meta = evm_meta(&chainspec, unsigned_call(CHAIN_ID, BASE_FEE_WEI, 21_000));
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("unsigned EVM call should be config compliant");
+    }
+
+    #[test]
+    fn evm_config_compliance_allows_unsigned_call_gas_price_above_base_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            unsigned_call(CHAIN_ID, BASE_FEE_WEI + 1, 21_000),
+        );
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("unsigned EVM call should not be subject to the tip policy");
     }
 
     #[test]
@@ -745,6 +799,40 @@ mod tests {
     }
 
     #[test]
+    fn evm_config_compliance_rejects_signed_fractional_mote_value() {
+        let chainspec = chainspec();
+        let transaction =
+            legacy_transaction_with_value(Some(CHAIN_ID), BASE_FEE_WEI, 21_000, U256::from(1u64));
+        let meta = evm_meta(&chainspec, transaction);
+
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::ValueNotRepresentable {
+                    value,
+                    wei_per_mote
+                }
+            )) if value == casper_types::U256::from(1u64)
+                && wei_per_mote == DEFAULT_WEI_PER_MOTE
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_accepts_unsigned_fractional_mote_value() {
+        let chainspec = chainspec();
+        let transaction = unsigned_call_with_value(
+            CHAIN_ID,
+            BASE_FEE_WEI,
+            21_000,
+            casper_types::U256::from(1u64),
+        );
+        let meta = evm_meta(&chainspec, transaction);
+
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("unsigned simulations should preserve arbitrary wei values");
+    }
+
+    #[test]
     fn evm_config_compliance_rejects_max_fee_below_base_fee() {
         let chainspec = chainspec();
         let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE_WEI - 1, 0, 60_000));
@@ -758,16 +846,54 @@ mod tests {
     }
 
     #[test]
-    fn evm_config_compliance_rejects_non_zero_priority_fee() {
+    fn evm_config_compliance_accepts_metamask_zero_effective_priority_fee() {
         let chainspec = chainspec();
         let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE_WEI, 1, 60_000));
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("a non-zero cap with no fee headroom should have zero effective tip");
+    }
+
+    #[test]
+    fn evm_config_compliance_accepts_zero_tip_with_max_fee_headroom() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip1559_transaction(BASE_FEE_WEI + 100, 0, 60_000),
+        );
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("a zero priority cap should allow max-fee headroom");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_positive_effective_priority_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(&chainspec, eip1559_transaction(BASE_FEE_WEI + 1, 1, 60_000));
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
-                EvmTransactionError::NonZeroMaxPriorityFeePerGas {
-                    max_priority_fee_per_gas
+                EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                    priority_fee_per_gas: 1
                 }
-            )) if max_priority_fee_per_gas == 1
+            ))
+        ));
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_priority_cap_above_max_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip1559_transaction(BASE_FEE_WEI, BASE_FEE_WEI + 1, 60_000),
+        );
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas {
+                    max_priority_fee_per_gas,
+                    max_fee_per_gas
+                }
+            )) if max_priority_fee_per_gas == BASE_FEE_WEI + 1
+                && max_fee_per_gas == BASE_FEE_WEI
         ));
     }
 
@@ -815,19 +941,30 @@ mod tests {
     }
 
     #[test]
-    fn evm_config_compliance_rejects_eip7702_non_zero_priority_fee() {
+    fn evm_config_compliance_accepts_eip7702_zero_effective_priority_fee() {
         let chainspec = chainspec();
         let meta = evm_meta(
             &chainspec,
             eip7702_transaction(CHAIN_ID, BASE_FEE_WEI, 1, 60_000),
         );
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("a non-zero EIP-7702 cap with no headroom should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_eip7702_positive_effective_priority_fee() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip7702_transaction(CHAIN_ID, BASE_FEE_WEI + 1, 1, 60_000),
+        );
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(
-                EvmTransactionError::NonZeroMaxPriorityFeePerGas {
-                    max_priority_fee_per_gas
+                EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                    priority_fee_per_gas: 1
                 }
-            )) if max_priority_fee_per_gas == 1
+            ))
         ));
     }
 
@@ -908,13 +1045,22 @@ mod tests {
     }
 
     fn unsigned_call(chain_id: u64, gas_price: u128, gas_limit: u64) -> EvmTransaction {
+        unsigned_call_with_value(chain_id, gas_price, gas_limit, casper_types::U256::zero())
+    }
+
+    fn unsigned_call_with_value(
+        chain_id: u64,
+        gas_price: u128,
+        gas_limit: u64,
+        value: casper_types::U256,
+    ) -> EvmTransaction {
         EvmTransaction::new_unsigned_call(
             Timestamp::zero(),
             TimeDiff::from_seconds(60),
             chain_id,
             evm::Address::new([1u8; 20]),
             Some(evm::Address::new([2u8; 20])),
-            casper_types::U256::zero(),
+            value,
             Default::default(),
             gas_limit,
             gas_price,
@@ -926,6 +1072,15 @@ mod tests {
         gas_price: u128,
         gas_limit: u64,
     ) -> EvmTransaction {
+        legacy_transaction_with_value(chain_id, gas_price, gas_limit, U256::ZERO)
+    }
+
+    fn legacy_transaction_with_value(
+        chain_id: Option<u64>,
+        gas_price: u128,
+        gas_limit: u64,
+        value: U256,
+    ) -> EvmTransaction {
         // Ethereum legacy transactions are the original, untyped transaction
         // envelope. With EIP-155 replay protection they include a chain ID,
         // but they still use a single fixed `gas_price` instead of separate
@@ -936,7 +1091,7 @@ mod tests {
             gas_price,
             gas_limit,
             to: TxKind::Call(AlloyAddress::from([1u8; 20])),
-            value: U256::ZERO,
+            value,
             input: Default::default(),
         };
         signed_transaction(tx.into_signed(Signature::test_signature()).into())
@@ -949,14 +1104,29 @@ mod tests {
     ) -> EvmTransaction {
         // EIP-1559 transactions are typed dynamic-fee transactions. Casper
         // currently accepts this envelope for tooling compatibility, but
-        // requires `max_priority_fee_per_gas == 0` because transactions are
-        // not packed by priority fee.
+        // requires an effective priority fee of zero because transactions are
+        // not packed by priority fee. The cap itself may be non-zero when
+        // `max_fee_per_gas == base_fee`.
         let tx = TxEip1559 {
             chain_id: CHAIN_ID,
             nonce: 0,
             gas_limit,
             max_fee_per_gas,
             max_priority_fee_per_gas,
+            to: TxKind::Call(AlloyAddress::from([1u8; 20])),
+            value: U256::ZERO,
+            access_list: Default::default(),
+            input: Default::default(),
+        };
+        signed_transaction(tx.into_signed(Signature::test_signature()).into())
+    }
+
+    fn eip2930_transaction(gas_price: u128, gas_limit: u64) -> EvmTransaction {
+        let tx = TxEip2930 {
+            chain_id: CHAIN_ID,
+            nonce: 0,
+            gas_price,
+            gas_limit,
             to: TxKind::Call(AlloyAddress::from([1u8; 20])),
             value: U256::ZERO,
             access_list: Default::default(),

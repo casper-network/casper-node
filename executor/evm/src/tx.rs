@@ -14,6 +14,7 @@ use crate::{Error, ExecuteKind};
 pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxEnv, Error> {
     let tx_env = match kind {
         ExecuteKind::Transaction(transaction) => {
+            validate_transaction_value(config, transaction.value())?;
             let mut builder = TxEnv::builder()
                 .caller(to_revm_address(transaction.from()))
                 .gas_limit(transaction.gas_limit())
@@ -93,6 +94,15 @@ pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxE
             .map_err(|error| Error::Transaction(format!("{error:?}")))?,
     };
     Ok(tx_env)
+}
+
+fn validate_transaction_value(config: &EvmConfig, value_wei: CasperU256) -> Result<(), Error> {
+    config.value_motes(value_wei).map(|_| ()).ok_or_else(|| {
+        Error::Transaction(format!(
+            "EVM value {value_wei} wei is not an exact number of motes at {} wei per mote",
+            config.wei_per_mote
+        ))
+    })
 }
 
 pub(crate) fn to_revm_address(address: evm::Address) -> Address {

@@ -1358,7 +1358,10 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
     let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
     TestCase {
         name: "try_spec_exec_invalid",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
@@ -1396,7 +1399,10 @@ fn spec_exec_v1_session_signed(key: &SecretKey) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_session_signed",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             assert_spec_exec_result(response, |result| result.error().is_some())
         }),
@@ -1419,7 +1425,10 @@ fn spec_exec_v1_session_garbage_bytes(key: &SecretKey) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_session_garbage_bytes",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             assert_spec_exec_result(response, |result| result.error().is_some())
         }),
@@ -1442,7 +1451,10 @@ fn spec_exec_v1_session_install_upgrade(key: &SecretKey) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_session_install_upgrade",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             assert_spec_exec_result(response, |result| result.error().is_some())
         }),
@@ -1468,7 +1480,10 @@ fn spec_exec_v1_native_rejected(key: &SecretKey) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_native_rejected",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             !validate_metadata(response, Some(ResponseType::SpeculativeExecutionResult))
                 && response.error_code() != ErrorCode::NoError as u16
@@ -1494,7 +1509,10 @@ fn spec_exec_v1_stored_not_found(key: &SecretKey, rng: &mut TestRng) -> TestCase
     );
     TestCase {
         name: "spec_exec_v1_stored_not_found",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             assert_spec_exec_result(response, |result| result.error().is_some())
         }),
@@ -1520,7 +1538,10 @@ fn spec_exec_v1_wrong_chain_name(rng: &mut TestRng) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_wrong_chain_name",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             !validate_metadata(response, Some(ResponseType::SpeculativeExecutionResult))
                 && response.error_code() != ErrorCode::NoError as u16
@@ -1547,7 +1568,10 @@ fn spec_exec_v1_unsigned_executed(rng: &mut TestRng) -> TestCase {
     );
     TestCase {
         name: "spec_exec_v1_unsigned_executed",
-        request: Command::TrySpeculativeExec { transaction },
+        request: Command::TrySpeculativeExec {
+            transaction,
+            block_identifier: None,
+        },
         asserter: Box::new(|response| {
             assert_spec_exec_result(response, |result| result.error().is_some())
         }),

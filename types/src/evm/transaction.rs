@@ -468,11 +468,17 @@ pub enum EvmTransactionError {
         /// Active block base fee.
         base_fee: u128,
     },
-    /// The EIP-1559 maximum priority fee per gas must be zero because Casper
-    /// does not prioritize transactions based on transaction gas parameters.
-    NonZeroMaxPriorityFeePerGas {
+    /// The EIP-1559 maximum priority fee per gas exceeds the maximum total fee per gas.
+    MaxPriorityFeePerGasExceedsMaxFeePerGas {
         /// EvmTransaction maximum priority fee per gas.
         max_priority_fee_per_gas: u128,
+        /// EvmTransaction maximum total fee per gas.
+        max_fee_per_gas: u128,
+    },
+    /// The transaction would pay a positive effective proposer priority fee.
+    PositiveEffectivePriorityFeePerGas {
+        /// Effective proposer priority fee per gas.
+        priority_fee_per_gas: u128,
     },
     /// The transaction gas limit exceeds the configured EVM block gas limit.
     GasLimitExceedsBlockGasLimit {
@@ -480,6 +486,13 @@ pub enum EvmTransactionError {
         gas_limit: u64,
         /// Configured EVM block gas limit.
         block_gas_limit: u64,
+    },
+    /// The transaction value is not an exact number of motes.
+    ValueNotRepresentable {
+        /// Ethereum transaction value in wei.
+        value: U256,
+        /// Number of wei represented by one mote.
+        wei_per_mote: u64,
     },
     /// The transaction nonce does not match the account nonce in global state.
     InvalidNonce {
@@ -566,12 +579,22 @@ impl Display for EvmTransactionError {
                     "EVM max fee per gas {max_fee_per_gas} is below base fee {base_fee}"
                 )
             }
-            EvmTransactionError::NonZeroMaxPriorityFeePerGas {
+            EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas {
                 max_priority_fee_per_gas,
+                max_fee_per_gas,
             } => {
                 write!(
                     formatter,
-                    "EVM max priority fee per gas {max_priority_fee_per_gas} must be zero"
+                    "EVM max priority fee per gas {max_priority_fee_per_gas} exceeds max fee per \
+                     gas {max_fee_per_gas}"
+                )
+            }
+            EvmTransactionError::PositiveEffectivePriorityFeePerGas {
+                priority_fee_per_gas,
+            } => {
+                write!(
+                    formatter,
+                    "EVM effective priority fee per gas {priority_fee_per_gas} is unsupported"
                 )
             }
             EvmTransactionError::GasLimitExceedsBlockGasLimit {
@@ -581,6 +604,16 @@ impl Display for EvmTransactionError {
                 write!(
                     formatter,
                     "EVM gas limit {gas_limit} exceeds block gas limit {block_gas_limit}"
+                )
+            }
+            EvmTransactionError::ValueNotRepresentable {
+                value,
+                wei_per_mote,
+            } => {
+                write!(
+                    formatter,
+                    "EVM transaction value {value} wei is not an exact number of motes at \
+                     {wei_per_mote} wei per mote"
                 )
             }
             EvmTransactionError::InvalidNonce { expected, actual } => {
@@ -1124,20 +1157,21 @@ impl EvmTransaction {
     ///
     /// For EIP-1559 transactions, this is the sender's cap on the total gas
     /// price. Casper accepts EIP-1559 envelopes for tooling compatibility,
-    /// but currently requires the priority fee to be zero because Casper does
-    /// not prioritize transactions based on transaction gas parameters. Under
-    /// those rules, accepted EIP-1559 transactions effectively pay the
-    /// configured EVM base fee, capped by this value.
+    /// but currently requires the effective priority fee to be zero because
+    /// Casper does not prioritize transactions based on transaction gas
+    /// parameters. Under those rules, accepted EIP-1559 transactions
+    /// effectively pay the configured EVM base fee, capped by this value.
     pub fn max_fee_per_gas(&self) -> u128 {
         self.max_fee_per_gas
     }
 
     /// Returns the maximum priority fee per gas, if available.
     ///
-    /// This is the EIP-1559 proposer-tip cap. Casper currently rejects
-    /// non-zero priority fees during node config compliance because EVM
-    /// transactions are packed using Casper's current transaction ordering
-    /// policy, not Ethereum-style priority-fee bidding.
+    /// This is the EIP-1559 proposer-tip cap. Casper permits a non-zero cap
+    /// only when the resulting effective priority fee is zero. A positive
+    /// effective priority fee is rejected because EVM transactions are packed
+    /// using Casper's current transaction ordering policy, not Ethereum-style
+    /// priority-fee bidding.
     pub fn max_priority_fee_per_gas(&self) -> Option<u128> {
         self.max_priority_fee_per_gas
     }
@@ -1173,11 +1207,11 @@ impl EvmTransaction {
     /// effective price formula: the lower of `max_fee_per_gas` and block base
     /// fee plus `max_priority_fee_per_gas`.
     ///
-    /// The node execution path currently rejects non-zero EIP-1559 priority
-    /// fees during chainspec compliance checks because Casper does not
-    /// prioritize transactions based on transaction gas parameters. For
-    /// accepted node transactions, the EIP-1559 effective gas price is
-    /// therefore the block base fee capped by `max_fee_per_gas`.
+    /// The node execution path rejects positive effective priority fees during
+    /// chainspec compliance checks because Casper does not prioritize
+    /// transactions based on transaction gas parameters. A non-zero signed
+    /// priority cap remains valid when the maximum total fee leaves no room
+    /// above the base fee.
     pub fn effective_gas_price(&self, base_fee: u128) -> u128 {
         match self.kind {
             EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
@@ -1198,20 +1232,36 @@ impl EvmTransaction {
         }
     }
 
+    /// Returns the effective proposer priority fee at the supplied block base fee.
+    pub fn effective_priority_fee_per_gas(&self, base_fee: u128) -> u128 {
+        self.effective_gas_price(base_fee).saturating_sub(base_fee)
+    }
+
+    /// Returns the maximum signed price per gas that must be reserved up front.
+    pub fn maximum_fee_per_gas(&self) -> u128 {
+        match self.kind {
+            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+                self.gas_price.unwrap_or(self.max_fee_per_gas)
+            }
+            EvmTransactionKind::Eip1559 | EvmTransactionKind::Eip7702 => self.max_fee_per_gas,
+        }
+    }
+
     /// Returns the fee amount for `gas_used`, denominated in motes.
     pub fn fee_amount(&self, gas_used: u64, evm_config: &EvmConfig) -> Option<U512> {
         let gas_price_wei = self.effective_gas_price(evm_config.base_fee_wei());
         evm_config.gas_fee_motes(gas_used, gas_price_wei)
     }
 
-    /// Returns the maximum fee amount this transaction can consume, denominated in motes.
+    /// Returns the maximum signed fee amount that must be reserved, denominated in motes.
     pub fn max_fee_amount(&self, evm_config: &EvmConfig) -> Option<U512> {
-        self.fee_amount(self.gas_limit, evm_config)
+        evm_config.gas_fee_motes(self.gas_limit, self.maximum_fee_per_gas())
     }
 
-    /// Returns the balance needed for value transfer plus the supplied fee amount.
-    pub fn required_balance(&self, fee_amount: U512) -> Option<U512> {
-        fee_amount.checked_add(U512::from(self.value))
+    /// Returns the balance needed for value transfer plus the supplied fee amount, in motes.
+    pub fn required_balance(&self, fee_amount: U512, evm_config: &EvmConfig) -> Option<U512> {
+        let value_motes = evm_config.value_motes(self.value)?;
+        fee_amount.checked_add(U512::from(value_motes))
     }
 
     /// Returns `true` if the transaction has expired at the given timestamp.
@@ -1798,6 +1848,43 @@ mod tests {
                 .expect("legacy gas price should exist")
         );
         bytesrepr::test_serialization_roundtrip(&transaction);
+    }
+
+    #[test]
+    fn dynamic_fee_reserves_signed_maximum_but_charges_effective_price() {
+        let transaction = signed_eip7702_transaction();
+        let config = EvmConfig {
+            enabled: true,
+            base_fee: 1,
+            wei_per_mote: crate::DEFAULT_WEI_PER_MOTE,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            transaction.maximum_fee_per_gas(),
+            transaction.max_fee_per_gas()
+        );
+        assert_eq!(
+            transaction.effective_gas_price(config.base_fee_wei()),
+            config.base_fee_wei()
+        );
+        assert_eq!(
+            transaction.max_fee_amount(&config),
+            Some(U512::from(140_000u64))
+        );
+        assert_eq!(
+            transaction.fee_amount(transaction.gas_limit(), &config),
+            Some(U512::from(70_000u64))
+        );
+    }
+
+    #[test]
+    fn non_zero_priority_cap_can_have_zero_effective_priority_fee() {
+        let mut transaction = signed_eip7702_transaction();
+        transaction.max_fee_per_gas = 1_000_000_000;
+        transaction.max_priority_fee_per_gas = Some(1_000_000_000);
+
+        assert_eq!(transaction.effective_priority_fee_per_gas(1_000_000_000), 0);
     }
 
     #[test]

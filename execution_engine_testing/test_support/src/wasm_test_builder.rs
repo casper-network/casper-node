@@ -20,15 +20,16 @@ use casper_execution_engine::engine_state::{
     EngineConfig, Error, ExecutionEngineV1, WasmV1Request, WasmV1Result, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
+    block_store::lmdb::LmdbBlockStore,
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode,
-        HandleFeeRequest, HandleFeeResult, MessageTopicsRequest, MessageTopicsResult,
-        ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        StepRequest, StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode, HandleFeeRequest,
+        HandleFeeResult, MessageTopicsRequest, MessageTopicsResult, ProofHandling,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
         SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
         TotalSupplyResult, TransferRequest, TrieRequest,
     },
@@ -84,6 +85,9 @@ pub(crate) const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 ///
 /// The default value is chosen to be the same as the node itself.
 pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
+
+/// LMDB map size for the temporary block store used by test builders.
+const DEFAULT_BLOCK_STORE_SIZE: usize = 64 * 1024 * 1024;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
@@ -316,8 +320,11 @@ impl LmdbWasmTestBuilder {
         )
         .expect("should create LmdbGlobalState");
 
+        let block_store = LmdbBlockStore::new_temporary(DEFAULT_BLOCK_STORE_SIZE)
+            .expect("should create block store");
+
         let data_access_layer = Arc::new(DataAccessLayer {
-            block_store: BlockStore::new(),
+            block_store,
             state: global_state,
             max_query_depth,
             enable_addressable_entity,
@@ -396,8 +403,11 @@ impl LmdbWasmTestBuilder {
             }
         };
 
+        let block_store = LmdbBlockStore::new_temporary(DEFAULT_BLOCK_STORE_SIZE)
+            .expect("should create block store");
+
         let data_access_layer = Arc::new(DataAccessLayer {
-            block_store: BlockStore::new(),
+            block_store,
             state: global_state,
             max_query_depth,
             enable_addressable_entity,

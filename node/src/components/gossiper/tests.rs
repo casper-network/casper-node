@@ -150,7 +150,7 @@ impl reactor::Reactor for Reactor {
 
     fn new(
         config: Self::Config,
-        _chainspec: Arc<Chainspec>,
+        chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         _network_identity: NetworkIdentity,
         registry: &Registry,
@@ -159,10 +159,20 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-        let storage = Storage::new(
+        let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_withdir, "test").unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            protocol_version,
+        )
+        .unwrap();
+        let mut storage = Storage::new(
             &storage_withdir,
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
+            storage_root,
+            storage_block_store,
+            protocol_version,
             EraId::default(),
             "test",
             MAX_TTL.into(),
@@ -172,6 +182,7 @@ impl reactor::Reactor for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
         let fake_transaction_acceptor = FakeTransactionAcceptor::new();
         let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(

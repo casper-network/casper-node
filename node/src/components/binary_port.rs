@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::{load_recent_evm_block_hashes, SpeculativeExecutionResult},
+    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -211,7 +211,10 @@ where
             metrics.binary_port_try_accept_transaction_count.inc();
             try_accept_transaction(effect_builder, transaction).await
         }
-        Command::TrySpeculativeExec { transaction } => {
+        Command::TrySpeculativeExec {
+            transaction,
+            block_identifier,
+        } => {
             metrics.binary_port_try_speculative_exec_count.inc();
             if !config.allow_request_speculative_exec {
                 debug!(
@@ -220,7 +223,13 @@ where
                 );
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            try_speculative_execution(effect_builder, transaction).await
+            try_speculative_execution(
+                effect_builder,
+                transaction,
+                block_identifier,
+                protocol_version,
+            )
+            .await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1356,22 +1365,32 @@ where
 async fn try_speculative_execution<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
+    block_identifier: Option<BlockIdentifier>,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let tip = match effect_builder
-        .get_highest_complete_block_header_from_storage()
-        .await
-    {
-        Some(tip) => tip,
-        None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
+    let block_header = match block_identifier {
+        Some(identifier) => match resolve_block_header(effect_builder, Some(identifier)).await {
+            Some(block_header) => block_header,
+            None => return BinaryResponse::new_error(ErrorCode::NotFound),
+        },
+        None => match effect_builder
+            .get_highest_complete_block_header_from_storage()
+            .await
+        {
+            Some(tip) => tip,
+            None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks),
+        },
     };
 
-    let block_hashes = load_recent_evm_block_hashes(effect_builder, tip.height()).await;
+    if block_identifier.is_some() && block_header.protocol_version() != protocol_version {
+        return BinaryResponse::new_error(ErrorCode::UnsupportedRequest);
+    }
 
     let result = effect_builder
-        .speculatively_execute(Box::new(tip), block_hashes, Box::new(transaction))
+        .speculatively_execute(Box::new(block_header), Box::new(transaction))
         .await;
 
     match result {

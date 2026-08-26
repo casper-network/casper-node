@@ -1,9 +1,9 @@
 //! Error types returned by the Casper EVM executor.
 
-use casper_storage::tracking_copy::TrackingCopyError;
+use casper_storage::{block_store::BlockStoreError, tracking_copy::TrackingCopyError};
 use casper_types::Key;
 
-use crate::{account_state::AccountStorageError, BlockHashProviderError};
+use crate::account_state::AccountStorageError;
 
 /// Result type returned by the EVM executor.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -14,6 +14,9 @@ pub enum Error {
     /// EVM execution is disabled in the chainspec configuration.
     #[error("EVM execution is disabled")]
     Disabled,
+    /// EVM wei-to-mote conversion ratio is invalid.
+    #[error("EVM wei_per_mote must be greater than zero")]
+    InvalidWeiPerMote,
     /// Signed EVM transaction does not include an EIP-155 replay-protection chain id.
     #[error("EVM transaction is missing replay-protection chain id")]
     MissingChainId,
@@ -65,8 +68,8 @@ pub enum DbError {
         /// Decode error text.
         error: String,
     },
-    /// A Casper balance does not fit into EVM U256.
-    #[error("Casper balance at {key} does not fit into EVM U256")]
+    /// A Casper balance, after scaling from motes to wei, does not fit into EVM U256.
+    #[error("Casper balance at {key}, scaled to wei, does not fit into EVM U256")]
     BalanceOverflow {
         /// Balance key that was read.
         key: Box<Key>,
@@ -79,13 +82,13 @@ pub enum DbError {
         /// Decode error text.
         error: String,
     },
-    /// Failed to resolve a historical block hash for the EVM `BLOCKHASH` opcode.
+    /// Failed to resolve a historical EVM block hash from the block store.
     #[error("failed to resolve EVM block hash at height {height}: {error}")]
     BlockHash {
         /// Block height requested by the EVM.
         height: u64,
-        /// Provider error.
-        error: BlockHashProviderError,
+        /// Block store error.
+        error: BlockStoreError,
     },
 }
 

@@ -283,9 +283,19 @@ impl ReactorTrait for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = InMemoryNetwork::<Message>::new(event_queue, rng);
 
-        let storage = Storage::new(
-            &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
+        let storage_with_dir = WithDir::new(cfg.temp_dir.path(), cfg.storage_config);
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_with_dir, &chainspec.network_config.name).unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
             chainspec.hard_reset_to_start_of_era(),
+            chainspec.protocol_config.version,
+        )
+        .unwrap();
+        let mut storage = Storage::new(
+            &storage_with_dir,
+            storage_root,
+            storage_block_store,
             chainspec.protocol_config.version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
@@ -296,6 +306,7 @@ impl ReactorTrait for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
         let fake_transaction_acceptor = FakeTransactionAcceptor::new();
         let transaction_fetcher =

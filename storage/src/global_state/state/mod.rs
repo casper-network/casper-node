@@ -634,17 +634,6 @@ pub trait CommitProvider: StateProvider {
                     StoredValue::CLValue(cl_value),
                 );
             }
-            BlockGlobalKind::Eip4788ParentHash {
-                timestamp_secs,
-                parent_hash,
-            } => {
-                let mut tracking_copy = tc.borrow_mut();
-                if let Err(error) =
-                    tracking_copy.set_eip4788_parent_hash(timestamp_secs, parent_hash)
-                {
-                    return BlockGlobalResult::Failure(error);
-                }
-            }
         }
 
         let effects = tc.borrow_mut().effects();

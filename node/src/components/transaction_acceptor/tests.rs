@@ -79,7 +79,6 @@ use crate::{
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(30);
 const EVM_TEST_CHAIN_ID: u64 = 1_129_533_695;
-const EVM_TEST_GAS_PRICE: u128 = 1_000_000_000_000_000;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -326,7 +325,12 @@ impl TestScenario {
         }
     }
 
-    fn transaction(&self, rng: &mut TestRng, admin: &SecretKey) -> Transaction {
+    fn transaction(
+        &self,
+        rng: &mut TestRng,
+        admin: &SecretKey,
+        evm_gas_price: u128,
+    ) -> Transaction {
         let secret_key = SecretKey::random(rng);
         match self {
             TestScenario::FromPeerInvalidTransaction(TxnType::Deploy)
@@ -344,7 +348,7 @@ impl TestScenario {
             TestScenario::FromPeerEvmInvalidNonce
             | TestScenario::FromClientEvmInvalidNonce
             | TestScenario::FromClientEvmMissingIdentityWithCodeHash => {
-                Transaction::from(signed_evm_legacy_transaction(1))
+                Transaction::from(signed_evm_legacy_transaction(1, evm_gas_price))
             }
             TestScenario::FromClientInvalidTransactionZeroPayment(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
@@ -999,12 +1003,12 @@ impl TestScenario {
     }
 }
 
-fn signed_evm_legacy_transaction(nonce: u64) -> EvmTransaction {
+fn signed_evm_legacy_transaction(nonce: u64, gas_price: u128) -> EvmTransaction {
     let recipient = evm::Address::new([1; evm::ADDRESS_LENGTH]);
     let transaction = TxLegacy {
         chain_id: Some(EVM_TEST_CHAIN_ID),
         nonce,
-        gas_price: EVM_TEST_GAS_PRICE,
+        gas_price,
         gas_limit: 21_000,
         to: TxKind::Call(AlloyAddress::from(recipient.value())),
         value: AlloyU256::ZERO,
@@ -1418,10 +1422,20 @@ impl reactor::Reactor for Reactor {
         let transaction_acceptor =
             TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry)?;
 
-        let storage = Storage::new(
+        let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
+        let (storage_root, mut storage_block_store) =
+            storage::open_block_store(&storage_with_dir, "test").unwrap();
+        storage::prune_block_store(
+            &mut storage_block_store,
+            chainspec.hard_reset_to_start_of_era(),
+            protocol_version,
+        )
+        .unwrap();
+        let mut storage = Storage::new(
             &storage_with_dir,
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
+            storage_root,
+            storage_block_store,
+            protocol_version,
             EraId::default(),
             "test",
             chainspec.transaction_config.max_ttl.into(),
@@ -1431,6 +1445,7 @@ impl reactor::Reactor for Reactor {
             TransactionConfig::default(),
         )
         .unwrap();
+        storage.initialize_for_test();
 
         let reactor = Reactor {
             storage,
@@ -1598,7 +1613,7 @@ async fn run_transaction_acceptor_without_timeout(
     let txn_responder = Responder::without_shutdown(txn_sender);
 
     // Create a transaction specific to the test scenario
-    let txn = test_scenario.transaction(rng, &admin);
+    let txn = test_scenario.transaction(rng, &admin, chainspec.evm_config.base_fee_wei());
     // Mark the source as either a peer or a client depending on the scenario.
     let source = test_scenario.source(rng);
 

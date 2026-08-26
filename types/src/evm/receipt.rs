@@ -475,9 +475,9 @@ pub struct Receipt {
     /// EVM fee accounting.
     ///
     /// For accepted EIP-1559 transactions this is the configured EVM base fee
-    /// capped by `max_fee_per_gas`, since non-zero priority fees are rejected
-    /// while Casper does not prioritize transactions based on transaction gas
-    /// parameters.
+    /// capped by `max_fee_per_gas`. Transactions with a positive effective
+    /// priority fee are rejected because Casper does not prioritize
+    /// transactions based on transaction gas parameters.
     pub effective_gas_price: u128,
     /// Contract address created by the transaction, if any.
     pub contract_address: Option<Address>,

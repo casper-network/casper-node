@@ -82,7 +82,6 @@ const BLOCK_GLOBAL_TIME_PREFIX: &str = "block-time-";
 const BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 const BLOCK_GLOBAL_PROTOCOL_VERSION_PREFIX: &str = "block-protocol-version-";
 const BLOCK_GLOBAL_ADDRESSABLE_ENTITY_PREFIX: &str = "block-addressable-entity-";
-const BLOCK_GLOBAL_PARENT_HASH_PREFIX: &str = "block-parent-hash-";
 const STATE_PREFIX: &str = "state-";
 const REWARDS_HANDLING_PREFIX: &str = "rewards-handling-";
 const EVM_ACCOUNT_PREFIX: &str = "evm-account-";
@@ -705,16 +704,12 @@ impl Key {
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
             }
-            Key::BlockGlobal(BlockGlobalAddr::BlockParentHash { slot }) => {
-                format!("{BLOCK_GLOBAL_PARENT_HASH_PREFIX}{slot}")
-            }
             Key::BlockGlobal(addr) => {
                 let prefix = match addr {
                     BlockGlobalAddr::BlockTime => BLOCK_GLOBAL_TIME_PREFIX,
                     BlockGlobalAddr::MessageCount => BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX,
                     BlockGlobalAddr::ProtocolVersion => BLOCK_GLOBAL_PROTOCOL_VERSION_PREFIX,
                     BlockGlobalAddr::AddressableEntity => BLOCK_GLOBAL_ADDRESSABLE_ENTITY_PREFIX,
-                    BlockGlobalAddr::BlockParentHash { .. } => unreachable!(),
                 };
                 format!(
                     "{}{}",
@@ -1059,13 +1054,6 @@ impl Key {
                 )
             })?;
             return Ok(BlockGlobalAddr::AddressableEntity.into());
-        }
-
-        if let Some(parent_hash) = input.strip_prefix(BLOCK_GLOBAL_PARENT_HASH_PREFIX) {
-            let slot = parent_hash
-                .parse::<u64>()
-                .map_err(|error| FromStrError::BlockGlobal(error.to_string()))?;
-            return Ok(BlockGlobalAddr::BlockParentHash { slot }.into());
         }
 
         match EntryPointAddr::from_formatted_str(input) {
@@ -1618,9 +1606,6 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
-            Key::BlockGlobal(BlockGlobalAddr::BlockParentHash { slot }) => {
-                write!(f, "Key::BlockGlobal({})", slot)
-            }
             Key::BlockGlobal(addr) => {
                 write!(
                     f,
@@ -1831,15 +1816,7 @@ impl ToBytes for Key {
             | Key::RewardsHandling => PADDING_BYTES.write_bytes(writer),
             Key::BlockGlobal(addr) => {
                 addr.write_bytes(writer)?;
-                match addr {
-                    BlockGlobalAddr::BlockParentHash { .. } => Ok(()),
-                    BlockGlobalAddr::BlockTime
-                    | BlockGlobalAddr::MessageCount
-                    | BlockGlobalAddr::ProtocolVersion
-                    | BlockGlobalAddr::AddressableEntity => {
-                        BLOCK_GLOBAL_PADDING_BYTES.write_bytes(writer)
-                    }
-                }
+                BLOCK_GLOBAL_PADDING_BYTES.write_bytes(writer)
             }
             Key::BidAddr(bid_addr) => bid_addr.write_bytes(writer),
             Key::SmartContract(package_addr) => package_addr.write_bytes(writer),
@@ -2283,9 +2260,6 @@ mod tests {
     ));
     const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
-    const BLOCK_PARENT_HASH_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockParentHash {
-        slot: 0x0102_0304_0506_0708,
-    });
     // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
@@ -2320,7 +2294,6 @@ mod tests {
         NAMED_KEY,
         BLOCK_TIME_KEY,
         BLOCK_MESSAGE_COUNT_KEY,
-        BLOCK_PARENT_HASH_KEY,
         BALANCE_HOLD,
         STATE_KEY,
     ];
@@ -2525,59 +2498,6 @@ mod tests {
                 base16::encode_lower(&[0u8; 31])
             )
         );
-        assert_eq!(
-            format!("{}", BLOCK_PARENT_HASH_KEY),
-            "Key::BlockGlobal(72623859790382856)"
-        );
-    }
-
-    #[test]
-    fn block_parent_hash_key_uses_fixed_width_canonical_bytes() {
-        let key = BLOCK_PARENT_HASH_KEY;
-        let mut expected = vec![KeyTag::BlockGlobal as u8, 0x04];
-        expected.extend_from_slice(&[0u8; 23]);
-        expected.extend_from_slice(&0x0102_0304_0506_0708u64.to_be_bytes());
-
-        assert_eq!(key.to_bytes().unwrap(), expected);
-        assert_eq!(key.serialized_length(), 33);
-        assert_eq!(
-            key.to_formatted_string(),
-            "block-parent-hash-72623859790382856"
-        );
-        assert_eq!(
-            Key::from_formatted_str(&key.to_formatted_string()).unwrap(),
-            key
-        );
-
-        let legacy_keys = [
-            (BlockGlobalAddr::BlockTime, 0),
-            (BlockGlobalAddr::MessageCount, 1),
-            (BlockGlobalAddr::ProtocolVersion, 2),
-            (BlockGlobalAddr::AddressableEntity, 3),
-        ];
-        for (addr, tag) in legacy_keys {
-            let key = Key::BlockGlobal(addr);
-            let mut dev_bytes = vec![KeyTag::BlockGlobal as u8, tag];
-            dev_bytes.extend_from_slice(&[0u8; 31]);
-
-            assert_eq!(key.to_bytes().unwrap(), dev_bytes);
-            assert_eq!(key.serialized_length(), 33);
-
-            dev_bytes.extend_from_slice(&[0xaa, 0xbb]);
-            let (decoded, remainder) = Key::from_bytes(&dev_bytes).unwrap();
-            assert_eq!(decoded, key);
-            assert_eq!(remainder, &[0xaa, 0xbb]);
-        }
-    }
-
-    #[test]
-    fn block_parent_hash_key_rejects_non_decimal_formatted_slot() {
-        let formatted = format!("{}not-a-slot", BLOCK_GLOBAL_PARENT_HASH_PREFIX);
-
-        assert!(matches!(
-            Key::from_formatted_str(&formatted),
-            Err(FromStrError::BlockGlobal(_))
-        ));
     }
 
     #[test]
@@ -2970,7 +2890,6 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
         bytesrepr::test_serialization_roundtrip(&BLOCK_TIME_KEY);
         bytesrepr::test_serialization_roundtrip(&BLOCK_MESSAGE_COUNT_KEY);
-        bytesrepr::test_serialization_roundtrip(&BLOCK_PARENT_HASH_KEY);
         bytesrepr::test_serialization_roundtrip(&STATE_KEY);
     }
 
@@ -3021,9 +2940,6 @@ mod tests {
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::MessageCount));
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::ProtocolVersion));
         round_trip(&Key::BlockGlobal(BlockGlobalAddr::AddressableEntity));
-        round_trip(&Key::BlockGlobal(BlockGlobalAddr::BlockParentHash {
-            slot: 0,
-        }));
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
         round_trip(&Key::State(EntityAddr::new_system(zeros)));
     }

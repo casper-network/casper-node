@@ -9,33 +9,41 @@ use alloy_eips::{
 };
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
-    BlockContext, BlockHashProvider, BlockHashProviderResult, CallRequest, CallValidation, Error,
-    EvmExecutor, ExecuteKind, ExecuteRequest, ExecutionStatus, EMPTY_CODE_HASH,
+    BlockContext, CallRequest, CallValidation, DbError, Error, EvmExecutor, ExecuteKind,
+    ExecuteRequest, ExecutionStatus, SystemCallRequest, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
-    data_access_layer::{GenesisRequest, GenesisResult},
-    eip4788,
+    block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
+    data_access_layer::{DataAccessLayer, GenesisRequest, GenesisResult},
+    eip2935, eip4788,
     global_state::{
         self,
         error::Error as GlobalStateError,
-        state::{lmdb::LmdbGlobalStateView, CommitProvider, StateProvider, StateReader},
+        state::{
+            lmdb::{LmdbGlobalState, LmdbGlobalStateView},
+            CommitProvider, StateProvider, StateReader,
+        },
     },
-    tracking_copy::TrackingCopyExt,
     TrackingCopy,
 };
 use casper_types::{
-    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, ByteCode, ByteCodeKind, CLValue,
-    ChainspecRegistry, Digest, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, GenesisAccount,
-    GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
-    StorageCosts, StoredValue, SystemConfig, Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE,
-    U256 as CasperU256, U512,
+    contracts::NamedKeys, evm, AccessRights, Account, BlockHash, BlockHeader, BlockHeaderV2,
+    ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, EvmSpec,
+    EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
+    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
+use once_cell::sync::OnceCell;
 use revm::bytecode::opcode;
 
 const SIGNING_SECRET: [u8; 32] = [7; 32];
 const AUTHORIZATION_SECRET: [u8; 32] = [8; 32];
 
-fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
+fn tracking_copy() -> (
+    TrackingCopy<LmdbGlobalStateView>,
+    DataAccessLayer<LmdbGlobalState>,
+    impl Send,
+) {
     let accounts = (1u8..=3)
         .map(|seed| {
             let secret_key =
@@ -85,7 +93,19 @@ fn tracking_copy() -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
         .checkout(post_state_hash)
         .expect("checkout should not fail")
         .expect("post-genesis root should exist");
-    (TrackingCopy::new(reader, 5), tempdir)
+    let block_store =
+        LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create block store");
+    let data_access_layer = DataAccessLayer {
+        block_store,
+        state: global_state,
+        max_query_depth: 5,
+        enable_addressable_entity: false,
+    };
+    (
+        TrackingCopy::new(reader, 5),
+        data_access_layer,
+        tempdir,
+    )
 }
 
 fn executor(spec: EvmSpec) -> EvmExecutor {
@@ -106,22 +126,45 @@ fn block() -> BlockContext {
         beneficiary: evm::Address::ZERO,
         gas_limit: None,
         base_fee: None,
+        prevrandao: evm::Hash::new([0x99; evm::HASH_LENGTH]),
     }
 }
 
-#[derive(Clone, Copy)]
-struct HeightBlockHashProvider;
-
-impl BlockHashProvider for HeightBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> BlockHashProviderResult<Option<BlockHash>> {
-        Ok(Some(block_hash_for_height(block_height)))
-    }
+fn block_header(block_height: u64) -> BlockHeader {
+    let proposer = PublicKey::from(
+        &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH])
+            .expect("should create secret key"),
+    );
+    BlockHeader::V2(BlockHeaderV2::new(
+        BlockHash::new(Digest::hash("parent block")),
+        Digest::hash("state root"),
+        Digest::hash("body"),
+        false,
+        Digest::hash("accumulated seed"),
+        None,
+        Timestamp::from(1_714_000_000),
+        EraId::new(1),
+        block_height,
+        ProtocolVersion::V2_0_0,
+        proposer,
+        1,
+        None,
+        OnceCell::new(),
+    ))
 }
 
-fn block_hash_for_height(block_height: u64) -> BlockHash {
-    let mut bytes = [0u8; BlockHash::LENGTH];
-    bytes[24..].copy_from_slice(&block_height.to_be_bytes());
-    BlockHash::new(Digest::from_raw(bytes))
+fn write_block_header(
+    data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    block_header: &BlockHeader,
+) {
+    let mut block_store = data_access_layer.block_store.clone();
+    let mut transaction = block_store
+        .checkout_rw()
+        .expect("should check out write transaction");
+    transaction
+        .write_block_header(block_header)
+        .expect("should write block header");
+    transaction.commit().expect("should commit block header");
 }
 
 fn init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
@@ -159,6 +202,24 @@ fn blockhash_contract_init_code() -> Vec<u8> {
         0,
         opcode::MSTORE,
         // return abi.encode(hash);
+        opcode::PUSH1,
+        32,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code_returning(runtime)
+}
+
+fn prevrandao_contract_init_code() -> Vec<u8> {
+    let runtime = vec![
+        // bytes32 value = prevrandao();
+        opcode::DIFFICULTY,
+        // mstore(0, value);
+        opcode::PUSH1,
+        0,
+        opcode::MSTORE,
+        // return abi.encode(value);
         opcode::PUSH1,
         32,
         opcode::PUSH1,
@@ -229,18 +290,109 @@ fn coinbase_observer_init_code() -> Vec<u8> {
     init_code_returning(vec![opcode::COINBASE, opcode::POP, opcode::STOP])
 }
 
+fn value_and_balance_observer_init_code() -> Vec<u8> {
+    let runtime = vec![
+        opcode::CALLVALUE,
+        opcode::PUSH1,
+        0,
+        opcode::MSTORE,
+        opcode::ADDRESS,
+        opcode::BALANCE,
+        opcode::PUSH1,
+        32,
+        opcode::MSTORE,
+        opcode::SELFBALANCE,
+        opcode::PUSH1,
+        64,
+        opcode::MSTORE,
+        opcode::PUSH1,
+        96,
+        opcode::PUSH1,
+        0,
+        opcode::RETURN,
+    ];
+    init_code_returning(runtime)
+}
+
+fn append_one_wei_call(runtime: &mut Vec<u8>, recipient: evm::Address) {
+    runtime.extend([
+        opcode::PUSH1,
+        0, // return size
+        opcode::PUSH1,
+        0, // return offset
+        opcode::PUSH1,
+        0, // calldata size
+        opcode::PUSH1,
+        0, // calldata offset
+        opcode::PUSH1,
+        1, // value
+        opcode::PUSH20,
+    ]);
+    runtime.extend_from_slice(recipient.as_bytes());
+    runtime.extend([
+        opcode::PUSH2,
+        0xff,
+        0xff, // gas
+        opcode::CALL,
+        opcode::POP,
+    ]);
+}
+
+fn one_wei_transfer_init_code(recipient: evm::Address, terminal: &[u8]) -> Vec<u8> {
+    let mut runtime = Vec::new();
+    append_one_wei_call(&mut runtime, recipient);
+    runtime.extend_from_slice(terminal);
+    init_code_returning(runtime)
+}
+
+fn return_call_value_to_caller_init_code() -> Vec<u8> {
+    let runtime = vec![
+        opcode::PUSH1,
+        0, // return size
+        opcode::PUSH1,
+        0, // return offset
+        opcode::PUSH1,
+        0, // calldata size
+        opcode::PUSH1,
+        0, // calldata offset
+        opcode::CALLVALUE,
+        opcode::CALLER,
+        opcode::PUSH2,
+        0xff,
+        0xff, // gas
+        opcode::CALL,
+        opcode::POP,
+        opcode::STOP,
+    ];
+    init_code_returning(runtime)
+}
+
 fn call_request(
     from: evm::Address,
     to: Option<evm::Address>,
     input: Vec<u8>,
-    value: CasperU256,
+    value_motes: CasperU256,
+) -> ExecuteRequest {
+    call_request_wei(
+        from,
+        to,
+        input,
+        value_motes * CasperU256::from(DEFAULT_WEI_PER_MOTE),
+    )
+}
+
+fn call_request_wei(
+    from: evm::Address,
+    to: Option<evm::Address>,
+    input: Vec<u8>,
+    value_wei: CasperU256,
 ) -> ExecuteRequest {
     ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Call(CallRequest {
             from,
             to,
-            value,
+            value: value_wei,
             input,
             gas_limit: 5_000_000,
             gas_price: 0,
@@ -254,14 +406,14 @@ fn checked_call_request(
     from: evm::Address,
     to: Option<evm::Address>,
     input: Vec<u8>,
-    value: CasperU256,
+    value_motes: CasperU256,
 ) -> ExecuteRequest {
     ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Call(CallRequest {
             from,
             to,
-            value,
+            value: value_motes * CasperU256::from(DEFAULT_WEI_PER_MOTE),
             input,
             gas_limit: 5_000_000,
             gas_price: 0,
@@ -271,15 +423,20 @@ fn checked_call_request(
     }
 }
 
-fn execute_call<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+fn execute_call<R, S>(
     executor: &EvmExecutor,
+    data_access_layer: &DataAccessLayer<S>,
     tracking_copy: &mut TrackingCopy<R>,
     from: evm::Address,
     to: Option<evm::Address>,
     input: Vec<u8>,
-) -> casper_executor_evm::ExecutionOutcome {
+) -> casper_executor_evm::ExecutionOutcome
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
     let outcome = executor
         .execute(
+            data_access_layer,
             tracking_copy,
             call_request(from, to, input, CasperU256::zero()),
         )
@@ -288,13 +445,18 @@ fn execute_call<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     outcome
 }
 
-fn execute_transaction<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+fn execute_transaction<R, S>(
     executor: &EvmExecutor,
+    data_access_layer: &DataAccessLayer<S>,
     tracking_copy: &mut TrackingCopy<R>,
     transaction: EvmTransaction,
-) -> casper_executor_evm::ExecutionOutcome {
+) -> casper_executor_evm::ExecutionOutcome
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
     executor
         .execute(
+            data_access_layer,
             tracking_copy,
             ExecuteRequest {
                 block: block(),
@@ -304,26 +466,41 @@ fn execute_transaction<R: StateReader<Key, StoredValue, Error = GlobalStateError
         .expect("EVM transaction execution should succeed")
 }
 
-fn deploy_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+fn deploy_code<R, S>(
     executor: &EvmExecutor,
+    data_access_layer: &DataAccessLayer<S>,
     tracking_copy: &mut TrackingCopy<R>,
     from: evm::Address,
     code: Vec<u8>,
-) -> evm::Address {
-    execute_call(executor, tracking_copy, from, None, code)
+) -> evm::Address
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    execute_call(executor, data_access_layer, tracking_copy, from, None, code)
         .created_contract_address
         .expect("deploy should return a contract address")
 }
 
-fn deploy<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+fn deploy<R, S>(
     executor: &EvmExecutor,
+    data_access_layer: &DataAccessLayer<S>,
     tracking_copy: &mut TrackingCopy<R>,
     from: evm::Address,
     name: &str,
-) -> evm::Address {
-    execute_call(executor, tracking_copy, from, None, contract_bin(name))
-        .created_contract_address
-        .expect("deploy should return a contract address")
+) -> evm::Address
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    execute_call(
+        executor,
+        data_access_layer,
+        tracking_copy,
+        from,
+        None,
+        contract_bin(name),
+    )
+    .created_contract_address
+    .expect("deploy should return a contract address")
 }
 
 fn contract_bin(name: &str) -> Vec<u8> {
@@ -400,13 +577,26 @@ fn alloy_address_to_evm(address: AlloyAddress) -> evm::Address {
 }
 
 fn legacy_transaction(chain_id: Option<u64>) -> EvmTransaction {
+    legacy_transaction_with_value(chain_id, U256::ZERO)
+}
+
+fn legacy_transaction_with_value(chain_id: Option<u64>, value: U256) -> EvmTransaction {
+    legacy_transaction_to(chain_id, AlloyAddress::from([1u8; 20]), value, 21_000)
+}
+
+fn legacy_transaction_to(
+    chain_id: Option<u64>,
+    to: AlloyAddress,
+    value: U256,
+    gas_limit: u64,
+) -> EvmTransaction {
     let tx = TxLegacy {
         chain_id,
         nonce: 0,
         gas_price: 1,
-        gas_limit: 21_000,
-        to: TxKind::Call(AlloyAddress::from([1u8; 20])),
-        value: U256::ZERO,
+        gas_limit,
+        to: TxKind::Call(to),
+        value,
         input: Default::default(),
     };
     let tx = tx.into_signed(Signature::test_signature().with_parity(true));
@@ -592,6 +782,30 @@ fn seed_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     );
 }
 
+fn write_existing_evm_balance<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: evm::Address,
+    balance: U512,
+) {
+    let main_purse = match read_evm_identity(tracking_copy, address)
+        .expect("EVM account should have an identity")
+    {
+        Key::URef(main_purse) => main_purse,
+        Key::Account(account_hash) => match tracking_copy
+            .read(&Key::Account(account_hash))
+            .expect("linked account read should not fail")
+        {
+            Some(StoredValue::Account(account)) => account.main_purse(),
+            other => panic!("unexpected linked account value: {other:?}"),
+        },
+        other => panic!("unexpected EVM account identity key: {other:?}"),
+    };
+    tracking_copy.write(
+        Key::Balance(main_purse.addr()),
+        StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
+    );
+}
+
 fn seed_account<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     tracking_copy: &mut TrackingCopy<R>,
     account_hash: casper_types::account::AccountHash,
@@ -625,16 +839,6 @@ fn seed_evm_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
         Key::Evm(EvmAddr::ByteCode(code_hash)),
         StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, code)),
     );
-}
-
-fn seed_eip4788_parent_hash<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
-    tracking_copy: &mut TrackingCopy<R>,
-    timestamp: u64,
-    parent_hash: BlockHash,
-) {
-    tracking_copy
-        .set_eip4788_parent_hash(timestamp, parent_hash)
-        .expect("EIP-4788 tuple should encode");
 }
 
 fn read_evm_nonce<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
@@ -688,12 +892,13 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 #[test]
 fn prague_bls12_g1_add_precompile_delegates_to_revm() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let mut precompile_address = [0; evm::ADDRESS_LENGTH];
     precompile_address[evm::ADDRESS_LENGTH - 1] = 0x0b;
 
     let outcome = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         evm::Address::ZERO,
         Some(evm::Address::new(precompile_address)),
@@ -704,175 +909,182 @@ fn prague_bls12_g1_add_precompile_delegates_to_revm() {
 }
 
 #[test]
-fn eip4788_native_lookup_bypasses_predeploy_bytecode() {
+fn eip4788_native_shortcut_always_returns_zero() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let root = [0xab; evm::HASH_LENGTH];
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw(root)),
-    );
-    // A direct call must use the native lookup even when the installed code
-    // would revert, proving that the bytecode is not executed.
+    // The shortcut must bypass the installed bytecode and avoid all state reads.
     seed_evm_code(
         &mut tracking_copy,
         eip4788::BEACON_ROOTS_ADDRESS,
         reverting_runtime(),
     );
 
-    let query = execute_call(
-        &executor,
-        &mut tracking_copy,
-        evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(timestamp).to_vec(),
-    );
-    assert_eq!(query.output, root);
+    for input in [vec![], word(block().timestamp).to_vec(), vec![0xff; 33]] {
+        let query = execute_call(
+            &executor,
+            &data_access_layer,
+            &mut tracking_copy,
+            evm::Address::ZERO,
+            Some(eip4788::BEACON_ROOTS_ADDRESS),
+            input,
+        );
+        assert_eq!(query.output, vec![0; evm::HASH_LENGTH]);
+    }
 }
 
 #[test]
-fn eip4788_returns_a_matching_zero_parent_hash() {
+fn eip2935_native_lookup_reads_indexed_header_and_bypasses_bytecode() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let zero_hash = [0; evm::HASH_LENGTH];
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let header = block_header(1);
+    let expected_hash = header.block_hash();
+    write_block_header(&data_access_layer, &header);
 
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw(zero_hash)),
-    );
+    // Direct calls must use the native lookup even when the installed code would revert.
     seed_evm_code(
         &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
         reverting_runtime(),
     );
 
-    let query = execute_call(
-        &executor,
-        &mut tracking_copy,
+    let mut stored_request = call_request(
         evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(timestamp).to_vec(),
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
     );
+    stored_request.block.number = 2;
+    let stored = executor
+        .execute(&data_access_layer, &mut tracking_copy, stored_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(stored.status, ExecutionStatus::Success);
+    assert_eq!(stored.output.as_slice(), expected_hash.as_ref());
 
-    assert_eq!(query.output, zero_hash);
+    let mut missing_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(0).to_vec(),
+        CasperU256::zero(),
+    );
+    missing_request.block.number = 2;
+    let missing = executor
+        .execute(&data_access_layer, &mut tracking_copy, missing_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(missing.status, ExecutionStatus::Success);
+    assert_eq!(missing.output.as_slice(), &[0; evm::HASH_LENGTH]);
+
+    let mut oldest_valid_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    oldest_valid_request.block.number = eip2935::HISTORY_BUFFER_LENGTH + 1;
+    let oldest_valid = executor
+        .execute(&data_access_layer, &mut tracking_copy, oldest_valid_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(oldest_valid.status, ExecutionStatus::Success);
+    assert_eq!(oldest_valid.output.as_slice(), expected_hash.as_ref());
+
+    let mut too_old_request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    too_old_request.block.number = eip2935::HISTORY_BUFFER_LENGTH + 2;
+    let too_old = executor
+        .execute(&data_access_layer, &mut tracking_copy, too_old_request)
+        .expect("EIP-2935 lookup should execute");
+    assert_eq!(too_old.status, ExecutionStatus::Revert);
 }
 
 #[test]
-fn eip4788_unknown_and_overwritten_timestamps_revert() {
+fn eip2935_reverts_for_invalid_requests() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-    let replacement_timestamp = timestamp + eip4788::HISTORY_BUFFER_LENGTH;
-    let replacement_root = [0xcd; evm::HASH_LENGTH];
-
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw([0xab; evm::HASH_LENGTH])),
-    );
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     seed_evm_code(
         &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
     );
 
-    let unknown = executor
-        .execute(
-            &mut tracking_copy,
-            call_request(
-                evm::Address::ZERO,
-                Some(eip4788::BEACON_ROOTS_ADDRESS),
-                word(timestamp + 1).to_vec(),
-                CasperU256::zero(),
-            ),
-        )
-        .expect("EVM call should execute");
-    assert_eq!(unknown.status, ExecutionStatus::Revert);
+    let mut oversized_height = [0xff; evm::HASH_LENGTH];
+    oversized_height[0] = 1;
+    let cases = [
+        (1, vec![]),
+        (1, vec![0; evm::HASH_LENGTH - 1]),
+        (1, vec![0; evm::HASH_LENGTH + 1]),
+        (0, word(0).to_vec()),
+        (1, word(1).to_vec()),
+        (1, word(2).to_vec()),
+        (1, oversized_height.to_vec()),
+    ];
 
-    // Writing a timestamp one full ring ahead overwrites the same Global
-    // State key.  The old timestamp must now revert rather than return the
-    // new root.
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        replacement_timestamp,
-        BlockHash::new(Digest::from_raw(replacement_root)),
-    );
-
-    let stale = executor
-        .execute(
-            &mut tracking_copy,
-            call_request(
-                evm::Address::ZERO,
-                Some(eip4788::BEACON_ROOTS_ADDRESS),
-                word(timestamp).to_vec(),
-                CasperU256::zero(),
-            ),
-        )
-        .expect("EVM call should execute");
-    assert_eq!(stale.status, ExecutionStatus::Revert);
-
-    let query = execute_call(
-        &executor,
-        &mut tracking_copy,
-        evm::Address::ZERO,
-        Some(eip4788::BEACON_ROOTS_ADDRESS),
-        word(replacement_timestamp).to_vec(),
-    );
-    assert_eq!(query.output, replacement_root);
-}
-
-#[test]
-fn eip4788_rejects_invalid_calldata() {
-    let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let timestamp = block().timestamp;
-
-    seed_eip4788_parent_hash(
-        &mut tracking_copy,
-        timestamp,
-        BlockHash::new(Digest::from_raw([0xab; evm::HASH_LENGTH])),
-    );
-    seed_evm_code(
-        &mut tracking_copy,
-        eip4788::BEACON_ROOTS_ADDRESS,
-        eip4788::BEACON_ROOTS_CODE.to_vec(),
-    );
-
-    let mut oversized_timestamp = word(timestamp);
-    oversized_timestamp[0] = 1;
-    for input in [
-        vec![],
-        vec![0; 31],
-        vec![0; 32],
-        oversized_timestamp.to_vec(),
-    ] {
+    for (block_number, input) in cases {
+        let mut request = call_request(
+            evm::Address::ZERO,
+            Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+            input,
+            CasperU256::zero(),
+        );
+        request.block.number = block_number;
         let outcome = executor
-            .execute(
-                &mut tracking_copy,
-                call_request(
-                    evm::Address::ZERO,
-                    Some(eip4788::BEACON_ROOTS_ADDRESS),
-                    input,
-                    CasperU256::zero(),
-                ),
-            )
-            .expect("EVM call should execute");
+            .execute(&data_access_layer, &mut tracking_copy, request)
+            .expect("EIP-2935 lookup should execute");
         assert_eq!(outcome.status, ExecutionStatus::Revert);
     }
 }
 
 #[test]
-fn blockhash_uses_supplied_provider() {
+fn eip2935_preserves_block_store_errors() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    seed_evm_code(
+        &mut tracking_copy,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    // Exhaust this environment's LMDB reader slots so the native lookup fails while checking out
+    // its short-lived read transaction.
+    let read_transactions = (0..512)
+        .map(|_| {
+            data_access_layer
+                .block_store
+                .checkout_ro()
+                .expect("should check out reader")
+        })
+        .collect::<Vec<_>>();
+
+    let mut request = call_request(
+        evm::Address::ZERO,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    request.block.number = 2;
+
+    let error = executor
+        .execute(&data_access_layer, &mut tracking_copy, request)
+        .expect_err("exhausted LMDB readers should fail execution");
+    assert!(matches!(
+        error,
+        Error::Database(DbError::BlockHash { height: 1, .. })
+    ));
+
+    drop(read_transactions);
+}
+
+#[test]
+fn blockhash_reads_indexed_header_from_data_access_layer() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         None,
@@ -880,38 +1092,60 @@ fn blockhash_uses_supplied_provider() {
     )
     .created_contract_address
     .expect("deploy should return a contract address");
-    let block_hash_provider = HeightBlockHashProvider;
-
     let outcome = executor
-        .execute_with_block_hash_provider(
+        .execute(
+            &data_access_layer,
             &mut tracking_copy,
             call_request(from, Some(contract), Vec::new(), CasperU256::zero()),
-            &block_hash_provider,
         )
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
 
-    let mut too_old_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
-    too_old_request.block.number = 258;
+    let mut future_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    future_request.block.number = 0;
     let outcome = executor
-        .execute_with_block_hash_provider(&mut tracking_copy, too_old_request, &block_hash_provider)
+        .execute(&data_access_layer, &mut tracking_copy, future_request)
         .expect("EVM execution should succeed");
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
+
+    let mut missing_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    missing_request.block.number = 2;
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, missing_request)
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
+
+    let header = block_header(1);
+    let expected_hash = header.block_hash();
+    write_block_header(&data_access_layer, &header);
 
     let mut historical_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
     historical_request.block.number = 2;
     let outcome = executor
-        .execute_with_block_hash_provider(
-            &mut tracking_copy,
-            historical_request,
-            &block_hash_provider,
-        )
+        .execute(&data_access_layer, &mut tracking_copy, historical_request)
         .expect("EVM execution should succeed");
-
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.output.as_slice(), block_hash_for_height(1).as_ref());
+    assert_eq!(outcome.output.as_slice(), expected_hash.as_ref());
+
+    let mut oldest_valid_request =
+        call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    oldest_valid_request.block.number = BLOCK_HASH_HISTORY + 1;
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, oldest_valid_request)
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), expected_hash.as_ref());
+
+    let mut too_old_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    too_old_request.block.number = BLOCK_HASH_HISTORY + 2;
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, too_old_request)
+        .expect("EVM execution should succeed");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output.as_slice(), &[0u8; evm::HASH_LENGTH]);
 }
 
 #[test]
@@ -919,9 +1153,10 @@ fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
     let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let delegate = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         deployer,
         return_word_contract_init_code(42),
@@ -936,7 +1171,12 @@ fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
     );
     seed_evm_balance(&mut tracking_copy, authority, U512::zero());
 
-    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(decode_word(&outcome.output), 42);
@@ -953,9 +1193,10 @@ fn eip7702_delegation_persists_when_call_reverts() {
     let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let delegate = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         deployer,
         reverting_contract_init_code(),
@@ -968,7 +1209,12 @@ fn eip7702_delegation_persists_when_call_reverts() {
     );
     seed_evm_balance(&mut tracking_copy, authority, U512::zero());
 
-    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
 
     assert_eq!(outcome.status, ExecutionStatus::Revert);
     let code_hash = read_code_hash(&mut tracking_copy, authority);
@@ -983,9 +1229,10 @@ fn eip7702_stale_authorization_is_skipped() {
     let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let delegate = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         deployer,
         return_word_contract_init_code(42),
@@ -998,7 +1245,12 @@ fn eip7702_stale_authorization_is_skipped() {
     );
     seed_evm_balance(&mut tracking_copy, authority, U512::zero());
 
-    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert!(outcome.output.is_empty());
@@ -1014,9 +1266,10 @@ fn eip7702_zero_address_authorization_clears_delegation() {
     let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let delegate = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         deployer,
         return_word_contract_init_code(42),
@@ -1028,12 +1281,22 @@ fn eip7702_zero_address_authorization_clears_delegation() {
         U512::from(1_000_000_000u64),
     );
     seed_evm_balance(&mut tracking_copy, authority, U512::zero());
-    let outcome = execute_transaction(&executor, &mut tracking_copy, transaction);
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
     assert_eq!(outcome.status, ExecutionStatus::Success);
 
     let (clear_transaction, _) =
         eip7702_transaction(authority, evm::Address::ZERO, 1, 1, Vec::new());
-    let outcome = execute_transaction(&executor, &mut tracking_copy, clear_transaction);
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        clear_transaction,
+    );
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(
@@ -1046,11 +1309,18 @@ fn eip7702_zero_address_authorization_clears_delegation() {
 fn counter_supports_committed_and_discarded_execution() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let counter = deploy(&executor, &mut tracking_copy, from, "Counter");
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let counter = deploy(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        "Counter",
+    );
 
     let increment = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         Some(counter),
@@ -1061,6 +1331,7 @@ fn counter_supports_committed_and_discarded_execution() {
     let mut view = tracking_copy.fork();
     let view_increment = execute_call(
         &executor,
+        &data_access_layer,
         &mut view,
         from,
         Some(counter),
@@ -1070,6 +1341,7 @@ fn counter_supports_committed_and_discarded_execution() {
 
     let get = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         Some(counter),
@@ -1084,12 +1356,13 @@ fn erc20_and_native_purse_balances_update() {
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let spender = evm::Address::new([3; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, owner, U512::from(1_000u64));
     let transfer_value = CasperU256::from(250);
     let outcome = executor
         .execute(
+            &data_access_layer,
             &mut tracking_copy,
             call_request(owner, Some(recipient), Vec::new(), transfer_value),
         )
@@ -1101,9 +1374,16 @@ fn erc20_and_native_purse_balances_update() {
         U512::from(250u64)
     );
 
-    let token = deploy(&executor, &mut tracking_copy, owner, "MinimalERC20");
+    let token = deploy(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        owner,
+        "MinimalERC20",
+    );
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1111,6 +1391,7 @@ fn erc20_and_native_purse_balances_update() {
     );
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1121,6 +1402,7 @@ fn erc20_and_native_purse_balances_update() {
     );
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1131,6 +1413,7 @@ fn erc20_and_native_purse_balances_update() {
     );
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         spender,
         Some(token),
@@ -1142,6 +1425,7 @@ fn erc20_and_native_purse_balances_update() {
 
     let owner_balance = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1149,6 +1433,7 @@ fn erc20_and_native_purse_balances_update() {
     );
     let recipient_balance = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1156,6 +1441,7 @@ fn erc20_and_native_purse_balances_update() {
     );
     let remaining_allowance = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(token),
@@ -1171,6 +1457,340 @@ fn erc20_and_native_purse_balances_update() {
 }
 
 #[test]
+fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
+    let executor = EvmExecutor::new(EvmConfig {
+        enabled: true,
+        chain_id: 7,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 0,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+    });
+    let sender = evm::Address::new([0x31; 20]);
+    let recipient = evm::Address::new([0x32; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let initial_motes = U512::from(100_000_000_000u64);
+    let transferred_motes = 15_000_000_000u64;
+    let value_wei = CasperU256::from(transferred_motes) * CasperU256::from(DEFAULT_WEI_PER_MOTE);
+
+    seed_evm_balance(&mut tracking_copy, sender, initial_motes);
+    let outcome = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request_wei(sender, Some(recipient), Vec::new(), value_wei),
+        )
+        .expect("whole-mote Ethereum value should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(
+        read_balance(&mut tracking_copy, sender),
+        initial_motes - U512::from(transferred_motes)
+    );
+    assert_eq!(
+        read_balance(&mut tracking_copy, recipient),
+        U512::from(transferred_motes)
+    );
+}
+
+#[test]
+fn callvalue_and_balance_opcodes_observe_wei() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([0x33; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(10u64));
+    let contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        value_and_balance_observer_init_code(),
+    );
+    let transferred_motes = CasperU256::from(7u64);
+
+    let outcome = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(sender, Some(contract), Vec::new(), transferred_motes),
+        )
+        .expect("whole-mote observer call should execute");
+
+    let expected_wei = 7 * DEFAULT_WEI_PER_MOTE;
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(decode_word(&outcome.output[0..32]), expected_wei);
+    assert_eq!(decode_word(&outcome.output[32..64]), expected_wei);
+    assert_eq!(decode_word(&outcome.output[64..96]), expected_wei);
+    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(3u64));
+    assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(7u64));
+
+    let fractional = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request_wei(sender, Some(contract), Vec::new(), CasperU256::one()),
+        )
+        .expect("unchecked call should accept an arbitrary wei value");
+    assert_eq!(decode_word(&fractional.output[0..32]), 1);
+    assert_eq!(decode_word(&fractional.output[32..64]), expected_wei + 1);
+    assert_eq!(decode_word(&fractional.output[64..96]), expected_wei + 1);
+    assert_eq!(fractional.dust_motes, U512::one());
+    assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(2u64));
+    assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(7u64));
+}
+
+#[test]
+fn signed_transaction_passes_original_wei_value_to_callvalue() {
+    let executor = executor(EvmSpec::Prague);
+    let deployer = evm::Address::new([0x3c; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        deployer,
+        value_and_balance_observer_init_code(),
+    );
+    let value_wei = U256::from(2 * DEFAULT_WEI_PER_MOTE);
+    let transaction =
+        legacy_transaction_to(Some(7), to_alloy_address(contract), value_wei, 100_000);
+    seed_evm_balance(&mut tracking_copy, transaction.from(), U512::from(10u64));
+
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(
+        decode_word(&outcome.output[0..32]),
+        2 * DEFAULT_WEI_PER_MOTE
+    );
+    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(2u64));
+}
+
+#[test]
+fn internal_one_wei_transfer_reports_one_aggregate_dust_mote() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([0x34; 20]);
+    let recipient = evm::Address::new([0x35; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        one_wei_transfer_init_code(recipient, &[opcode::STOP]),
+    );
+    write_existing_evm_balance(&mut tracking_copy, contract, U512::one());
+
+    let outcome = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(sender, Some(contract), Vec::new(), CasperU256::zero()),
+        )
+        .expect("one-wei internal transfer should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(read_balance(&mut tracking_copy, contract), U512::zero());
+    assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
+}
+
+#[test]
+fn recombined_internal_wei_produces_no_dust() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([0x36; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let returning_contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        return_call_value_to_caller_init_code(),
+    );
+    let sending_contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        one_wei_transfer_init_code(returning_contract, &[opcode::STOP]),
+    );
+    write_existing_evm_balance(&mut tracking_copy, sending_contract, U512::one());
+
+    let outcome = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                sender,
+                Some(sending_contract),
+                Vec::new(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("round-trip one-wei transfer should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(
+        read_balance(&mut tracking_copy, sending_contract),
+        U512::one()
+    );
+    assert_eq!(
+        read_balance(&mut tracking_copy, returning_contract),
+        U512::zero()
+    );
+}
+
+#[test]
+fn reverted_and_halted_transfers_report_no_dust() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([0x37; 20]);
+    let recipient = evm::Address::new([0x38; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let reverting_contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        one_wei_transfer_init_code(
+            recipient,
+            &[opcode::PUSH1, 0, opcode::PUSH1, 0, opcode::REVERT],
+        ),
+    );
+    write_existing_evm_balance(&mut tracking_copy, reverting_contract, U512::one());
+
+    let reverted = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                sender,
+                Some(reverting_contract),
+                Vec::new(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("reverting transfer should produce an outcome");
+    assert_eq!(reverted.status, ExecutionStatus::Revert);
+    assert_eq!(reverted.dust_motes, U512::zero());
+    assert_eq!(
+        read_balance(&mut tracking_copy, reverting_contract),
+        U512::one()
+    );
+    assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
+
+    let halting_contract = deploy_code(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        sender,
+        one_wei_transfer_init_code(recipient, &[0xfe]),
+    );
+    write_existing_evm_balance(&mut tracking_copy, halting_contract, U512::one());
+
+    let halted = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                sender,
+                Some(halting_contract),
+                Vec::new(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect("halting transfer should produce an outcome");
+    assert!(matches!(halted.status, ExecutionStatus::Halt(_)));
+    assert_eq!(halted.dust_motes, U512::zero());
+    assert_eq!(
+        read_balance(&mut tracking_copy, halting_contract),
+        U512::one()
+    );
+    assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
+}
+
+#[test]
+fn scaled_balance_overflow_is_reported() {
+    let executor = executor(EvmSpec::Prague);
+    let sender = evm::Address::new([0x39; 20]);
+    let recipient = evm::Address::new([0x3a; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let mut max_u256_bytes = [0u8; 64];
+    max_u256_bytes[32..].fill(0xff);
+    let max_u256 = U512::from_big_endian(&max_u256_bytes);
+    let overflowing_motes = max_u256 / U512::from(DEFAULT_WEI_PER_MOTE) + U512::one();
+    seed_evm_balance(&mut tracking_copy, sender, overflowing_motes);
+
+    let result = executor.execute(
+        &data_access_layer,
+        &mut tracking_copy,
+        call_request(sender, Some(recipient), Vec::new(), CasperU256::zero()),
+    );
+
+    assert!(matches!(
+        result,
+        Err(Error::Database(DbError::BalanceOverflow { .. }))
+    ));
+}
+
+#[test]
+fn invalid_wei_per_mote_is_rejected() {
+    let executor = EvmExecutor::new(EvmConfig {
+        wei_per_mote: 0,
+        enabled: true,
+        ..EvmConfig::default()
+    });
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+
+    assert!(matches!(
+        executor.execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(evm::Address::ZERO),
+                Vec::new(),
+                CasperU256::zero()
+            )
+        ),
+        Err(Error::InvalidWeiPerMote)
+    ));
+}
+
+#[test]
+fn system_call_reports_zero_dust_for_whole_mote_state() {
+    let executor = executor(EvmSpec::Prague);
+    let target = evm::Address::new([0x3b; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    seed_evm_balance(&mut tracking_copy, target, U512::one());
+    seed_evm_code(&mut tracking_copy, target, vec![opcode::STOP]);
+
+    let outcome = executor
+        .execute_system_call(
+            &data_access_layer,
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target,
+                input: Vec::new(),
+            },
+        )
+        .expect("system call should execute");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(read_balance(&mut tracking_copy, target), U512::one());
+}
+
+#[test]
 fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
     let executor = executor(EvmSpec::Prague);
     let sender = evm::Address::new([1; 20]);
@@ -1182,7 +1802,7 @@ fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
     let proposer_main_purse = URef::new([8; 32], AccessRights::READ_ADD_WRITE);
     let proposer_initial_balance = U512::from(1_000u64);
     let transfer_value = CasperU256::from(250u64);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     seed_account(
@@ -1197,6 +1817,7 @@ fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
     );
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_transfer_init_code(),
@@ -1205,7 +1826,7 @@ fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase transfer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1229,7 +1850,7 @@ fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
     let proposer_account_hash = proposer.to_account_hash();
     let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
     let proposer_main_purse = URef::new([9; 32], AccessRights::READ_ADD_WRITE);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     seed_account(
@@ -1240,6 +1861,7 @@ fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
     );
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_transfer_init_code(),
@@ -1248,7 +1870,7 @@ fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase transfer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1274,11 +1896,12 @@ fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
         SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
     let proposer = PublicKey::from(&proposer_secret_key);
     let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_observer_init_code(),
@@ -1287,7 +1910,7 @@ fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase observer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1307,7 +1930,7 @@ fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
     let proposer_account_hash = proposer.to_account_hash();
     let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
     let proposer_main_purse = URef::new([10; 32], AccessRights::READ_ADD_WRITE);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     seed_account(
@@ -1323,6 +1946,7 @@ fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
     seed_evm_code(&mut tracking_copy, beneficiary, reverting_runtime());
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_transfer_init_code(),
@@ -1331,7 +1955,7 @@ fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase transfer should execute EVM code");
 
     assert_eq!(outcome.status, ExecutionStatus::Revert);
@@ -1356,7 +1980,7 @@ fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
     let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
     let proposer_main_purse = URef::new([12; 32], AccessRights::READ_ADD_WRITE);
     let existing_purse = URef::new([13; 32], AccessRights::READ_ADD_WRITE);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     seed_account(
@@ -1379,6 +2003,7 @@ fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
     );
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_transfer_init_code(),
@@ -1387,7 +2012,7 @@ fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase transfer should preserve existing identity");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1422,7 +2047,7 @@ fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
     let existing_main_purse = URef::new([15; 32], AccessRights::READ_ADD_WRITE);
     let existing_initial_balance = U512::from(500u64);
     let transfer_value = CasperU256::from(250u64);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10_000_000u64));
     seed_account(
@@ -1451,6 +2076,7 @@ fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
     );
     let contract = deploy_code(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         sender,
         coinbase_transfer_init_code(),
@@ -1459,7 +2085,7 @@ fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
     request.block.beneficiary = beneficiary;
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("coinbase transfer should preserve existing account identity");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1488,7 +2114,7 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
     let proposer_account_hash = proposer.to_account_hash();
     let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
     let proposer_main_purse = URef::new([11; 32], AccessRights::READ_ADD_WRITE);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let initial_balance = U512::from(10_000_000u64);
     let transfer_value = CasperU256::from(250u64);
 
@@ -1506,7 +2132,7 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
         kind: ExecuteKind::Call(CallRequest {
             from: sender,
             to: Some(recipient),
-            value: transfer_value,
+            value: transfer_value * CasperU256::from(DEFAULT_WEI_PER_MOTE),
             input: Vec::new(),
             gas_limit: 100_000,
             gas_price: 2,
@@ -1516,7 +2142,7 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
     };
 
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("native EVM transfer should succeed");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1540,16 +2166,62 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
 }
 
 #[test]
+fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 7,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 1_000_000,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+    };
+    let gas_price = evm_config.base_fee_wei();
+    let executor = EvmExecutor::new(evm_config);
+    let sender = evm::Address::ZERO;
+    let recipient = evm::Address::new([0x41; evm::ADDRESS_LENGTH]);
+    let input =
+        decode_hex("01ffc9a7d9b67a2600000000000000000000000000000000000000000000000000000000");
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Call(CallRequest {
+            from: sender,
+            to: Some(recipient),
+            value: CasperU256::zero(),
+            input,
+            gas_limit: 30_000_000,
+            gas_price,
+            nonce: 0,
+            validation: CallValidation::UncheckedSimulation,
+        }),
+    };
+
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, request)
+        .expect("unchecked call should remove simulated fee transfers without underflow");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert!(outcome.output.is_empty());
+}
+
+#[test]
 fn erc721_mint_approve_and_transfer() {
     let executor = executor(EvmSpec::Prague);
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let approved = evm::Address::new([3; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let nft = deploy(&executor, &mut tracking_copy, owner, "MinimalERC721");
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let nft = deploy(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        owner,
+        "MinimalERC721",
+    );
 
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(nft),
@@ -1557,6 +2229,7 @@ fn erc721_mint_approve_and_transfer() {
     );
     let initial_owner = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(nft),
@@ -1566,6 +2239,7 @@ fn erc721_mint_approve_and_transfer() {
 
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(nft),
@@ -1576,6 +2250,7 @@ fn erc721_mint_approve_and_transfer() {
     );
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         approved,
         Some(nft),
@@ -1586,6 +2261,7 @@ fn erc721_mint_approve_and_transfer() {
     );
     let final_owner = execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         owner,
         Some(nft),
@@ -1598,11 +2274,18 @@ fn erc721_mint_approve_and_transfer() {
 fn storage_zeroes_are_pruned() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
-    let contract = deploy(&executor, &mut tracking_copy, from, "StorageDelete");
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let contract = deploy(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        "StorageDelete",
+    );
 
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         Some(contract),
@@ -1615,6 +2298,7 @@ fn storage_zeroes_are_pruned() {
 
     execute_call(
         &executor,
+        &data_access_layer,
         &mut tracking_copy,
         from,
         Some(contract),
@@ -1632,15 +2316,17 @@ fn selfdestruct_preserves_account_on_prague() {
     let beneficiary = evm::Address::new([2; 20]);
 
     let prague_executor = executor(EvmSpec::Prague);
-    let (mut prague_tracking_copy, _prague_tempdir) = tracking_copy();
+    let (mut prague_tracking_copy, prague_data_access_layer, _prague_tempdir) = tracking_copy();
     let prague_contract = deploy(
         &prague_executor,
+        &prague_data_access_layer,
         &mut prague_tracking_copy,
         from,
         "SelfDestruct",
     );
     execute_call(
         &prague_executor,
+        &prague_data_access_layer,
         &mut prague_tracking_copy,
         from,
         Some(prague_contract),
@@ -1655,14 +2341,14 @@ fn selfdestruct_preserves_account_on_prague() {
 #[test]
 fn signed_transactions_require_configured_chain_id() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let missing_chain_id = legacy_transaction_without_chain_id();
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(Box::new(missing_chain_id)),
     };
     assert!(matches!(
-        executor.execute(&mut tracking_copy, request),
+        executor.execute(&data_access_layer, &mut tracking_copy, request),
         Err(Error::MissingChainId)
     ));
 
@@ -1680,7 +2366,7 @@ fn signed_transactions_require_configured_chain_id() {
         kind: ExecuteKind::Transaction(Box::new(transaction)),
     };
     assert!(matches!(
-        wrong_chain_executor.execute(&mut tracking_copy, request),
+        wrong_chain_executor.execute(&data_access_layer, &mut tracking_copy, request),
         Err(Error::ChainIdMismatch {
             expected: 8,
             actual: 7
@@ -1689,9 +2375,26 @@ fn signed_transactions_require_configured_chain_id() {
 }
 
 #[test]
+fn signed_fractional_mote_value_is_rejected() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let transaction = legacy_transaction_with_value(Some(7), U256::from(1));
+    let request = ExecuteRequest {
+        block: block(),
+        kind: ExecuteKind::Transaction(Box::new(transaction)),
+    };
+
+    assert!(matches!(
+        executor.execute(&data_access_layer, &mut tracking_copy, request),
+        Err(Error::Transaction(message))
+            if message.contains("is not an exact number of motes")
+    ));
+}
+
+#[test]
 fn signed_transaction_sender_uses_linked_casper_account_identity() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
         .signer()
@@ -1718,10 +2421,11 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
         kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("EVM execution should succeed");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::zero());
     assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
     assert_eq!(
         read_balance(&mut tracking_copy, transaction.from()),
@@ -1741,7 +2445,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
 #[test]
 fn signed_transaction_sender_keeps_evm_native_identity() {
     let executor = executor(EvmSpec::Prague);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
         .signer()
@@ -1756,7 +2460,7 @@ fn signed_transaction_sender_keeps_evm_native_identity() {
         kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
     let outcome = executor
-        .execute(&mut tracking_copy, request)
+        .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("EVM execution should succeed");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -1790,12 +2494,40 @@ fn checked_calls_enforce_transaction_validation() {
     let executor = executor(EvmSpec::Prague);
     let from = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
-    let (mut tracking_copy, _tempdir) = tracking_copy();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     let mut request = checked_call_request(from, Some(recipient), Vec::new(), CasperU256::zero());
     request.block.base_fee = Some(1);
     assert!(matches!(
-        executor.execute(&mut tracking_copy, request),
+        executor.execute(&data_access_layer, &mut tracking_copy, request),
         Err(Error::Revm(_))
     ));
+}
+
+#[test]
+fn prevrandao_uses_block_context() {
+    let executor = executor(EvmSpec::Prague);
+    let from = evm::Address::new([1; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let contract = execute_call(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        None,
+        prevrandao_contract_init_code(),
+    )
+    .created_contract_address
+    .expect("deploy should return a contract address");
+
+    let outcome = execute_call(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        from,
+        Some(contract),
+        Vec::new(),
+    );
+
+    assert_eq!(outcome.output.as_slice(), block().prevrandao.as_ref());
 }

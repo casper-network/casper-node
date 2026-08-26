@@ -10,13 +10,12 @@ use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
 };
 use casper_executor_evm::{
-    BlockContext as EvmBlockContext, BlockHashProvider as EvmBlockHashProvider,
-    BlockHashProviderResult as EvmBlockHashProviderResult, CallRequest as EvmExecutorCallRequest,
+    BlockContext as EvmBlockContext, CallRequest as EvmExecutorCallRequest,
     CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
     ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
-    block_store::types::ApprovalsHashes,
+    block_store::{lmdb::LmdbBlockStore, types::ApprovalsHashes},
     data_access_layer::{
         balance::BalanceHandling,
         mint::{BalanceIdentifierTransferArgs, BurnRequest},
@@ -43,15 +42,15 @@ use casper_types::{
     bytesrepr::{self, Bytes, ToBytes, U32_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     evm::{
-        Address as EvmAddress, HaltReason as EvmHaltReason, Receipt as EvmReceipt,
+        Address as EvmAddress, HaltReason as EvmHaltReason, Hash as EvmHash, Receipt as EvmReceipt,
         ReceiptStatus as EvmReceiptStatus,
     },
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, EvmSpec, FeeHandling, Gas, InvalidTransaction,
-    InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff,
-    Transaction, TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
+    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -66,22 +65,12 @@ use crate::{
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 
-#[derive(Default)]
-struct StaticEvmBlockHashProvider {
-    block_hashes: BTreeMap<u64, BlockHash>,
-}
-
-impl EvmBlockHashProvider for StaticEvmBlockHashProvider {
-    fn block_hash(&self, block_height: u64) -> EvmBlockHashProviderResult<Option<BlockHash>> {
-        Ok(self.block_hashes.get(&block_height).copied())
-    }
-}
-
 fn evm_block_context(
     chainspec: &Chainspec,
     block_height: u64,
     block_time: BlockTime,
     proposer: &PublicKey,
+    prevrandao: EvmHash,
 ) -> EvmBlockContext {
     EvmBlockContext {
         number: block_height,
@@ -89,39 +78,37 @@ fn evm_block_context(
         beneficiary: EvmAddress::from_block_proposer_public_key(proposer),
         gas_limit: Some(chainspec.evm_config.block_gas_limit),
         base_fee: Some(chainspec.evm_config.base_fee_wei()),
+        prevrandao,
     }
 }
 
-fn write_eip4788_beacon_roots(
-    scratch_state: &ScratchGlobalState,
-    state_root_hash: Digest,
-    chainspec: &Chainspec,
-    protocol_version: ProtocolVersion,
-    block_context: EvmBlockContext,
-    parent_hash: BlockHash,
-) -> Result<Digest, BlockExecutionError> {
-    if !chainspec.evm_config.enabled || chainspec.evm_config.spec < EvmSpec::Prague {
-        return Ok(state_root_hash);
+fn evm_prevrandao(parent_seed: Digest) -> EvmHash {
+    EvmHash::new(parent_seed.value())
+}
+
+fn speculative_evm_prevrandao(
+    block_store: &LmdbBlockStore,
+    block_header: &BlockHeader,
+    is_unsigned_call: bool,
+) -> Result<EvmHash, String> {
+    if !is_unsigned_call {
+        return Ok(evm_prevrandao(*block_header.accumulated_seed()));
+    }
+    if block_header.height() == 0 {
+        // The genesis block has no parent, so there is no PREVRANDAO value to return.
+        return Ok(EvmHash::ZERO);
     }
 
-    if block_context.number == 0 {
-        return Ok(state_root_hash);
-    }
+    let parent_hash = *block_header.parent_hash();
+    let transaction = block_store
+        .checkout_ro()
+        .map_err(|error| format!("failed to open block store for PREVRANDAO: {error}"))?;
+    let parent_header = transaction
+        .read_block_header_by_hash(parent_hash)
+        .map_err(|error| format!("failed to read PREVRANDAO parent {parent_hash}: {error}"))?
+        .ok_or_else(|| format!("PREVRANDAO parent block {parent_hash} not found"))?;
 
-    match scratch_state.block_global(BlockGlobalRequest::set_eip4788_parent_hash(
-        state_root_hash,
-        protocol_version,
-        block_context.timestamp,
-        parent_hash,
-    )) {
-        BlockGlobalResult::RootNotFound => Err(BlockExecutionError::RootNotFound(state_root_hash)),
-        BlockGlobalResult::Failure(err) => {
-            Err(BlockExecutionError::BlockGlobal(format!("{err:?}")))
-        }
-        BlockGlobalResult::Success {
-            post_state_hash, ..
-        } => Ok(post_state_hash),
-    }
+    Ok(evm_prevrandao(*parent_header.accumulated_seed()))
 }
 
 fn evm_precondition_receipt(effective_gas_price: u128) -> EvmReceipt {
@@ -147,6 +134,13 @@ fn execution_min_cost(
         min_cost.min(cost)
     } else {
         min_cost
+    }
+}
+
+fn evm_consumed_gas(status: EvmExecutionStatus, gas_used: u64, gas_limit: u64) -> u64 {
+    match status {
+        EvmExecutionStatus::Success | EvmExecutionStatus::Revert => gas_used,
+        EvmExecutionStatus::Halt(_) => gas_limit,
     }
 }
 
@@ -538,7 +532,6 @@ pub fn execute_finalized_block(
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
-    evm_block_hash_provider: &dyn EvmBlockHashProvider,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
@@ -685,15 +678,6 @@ pub fn execute_finalized_block(
         }
     }
 
-    state_root_hash = write_eip4788_beacon_roots(
-        &scratch_state,
-        state_root_hash,
-        chainspec,
-        protocol_version,
-        evm_block_context(chainspec, block_height, block_time, &proposer),
-        parent_hash,
-    )?;
-
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
@@ -755,14 +739,11 @@ pub fn execute_finalized_block(
                 }
             };
 
-            // NOTE: this is the actual adjusted cost that we charge for.
+            // NOTE: this is the maximum adjusted cost reserved before execution.
             // Native transactions use gas limit * Casper gas price. EVM
-            // transactions convert gas limit * EVM gas price from wei to motes.
-            // For accepted EIP-1559 transactions, config compliance has already required
-            // `max_priority_fee_per_gas == 0`, so the effective EVM gas price is the
-            // configured base fee capped by `max_fee_per_gas`; Casper does not charge an
-            // Ethereum-style priority premium while transaction priority is not based on
-            // gas parameters.
+            // transactions reserve gas limit * the transaction's signed maximum
+            // price, converted from wei to motes. Post-processing applies the
+            // chainspec's refund and fee handling to the unused amount.
             let cost = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
                     .max_fee_amount(&chainspec.evm_config)
@@ -1053,10 +1034,11 @@ pub fn execute_finalized_block(
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let required_balance = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .required_balance(actual_cost)
+                    .required_balance(actual_cost, &chainspec.evm_config)
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
-                            "EVM value plus fee amount overflowed U512".to_string(),
+                            "EVM value is not an exact mote amount or value plus fee overflowed U512"
+                                .to_string(),
                         )
                     })?
             } else {
@@ -1194,8 +1176,14 @@ pub fn execute_finalized_block(
                 _ if is_evm => {
                     let evm_transaction = evm_transaction.expect("EVM transaction should exist");
                     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-                    let block_context =
-                        evm_block_context(chainspec, block_height, block_time, &proposer);
+                    let prevrandao = evm_prevrandao(parent_seed);
+                    let block_context = evm_block_context(
+                        chainspec,
+                        block_height,
+                        block_time,
+                        &proposer,
+                        prevrandao,
+                    );
                     let request = EvmExecuteRequest {
                         block: block_context,
                         kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
@@ -1217,11 +1205,7 @@ pub fn execute_finalized_block(
                     }
                     apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
                     let outcome = EvmExecutor::new(chainspec.evm_config)
-                        .execute_with_block_hash_provider(
-                            &mut tracking_copy,
-                            request,
-                            evm_block_hash_provider,
-                        )
+                        .execute(data_access_layer, &mut tracking_copy, request)
                         .map_err(|error| {
                             BlockExecutionError::TransactionConversion(error.to_string())
                         })?;
@@ -1229,22 +1213,25 @@ pub fn execute_finalized_block(
                     state_root_hash =
                         scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
                     let effective_gas_price = evm_transaction.effective_gas_price(base_fee_wei);
-                    let consumed = if matches!(outcome.status, EvmExecutionStatus::Success) {
-                        evm_transaction
-                            .fee_amount(outcome.gas_used, &chainspec.evm_config)
-                            .ok_or_else(|| {
-                                BlockExecutionError::PaymentError(
-                                    "EVM fee amount overflowed U512".to_string(),
-                                )
-                            })?
-                    } else {
-                        artifact_builder.cost_to_use()
-                    };
-                    artifact_builder.with_evm_receipt(
-                        outcome.to_receipt(effective_gas_price),
-                        consumed,
-                        execution_effects,
+                    let consumed_gas = evm_consumed_gas(
+                        outcome.status,
+                        outcome.gas_used,
+                        evm_transaction.gas_limit(),
                     );
+                    let consumed = evm_transaction
+                        .fee_amount(consumed_gas, &chainspec.evm_config)
+                        .ok_or_else(|| {
+                            BlockExecutionError::PaymentError(
+                                "EVM fee amount overflowed U512".to_string(),
+                            )
+                        })?;
+                    let mut receipt = outcome.to_receipt(effective_gas_price);
+                    // A top-level exceptional halt consumes the full supplied gas under EVM
+                    // execution semantics. Casper refund and fee policy is applied afterward.
+                    if matches!(outcome.status, EvmExecutionStatus::Halt(_)) {
+                        receipt.gas_used = evm_transaction.gas_limit();
+                    }
+                    artifact_builder.with_evm_receipt(receipt, consumed, execution_effects);
                 }
                 _ if is_v1_wasm => {
                     let wasm_v1_start = Instant::now();
@@ -1987,11 +1974,10 @@ pub fn execute_finalized_block(
 ///
 /// Returns effects of the execution.
 pub(super) fn speculatively_execute<S>(
-    state_provider: &S,
+    data_access_layer: &DataAccessLayer<S>,
     chainspec: &Chainspec,
     execution_engine_v1: &ExecutionEngineV1,
     block_header: BlockHeader,
-    block_hashes: BTreeMap<u64, BlockHash>,
     input_transaction: Transaction,
 ) -> SpeculativeExecutionResult
 where
@@ -2043,7 +2029,7 @@ where
                 }
             };
 
-            let result = state_provider.transfer(TransferRequest::with_runtime_args(
+            let result = data_access_layer.transfer(TransferRequest::with_runtime_args(
                 native_runtime_config.clone(),
                 *state_root_hash,
                 protocol_version,
@@ -2071,7 +2057,9 @@ where
                 gas_limit,
                 &session_input_data,
             ) {
-                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+                Ok(wasm_v1_request) => {
+                    execution_engine_v1.execute(data_access_layer, wasm_v1_request)
+                }
                 Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
             };
             SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
@@ -2100,7 +2088,7 @@ where
             gas_limit,
             &session_input_data,
         ) {
-            Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+            Ok(wasm_v1_request) => execution_engine_v1.execute(data_access_layer, wasm_v1_request),
             Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
         };
         SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
@@ -2108,13 +2096,7 @@ where
             block_header.block_hash(),
         )))
     } else if let Some(evm_transaction) = transaction.as_evm() {
-        speculatively_execute_evm(
-            state_provider,
-            chainspec,
-            block_header,
-            block_hashes,
-            evm_transaction,
-        )
+        speculatively_execute_evm(data_access_layer, chainspec, block_header, evm_transaction)
     } else {
         // TODO: placeholder error
         SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::V1(
@@ -2123,11 +2105,46 @@ where
     }
 }
 
+fn speculative_evm_block_context(
+    chainspec: &Chainspec,
+    block_header: &BlockHeader,
+    is_unsigned_call: bool,
+    prevrandao: EvmHash,
+) -> EvmBlockContext {
+    if is_unsigned_call {
+        let beneficiary = match block_header {
+            BlockHeader::V1(_) => EvmAddress::ZERO,
+            BlockHeader::V2(header) => {
+                EvmAddress::from_block_proposer_public_key(header.proposer())
+            }
+        };
+        EvmBlockContext {
+            number: block_header.height(),
+            timestamp: block_header.timestamp().millis() / 1_000,
+            beneficiary,
+            gas_limit: Some(chainspec.evm_config.block_gas_limit),
+            base_fee: Some(chainspec.evm_config.base_fee_wei()),
+            prevrandao,
+        }
+    } else {
+        let block_time = block_header
+            .timestamp()
+            .saturating_add(chainspec.core_config.minimum_block_time);
+        EvmBlockContext {
+            number: block_header.height(),
+            timestamp: block_time.millis() / 1000,
+            beneficiary: EvmAddress::ZERO,
+            gas_limit: Some(chainspec.evm_config.block_gas_limit),
+            base_fee: Some(chainspec.evm_config.base_fee_wei()),
+            prevrandao,
+        }
+    }
+}
+
 fn speculatively_execute_evm<S>(
-    state_provider: &S,
+    data_access_layer: &DataAccessLayer<S>,
     chainspec: &Chainspec,
     block_header: BlockHeader,
-    block_hashes: BTreeMap<u64, BlockHash>,
     evm_transaction: &casper_types::EvmTransaction,
 ) -> SpeculativeExecutionResult
 where
@@ -2148,7 +2165,7 @@ where
     }
 
     let state_root_hash = block_header.state_root_hash();
-    let mut tracking_copy = match state_provider.tracking_copy(*state_root_hash) {
+    let mut tracking_copy = match data_access_layer.tracking_copy(*state_root_hash) {
         Ok(Some(tracking_copy)) => tracking_copy,
         Ok(None) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
@@ -2165,18 +2182,23 @@ where
             ))
         }
     };
-    let block_time = block_header
-        .timestamp()
-        .saturating_add(chainspec.core_config.minimum_block_time);
     let base_fee_wei = chainspec.evm_config.base_fee_wei();
-    let block_context = EvmBlockContext {
-        number: block_header.height(),
-        timestamp: block_time.millis() / 1000,
-        beneficiary: EvmAddress::ZERO,
-        gas_limit: Some(chainspec.evm_config.block_gas_limit),
-        base_fee: Some(base_fee_wei),
+    let is_unsigned_call = evm_transaction.is_unsigned_call();
+    let prevrandao = match speculative_evm_prevrandao(
+        &data_access_layer.block_store,
+        &block_header,
+        is_unsigned_call,
+    ) {
+        Ok(prevrandao) => prevrandao,
+        Err(error) => {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
+                casper_types::EvmTransactionError::Decode(error),
+            ))
+        }
     };
-    let kind = if evm_transaction.is_unsigned_call() {
+    let block_context =
+        speculative_evm_block_context(chainspec, &block_header, is_unsigned_call, prevrandao);
+    let kind = if is_unsigned_call {
         EvmExecuteKind::Call(EvmExecutorCallRequest {
             from: evm_transaction.from(),
             to: evm_transaction.to(),
@@ -2194,11 +2216,10 @@ where
         block: block_context,
         kind,
     };
-    let block_hash_provider = StaticEvmBlockHashProvider { block_hashes };
-    let outcome = match EvmExecutor::new(chainspec.evm_config).execute_with_block_hash_provider(
+    let outcome = match EvmExecutor::new(chainspec.evm_config).execute(
+        data_access_layer,
         &mut tracking_copy,
         execute_request,
-        &block_hash_provider,
     ) {
         Ok(outcome) => outcome,
         Err(error) => {
@@ -2208,7 +2229,7 @@ where
         }
     };
     let effects = tracking_copy.effects();
-    let effective_gas_price = if evm_transaction.is_unsigned_call() {
+    let effective_gas_price = if is_unsigned_call {
         base_fee_wei
     } else {
         evm_transaction.effective_gas_price(base_fee_wei)
@@ -2377,8 +2398,8 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::{global_state::state, tracking_copy::TrackingCopyExt};
-    use casper_types::{EvmConfig, DEFAULT_WEI_PER_MOTE};
+    use casper_storage::block_store::BlockStoreTransaction;
+    use casper_types::{BlockHeaderV2, EvmConfig, EvmSpec, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
     fn should_not_raise_evm_min_cost_above_converted_fee() {
@@ -2405,42 +2426,105 @@ mod tests {
     }
 
     #[test]
-    fn eip4788_hook_writes_beacon_roots_without_transactions() {
+    fn should_use_actual_gas_for_evm_success_and_revert() {
+        assert_eq!(
+            evm_consumed_gas(EvmExecutionStatus::Success, 21_000, 100_000),
+            21_000
+        );
+        assert_eq!(
+            evm_consumed_gas(EvmExecutionStatus::Revert, 30_000, 100_000),
+            30_000
+        );
+    }
+
+    #[test]
+    fn should_use_full_gas_limit_for_evm_halt() {
+        assert_eq!(
+            evm_consumed_gas(
+                EvmExecutionStatus::Halt(EvmHaltReason::StackUnderflow),
+                30_000,
+                100_000,
+            ),
+            100_000
+        );
+    }
+
+    #[test]
+    fn unsigned_evm_call_uses_selected_block_context() {
         let chainspec = Chainspec {
             evm_config: EvmConfig {
                 enabled: true,
                 chain_id: 7,
                 spec: EvmSpec::Prague,
                 block_gas_limit: 30_000_000,
-                base_fee: 0,
+                base_fee: 3,
                 wei_per_mote: DEFAULT_WEI_PER_MOTE,
             },
             ..Default::default()
         };
-        let (global_state, state_root_hash, _tempdir) =
-            state::lmdb::make_temporary_global_state([]);
-        let scratch_state = global_state.create_scratch();
-        let block_time = BlockTime::new(2_000);
-        let block_context = evm_block_context(&chainspec, 1, block_time, &PublicKey::System);
-        let parent_hash = BlockHash::new(Digest::from_raw([0x44; 32]));
+        let timestamp = Timestamp::from(123_456_789);
+        let proposer = PublicKey::System;
+        let parent_seed = Digest::from_raw([0x44; Digest::LENGTH]);
+        let parent_header = BlockHeader::V2(BlockHeaderV2::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            false,
+            parent_seed,
+            Default::default(),
+            Timestamp::from(123_455_789),
+            Default::default(),
+            41,
+            chainspec.protocol_version(),
+            proposer.clone(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ));
+        let selected_seed = Digest::hash_pair(parent_seed, [1]);
+        let block_header = BlockHeader::V2(BlockHeaderV2::new(
+            parent_header.block_hash(),
+            Default::default(),
+            Default::default(),
+            true,
+            selected_seed,
+            Default::default(),
+            timestamp,
+            Default::default(),
+            42,
+            chainspec.protocol_version(),
+            proposer.clone(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ));
+        let mut block_store =
+            LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create block store");
+        let mut transaction = block_store
+            .checkout_rw()
+            .expect("should check out write transaction");
+        transaction
+            .write_block_header(&parent_header)
+            .expect("should write parent header");
+        transaction.commit().expect("should commit parent header");
 
-        let updated_state_root_hash = write_eip4788_beacon_roots(
-            &scratch_state,
-            state_root_hash,
-            &chainspec,
-            ProtocolVersion::V1_0_0,
-            block_context.clone(),
-            parent_hash,
-        )
-        .expect("EIP-4788 hook should succeed");
-        let tracking_copy = scratch_state
-            .tracking_copy(updated_state_root_hash)
-            .expect("tracking copy should not fail")
-            .expect("state root should exist");
-        let entry = tracking_copy
-            .get_eip4788_parent_hash(block_context.timestamp)
-            .expect("EIP-4788 beacon root should be readable");
+        let prevrandao = speculative_evm_prevrandao(&block_store, &block_header, true)
+            .expect("should resolve parent seed");
+        let context = speculative_evm_block_context(&chainspec, &block_header, true, prevrandao);
 
-        assert_eq!(entry, Some((block_context.timestamp, parent_hash)));
+        assert_eq!(context.number, 42);
+        assert_eq!(context.timestamp, timestamp.millis() / 1_000);
+        assert_eq!(
+            context.beneficiary,
+            EvmAddress::from_block_proposer_public_key(&proposer)
+        );
+        assert_eq!(context.prevrandao, evm_prevrandao(parent_seed));
+        assert_ne!(context.prevrandao, evm_prevrandao(selected_seed));
+
+        assert_eq!(
+            speculative_evm_prevrandao(&block_store, &block_header, false)
+                .expect("should use selected seed for next-block execution"),
+            evm_prevrandao(selected_seed)
+        );
     }
 }

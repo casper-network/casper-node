@@ -1,6 +1,9 @@
-use crate::global_state::{
-    error::Error as GlobalStateError,
-    state::{CommitProvider, StateProvider},
+use crate::{
+    block_store::lmdb::LmdbBlockStore,
+    global_state::{
+        error::Error as GlobalStateError,
+        state::{CommitProvider, StateProvider},
+    },
 };
 use casper_types::{execution::Effects, Digest};
 
@@ -97,22 +100,11 @@ pub use system_entity_registry::{
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
-/// Anchor struct for block store functionality.
-#[derive(Default, Copy, Clone)]
-pub struct BlockStore(());
-
-impl BlockStore {
-    /// Ctor.
-    pub fn new() -> Self {
-        BlockStore(())
-    }
-}
-
 /// Data access layer.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct DataAccessLayer<S> {
     /// Block store instance.
-    pub block_store: BlockStore,
+    pub block_store: LmdbBlockStore,
     /// Memoized state.
     pub state: S,
     /// Max query depth.

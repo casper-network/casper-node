@@ -10,8 +10,8 @@ use casper_binary_port::{
 };
 
 use casper_types::{
-    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
-    TransactionV1,
+    BlockHeader, BlockIdentifier, Digest, GlobalStateIdentifier, KeyTag, ProtocolVersion,
+    PublicKey, Timestamp, Transaction, TransactionV1,
 };
 
 use crate::{
@@ -98,6 +98,64 @@ async fn should_enqueue_requests_for_enabled_functions() {
                 Duration::from_secs(10),
             )
             .await;
+    }
+}
+
+#[tokio::test]
+async fn should_use_requested_block_for_speculative_execution() {
+    let mut rng = TestRng::new();
+    let request = Command::TrySpeculativeExec {
+        transaction: Transaction::V1(TransactionV1::random(&mut rng)),
+        block_identifier: Some(BlockIdentifier::Height(1)),
+    };
+    let test_case = TestCase {
+        allow_request_get_all_values: DISABLED,
+        allow_request_get_trie: DISABLED,
+        allow_request_speculative_exec: ENABLED,
+        request_generator: Either::Right(request),
+    };
+    let (_, mut runner) = run_test_case(test_case, &mut rng).await;
+
+    runner
+        .crank_until(
+            &mut rng,
+            got_requested_contract_runtime_request,
+            Duration::from_secs(10),
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn should_reject_unavailable_or_incompatible_speculative_execution_block() {
+    let mut rng = TestRng::new();
+
+    for (height, expected_error) in [
+        (u64::MAX, ErrorCode::NotFound),
+        (2, ErrorCode::UnsupportedRequest),
+    ] {
+        let request = Command::TrySpeculativeExec {
+            transaction: Transaction::V1(TransactionV1::random(&mut rng)),
+            block_identifier: Some(BlockIdentifier::Height(height)),
+        };
+        let test_case = TestCase {
+            allow_request_get_all_values: DISABLED,
+            allow_request_get_trie: DISABLED,
+            allow_request_speculative_exec: ENABLED,
+            request_generator: Either::Right(request),
+        };
+        let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
+
+        let response = tokio::select! {
+            result = receiver => result.expect("expected successful response"),
+            _ = runner.crank_until(
+                &mut rng,
+                got_contract_runtime_request,
+                Duration::from_secs(10),
+            ) => {
+                panic!("request should fail before reaching contract runtime")
+            }
+        };
+        assert_eq!(response.error_code(), expected_error as u16);
     }
 }
 
@@ -248,6 +306,7 @@ async fn run_test_case(
 
 struct MockReactor {
     binary_port: BinaryPort,
+    protocol_version: ProtocolVersion,
 }
 
 impl NetworkedReactor for MockReactor {}
@@ -267,10 +326,14 @@ impl Reactor for MockReactor {
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let binary_port_metrics = BinaryPortMetrics::new(registry).unwrap();
+        let protocol_version = chainspec.protocol_version();
         let mut binary_port = BinaryPort::new(config, chainspec, binary_port_metrics);
         <BinaryPort as InitializedComponent<Event>>::start_initialization(&mut binary_port);
 
-        let reactor = MockReactor { binary_port };
+        let reactor = MockReactor {
+            binary_port,
+            protocol_version,
+        };
 
         let effects = Effects::new();
 
@@ -296,26 +359,26 @@ impl Reactor for MockReactor {
             }
             Event::AcceptTransactionRequest(req) => req.responder.respond(Ok(())).ignore(),
             Event::StorageRequest(StorageRequest::GetHighestCompleteBlockHeader { responder }) => {
-                let proposer = PublicKey::random(rng);
-                let block_header_v2 = casper_types::BlockHeaderV2::new(
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Timestamp::now(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    proposer,
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                );
                 responder
-                    .respond(Some(BlockHeader::V2(block_header_v2)))
+                    .respond(Some(block_header(rng, 0, self.protocol_version)))
                     .ignore()
+            }
+            Event::StorageRequest(StorageRequest::GetBlockHeaderByHeight {
+                block_height,
+                responder,
+                ..
+            }) => {
+                let maybe_header = if block_height == u64::MAX {
+                    None
+                } else {
+                    let protocol_version = if block_height == 2 {
+                        ProtocolVersion::from_parts(999, 0, 0)
+                    } else {
+                        self.protocol_version
+                    };
+                    Some(block_header(rng, block_height, protocol_version))
+                };
+                responder.respond(maybe_header).ignore()
             }
             Event::StorageRequest(req) => panic!("unexpected storage req {}", req),
         }
@@ -448,9 +511,39 @@ fn trie_request() -> Command {
 fn try_speculative_exec_request(rng: &mut TestRng) -> Command {
     Command::TrySpeculativeExec {
         transaction: Transaction::V1(TransactionV1::random(rng)),
+        block_identifier: None,
     }
 }
 
 fn got_contract_runtime_request(event: &Event) -> bool {
     matches!(event, Event::ContractRuntimeRequest(_))
+}
+
+fn got_requested_contract_runtime_request(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::ContractRuntimeRequest(ContractRuntimeRequest::SpeculativelyExecute {
+            block_header,
+            ..
+        }) if block_header.height() == 1
+    )
+}
+
+fn block_header(rng: &mut TestRng, height: u64, protocol_version: ProtocolVersion) -> BlockHeader {
+    BlockHeader::V2(casper_types::BlockHeaderV2::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Timestamp::now(),
+        Default::default(),
+        height,
+        protocol_version,
+        PublicKey::random(rng),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+    ))
 }
