@@ -225,8 +225,7 @@ setup-cargo-packagers:
 setup-rs:
 	$(RUSTUP) update
 	$(RUSTUP) toolchain install $(PINNED_STABLE) nightly
-	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32v1-none
-	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32v1-none
+	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32v1-none wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) rustfmt clippy-preview
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) clippy-preview
 	$(RUSTUP) component add rust-src --toolchain $(PINNED_STABLE)

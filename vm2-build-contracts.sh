@@ -21,7 +21,7 @@ for contract in "${VM2_LIBS[@]}"
 do
   pushd smart_contracts/contracts/vm2/$contract/
   pwd
-  cargo build --target wasm32v1-none -p $contract --release
+  cargo build --target wasm32-unknown-unknown -p $contract --release
   popd
 done
 
@@ -29,7 +29,7 @@ for contract in "${VM2_BINS[@]}"
 do
   pushd smart_contracts/contracts/vm2/$contract/
   pwd
-  cargo build --target wasm32v1-none -p $contract --release
+  cargo build --target wasm32-unknown-unknown -p $contract --release
   popd
 done
 
