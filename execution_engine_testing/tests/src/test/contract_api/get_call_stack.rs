@@ -309,10 +309,6 @@ impl BuilderExt for LmdbWasmTestBuilder {
 }
 
 fn setup() -> LmdbWasmTestBuilder {
-    // let mut builder = LmdbWasmTestBuilder::default();
-    // builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-    //
-
     let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture("call_stack_fixture");
     builder.with_block_time_ae_flag(false);
     builder.with_block_time(Timestamp::now().into());

@@ -1301,11 +1301,8 @@ where
         }
 
         if self.engine_config.enable_entity {
-            println!("in ae flow");
             // Take an addressable entity out of the global state
             let mut entity: AddressableEntity = self.read_gs_typed(&context_key)?;
-
-            println!("before {:?}", entity.action_thresholds());
 
             // Exit early in case of error without updating global state
             if self.is_authorized_by_admin() {
@@ -1314,8 +1311,6 @@ where
                 entity.set_action_threshold(action_type, threshold)
             }
             .map_err(ExecError::from)?;
-
-            println!("after {:?}", entity.action_thresholds());
 
             let entity_value = self.addressable_entity_to_validated_value(entity)?;
 

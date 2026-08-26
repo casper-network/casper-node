@@ -11,14 +11,6 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_types::{
-    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, BlockHeader,
-    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction,
-    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey,
-    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionConfig,
-    TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
-};
-
 use super::*;
 use crate::{
     components::{
@@ -40,10 +32,11 @@ use crate::{
     NodeRng,
 };
 use casper_types::{
-    addressable_entity::NamedKeyAddr, bytesrepr::Bytes, contracts::ProtocolVersionMajor,
-    runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId,
-    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
-    Timestamp, Transaction, TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
+    addressable_entity::NamedKeyAddr, bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm,
+    runtime_args, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, Digest,
+    EntityVersion, EraId, EvmTransaction, ExecutableDeployItem, PackageHash, PricingMode,
+    PublicKey, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
 };
 
 const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
@@ -1346,7 +1339,6 @@ mod test_mod {
         let res = contract_runtime
             .data_access_layer()
             .entry_point_exists(request);
-        println!("{:?}", res);
         assert!(matches!(res, EntryPointExistsResult::ValueNotFound { .. }));
     }
 
