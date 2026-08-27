@@ -4,12 +4,6 @@ use crate::{
     testing::LARGE_WASM_LANE_ID,
     types::{transaction::calculate_transaction_lane_for_transaction, MetaTransaction},
 };
-use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
-use alloy_eips::Encodable2718;
-use alloy_primitives::{
-    Address as AlloyAddress, Bytes as AlloyBytes, Signature as AlloySignature, TxKind, U256,
-};
-use casper_executor_evm::EMPTY_CODE_HASH;
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BalanceIdentifier, BalanceIdentifierPurseRequest,
@@ -25,9 +19,7 @@ use casper_types::{
     AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, ExecutableDeployItem,
     ExecutionInfo, InitiatorAddr, TransactionRuntimeParams, URef, URefAddr, DEFAULT_TRANSFER_COST,
 };
-use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use once_cell::sync::Lazy;
-use revm::bytecode::opcode;
 use std::collections::BTreeMap;
 
 use crate::reactor::main_reactor::tests::{
@@ -35,9 +27,7 @@ use crate::reactor::main_reactor::tests::{
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    evm,
     execution::ExecutionResultV1,
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, DEFAULT_WEI_PER_MOTE,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -340,50 +330,6 @@ async fn transfer_to_account<A: Into<U512>>(
         .await;
 
     info!("transfer_to_account finished run_until_executed_transaction");
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let exec_info = runner
-        .main_reactor()
-        .storage()
-        .read_execution_info(txn_hash)
-        .expect("Expected transaction to be included in a block.");
-
-    (
-        txn_hash,
-        exec_info.block_height,
-        exec_info
-            .execution_result
-            .expect("Exec result should have been stored."),
-    )
-}
-
-async fn transfer_to_evm_address<A: Into<U512>>(
-    fixture: &mut TestFixture,
-    amount: A,
-    from: &SecretKey,
-    to: evm::Address,
-    pricing: PricingMode,
-    transfer_id: Option<u64>,
-) -> (TransactionHash, u64, ExecutionResult) {
-    let chain_name = fixture.chainspec.network_config.name.clone();
-
-    let mut txn = Transaction::from(
-        TransactionV1Builder::new_transfer(amount, None, to, transfer_id)
-            .unwrap()
-            .with_initiator_addr(PublicKey::from(from))
-            .with_pricing_mode(pricing)
-            .with_chain_name(chain_name)
-            .build()
-            .unwrap(),
-    );
-
-    txn.sign(from);
-    let txn_hash = txn.hash();
-
-    fixture.inject_transaction(txn).await;
-    fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
-        .await;
-
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     let exec_info = runner
         .main_reactor()
@@ -823,1351 +769,444 @@ pub fn exec_result_is_success(exec_result: &ExecutionResult) -> bool {
     }
 }
 
-const EVM_TEST_GAS_LIMIT: u64 = 500_000;
-const EVM_TEST_GAS_PRICE: u128 = DEFAULT_WEI_PER_MOTE as u128;
-const EVM_INITIAL_BALANCE: u64 = 10_000_000_000_000;
-const EVM_LOG_TOPIC: evm::Topic = evm::Topic::new([0xAB; evm::HASH_LENGTH]);
+mod base_txn_tests {
+    use super::*;
+    #[tokio::test]
+    async fn should_accept_transfer_without_id() {
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
-fn evm_log_emitting_init_code() -> Vec<u8> {
-    const MEMORY_OFFSET: u8 = 0;
-    const RUNTIME_LEN: u8 = 1;
-    const COPY_AND_RETURN_RUNTIME_LEN: usize = 12;
+        let config = ConfigsOverride::default().with_pricing_handling(PricingHandling::Fixed);
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+        let transfer_amount = fixture
+            .chainspec
+            .transaction_config
+            .native_transfer_minimum_motes
+            + 100;
 
-    let mut init_code = Vec::new();
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
 
-    // Solidity equivalent:
-    //
-    // event Log(bytes32 indexed topic);
-    // emit Log(EVM_LOG_TOPIC);
-    init_code.push(opcode::PUSH32);
-    init_code.extend_from_slice(EVM_LOG_TOPIC.as_bytes());
-    init_code.extend_from_slice(&[
-        opcode::PUSH1,
-        0, // log data size
-        opcode::PUSH1,
-        MEMORY_OFFSET, // log data offset
-        opcode::LOG1,
-    ]);
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-    let runtime_offset = u8::try_from(init_code.len() + COPY_AND_RETURN_RUNTIME_LEN)
-        .expect("runtime offset should fit in a PUSH1 immediate");
-
-    // Solidity equivalent:
-    //
-    // bytes memory runtime = hex"00";
-    // assembly { return(add(runtime, 32), 1) }
-    init_code.extend_from_slice(&[
-        // codecopy(memoryOffset: 0, codeOffset: runtime_offset, size: 1)
-        opcode::PUSH1,
-        RUNTIME_LEN,
-        opcode::PUSH1,
-        runtime_offset,
-        opcode::PUSH1,
-        MEMORY_OFFSET,
-        opcode::CODECOPY,
-        // return(memoryOffset: 0, size: 1)
-        opcode::PUSH1,
-        RUNTIME_LEN,
-        opcode::PUSH1,
-        MEMORY_OFFSET,
-        opcode::RETURN,
-    ]);
-
-    // Deployed runtime equivalent:
-    //
-    // fallback() external { }
-    init_code.extend_from_slice(&[
-        // stop()
-        opcode::STOP,
-    ]);
-    init_code
-}
-
-fn evm_init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
-    let runtime_len = u8::try_from(runtime.len()).expect("runtime should fit in PUSH1");
-    let runtime_offset = 12u8;
-    let mut init_code = vec![
-        opcode::PUSH1,
-        runtime_len,
-        opcode::PUSH1,
-        runtime_offset,
-        opcode::PUSH1,
-        0,
-        opcode::CODECOPY,
-        opcode::PUSH1,
-        runtime_len,
-        opcode::PUSH1,
-        0,
-        opcode::RETURN,
-    ];
-    init_code.extend(runtime);
-    init_code
-}
-
-fn evm_coinbase_transfer_init_code() -> Vec<u8> {
-    let revert_offset = 19u8;
-    evm_init_code_returning(vec![
-        opcode::PUSH1,
-        0,
-        opcode::PUSH1,
-        0,
-        opcode::PUSH1,
-        0,
-        opcode::PUSH1,
-        0,
-        opcode::CALLVALUE,
-        opcode::COINBASE,
-        opcode::PUSH2,
-        0x08,
-        0xfc,
-        opcode::CALL,
-        opcode::ISZERO,
-        opcode::PUSH1,
-        revert_offset,
-        opcode::JUMPI,
-        opcode::STOP,
-        opcode::JUMPDEST,
-        opcode::PUSH1,
-        0,
-        opcode::PUSH1,
-        0,
-        opcode::REVERT,
-    ])
-}
-
-fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
-    signed_evm_create_transaction(chain_id, 0, evm_log_emitting_init_code())
-}
-
-fn signed_evm_create_transaction(chain_id: u64, nonce: u64, init_code: Vec<u8>) -> EvmTransaction {
-    let transaction = TxLegacy {
-        chain_id: Some(chain_id),
-        nonce,
-        gas_price: EVM_TEST_GAS_PRICE,
-        gas_limit: EVM_TEST_GAS_LIMIT,
-        to: TxKind::Create,
-        value: U256::ZERO,
-        input: AlloyBytes::from(init_code),
-    };
-    signed_evm_legacy_transaction(transaction)
-}
-
-fn signed_evm_call_transaction(
-    chain_id: u64,
-    nonce: u64,
-    recipient: evm::Address,
-    value: u64,
-    input: Vec<u8>,
-) -> EvmTransaction {
-    let transaction = TxLegacy {
-        chain_id: Some(chain_id),
-        nonce,
-        gas_price: EVM_TEST_GAS_PRICE,
-        gas_limit: EVM_TEST_GAS_LIMIT,
-        to: TxKind::Call(AlloyAddress::from(recipient.value())),
-        value: U256::from(value),
-        input: AlloyBytes::from(input),
-    };
-    signed_evm_legacy_transaction(transaction)
-}
-
-fn signed_evm_value_transfer_transaction(
-    chain_id: u64,
-    recipient: evm::Address,
-    gas_limit: u64,
-    value: u64,
-) -> EvmTransaction {
-    let transaction = TxLegacy {
-        chain_id: Some(chain_id),
-        nonce: 0,
-        gas_price: EVM_TEST_GAS_PRICE,
-        gas_limit,
-        to: TxKind::Call(AlloyAddress::from(recipient.value())),
-        value: U256::from(value),
-        input: AlloyBytes::new(),
-    };
-    signed_evm_legacy_transaction(transaction)
-}
-
-fn signed_evm_legacy_transaction(transaction: TxLegacy) -> EvmTransaction {
-    let signing_key =
-        SigningKey::from_slice(&[0x11; 32]).expect("test EVM private key should be valid");
-    let (signature, recovery_id) = signing_key
-        .sign_prehash(transaction.signature_hash().as_ref())
-        .expect("test EVM transaction signing should succeed");
-    let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
-    let envelope = TxEnvelope::from(signed);
-    EvmTransaction::from_signed_rlp(
-        envelope.encoded_2718(),
-        Timestamp::now(),
-        TimeDiff::from_seconds(60),
-    )
-    .expect("test EVM transaction should decode")
-}
-
-fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U512) {
-    let main_purse = evm::deterministic_purse(address);
-    let values_to_write = vec![
-        (
-            Key::Evm(EvmAddr::Account(address)),
-            StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
-        ),
-        (
-            Key::Evm(EvmAddr::Nonce(address)),
-            StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
-        ),
-        (
-            Key::Evm(EvmAddr::CodeHash(address)),
-            StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
-        ),
-        (
-            Key::Balance(main_purse.addr()),
-            StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
-        ),
-    ];
-    for runner in fixture.network.runners_mut() {
-        let execution_pre_state = runner
-            .main_reactor()
-            .contract_runtime()
-            .execution_pre_state();
-        let state_root_hash = runner
-            .main_reactor()
-            .contract_runtime()
-            .data_access_layer()
-            .commit_values(
-                execution_pre_state.pre_state_root_hash(),
-                values_to_write.clone(),
-                Default::default(),
-            )
-            .expect("EVM seed account should commit");
-        runner
-            .main_reactor_as_mut()
-            .contract_runtime
-            .set_execution_pre_state(ExecutionPreState::new(
-                execution_pre_state.next_block_height(),
-                state_root_hash,
-                execution_pre_state.parent_hash(),
-                execution_pre_state.parent_seed(),
-            ));
-    }
-}
-
-struct EvmAccountView {
-    nonce: u64,
-    main_purse: URef,
-}
-
-impl EvmAccountView {
-    fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    fn main_purse(&self) -> URef {
-        self.main_purse
-    }
-}
-
-fn evm_identity_at(fixture: &mut TestFixture, block_height: u64, address: evm::Address) -> Key {
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    let state_root_hash = *block_header.state_root_hash();
-    match query_global_state(
-        fixture,
-        state_root_hash,
-        Key::Evm(EvmAddr::Account(address)),
-    ) {
-        Some(value) => match *value {
-            StoredValue::CLValue(cl_value) => cl_value
-                .into_t::<Key>()
-                .expect("EVM identity should decode to a key"),
-            value => panic!("expected EVM identity, got {value:?}"),
-        },
-        value => panic!("expected EVM identity, got {value:?}"),
-    }
-}
-
-fn evm_code_hash_at(
-    fixture: &mut TestFixture,
-    block_height: u64,
-    address: evm::Address,
-) -> evm::Hash {
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    let state_root_hash = *block_header.state_root_hash();
-    match query_global_state(
-        fixture,
-        state_root_hash,
-        Key::Evm(EvmAddr::CodeHash(address)),
-    ) {
-        Some(value) => match *value {
-            StoredValue::CLValue(cl_value) => cl_value
-                .into_t::<evm::Hash>()
-                .expect("EVM code hash should decode"),
-            value => panic!("expected EVM code hash, got {value:?}"),
-        },
-        None => EMPTY_CODE_HASH,
-    }
-}
-
-fn evm_balance(fixture: &mut TestFixture, address: evm::Address, block_height: u64) -> U512 {
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let protocol_version = fixture.chainspec.protocol_version();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    let state_root_hash = *block_header.state_root_hash();
-    let main_purse = evm_account_at(fixture, block_height, address).main_purse();
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let result = runner
-        .main_reactor()
-        .contract_runtime()
-        .data_access_layer()
-        .balance(BalanceRequest::from_purse(
-            state_root_hash,
-            protocol_version,
-            main_purse,
-            BalanceHandling::Total,
-            ProofHandling::NoProofs,
-        ));
-    *result
-        .total_balance()
-        .expect("EVM account should have a balance")
-}
-
-fn evm_account_at(
-    fixture: &mut TestFixture,
-    block_height: u64,
-    address: evm::Address,
-) -> EvmAccountView {
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    let state_root_hash = *block_header.state_root_hash();
-    let identity = evm_identity_at(fixture, block_height, address);
-    let main_purse = match identity {
-        Key::URef(uref) => uref,
-        Key::Account(account_hash) => {
-            match query_global_state(fixture, state_root_hash, Key::Account(account_hash)) {
-                Some(value) => match *value {
-                    StoredValue::Account(account) => account.main_purse(),
-                    value => panic!("expected linked account, got {value:?}"),
-                },
-                value => panic!("expected linked account, got {value:?}"),
-            }
-        }
-        value => panic!("unexpected EVM identity key: {value:?}"),
-    };
-    let nonce =
-        match query_global_state(fixture, state_root_hash, Key::Evm(EvmAddr::Nonce(address))) {
-            Some(value) => match *value {
-                StoredValue::CLValue(cl_value) => {
-                    cl_value.into_t::<u64>().expect("nonce should decode")
-                }
-                value => panic!("expected EVM nonce, got {value:?}"),
+        let (_, _, result) = transfer_to_account(
+            &mut fixture,
+            transfer_amount,
+            &alice_secret_key,
+            PublicKey::from(&*charlie_secret_key),
+            PricingMode::Fixed {
+                gas_price_tolerance: 1,
+                additional_computation_factor: 0,
             },
-            None => 0,
-        };
-    EvmAccountView { nonce, main_purse }
-}
-
-fn alloy_address_to_evm_address(address: AlloyAddress) -> evm::Address {
-    let mut bytes = [0; evm::ADDRESS_LENGTH];
-    bytes.copy_from_slice(address.as_slice());
-    evm::Address::new(bytes)
-}
-
-#[tokio::test]
-async fn should_execute_evm_transaction_and_store_receipt() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::Burn);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            None,
+        )
         .await;
 
-    let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
-    let sender = evm_transaction.from();
-    let expected_sender = alloy_address_to_evm_address(AlloyAddress::from_private_key(
-        &SigningKey::from_slice(&[0x11; 32]).unwrap(),
-    ));
-    assert_eq!(sender, expected_sender);
-    assert_eq!(
-        Transaction::from(evm_transaction.clone()).initiator_addr(),
-        InitiatorAddr::Eoa(sender)
-    );
+        assert!(exec_result_is_success(&result))
+    }
 
-    let highest_block = test.fixture.highest_complete_block();
-    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
-    let initial_balance = U512::from(EVM_INITIAL_BALANCE);
+    #[tokio::test]
+    async fn should_native_transfer_nofee_norefund_fixed() {
+        const TRANSFER_AMOUNT: u64 = 30_000_000_000;
 
-    let (_txn_hash, block_height, execution_result) = test
-        .send_transaction(Transaction::from(evm_transaction.clone()))
-        .await;
-    let ExecutionResult::Evm(execution_result) = execution_result else {
-        panic!("expected EVM execution result");
-    };
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
-    assert_eq!(execution_result.initiator, sender);
-    assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
-    assert_eq!(
-        execution_result.receipt.effective_gas_price,
-        evm_transaction.effective_gas_price(evm_config.base_fee_wei())
-    );
-    assert!(execution_result.receipt.gas_used > 0);
-    // TODO: discuss w/ Michal
-    // let max_fee_amount = evm_transaction
-    //     .max_fee_amount(&evm_config)
-    //     .expect("max EVM fee should fit");
-    // assert_eq!(execution_result.cost, max_fee_amount);
-    assert_eq!(execution_result.refund, U512::zero());
-    assert!(execution_result.receipt.contract_address.is_some());
-    assert_eq!(execution_result.receipt.logs.len(), 1);
-    assert_eq!(execution_result.receipt.logs[0].topics, vec![EVM_LOG_TOPIC]);
-    assert!(execution_result.receipt.logs[0].data.is_empty());
+        let config = ConfigsOverride::default()
+            .with_pricing_handling(PricingHandling::Fixed)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee)
+            .with_balance_hold_interval(TimeDiff::from_seconds(5));
 
-    let final_balance = evm_balance(&mut test.fixture, sender, block_height);
-    assert_eq!(final_balance, initial_balance - execution_result.cost);
-    let account = evm_account_at(&mut test.fixture, block_height, sender);
-    assert_eq!(account.nonce(), 1);
-    let signer_account_hash = evm_transaction
-        .signer()
-        .expect("EVM transaction should have a signer")
-        .to_account_hash();
-    assert_eq!(
-        evm_identity_at(&mut test.fixture, block_height, sender),
-        Key::Account(signer_account_hash)
-    );
-    assert_eq!(account.main_purse(), evm::deterministic_purse(sender));
-    assert!(
-        block_height > highest_block.height(),
-        "EVM transaction should be included in a later block"
-    );
-}
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
 
-#[tokio::test]
-async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::Burn);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let alice_public_key = PublicKey::from(&*alice_secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    let deploy =
-        signed_evm_create_transaction(evm_config.chain_id, 0, evm_coinbase_transfer_init_code());
-    let sender = deploy.from();
-    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-    let (_txn_hash, deploy_block_height, deploy_result) =
-        test.send_transaction(Transaction::from(deploy)).await;
-    let ExecutionResult::Evm(deploy_result) = deploy_result else {
-        panic!("expected EVM deploy execution result");
-    };
-    assert_eq!(deploy_result.receipt.status, evm::ReceiptStatus::Success);
-    let contract = deploy_result
-        .receipt
-        .contract_address
-        .expect("EVM deployment should create contract");
-
-    let deploy_block = test.fixture.get_block_by_height(deploy_block_height);
-    let deploy_proposer = deploy_block.proposer().clone();
-    assert!(
-        evm::Address::from_public_key(&deploy_proposer).is_none(),
-        "test expects an ed25519 proposer"
-    );
-    let deploy_proposer_account_hash = deploy_proposer.to_account_hash();
-    let deploy_beneficiary = evm::Address::from_block_proposer_public_key(&deploy_proposer);
-    assert_eq!(
-        evm_identity_at(&mut test.fixture, deploy_block_height, deploy_beneficiary),
-        Key::Account(deploy_proposer_account_hash)
-    );
-
-    let transfer_value = 250u64;
-    let call =
-        signed_evm_call_transaction(evm_config.chain_id, 1, contract, transfer_value, Vec::new());
-    let (_txn_hash, call_block_height, call_result) =
-        test.send_transaction(Transaction::from(call)).await;
-    let ExecutionResult::Evm(call_result) = call_result else {
-        panic!("expected EVM call execution result");
-    };
-    assert_eq!(call_result.receipt.status, evm::ReceiptStatus::Success);
-
-    let payout_block = test.fixture.get_block_by_height(call_block_height);
-    let proposer = payout_block.proposer().clone();
-    assert!(
-        evm::Address::from_public_key(&proposer).is_none(),
-        "test expects an ed25519 proposer"
-    );
-    let proposer_account_hash = proposer.to_account_hash();
-    let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
-    let mut expected_beneficiary = [0u8; evm::ADDRESS_LENGTH];
-    expected_beneficiary.copy_from_slice(&proposer_account_hash.as_bytes()[12..]);
-    assert_eq!(beneficiary, evm::Address::new(expected_beneficiary));
-
-    assert_eq!(
-        evm_identity_at(&mut test.fixture, call_block_height, beneficiary),
-        Key::Account(proposer_account_hash)
-    );
-    let proposer_before = get_balance(&test.fixture, &proposer, Some(deploy_block_height), true)
-        .total_balance()
-        .copied()
-        .expect("proposer should have balance before EVM payout");
-    let proposer_after = get_balance(&test.fixture, &proposer, Some(call_block_height), true)
-        .total_balance()
-        .copied()
-        .expect("proposer should have balance after EVM payout");
-    assert_eq!(proposer_after, proposer_before + U512::from(transfer_value));
-}
-
-#[tokio::test]
-async fn should_apply_casper_refund_handling_to_evm_transaction() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_refund_handling(RefundHandling::Refund {
-            refund_ratio: Ratio::new(1, 1),
-        })
-        .with_fee_handling(FeeHandling::Burn);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
-
-    let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
-    let sender = evm_transaction.from();
-    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
-
-    let (_txn_hash, _block_height, execution_result) = test
-        .send_transaction(Transaction::from(evm_transaction.clone()))
-        .await;
-    let ExecutionResult::Evm(execution_result) = execution_result else {
-        panic!("expected EVM execution result");
-    };
-
-    // let max_fee_amount = evm_transaction
-    //     .max_fee_amount(&evm_config)
-    //     .expect("max EVM fee should fit");
-    // let consumed_fee_amount = evm_transaction
-    //     .fee_amount(execution_result.receipt.gas_used, &evm_config)
-    //     .expect("consumed EVM fee should fit");
-
-    assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
-    // assert_eq!(execution_result.cost, max_fee_amount);
-    // assert_eq!(
-    //     execution_result.refund,
-    //     max_fee_amount - consumed_fee_amount
-    // );
-
-    // let final_balance = evm_balance(&mut test.fixture, sender, block_height);
-    // assert_eq!(final_balance, initial_balance - consumed_fee_amount);
-}
-
-#[tokio::test]
-async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::Burn);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
-
-    let gas_limit = 21_000;
-    let value = EVM_INITIAL_BALANCE - gas_limit + 1;
-    let recipient = evm::Address::new([0x22; evm::ADDRESS_LENGTH]);
-    let evm_transaction =
-        signed_evm_value_transfer_transaction(evm_config.chain_id, recipient, gas_limit, value);
-    let sender = evm_transaction.from();
-    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
-
-    let (_txn_hash, block_height, execution_result) = test
-        .send_transaction(Transaction::from(evm_transaction))
-        .await;
-    let ExecutionResult::Evm(execution_result) = execution_result else {
-        panic!("expected EVM execution result");
-    };
-
-    assert_eq!(
-        execution_result.receipt.status,
-        evm::ReceiptStatus::Halt(evm::HaltReason::Unknown)
-    );
-    assert_eq!(execution_result.receipt.gas_used, 0);
-    assert_eq!(execution_result.cost, U512::zero());
-    assert_eq!(execution_result.refund, U512::zero());
-    assert!(execution_result.effects.is_empty());
-
-    let final_balance = evm_balance(&mut test.fixture, sender, block_height);
-    assert_eq!(final_balance, U512::from(EVM_INITIAL_BALANCE));
-
-    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    assert!(query_global_state(
-        &mut test.fixture,
-        *block_header.state_root_hash(),
-        Key::Evm(EvmAddr::Account(recipient))
-    )
-    .is_none());
-}
-
-#[tokio::test]
-async fn should_not_seed_evm_accounts_at_genesis() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config().with_evm_config(evm_config);
-    let alice_secret_key = Arc::new(
-        SecretKey::secp256k1_from_bytes([0x11; SecretKey::SECP256K1_LENGTH])
-            .expect("secp256k1 key should be valid"),
-    );
-    let bob_secret_key = Arc::new(
-        SecretKey::secp256k1_from_bytes([0x22; SecretKey::SECP256K1_LENGTH])
-            .expect("secp256k1 key should be valid"),
-    );
-    let charlie_secret_key = Arc::new(
-        SecretKey::secp256k1_from_bytes([0x33; SecretKey::SECP256K1_LENGTH])
-            .expect("secp256k1 key should be valid"),
-    );
-    let alice_evm_address = evm::Address::from_public_key(&PublicKey::from(&*alice_secret_key))
-        .expect("secp256k1 public key should have an EVM address");
-    let mut test = SingleTransactionTestCase::new(
-        alice_secret_key,
-        bob_secret_key,
-        charlie_secret_key,
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
-
-    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(0, true)
-        .expect("failure to read block header")
-        .expect("should have header");
-    assert!(query_global_state(
-        &mut test.fixture,
-        *block_header.state_root_hash(),
-        Key::Evm(EvmAddr::Account(alice_evm_address)),
-    )
-    .is_none());
-}
-
-#[tokio::test]
-async fn should_transfer_to_evm_address_with_native_transfer() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_pricing_handling(PricingHandling::Fixed)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
-
-    let recipient = evm::Address::new([0x44; evm::ADDRESS_LENGTH]);
-    let transfer_amount = test
-        .fixture
-        .chainspec
-        .transaction_config
-        .native_transfer_minimum_motes
-        + 100;
-    let alice_secret_key = Arc::clone(&test.fixture.node_contexts[0].secret_key);
-    let (_txn_hash, block_height, execution_result) = transfer_to_evm_address(
-        &mut test.fixture,
-        transfer_amount,
-        &alice_secret_key,
-        recipient,
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        Some(0xE0),
-    )
-    .await;
-
-    assert!(
-        exec_result_is_success(&execution_result),
-        "{execution_result:?}"
-    );
-    let account = evm_account_at(&mut test.fixture, block_height, recipient);
-    let expected_purse = evm::deterministic_purse(recipient);
-    assert_eq!(account.main_purse(), expected_purse);
-    assert_eq!(
-        evm_identity_at(&mut test.fixture, block_height, recipient),
-        Key::URef(expected_purse)
-    );
-    assert_eq!(
-        evm_balance(&mut test.fixture, recipient, block_height),
-        U512::from(transfer_amount)
-    );
-
-    let transfers = execution_result.transfers();
-    assert_eq!(transfers.len(), 1, "{transfers:?}");
-    let casper_types::Transfer::V2(transfer) = &transfers[0] else {
-        panic!("expected V2 transfer");
-    };
-    assert_eq!(transfer.to, None);
-    assert_eq!(transfer.target.addr(), expected_purse.addr());
-    assert_eq!(transfer.amount, U512::from(transfer_amount));
-}
-
-#[tokio::test]
-async fn should_reject_native_transfer_to_evm_contract_address() {
-    let evm_config = EvmConfig {
-        enabled: true,
-        chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
-        block_gas_limit: 30_000_000,
-        base_fee: 0,
-        wei_per_mote: DEFAULT_WEI_PER_MOTE,
-    };
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
-        .with_pricing_handling(PricingHandling::Fixed)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::Burn);
-    let mut test = SingleTransactionTestCase::new(
-        Arc::clone(&ALICE_SECRET_KEY),
-        Arc::clone(&BOB_SECRET_KEY),
-        Arc::clone(&CHARLIE_SECRET_KEY),
-        Some(config),
-    )
-    .await;
-    test.fixture
-        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
-        .await;
-
-    let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
-    let evm_sender = evm_transaction.from();
-    seed_evm_account(
-        &mut test.fixture,
-        evm_sender,
-        U512::from(EVM_INITIAL_BALANCE),
-    );
-
-    let (_txn_hash, deploy_block_height, deploy_execution_result) = test
-        .send_transaction(Transaction::from(evm_transaction))
-        .await;
-    let ExecutionResult::Evm(deploy_execution_result) = deploy_execution_result else {
-        panic!("expected EVM execution result");
-    };
-    assert_eq!(
-        deploy_execution_result.receipt.status,
-        evm::ReceiptStatus::Success
-    );
-
-    let contract_address = deploy_execution_result
-        .receipt
-        .contract_address
-        .expect("EVM deployment should create a contract");
-    assert_ne!(
-        evm_code_hash_at(&mut test.fixture, deploy_block_height, contract_address),
-        EMPTY_CODE_HASH
-    );
-
-    let contract_balance_before =
-        evm_balance(&mut test.fixture, contract_address, deploy_block_height);
-    assert_eq!(contract_balance_before, U512::zero());
-
-    let transfer_amount = test
-        .fixture
-        .chainspec
-        .transaction_config
-        .native_transfer_minimum_motes
-        + 100;
-    let alice_secret_key = Arc::clone(&test.fixture.node_contexts[0].secret_key);
-    let (_txn_hash, transfer_block_height, transfer_execution_result) = transfer_to_evm_address(
-        &mut test.fixture,
-        transfer_amount,
-        &alice_secret_key,
-        contract_address,
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        Some(0xE1),
-    )
-    .await;
-
-    assert!(
-        !exec_result_is_success(&transfer_execution_result),
-        "native transfer to EVM contract address should fail: {transfer_execution_result:?}"
-    );
-    assert_eq!(
-        evm_balance(&mut test.fixture, contract_address, transfer_block_height),
-        contract_balance_before
-    );
-}
-
-#[tokio::test]
-async fn should_accept_transfer_without_id() {
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
-
-    let config = ConfigsOverride::default().with_pricing_handling(PricingHandling::Fixed);
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
-    let transfer_amount = fixture
-        .chainspec
-        .transaction_config
-        .native_transfer_minimum_motes
-        + 100;
-
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
-
-    let (_, _, result) = transfer_to_account(
-        &mut fixture,
-        transfer_amount,
-        &alice_secret_key,
-        PublicKey::from(&*charlie_secret_key),
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        None,
-    )
-    .await;
-
-    assert!(exec_result_is_success(&result))
-}
-
-#[tokio::test]
-async fn should_native_transfer_nofee_norefund_fixed() {
-    const TRANSFER_AMOUNT: u64 = 30_000_000_000;
-
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
-
-    let config = ConfigsOverride::default()
-        .with_pricing_handling(PricingHandling::Fixed)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee)
-        .with_balance_hold_interval(TimeDiff::from_seconds(5));
-
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
-
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
-
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
-
-    let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
-        .available_balance()
-        .expect("Expected Alice to have a balance.");
-
-    let (_txn_hash, block_height, exec_result) = transfer_to_account(
-        &mut fixture,
-        TRANSFER_AMOUNT,
-        &alice_secret_key,
-        PublicKey::from(&*charlie_secret_key),
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        Some(0xDEADBEEF),
-    )
-    .await;
-
-    let expected_transfer_gas = fixture
-        .chainspec
-        .system_costs_config
-        .mint_costs()
-        .transfer
-        .into();
-    let expected_transfer_cost = expected_transfer_gas; // since we set gas_price_tolerance to 1.
-
-    assert_exec_result_cost(
-        exec_result,
-        expected_transfer_cost,
-        Gas::new(expected_transfer_gas),
-        "transfer_cost_fixed_price_no_fee_no_refund",
-    );
-
-    let alice_available_balance =
-        get_balance(&fixture, &alice_public_key, Some(block_height), false);
-    let alice_total_balance = get_balance(&fixture, &alice_public_key, Some(block_height), true);
-
-    // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for the
-    // cost of the transfer. The total balance of Alice now should be the initial balance - the
-    // amount transferred to Charlie.
-    let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
-    // The available balance is the initial balance - the amount transferred to Charlie - the hold
-    // for the transfer cost.
-    let alice_expected_available_balance = alice_expected_total_balance - expected_transfer_cost;
-
-    assert_eq!(
-        alice_total_balance
+        let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
             .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_total_balance
-    );
-    assert_eq!(
-        alice_available_balance
-            .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_available_balance
-    );
+            .expect("Expected Alice to have a balance.");
 
-    let charlie_balance = get_balance(&fixture, &charlie_public_key, Some(block_height), false);
-    assert_eq!(
-        charlie_balance
-            .available_balance()
-            .expect("Expected Charlie to have a balance")
-            .clone(),
-        TRANSFER_AMOUNT.into()
-    );
-
-    // Check if the hold is released.
-    let hold_release_block_height = block_height + 8; // Block time is 1s.
-    fixture
-        .run_until_block_height(hold_release_block_height, ONE_MIN)
+        let (_txn_hash, block_height, exec_result) = transfer_to_account(
+            &mut fixture,
+            TRANSFER_AMOUNT,
+            &alice_secret_key,
+            PublicKey::from(&*charlie_secret_key),
+            PricingMode::Fixed {
+                gas_price_tolerance: 1,
+                additional_computation_factor: 0,
+            },
+            Some(0xDEADBEEF),
+        )
         .await;
 
-    let alice_available_balance = get_balance(
-        &fixture,
-        &alice_public_key,
-        Some(hold_release_block_height),
-        false,
-    );
-    let alice_total_balance = get_balance(
-        &fixture,
-        &alice_public_key,
-        Some(hold_release_block_height),
-        true,
-    );
+        let expected_transfer_gas = fixture
+            .chainspec
+            .system_costs_config
+            .mint_costs()
+            .transfer
+            .into();
+        let expected_transfer_cost = expected_transfer_gas; // since we set gas_price_tolerance to 1.
 
-    assert_eq!(
-        alice_available_balance.available_balance(),
-        alice_total_balance.available_balance()
-    );
-}
+        assert_exec_result_cost(
+            exec_result,
+            expected_transfer_cost,
+            Gas::new(expected_transfer_gas),
+            "transfer_cost_fixed_price_no_fee_no_refund",
+        );
 
-#[tokio::test]
-async fn erroneous_native_transfer_nofee_norefund_fixed() {
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+        let alice_available_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), false);
+        let alice_total_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), true);
 
-    let config = ConfigsOverride::default()
-        .with_pricing_handling(PricingHandling::Fixed)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee)
-        .with_balance_hold_interval(TimeDiff::from_seconds(5));
+        // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for
+        // the cost of the transfer. The total balance of Alice now should be the initial
+        // balance - the amount transferred to Charlie.
+        let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
+        // The available balance is the initial balance - the amount transferred to Charlie - the
+        // hold for the transfer cost.
+        let alice_expected_available_balance =
+            alice_expected_total_balance - expected_transfer_cost;
 
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+        assert_eq!(
+            alice_total_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_total_balance
+        );
+        assert_eq!(
+            alice_available_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_available_balance
+        );
 
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+        let charlie_balance = get_balance(&fixture, &charlie_public_key, Some(block_height), false);
+        assert_eq!(
+            charlie_balance
+                .available_balance()
+                .expect("Expected Charlie to have a balance")
+                .clone(),
+            TRANSFER_AMOUNT.into()
+        );
 
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+        // Check if the hold is released.
+        let hold_release_block_height = block_height + 8; // Block time is 1s.
+        fixture
+            .run_until_block_height(hold_release_block_height, ONE_MIN)
+            .await;
 
-    let transfer_amount = fixture
-        .chainspec
-        .transaction_config
-        .native_transfer_minimum_motes
-        + 100;
+        let alice_available_balance = get_balance(
+            &fixture,
+            &alice_public_key,
+            Some(hold_release_block_height),
+            false,
+        );
+        let alice_total_balance = get_balance(
+            &fixture,
+            &alice_public_key,
+            Some(hold_release_block_height),
+            true,
+        );
 
-    // Transfer some token to Charlie.
-    let (_txn_hash, _block, exec_result) = transfer_to_account(
-        &mut fixture,
-        transfer_amount,
-        &alice_secret_key,
-        PublicKey::from(&*charlie_secret_key),
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        None,
-    )
-    .await;
-    assert!(exec_result_is_success(&exec_result));
+        assert_eq!(
+            alice_available_balance.available_balance(),
+            alice_total_balance.available_balance()
+        );
+    }
 
-    // Attempt to transfer more than Charlie has to Bob.
-    let bob_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-    let (_txn_hash, block_height, exec_result) = transfer_to_account(
-        &mut fixture,
-        transfer_amount + 100,
-        &charlie_secret_key,
-        PublicKey::from(&*bob_secret_key),
-        PricingMode::Fixed {
-            gas_price_tolerance: 1,
-            additional_computation_factor: 0,
-        },
-        None,
-    )
-    .await;
-    assert!(!exec_result_is_success(&exec_result)); // transaction should have failed.
+    #[tokio::test]
+    async fn erroneous_native_transfer_nofee_norefund_fixed() {
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
-    let expected_transfer_gas = fixture
-        .chainspec
-        .system_costs_config
-        .mint_costs()
-        .transfer
-        .into();
-    let expected_transfer_cost = expected_transfer_gas; // since we set gas_price_tolerance to 1.
+        let config = ConfigsOverride::default()
+            .with_pricing_handling(PricingHandling::Fixed)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee)
+            .with_balance_hold_interval(TimeDiff::from_seconds(5));
 
-    assert_exec_result_cost(
-        exec_result,
-        expected_transfer_cost,
-        Gas::new(expected_transfer_gas),
-        "failed_transfer_cost_fixed_price_no_fee_no_refund",
-    );
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
 
-    // Even though the transaction failed, a hold must still be in place for the transfer cost.
-    let charlie_available_balance =
-        get_balance(&fixture, &charlie_public_key, Some(block_height), false);
-    assert_eq!(
-        charlie_available_balance
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+        let transfer_amount = fixture
+            .chainspec
+            .transaction_config
+            .native_transfer_minimum_motes
+            + 100;
+
+        // Transfer some token to Charlie.
+        let (_txn_hash, _block, exec_result) = transfer_to_account(
+            &mut fixture,
+            transfer_amount,
+            &alice_secret_key,
+            PublicKey::from(&*charlie_secret_key),
+            PricingMode::Fixed {
+                gas_price_tolerance: 1,
+                additional_computation_factor: 0,
+            },
+            None,
+        )
+        .await;
+        assert!(exec_result_is_success(&exec_result));
+
+        // Attempt to transfer more than Charlie has to Bob.
+        let bob_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let (_txn_hash, block_height, exec_result) = transfer_to_account(
+            &mut fixture,
+            transfer_amount + 100,
+            &charlie_secret_key,
+            PublicKey::from(&*bob_secret_key),
+            PricingMode::Fixed {
+                gas_price_tolerance: 1,
+                additional_computation_factor: 0,
+            },
+            None,
+        )
+        .await;
+        assert!(!exec_result_is_success(&exec_result)); // transaction should have failed.
+
+        let expected_transfer_gas = fixture
+            .chainspec
+            .system_costs_config
+            .mint_costs()
+            .transfer
+            .into();
+        let expected_transfer_cost = expected_transfer_gas; // since we set gas_price_tolerance to 1.
+
+        assert_exec_result_cost(
+            exec_result,
+            expected_transfer_cost,
+            Gas::new(expected_transfer_gas),
+            "failed_transfer_cost_fixed_price_no_fee_no_refund",
+        );
+
+        // Even though the transaction failed, a hold must still be in place for the transfer cost.
+        let charlie_available_balance =
+            get_balance(&fixture, &charlie_public_key, Some(block_height), false);
+        assert_eq!(
+            charlie_available_balance
+                .available_balance()
+                .expect("Expected Charlie to have a balance")
+                .clone(),
+            U512::from(transfer_amount) - expected_transfer_cost
+        );
+    }
+
+    #[tokio::test]
+    async fn should_native_transfer_nofee_norefund_payment_limited() {
+        const TRANSFER_AMOUNT: u64 = 30_000_000_000;
+
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_pricing_handling(PricingHandling::PaymentLimited)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee);
+
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let alice_public_key = PublicKey::from(&*alice_secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+        let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
             .available_balance()
-            .expect("Expected Charlie to have a balance")
-            .clone(),
-        U512::from(transfer_amount) - expected_transfer_cost
-    );
-}
+            .expect("Expected Alice to have a balance.");
 
-#[tokio::test]
-async fn should_native_transfer_nofee_norefund_payment_limited() {
-    const TRANSFER_AMOUNT: u64 = 30_000_000_000;
+        const TRANSFER_PAYMENT: u64 = 100_000_000;
 
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
-
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_pricing_handling(PricingHandling::PaymentLimited)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee);
-
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
-
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
-
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
-
-    let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
-        .available_balance()
-        .expect("Expected Alice to have a balance.");
-
-    const TRANSFER_PAYMENT: u64 = 100_000_000;
-
-    // This transaction should be included since the tolerance is above the min gas price.
-    let (_txn_hash, block_height, exec_result) = transfer_to_account(
-        &mut fixture,
-        TRANSFER_AMOUNT,
-        &alice_secret_key,
-        PublicKey::from(&*charlie_secret_key),
-        PricingMode::PaymentLimited {
-            payment_amount: TRANSFER_PAYMENT,
-            gas_price_tolerance: MIN_GAS_PRICE + 1,
-            standard_payment: true,
-        },
-        None,
-    )
-    .await;
-
-    let expected_transfer_cost = TRANSFER_PAYMENT * MIN_GAS_PRICE as u64;
-
-    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
-    assert_exec_result_cost(
-        exec_result,
-        expected_transfer_cost.into(),
-        Gas::new(TRANSFER_PAYMENT),
-        "transfer_cost_payment_limited_price_no_fee_no_refund",
-    );
-
-    let alice_available_balance =
-        get_balance(&fixture, &alice_public_key, Some(block_height), false);
-    let alice_total_balance = get_balance(&fixture, &alice_public_key, Some(block_height), true);
-
-    // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for the
-    // cost of the transfer. The total balance of Alice now should be the initial balance - the
-    // amount transferred to Charlie.
-    let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
-    // The available balance is the initial balance - the amount transferred to Charlie - the hold
-    // for the transfer cost.
-    let alice_expected_available_balance = alice_expected_total_balance - expected_transfer_cost;
-
-    assert_eq!(
-        alice_total_balance
-            .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_total_balance
-    );
-    assert_eq!(
-        alice_available_balance
-            .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_available_balance
-    );
-
-    let charlie_balance = get_balance(&fixture, &charlie_public_key, Some(block_height), false);
-    assert_eq!(
-        charlie_balance
-            .available_balance()
-            .expect("Expected Charlie to have a balance")
-            .clone(),
-        TRANSFER_AMOUNT.into()
-    );
-
-    // Check if the hold is released.
-    let hold_release_block_height = block_height + 8; // Block time is 1s.
-    fixture
-        .run_until_block_height(hold_release_block_height, ONE_MIN)
+        // This transaction should be included since the tolerance is above the min gas price.
+        let (_txn_hash, block_height, exec_result) = transfer_to_account(
+            &mut fixture,
+            TRANSFER_AMOUNT,
+            &alice_secret_key,
+            PublicKey::from(&*charlie_secret_key),
+            PricingMode::PaymentLimited {
+                payment_amount: TRANSFER_PAYMENT,
+                gas_price_tolerance: MIN_GAS_PRICE + 1,
+                standard_payment: true,
+            },
+            None,
+        )
         .await;
 
-    let alice_available_balance = get_balance(
-        &fixture,
-        &alice_public_key,
-        Some(hold_release_block_height),
-        false,
-    );
-    let alice_total_balance = get_balance(
-        &fixture,
-        &alice_public_key,
-        Some(hold_release_block_height),
-        true,
-    );
+        let expected_transfer_cost = TRANSFER_PAYMENT * MIN_GAS_PRICE as u64;
 
-    assert_eq!(
-        alice_available_balance.available_balance(),
-        alice_total_balance.available_balance()
-    );
-}
+        assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transfer_cost.into(),
+            Gas::new(TRANSFER_PAYMENT),
+            "transfer_cost_payment_limited_price_no_fee_no_refund",
+        );
 
-#[tokio::test]
-async fn should_native_auction_with_nofee_norefund_payment_limited() {
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+        let alice_available_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), false);
+        let alice_total_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), true);
 
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_pricing_handling(PricingHandling::PaymentLimited)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee);
+        // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for
+        // the cost of the transfer. The total balance of Alice now should be the initial
+        // balance - the amount transferred to Charlie.
+        let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
+        // The available balance is the initial balance - the amount transferred to Charlie - the
+        // hold for the transfer cost.
+        let alice_expected_available_balance =
+            alice_expected_total_balance - expected_transfer_cost;
 
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+        assert_eq!(
+            alice_total_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_total_balance
+        );
+        assert_eq!(
+            alice_available_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_available_balance
+        );
 
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
+        let charlie_balance = get_balance(&fixture, &charlie_public_key, Some(block_height), false);
+        assert_eq!(
+            charlie_balance
+                .available_balance()
+                .expect("Expected Charlie to have a balance")
+                .clone(),
+            TRANSFER_AMOUNT.into()
+        );
 
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+        // Check if the hold is released.
+        let hold_release_block_height = block_height + 8; // Block time is 1s.
+        fixture
+            .run_until_block_height(hold_release_block_height, ONE_MIN)
+            .await;
 
-    let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
-        .available_balance()
-        .expect("Expected Alice to have a balance.");
+        let alice_available_balance = get_balance(
+            &fixture,
+            &alice_public_key,
+            Some(hold_release_block_height),
+            false,
+        );
+        let alice_total_balance = get_balance(
+            &fixture,
+            &alice_public_key,
+            Some(hold_release_block_height),
+            true,
+        );
 
-    const BID_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+        assert_eq!(
+            alice_available_balance.available_balance(),
+            alice_total_balance.available_balance()
+        );
+    }
 
-    let bid_amount = fixture.chainspec.core_config.minimum_bid_amount + 1;
-    // This transaction should be included since the tolerance is above the min gas price.
-    let (_txn_hash, block_height, exec_result) = send_add_bid(
-        &mut fixture,
-        bid_amount,
-        &alice_secret_key,
-        PricingMode::PaymentLimited {
-            payment_amount: BID_PAYMENT_AMOUNT,
-            gas_price_tolerance: MIN_GAS_PRICE + 1,
-            standard_payment: true,
-        },
-    )
-    .await;
+    #[tokio::test]
+    async fn should_native_auction_with_nofee_norefund_payment_limited() {
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
-    let expected_add_bid_consumed = fixture
-        .chainspec
-        .system_costs_config
-        .auction_costs()
-        .add_bid;
-    let expected_add_bid_cost = expected_add_bid_consumed * MIN_GAS_PRICE as u64;
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_pricing_handling(PricingHandling::PaymentLimited)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee);
 
-    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
 
-    let transfers = exec_result.transfers();
-    assert!(!transfers.is_empty(), "transfers should not be empty");
-    assert_eq!(transfers.len(), 1, "transfers should have 1 entry");
-    let transfer = transfers.first().expect("transfer entry should exist");
-    let transfer_amount = transfer.amount();
-    assert_eq!(
-        transfer_amount,
-        U512::from(bid_amount),
-        "transfer amount should match the bid amount"
-    );
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let alice_public_key = PublicKey::from(&*alice_secret_key);
 
-    assert_exec_result_cost(
-        exec_result,
-        expected_add_bid_cost.into(),
-        expected_add_bid_consumed.into(),
-        "add_bid_with_classic_pricing_no_fee_no_refund",
-    );
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-    let alice_available_balance =
-        get_balance(&fixture, &alice_public_key, Some(block_height), false);
-    let alice_total_balance = get_balance(&fixture, &alice_public_key, Some(block_height), true);
-
-    // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for the
-    // cost of the transfer. The total balance of Alice now should be the initial balance - the
-    // amount transferred to Charlie.
-    let alice_expected_total_balance = alice_initial_balance - bid_amount;
-    // The available balance is the initial balance - the amount transferred to Charlie - the hold
-    // for the transfer cost.
-    let alice_expected_available_balance = alice_expected_total_balance - expected_add_bid_cost;
-
-    assert_eq!(
-        alice_total_balance
+        let alice_initial_balance = *get_balance(&fixture, &alice_public_key, None, true)
             .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_total_balance
-    );
-    assert_eq!(
-        alice_available_balance
-            .available_balance()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_available_balance
-    );
-}
+            .expect("Expected Alice to have a balance.");
 
-#[tokio::test]
-#[should_panic = "within 10 seconds"]
-async fn should_reject_threshold_below_min_gas_price() {
-    const TRANSFER_AMOUNT: u64 = 30_000_000_000;
+        const BID_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+        let bid_amount = fixture.chainspec.core_config.minimum_bid_amount + 1;
+        // This transaction should be included since the tolerance is above the min gas price.
+        let (_txn_hash, block_height, exec_result) = send_add_bid(
+            &mut fixture,
+            bid_amount,
+            &alice_secret_key,
+            PricingMode::PaymentLimited {
+                payment_amount: BID_PAYMENT_AMOUNT,
+                gas_price_tolerance: MIN_GAS_PRICE + 1,
+                standard_payment: true,
+            },
+        )
+        .await;
 
-    let config = SingleTransactionTestCase::default_test_config()
-        .with_pricing_handling(PricingHandling::PaymentLimited)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::NoFee);
+        let expected_add_bid_consumed = fixture
+            .chainspec
+            .system_costs_config
+            .auction_costs()
+            .add_bid;
+        let expected_add_bid_cost = expected_add_bid_consumed * MIN_GAS_PRICE as u64;
 
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+        assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
 
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let transfers = exec_result.transfers();
+        assert!(!transfers.is_empty(), "transfers should not be empty");
+        assert_eq!(transfers.len(), 1, "transfers should have 1 entry");
+        let transfer = transfers.first().expect("transfer entry should exist");
+        let transfer_amount = transfer.amount();
+        assert_eq!(
+            transfer_amount,
+            U512::from(bid_amount),
+            "transfer amount should match the bid amount"
+        );
 
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+        assert_exec_result_cost(
+            exec_result,
+            expected_add_bid_cost.into(),
+            expected_add_bid_consumed.into(),
+            "add_bid_with_classic_pricing_no_fee_no_refund",
+        );
 
-    // This transaction should NOT be included since the tolerance is below the min gas price.
-    let (_, _, _) = transfer_to_account(
-        &mut fixture,
-        TRANSFER_AMOUNT,
-        &alice_secret_key,
-        PublicKey::from(&*charlie_secret_key),
-        PricingMode::PaymentLimited {
-            payment_amount: 1000,
-            gas_price_tolerance: MIN_GAS_PRICE - 1,
-            standard_payment: true,
-        },
-        None,
-    )
-    .await;
+        let alice_available_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), false);
+        let alice_total_balance =
+            get_balance(&fixture, &alice_public_key, Some(block_height), true);
+
+        // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for
+        // the cost of the transfer. The total balance of Alice now should be the initial
+        // balance - the amount transferred to Charlie.
+        let alice_expected_total_balance = alice_initial_balance - bid_amount;
+        // The available balance is the initial balance - the amount transferred to Charlie - the
+        // hold for the transfer cost.
+        let alice_expected_available_balance = alice_expected_total_balance - expected_add_bid_cost;
+
+        assert_eq!(
+            alice_total_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_total_balance
+        );
+        assert_eq!(
+            alice_available_balance
+                .available_balance()
+                .expect("Expected Alice to have a balance")
+                .clone(),
+            alice_expected_available_balance
+        );
+    }
 }
 
 #[tokio::test]
@@ -2457,7 +1496,7 @@ async fn should_refund_ratio_of_unconsumed_gas_fixed() {
 
 async fn should_not_refund_erroneous_wasm_burn(txn_pricing_mode: PricingMode) {
     // if refund handling is set to burn, and an erroneous wasm is processed
-    // ALL of the spent token is treated as the fee, thus there is no refund, and thus
+    // ALL the spent token is treated as the fee, thus there is no refund, and thus
     // nothing is burned.
     let (price_handling, min_gas_price, gas_limit) = match_pricing_mode(&txn_pricing_mode);
 
@@ -3169,7 +2208,7 @@ async fn should_gas_hold_fee_erroneous_wasm_payment_limited() {
 }
 
 #[tokio::test]
-async fn should_burn_fee_refund_unconsumed_custom_payment() {
+async fn should_not_burn_fee_refund_unconsumed_custom_payment() {
     let refund_ratio = Ratio::new(1, 2);
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::PaymentLimited)
@@ -3232,19 +2271,20 @@ async fn should_burn_fee_refund_unconsumed_custom_payment() {
         }
     }
 
-    let refund_amount = exec_result.refund().expect("should have refund");
+    // now that custom payment is no longer supported, this sort of transaction gets
+    // rejected prior to execution, at no cost. thus, no refund, and no balance changes
+    //let refund_amount = exec_result.refund().expect("should have refund");
 
-    // Expect that the fees are burnt.
+    // Expect that no fees are burnt because no exec occurred.
     assert_eq!(
         test.get_total_supply(Some(block_height)),
-        initial_total_supply - expected_transaction_cost + refund_amount
+        initial_total_supply // - expected_transaction_cost + refund_amount
     );
 
     let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
     // Bob should get a refund. Since the contract doesn't set a custom purse for the refund, it
     // should get the refund in the main purse.
-    let bob_expected_total_balance =
-        bob_initial_balance.total - expected_transaction_cost + refund_amount;
+    let bob_expected_total_balance = bob_initial_balance.total; //- expected_transaction_cost + refund_amount;
     let bob_expected_available_balance = bob_expected_total_balance; // No holds expected.
 
     // Alice shouldn't get anything since we are operating with no fees
@@ -3253,24 +2293,28 @@ async fn should_burn_fee_refund_unconsumed_custom_payment() {
 
     assert_eq!(
         bob_current_balance.available.clone(),
-        bob_expected_available_balance
+        bob_expected_available_balance,
+        "bob current avail vs expected"
     );
     assert_eq!(
         bob_current_balance.total.clone(),
-        bob_expected_total_balance
+        bob_expected_total_balance,
+        "bob current total vs expected"
     );
     assert_eq!(
         alice_current_balance.available.clone(),
-        alice_expected_available_balance
+        alice_expected_available_balance,
+        "alice current avail vs expected"
     );
     assert_eq!(
         alice_current_balance.total.clone(),
-        alice_expected_total_balance
+        alice_expected_total_balance,
+        "alice current total vs expected"
     );
 }
 
 #[tokio::test]
-async fn should_allow_norefund_nofee_custom_payment() {
+async fn should_not_allow_norefund_nofee_custom_payment() {
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::PaymentLimited)
         .with_refund_handling(RefundHandling::NoRefund)
@@ -3364,17 +2408,17 @@ async fn should_allow_norefund_nofee_custom_payment() {
         "bob's total balance should be unchanged as we are in no fee mode"
     );
 
-    assert_ne!(
+    assert_eq!(
         bob_current_balance.available.clone(),
         bob_initial_balance.total,
-        "bob's available balance and total balance should not be the same"
+        "balances SHOULD be the same because custom payment gets rejected without execution"
     );
 
     let bob_expected_available_balance = bob_initial_balance.total - expected_transaction_cost;
-    assert_eq!(
+    assert_ne!(
         bob_current_balance.available.clone(),
         bob_expected_available_balance,
-        "bob's available balance should reflect a hold for the cost"
+        "bob's available balance should NOT reflect a hold for the cost bcs no exec occurred"
     );
 }
 
@@ -5929,7 +4973,7 @@ async fn gas_holds_accumulate_for_multiple_transactions_in_the_same_block() {
 }
 
 #[tokio::test]
-async fn gh_5058_regression_custom_payment_with_deploy_variant_works() {
+async fn gh_5058_regression_custom_payment_with_deploy_variant() {
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::PaymentLimited)
         .with_refund_handling(RefundHandling::NoRefund)
@@ -5994,11 +5038,22 @@ async fn gh_5058_regression_custom_payment_with_deploy_variant_works() {
     };
 
     let acct = get_balance(&test.fixture, &ALICE_PUBLIC_KEY, None, true);
-    assert!(acct.total_balance().cloned().unwrap() >= payment_amount);
+    assert!(
+        acct.total_balance().cloned().unwrap() >= payment_amount,
+        "balance check"
+    );
 
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
 
-    assert_eq!(exec_result.error_message(), None);
+    // assert_eq!(exec_result.error_message(), None, "error check");
+    assert!(exec_result.error_message().is_some(), "error check");
+    assert!(
+        exec_result
+            .error_message()
+            .expect("checked above")
+            .starts_with("ApiError::HandlePayment(IncompatiblePaymentSettings)"),
+        "error msg check"
+    );
 }
 
 #[tokio::test]
@@ -6180,7 +5235,7 @@ async fn gh_5082_install_upgrade_should_allow_adding_new_version() {
 }
 
 #[tokio::test]
-async fn should_allow_custom_payment() {
+async fn should_not_allow_custom_payment() {
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::PaymentLimited)
         .with_refund_handling(RefundHandling::NoRefund)
@@ -6251,9 +5306,15 @@ async fn should_allow_custom_payment() {
 
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
 
-    assert_eq!(exec_result.error_message(), None);
-    assert!(
-        exec_result.consumed() > U512::zero(),
+    let err_msg = exec_result.error_message();
+    println!("{:?}", err_msg);
+    assert!(err_msg.is_some(), "custom payment is no longer supported");
+    assert!(err_msg
+        .expect("checked above")
+        .starts_with("ApiError::HandlePayment(IncompatiblePaymentSettings)"));
+    assert_eq!(
+        exec_result.consumed(),
+        U512::zero(),
         "should have consumed gas"
     );
 }
@@ -6675,7 +5736,7 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
             .cmp(&b.max_transaction_gas_limit())
     });
 
-    let (smallest_lane_id, smallest_gas_limt, smallest_size_limit_for_deploy) = wasm_lanes
+    let (smallest_lane_id, smallest_gas_limit, smallest_size_limit_for_deploy) = wasm_lanes
         .first()
         .map(|lane_def| {
             (
@@ -6689,7 +5750,7 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-        "amount" =>  U512::from(smallest_gas_limt),
+        "amount" =>  U512::from(smallest_gas_limit),
                     },
     };
 
@@ -6727,18 +5788,18 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
         .assert_execution_in_lane(&small_txn_hash, smallest_lane_id, TEN_SECS)
         .await;
 
-    let (largest_lane_id, largest_gas_limt) = wasm_lanes
+    let (largest_lane_id, largest_gas_limit) = wasm_lanes
         .last()
         .map(|lane_def| (lane_def.id(), lane_def.max_transaction_gas_limit()))
         .expect("must have at least one lane");
 
     assert_ne!(largest_lane_id, smallest_lane_id);
-    assert!(largest_gas_limt > smallest_gas_limt);
+    assert!(largest_gas_limit > smallest_gas_limit);
 
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-        "amount" =>  U512::from(largest_gas_limt),
+        "amount" =>  U512::from(largest_gas_limit),
                     },
     };
 
@@ -6766,7 +5827,7 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     let largest_txn_hash = transaction.hash();
 
     let largest_txn_size = transaction.serialized_length() as u64;
-    // This is misnomer, its the size of the deploy meant to be in the
+    // This is misnomer, it is the size of the deploy meant to be in the
     // largest lane.
     assert!(largest_txn_size < smallest_size_limit_for_deploy);
 
@@ -6775,4 +5836,996 @@ async fn should_assign_deploy_to_largest_lane_by_payment_amount_only_in_payment_
     fixture
         .assert_execution_in_lane(&largest_txn_hash, largest_lane_id, TEN_SECS)
         .await;
+}
+
+mod gas_price_txn_tests {
+    use super::*;
+    #[tokio::test]
+    #[should_panic = "within 10 seconds"]
+    async fn should_reject_threshold_below_min_gas_price() {
+        const TRANSFER_AMOUNT: u64 = 30_000_000_000;
+
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_pricing_handling(PricingHandling::PaymentLimited)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee);
+
+        let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+
+        fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+        // This transaction should NOT be included since the tolerance is below the min gas price.
+        let (_, _, _) = transfer_to_account(
+            &mut fixture,
+            TRANSFER_AMOUNT,
+            &alice_secret_key,
+            PublicKey::from(&*charlie_secret_key),
+            PricingMode::PaymentLimited {
+                payment_amount: 1000,
+                gas_price_tolerance: MIN_GAS_PRICE - 1,
+                standard_payment: true,
+            },
+            None,
+        )
+        .await;
+    }
+}
+
+mod evm_txn_tests {
+    use super::*;
+    use crate::reactor::main_reactor::tests::fixture::TestFixture;
+    use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
+    use alloy_eips::Encodable2718;
+    use alloy_primitives::{
+        Address as AlloyAddress, Bytes as AlloyBytes, Signature as AlloySignature, TxKind, U256,
+    };
+    use casper_executor_evm::EMPTY_CODE_HASH;
+    use casper_types::{
+        evm, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, TimeDiff, Timestamp, DEFAULT_WEI_PER_MOTE,
+    };
+    use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
+    use revm::bytecode::opcode;
+
+    const EVM_TEST_GAS_LIMIT: u64 = 500_000;
+    const EVM_TEST_GAS_PRICE: u128 = DEFAULT_WEI_PER_MOTE as u128;
+    const EVM_INITIAL_BALANCE: u64 = 10_000_000_000_000;
+    const EVM_LOG_TOPIC: evm::Topic = evm::Topic::new([0xAB; evm::HASH_LENGTH]);
+
+    async fn transfer_to_evm_address<A: Into<U512>>(
+        fixture: &mut TestFixture,
+        amount: A,
+        from: &SecretKey,
+        to: evm::Address,
+        pricing: PricingMode,
+        transfer_id: Option<u64>,
+    ) -> (TransactionHash, u64, ExecutionResult) {
+        let chain_name = fixture.chainspec.network_config.name.clone();
+
+        let mut txn = Transaction::from(
+            TransactionV1Builder::new_transfer(amount, None, to, transfer_id)
+                .unwrap()
+                .with_initiator_addr(PublicKey::from(from))
+                .with_pricing_mode(pricing)
+                .with_chain_name(chain_name)
+                .build()
+                .unwrap(),
+        );
+
+        txn.sign(from);
+        let txn_hash = txn.hash();
+
+        fixture.inject_transaction(txn).await;
+        fixture
+            .run_until_executed_transaction(&txn_hash, TEN_SECS)
+            .await;
+
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let exec_info = runner
+            .main_reactor()
+            .storage()
+            .read_execution_info(txn_hash)
+            .expect("Expected transaction to be included in a block.");
+
+        (
+            txn_hash,
+            exec_info.block_height,
+            exec_info
+                .execution_result
+                .expect("Exec result should have been stored."),
+        )
+    }
+
+    fn evm_log_emitting_init_code() -> Vec<u8> {
+        const MEMORY_OFFSET: u8 = 0;
+        const RUNTIME_LEN: u8 = 1;
+        const COPY_AND_RETURN_RUNTIME_LEN: usize = 12;
+
+        let mut init_code = Vec::new();
+
+        // Solidity equivalent:
+        //
+        // event Log(bytes32 indexed topic);
+        // emit Log(EVM_LOG_TOPIC);
+        init_code.push(opcode::PUSH32);
+        init_code.extend_from_slice(EVM_LOG_TOPIC.as_bytes());
+        init_code.extend_from_slice(&[
+            opcode::PUSH1,
+            0, // log data size
+            opcode::PUSH1,
+            MEMORY_OFFSET, // log data offset
+            opcode::LOG1,
+        ]);
+
+        let runtime_offset = u8::try_from(init_code.len() + COPY_AND_RETURN_RUNTIME_LEN)
+            .expect("runtime offset should fit in a PUSH1 immediate");
+
+        // Solidity equivalent:
+        //
+        // bytes memory runtime = hex"00";
+        // assembly { return(add(runtime, 32), 1) }
+        init_code.extend_from_slice(&[
+            // codecopy(memoryOffset: 0, codeOffset: runtime_offset, size: 1)
+            opcode::PUSH1,
+            RUNTIME_LEN,
+            opcode::PUSH1,
+            runtime_offset,
+            opcode::PUSH1,
+            MEMORY_OFFSET,
+            opcode::CODECOPY,
+            // return(memoryOffset: 0, size: 1)
+            opcode::PUSH1,
+            RUNTIME_LEN,
+            opcode::PUSH1,
+            MEMORY_OFFSET,
+            opcode::RETURN,
+        ]);
+
+        // Deployed runtime equivalent:
+        //
+        // fallback() external { }
+        init_code.extend_from_slice(&[
+            // stop()
+            opcode::STOP,
+        ]);
+        init_code
+    }
+
+    fn evm_init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
+        let runtime_len = u8::try_from(runtime.len()).expect("runtime should fit in PUSH1");
+        let runtime_offset = 12u8;
+        let mut init_code = vec![
+            opcode::PUSH1,
+            runtime_len,
+            opcode::PUSH1,
+            runtime_offset,
+            opcode::PUSH1,
+            0,
+            opcode::CODECOPY,
+            opcode::PUSH1,
+            runtime_len,
+            opcode::PUSH1,
+            0,
+            opcode::RETURN,
+        ];
+        init_code.extend(runtime);
+        init_code
+    }
+
+    fn evm_coinbase_transfer_init_code() -> Vec<u8> {
+        let revert_offset = 19u8;
+        evm_init_code_returning(vec![
+            opcode::PUSH1,
+            0,
+            opcode::PUSH1,
+            0,
+            opcode::PUSH1,
+            0,
+            opcode::PUSH1,
+            0,
+            opcode::CALLVALUE,
+            opcode::COINBASE,
+            opcode::PUSH2,
+            0x08,
+            0xfc,
+            opcode::CALL,
+            opcode::ISZERO,
+            opcode::PUSH1,
+            revert_offset,
+            opcode::JUMPI,
+            opcode::STOP,
+            opcode::JUMPDEST,
+            opcode::PUSH1,
+            0,
+            opcode::PUSH1,
+            0,
+            opcode::REVERT,
+        ])
+    }
+
+    fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
+        signed_evm_create_transaction(chain_id, 0, evm_log_emitting_init_code())
+    }
+
+    fn signed_evm_create_transaction(
+        chain_id: u64,
+        nonce: u64,
+        init_code: Vec<u8>,
+    ) -> EvmTransaction {
+        let transaction = TxLegacy {
+            chain_id: Some(chain_id),
+            nonce,
+            gas_price: EVM_TEST_GAS_PRICE,
+            gas_limit: EVM_TEST_GAS_LIMIT,
+            to: TxKind::Create,
+            value: U256::ZERO,
+            input: AlloyBytes::from(init_code),
+        };
+        signed_evm_legacy_transaction(transaction)
+    }
+
+    fn signed_evm_call_transaction(
+        chain_id: u64,
+        nonce: u64,
+        recipient: evm::Address,
+        value: u64,
+        input: Vec<u8>,
+    ) -> EvmTransaction {
+        let transaction = TxLegacy {
+            chain_id: Some(chain_id),
+            nonce,
+            gas_price: EVM_TEST_GAS_PRICE,
+            gas_limit: EVM_TEST_GAS_LIMIT,
+            to: TxKind::Call(AlloyAddress::from(recipient.value())),
+            value: U256::from(value),
+            input: AlloyBytes::from(input),
+        };
+        signed_evm_legacy_transaction(transaction)
+    }
+
+    fn signed_evm_value_transfer_transaction(
+        chain_id: u64,
+        recipient: evm::Address,
+        gas_limit: u64,
+        value: u64,
+    ) -> EvmTransaction {
+        let transaction = TxLegacy {
+            chain_id: Some(chain_id),
+            nonce: 0,
+            gas_price: EVM_TEST_GAS_PRICE,
+            gas_limit,
+            to: TxKind::Call(AlloyAddress::from(recipient.value())),
+            value: U256::from(value),
+            input: AlloyBytes::new(),
+        };
+        signed_evm_legacy_transaction(transaction)
+    }
+
+    fn signed_evm_legacy_transaction(transaction: TxLegacy) -> EvmTransaction {
+        let signing_key =
+            SigningKey::from_slice(&[0x11; 32]).expect("test EVM private key should be valid");
+        let (signature, recovery_id) = signing_key
+            .sign_prehash(transaction.signature_hash().as_ref())
+            .expect("test EVM transaction signing should succeed");
+        let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
+        let envelope = TxEnvelope::from(signed);
+        EvmTransaction::from_signed_rlp(
+            envelope.encoded_2718(),
+            Timestamp::now(),
+            TimeDiff::from_seconds(60),
+        )
+        .expect("test EVM transaction should decode")
+    }
+
+    fn seed_evm_account(fixture: &mut TestFixture, address: evm::Address, balance: U512) {
+        let main_purse = evm::deterministic_purse(address);
+        let values_to_write = vec![
+            (
+                Key::Evm(EvmAddr::Account(address)),
+                StoredValue::CLValue(CLValue::from_t(Key::URef(main_purse)).unwrap()),
+            ),
+            (
+                Key::Evm(EvmAddr::Nonce(address)),
+                StoredValue::CLValue(CLValue::from_t(0u64).unwrap()),
+            ),
+            (
+                Key::Evm(EvmAddr::CodeHash(address)),
+                StoredValue::CLValue(CLValue::from_t(EMPTY_CODE_HASH).unwrap()),
+            ),
+            (
+                Key::Balance(main_purse.addr()),
+                StoredValue::CLValue(CLValue::from_t(balance).unwrap()),
+            ),
+        ];
+        for runner in fixture.network.runners_mut() {
+            let execution_pre_state = runner
+                .main_reactor()
+                .contract_runtime()
+                .execution_pre_state();
+            let state_root_hash = runner
+                .main_reactor()
+                .contract_runtime()
+                .data_access_layer()
+                .commit_values(
+                    execution_pre_state.pre_state_root_hash(),
+                    values_to_write.clone(),
+                    Default::default(),
+                )
+                .expect("EVM seed account should commit");
+            runner
+                .main_reactor_as_mut()
+                .contract_runtime
+                .set_execution_pre_state(ExecutionPreState::new(
+                    execution_pre_state.next_block_height(),
+                    state_root_hash,
+                    execution_pre_state.parent_hash(),
+                    execution_pre_state.parent_seed(),
+                ));
+        }
+    }
+
+    struct EvmAccountView {
+        nonce: u64,
+        main_purse: URef,
+    }
+
+    impl EvmAccountView {
+        fn nonce(&self) -> u64 {
+            self.nonce
+        }
+
+        fn main_purse(&self) -> URef {
+            self.main_purse
+        }
+    }
+
+    fn evm_identity_at(fixture: &mut TestFixture, block_height: u64, address: evm::Address) -> Key {
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        let state_root_hash = *block_header.state_root_hash();
+        match query_global_state(
+            fixture,
+            state_root_hash,
+            Key::Evm(EvmAddr::Account(address)),
+        ) {
+            Some(value) => match *value {
+                StoredValue::CLValue(cl_value) => cl_value
+                    .into_t::<Key>()
+                    .expect("EVM identity should decode to a key"),
+                value => panic!("expected EVM identity, got {value:?}"),
+            },
+            value => panic!("expected EVM identity, got {value:?}"),
+        }
+    }
+
+    fn evm_code_hash_at(
+        fixture: &mut TestFixture,
+        block_height: u64,
+        address: evm::Address,
+    ) -> evm::Hash {
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        let state_root_hash = *block_header.state_root_hash();
+        match query_global_state(
+            fixture,
+            state_root_hash,
+            Key::Evm(EvmAddr::CodeHash(address)),
+        ) {
+            Some(value) => match *value {
+                StoredValue::CLValue(cl_value) => cl_value
+                    .into_t::<evm::Hash>()
+                    .expect("EVM code hash should decode"),
+                value => panic!("expected EVM code hash, got {value:?}"),
+            },
+            None => EMPTY_CODE_HASH,
+        }
+    }
+
+    fn evm_balance(fixture: &mut TestFixture, address: evm::Address, block_height: u64) -> U512 {
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let protocol_version = fixture.chainspec.protocol_version();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        let state_root_hash = *block_header.state_root_hash();
+        let main_purse = evm_account_at(fixture, block_height, address).main_purse();
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let result = runner
+            .main_reactor()
+            .contract_runtime()
+            .data_access_layer()
+            .balance(BalanceRequest::from_purse(
+                state_root_hash,
+                protocol_version,
+                main_purse,
+                BalanceHandling::Total,
+                ProofHandling::NoProofs,
+            ));
+        *result
+            .total_balance()
+            .expect("EVM account should have a balance")
+    }
+
+    fn evm_account_at(
+        fixture: &mut TestFixture,
+        block_height: u64,
+        address: evm::Address,
+    ) -> EvmAccountView {
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        let state_root_hash = *block_header.state_root_hash();
+        let identity = evm_identity_at(fixture, block_height, address);
+        let main_purse = match identity {
+            Key::URef(uref) => uref,
+            Key::Account(account_hash) => {
+                match query_global_state(fixture, state_root_hash, Key::Account(account_hash)) {
+                    Some(value) => match *value {
+                        StoredValue::Account(account) => account.main_purse(),
+                        value => panic!("expected linked account, got {value:?}"),
+                    },
+                    value => panic!("expected linked account, got {value:?}"),
+                }
+            }
+            value => panic!("unexpected EVM identity key: {value:?}"),
+        };
+        let nonce =
+            match query_global_state(fixture, state_root_hash, Key::Evm(EvmAddr::Nonce(address))) {
+                Some(value) => match *value {
+                    StoredValue::CLValue(cl_value) => {
+                        cl_value.into_t::<u64>().expect("nonce should decode")
+                    }
+                    value => panic!("expected EVM nonce, got {value:?}"),
+                },
+                None => 0,
+            };
+        EvmAccountView { nonce, main_purse }
+    }
+
+    fn alloy_address_to_evm_address(address: AlloyAddress) -> evm::Address {
+        let mut bytes = [0; evm::ADDRESS_LENGTH];
+        bytes.copy_from_slice(address.as_slice());
+        evm::Address::new(bytes)
+    }
+
+    #[tokio::test]
+    async fn should_execute_evm_transaction_and_store_receipt() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::Burn);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
+        let sender = evm_transaction.from();
+        let expected_sender = alloy_address_to_evm_address(AlloyAddress::from_private_key(
+            &SigningKey::from_slice(&[0x11; 32]).unwrap(),
+        ));
+        assert_eq!(sender, expected_sender);
+        assert_eq!(
+            Transaction::from(evm_transaction.clone()).initiator_addr(),
+            InitiatorAddr::Eoa(sender)
+        );
+
+        let highest_block = test.fixture.highest_complete_block();
+        seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+        let initial_balance = U512::from(EVM_INITIAL_BALANCE);
+
+        let (_txn_hash, block_height, execution_result) = test
+            .send_transaction(Transaction::from(evm_transaction.clone()))
+            .await;
+        let ExecutionResult::Evm(execution_result) = execution_result else {
+            panic!("expected EVM execution result");
+        };
+
+        assert_eq!(execution_result.initiator, sender);
+        assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
+        assert_eq!(
+            execution_result.receipt.effective_gas_price,
+            evm_transaction.effective_gas_price(evm_config.base_fee_wei())
+        );
+        assert!(execution_result.receipt.gas_used > 0);
+        // TODO: discuss w/ Michal
+        // let max_fee_amount = evm_transaction
+        //     .max_fee_amount(&evm_config)
+        //     .expect("max EVM fee should fit");
+        // assert_eq!(execution_result.cost, max_fee_amount);
+        assert_eq!(execution_result.refund, U512::zero());
+        assert!(execution_result.receipt.contract_address.is_some());
+        assert_eq!(execution_result.receipt.logs.len(), 1);
+        assert_eq!(execution_result.receipt.logs[0].topics, vec![EVM_LOG_TOPIC]);
+        assert!(execution_result.receipt.logs[0].data.is_empty());
+
+        let final_balance = evm_balance(&mut test.fixture, sender, block_height);
+        assert_eq!(final_balance, initial_balance - execution_result.cost);
+        let account = evm_account_at(&mut test.fixture, block_height, sender);
+        assert_eq!(account.nonce(), 1);
+        let signer_account_hash = evm_transaction
+            .signer()
+            .expect("EVM transaction should have a signer")
+            .to_account_hash();
+        assert_eq!(
+            evm_identity_at(&mut test.fixture, block_height, sender),
+            Key::Account(signer_account_hash)
+        );
+        assert_eq!(account.main_purse(), evm::deterministic_purse(sender));
+        assert!(
+            block_height > highest_block.height(),
+            "EVM transaction should be included in a later block"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::Burn);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let deploy = signed_evm_create_transaction(
+            evm_config.chain_id,
+            0,
+            evm_coinbase_transfer_init_code(),
+        );
+        let sender = deploy.from();
+        seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+        let (_txn_hash, deploy_block_height, deploy_result) =
+            test.send_transaction(Transaction::from(deploy)).await;
+        let ExecutionResult::Evm(deploy_result) = deploy_result else {
+            panic!("expected EVM deploy execution result");
+        };
+        assert_eq!(deploy_result.receipt.status, evm::ReceiptStatus::Success);
+        let contract = deploy_result
+            .receipt
+            .contract_address
+            .expect("EVM deployment should create contract");
+
+        let deploy_block = test.fixture.get_block_by_height(deploy_block_height);
+        let deploy_proposer = deploy_block.proposer().clone();
+        assert!(
+            evm::Address::from_public_key(&deploy_proposer).is_none(),
+            "test expects an ed25519 proposer"
+        );
+        let deploy_proposer_account_hash = deploy_proposer.to_account_hash();
+        let deploy_beneficiary = evm::Address::from_block_proposer_public_key(&deploy_proposer);
+        assert_eq!(
+            evm_identity_at(&mut test.fixture, deploy_block_height, deploy_beneficiary),
+            Key::Account(deploy_proposer_account_hash)
+        );
+
+        let transfer_value = 250u64;
+        let call = signed_evm_call_transaction(
+            evm_config.chain_id,
+            1,
+            contract,
+            transfer_value,
+            Vec::new(),
+        );
+        let (_txn_hash, call_block_height, call_result) =
+            test.send_transaction(Transaction::from(call)).await;
+        let ExecutionResult::Evm(call_result) = call_result else {
+            panic!("expected EVM call execution result");
+        };
+        assert_eq!(call_result.receipt.status, evm::ReceiptStatus::Success);
+
+        let payout_block = test.fixture.get_block_by_height(call_block_height);
+        let proposer = payout_block.proposer().clone();
+        assert!(
+            evm::Address::from_public_key(&proposer).is_none(),
+            "test expects an ed25519 proposer"
+        );
+        let proposer_account_hash = proposer.to_account_hash();
+        let beneficiary = evm::Address::from_block_proposer_public_key(&proposer);
+        let mut expected_beneficiary = [0u8; evm::ADDRESS_LENGTH];
+        expected_beneficiary.copy_from_slice(&proposer_account_hash.as_bytes()[12..]);
+        assert_eq!(beneficiary, evm::Address::new(expected_beneficiary));
+
+        assert_eq!(
+            evm_identity_at(&mut test.fixture, call_block_height, beneficiary),
+            Key::Account(proposer_account_hash)
+        );
+        let proposer_before =
+            get_balance(&test.fixture, &proposer, Some(deploy_block_height), true)
+                .total_balance()
+                .copied()
+                .expect("proposer should have balance before EVM payout");
+        let proposer_after = get_balance(&test.fixture, &proposer, Some(call_block_height), true)
+            .total_balance()
+            .copied()
+            .expect("proposer should have balance after EVM payout");
+        assert_eq!(proposer_after, proposer_before + U512::from(transfer_value));
+    }
+
+    #[tokio::test]
+    async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::Burn);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let gas_limit = 21_000;
+        let value = EVM_INITIAL_BALANCE - gas_limit + 1;
+        let recipient = evm::Address::new([0x22; evm::ADDRESS_LENGTH]);
+        let evm_transaction =
+            signed_evm_value_transfer_transaction(evm_config.chain_id, recipient, gas_limit, value);
+        let sender = evm_transaction.from();
+        seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+        let (_txn_hash, block_height, execution_result) = test
+            .send_transaction(Transaction::from(evm_transaction))
+            .await;
+        let ExecutionResult::Evm(execution_result) = execution_result else {
+            panic!("expected EVM execution result");
+        };
+
+        assert_eq!(
+            execution_result.receipt.status,
+            evm::ReceiptStatus::Halt(evm::HaltReason::Unknown)
+        );
+        assert_eq!(execution_result.receipt.gas_used, 0);
+        assert_eq!(execution_result.cost, U512::zero());
+        assert_eq!(execution_result.refund, U512::zero());
+        assert!(execution_result.effects.is_empty());
+
+        let final_balance = evm_balance(&mut test.fixture, sender, block_height);
+        assert_eq!(final_balance, U512::from(EVM_INITIAL_BALANCE));
+
+        let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        assert!(query_global_state(
+            &mut test.fixture,
+            *block_header.state_root_hash(),
+            Key::Evm(EvmAddr::Account(recipient))
+        )
+        .is_none());
+    }
+
+    #[tokio::test]
+    async fn should_not_seed_evm_accounts_at_genesis() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config().with_evm_config(evm_config);
+        let alice_secret_key = Arc::new(
+            SecretKey::secp256k1_from_bytes([0x11; SecretKey::SECP256K1_LENGTH])
+                .expect("secp256k1 key should be valid"),
+        );
+        let bob_secret_key = Arc::new(
+            SecretKey::secp256k1_from_bytes([0x22; SecretKey::SECP256K1_LENGTH])
+                .expect("secp256k1 key should be valid"),
+        );
+        let charlie_secret_key = Arc::new(
+            SecretKey::secp256k1_from_bytes([0x33; SecretKey::SECP256K1_LENGTH])
+                .expect("secp256k1 key should be valid"),
+        );
+        let alice_evm_address = evm::Address::from_public_key(&PublicKey::from(&*alice_secret_key))
+            .expect("secp256k1 public key should have an EVM address");
+        let mut test = SingleTransactionTestCase::new(
+            alice_secret_key,
+            bob_secret_key,
+            charlie_secret_key,
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(0, true)
+            .expect("failure to read block header")
+            .expect("should have header");
+        assert!(query_global_state(
+            &mut test.fixture,
+            *block_header.state_root_hash(),
+            Key::Evm(EvmAddr::Account(alice_evm_address)),
+        )
+        .is_none());
+    }
+
+    #[tokio::test]
+    async fn should_transfer_to_evm_address_with_native_transfer() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_pricing_handling(PricingHandling::Fixed)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::NoFee);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let recipient = evm::Address::new([0x44; evm::ADDRESS_LENGTH]);
+        let transfer_amount = test
+            .fixture
+            .chainspec
+            .transaction_config
+            .native_transfer_minimum_motes
+            + 100;
+        let alice_secret_key = Arc::clone(&test.fixture.node_contexts[0].secret_key);
+        let (_txn_hash, block_height, execution_result) = transfer_to_evm_address(
+            &mut test.fixture,
+            transfer_amount,
+            &alice_secret_key,
+            recipient,
+            PricingMode::Fixed {
+                gas_price_tolerance: 1,
+                additional_computation_factor: 0,
+            },
+            Some(0xE0),
+        )
+        .await;
+
+        assert!(
+            exec_result_is_success(&execution_result),
+            "{execution_result:?}"
+        );
+        let account = evm_account_at(&mut test.fixture, block_height, recipient);
+        let expected_purse = evm::deterministic_purse(recipient);
+        assert_eq!(account.main_purse(), expected_purse);
+        assert_eq!(
+            evm_identity_at(&mut test.fixture, block_height, recipient),
+            Key::URef(expected_purse)
+        );
+        assert_eq!(
+            evm_balance(&mut test.fixture, recipient, block_height),
+            U512::from(transfer_amount)
+        );
+
+        let transfers = execution_result.transfers();
+        assert_eq!(transfers.len(), 1, "{transfers:?}");
+        let casper_types::Transfer::V2(transfer) = &transfers[0] else {
+            panic!("expected V2 transfer");
+        };
+        assert_eq!(transfer.to, None);
+        assert_eq!(transfer.target.addr(), expected_purse.addr());
+        assert_eq!(transfer.amount, U512::from(transfer_amount));
+    }
+
+    #[tokio::test]
+    async fn should_reject_native_transfer_to_evm_contract_address() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_pricing_handling(PricingHandling::Fixed)
+            .with_refund_handling(RefundHandling::NoRefund)
+            .with_fee_handling(FeeHandling::Burn);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
+        let evm_sender = evm_transaction.from();
+        seed_evm_account(
+            &mut test.fixture,
+            evm_sender,
+            U512::from(EVM_INITIAL_BALANCE),
+        );
+
+        let (_txn_hash, deploy_block_height, deploy_execution_result) = test
+            .send_transaction(Transaction::from(evm_transaction))
+            .await;
+        let ExecutionResult::Evm(deploy_execution_result) = deploy_execution_result else {
+            panic!("expected EVM execution result");
+        };
+        assert_eq!(
+            deploy_execution_result.receipt.status,
+            evm::ReceiptStatus::Success
+        );
+
+        let contract_address = deploy_execution_result
+            .receipt
+            .contract_address
+            .expect("EVM deployment should create a contract");
+        assert_ne!(
+            evm_code_hash_at(&mut test.fixture, deploy_block_height, contract_address),
+            EMPTY_CODE_HASH
+        );
+
+        let contract_balance_before =
+            evm_balance(&mut test.fixture, contract_address, deploy_block_height);
+        assert_eq!(contract_balance_before, U512::zero());
+
+        let transfer_amount = test
+            .fixture
+            .chainspec
+            .transaction_config
+            .native_transfer_minimum_motes
+            + 100;
+        let alice_secret_key = Arc::clone(&test.fixture.node_contexts[0].secret_key);
+        let (_txn_hash, transfer_block_height, transfer_execution_result) =
+            transfer_to_evm_address(
+                &mut test.fixture,
+                transfer_amount,
+                &alice_secret_key,
+                contract_address,
+                PricingMode::Fixed {
+                    gas_price_tolerance: 1,
+                    additional_computation_factor: 0,
+                },
+                Some(0xE1),
+            )
+            .await;
+
+        assert!(
+            !exec_result_is_success(&transfer_execution_result),
+            "native transfer to EVM contract address should fail: {transfer_execution_result:?}"
+        );
+        assert_eq!(
+            evm_balance(&mut test.fixture, contract_address, transfer_block_height),
+            contract_balance_before
+        );
+    }
+
+    #[tokio::test]
+    async fn should_apply_casper_refund_handling_to_evm_transaction() {
+        let evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 0x4353_50FF,
+            spec: EvmSpec::Prague,
+            block_gas_limit: 30_000_000,
+            base_fee: 0,
+            wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        };
+        let config = SingleTransactionTestCase::default_test_config()
+            .with_evm_config(evm_config)
+            .with_refund_handling(RefundHandling::Refund {
+                refund_ratio: Ratio::new(1, 1),
+            })
+            .with_fee_handling(FeeHandling::Burn);
+        let mut test = SingleTransactionTestCase::new(
+            Arc::clone(&ALICE_SECRET_KEY),
+            Arc::clone(&BOB_SECRET_KEY),
+            Arc::clone(&CHARLIE_SECRET_KEY),
+            Some(config),
+        )
+        .await;
+        test.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let evm_transaction = signed_evm_deploy_transaction(evm_config.chain_id);
+        let sender = evm_transaction.from();
+        seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+        let (_txn_hash, _block_height, execution_result) = test
+            .send_transaction(Transaction::from(evm_transaction.clone()))
+            .await;
+        let ExecutionResult::Evm(execution_result) = execution_result else {
+            panic!("expected EVM execution result");
+        };
+
+        // let max_fee_amount = evm_transaction
+        //     .max_fee_amount(&evm_config)
+        //     .expect("max EVM fee should fit");
+        // let consumed_fee_amount = evm_transaction
+        //     .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        //     .expect("consumed EVM fee should fit");
+
+        assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
+        // assert_eq!(execution_result.cost, max_fee_amount);
+        // assert_eq!(
+        //     execution_result.refund,
+        //     max_fee_amount - consumed_fee_amount
+        // );
+
+        // let final_balance = evm_balance(&mut test.fixture, sender, block_height);
+        // assert_eq!(final_balance, initial_balance - consumed_fee_amount);
+    }
 }

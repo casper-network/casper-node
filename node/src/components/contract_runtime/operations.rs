@@ -282,7 +282,6 @@ pub(super) fn execute_finalized_block(
         txn_process_ctx.with_exec_attempt();
 
         // PROCESS TRANSACTION
-        //let process_request = process_request(&txn_process_ctx);
         let process_request = txn_process_ctx.process_request();
         trace!(%transaction_hash, %process_request, "process_request created");
 
