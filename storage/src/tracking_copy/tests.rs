@@ -13,14 +13,14 @@ use casper_types::{
         ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeyAddr, NamedKeyValue,
         Weight,
     },
-    contract_messages::Messages,
+    contract_messages::{Message, MessagePayload, Messages, TopicNameHash},
     contracts::{EntryPoints as ContractEntryPoints, NamedKeys},
     execution::{Effects, TransformKindV2, TransformV2},
     gens::*,
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
-    CLValueDictionary, CLValueError, ContractRuntimeTag, EntityAddr, EntityKind, HashAddr, Key,
-    KeyTag, PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
+    handle_stored_dictionary_value, AccessRights, AddressableEntity, BlockTime, ByteCodeHash,
+    CLValue, CLValueDictionary, CLValueError, ContractRuntimeTag, EntityAddr, EntityKind, HashAddr,
+    Key, KeyTag, PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
@@ -1255,5 +1255,92 @@ fn tracking_copy_keys_with_prefix_should_include_pruning_of_uncommited_keys() {
     assert_eq!(
         tc.get_by_byte_prefix(&[KeyTag::Hash as u8]).unwrap(),
         BTreeSet::from_iter(vec![key])
+    );
+}
+
+fn make_mock_message(index: u64) -> Message {
+    let entity_addr = EntityAddr::new_account([0u8; 32]);
+    let topic_name_hash = TopicNameHash::new([1u8; 32]);
+    Message::new(
+        entity_addr,
+        MessagePayload::from(format!("msg-{index}")),
+        "topic".to_string(),
+        topic_name_hash,
+        0,
+        index,
+    )
+}
+
+fn emit_mock_message(tc: &mut TrackingCopy<CountingDb>, index: u64) {
+    tc.emit_message(
+        Key::Hash([0u8; 32]),
+        StoredValue::CLValue(CLValue::from_t(0i32).unwrap()),
+        Key::Hash([(index as u8) + 1; 32]),
+        StoredValue::CLValue(CLValue::from_t(0i32).unwrap()),
+        StoredValue::CLValue(CLValue::from_t((BlockTime::new(1), index + 1)).unwrap()),
+        make_mock_message(index),
+    );
+}
+
+#[test]
+fn fork2_starts_with_empty_messages_and_parent_retains_pre_fork_messages() {
+    let counter = Arc::new(RwLock::new(0));
+    let db = CountingDb::new(counter);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_ENABLE_ENTITY);
+
+    // Emit system messages to the MAIN tracking copy (as the fix does before forking).
+    emit_mock_message(&mut tc, 0);
+    emit_mock_message(&mut tc, 1);
+    assert_eq!(tc.messages().len(), 2, "main TC should have 2 messages");
+
+    // Fork (simulating constructor/upgrade-entry-point execution).
+    let fork = tc.fork2();
+    assert_eq!(
+        fork.messages().len(),
+        0,
+        "fork must start with empty messages to avoid double-counting on apply_changes"
+    );
+
+    // Discard the fork without calling apply_changes (simulating a host error / failed
+    // constructor).
+    drop(fork);
+
+    // System messages must still be present in the main tracking copy.
+    assert_eq!(
+        tc.messages().len(),
+        2,
+        "system messages emitted before fork must survive even when fork is discarded"
+    );
+}
+
+#[test]
+fn apply_changes_merges_fork_messages_without_duplicating_pre_fork_messages() {
+    let counter = Arc::new(RwLock::new(0));
+    let db = CountingDb::new(counter);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_ENABLE_ENTITY);
+
+    // Emit system messages to main before fork (the fixed behavior).
+    emit_mock_message(&mut tc, 0);
+
+    // Fork and emit a constructor message into the fork.
+    let mut fork = tc.fork2();
+    emit_mock_message(&mut fork, 1);
+    assert_eq!(
+        fork.messages().len(),
+        1,
+        "fork has only the constructor message"
+    );
+
+    // Merge fork into main (success path).
+    let fork_effects = fork.effects();
+    let fork_cache = fork.cache();
+    let fork_messages = fork.messages();
+    tc.apply_changes(fork_effects, fork_cache, fork_messages);
+
+    // Main TC should have both: the pre-fork system message AND the constructor message.
+    assert_eq!(
+        tc.messages().len(),
+        2,
+        "apply_changes must merge fork messages without duplicating pre-fork ones"
     );
 }

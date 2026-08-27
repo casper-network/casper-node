@@ -1,11 +1,11 @@
 use num_traits::Zero;
 use std::cell::RefCell;
 
-use casper_execution_engine::runtime::cryptography;
+use casper_execution_engine::runtime::cryptography::{self};
 
 use casper_engine_test_support::{
-    ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_BLOCK_TIME, LOCAL_GENESIS_REQUEST,
+    ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 
 use casper_types::{
@@ -13,10 +13,13 @@ use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig, Digest,
-    EntityAddr, HostFunction, HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits,
-    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config,
-    WasmV2Config, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    EntityAddr, EraId, HashAddr, HoldBalanceHandling, HostFunction, HostFunctionCostsV1,
+    HostFunctionCostsV2, Key, MessageLimits, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
+    StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config, WasmV2Config,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
+
+use crate::lmdb_fixture;
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
 const MESSAGE_EMITTER_UPGRADER_WASM: &str = "contract_messages_upgrader.wasm";
@@ -38,10 +41,10 @@ const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 // Number of messages that will be emitted when calling `ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION`
 const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
 
-fn install_messages_emitter_contract(
+fn install_messages_emitter_contract_with_metadata(
     builder: &RefCell<LmdbWasmTestBuilder>,
     use_initializer: bool,
-) -> AddressableEntityHash {
+) -> (AddressableEntityHash, HashAddr, HashAddr) {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -69,6 +72,24 @@ fn install_messages_emitter_contract(
             &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
         )
         .expect("should query");
+    let account_query_result = builder
+        .borrow_mut()
+        .query(None, Key::from(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("should query");
+
+    let contract_package_hash = if let StoredValue::Account(acc) = account_query_result {
+        let key = acc
+            .named_keys()
+            .get(MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME)
+            .expect("Expected account to have named key");
+        if let Key::Hash(package_addr_hash) = key {
+            *package_addr_hash
+        } else {
+            panic!("Not expected key variant: {key}");
+        }
+    } else {
+        panic!("Stored value is not an account {:?}", account_query_result);
+    };
 
     let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
         package
@@ -77,12 +98,29 @@ fn install_messages_emitter_contract(
     };
 
     // Get the contract hash of the messages_emitter contract.
-    message_emitter_package
+    let contract_hash = message_emitter_package
         .versions()
         .values()
         .last()
         .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
-        .expect("Should have contract hash")
+        .expect("Should have contract hash");
+    let val = builder
+        .borrow_mut()
+        .query(None, Key::Hash(contract_hash.value()), &[])
+        .unwrap();
+    let wasm_addr_hash = if let StoredValue::Contract(contract) = val {
+        contract.contract_wasm_hash().value()
+    } else {
+        panic!("No contract found!")
+    };
+    (contract_hash, contract_package_hash, wasm_addr_hash)
+}
+
+fn install_messages_emitter_contract(
+    builder: &RefCell<LmdbWasmTestBuilder>,
+    use_initializer: bool,
+) -> AddressableEntityHash {
+    install_messages_emitter_contract_with_metadata(builder, use_initializer).0
 }
 
 fn upgrade_messages_emitter_contract(
@@ -198,17 +236,21 @@ impl<'a> ContractQueryView<'a> {
     }
 
     fn message_topic(&self, topic_name_hash: TopicNameHash) -> MessageTopicSummary {
+        self.message_topic_for_entity(
+            topic_name_hash,
+            EntityAddr::SmartContract(self.contract_hash.value()),
+        )
+    }
+
+    fn message_topic_for_entity(
+        &self,
+        topic_name_hash: TopicNameHash,
+        entity_addr: EntityAddr,
+    ) -> MessageTopicSummary {
         let query_result = self
             .builder
             .borrow_mut()
-            .query(
-                None,
-                Key::message_topic(
-                    EntityAddr::SmartContract(self.contract_hash.value()),
-                    topic_name_hash,
-                ),
-                &[],
-            )
+            .query(None, Key::message_topic(entity_addr, topic_name_hash), &[])
             .expect("should query");
 
         match query_result {
@@ -222,19 +264,16 @@ impl<'a> ContractQueryView<'a> {
         }
     }
 
-    fn message_summary(
+    fn message_summary_for_entity(
         &self,
         topic_name_hash: TopicNameHash,
         message_index: u32,
         state_hash: Option<Digest>,
+        entity_addr: EntityAddr,
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(
-                EntityAddr::SmartContract(self.contract_hash.value()),
-                topic_name_hash,
-                message_index,
-            ),
+            Key::message(entity_addr, topic_name_hash, message_index),
             &[],
         )?;
 
@@ -242,6 +281,20 @@ impl<'a> ContractQueryView<'a> {
             StoredValue::Message(summary) => Ok(summary),
             _ => panic!("Stored value is not a message summary: {:?}", query_result),
         }
+    }
+
+    fn message_summary(
+        &self,
+        topic_name_hash: TopicNameHash,
+        message_index: u32,
+        state_hash: Option<Digest>,
+    ) -> Result<MessageChecksum, String> {
+        self.message_summary_for_entity(
+            topic_name_hash,
+            message_index,
+            state_hash,
+            EntityAddr::SmartContract(self.contract_hash.value()),
+        )
     }
 }
 
@@ -257,7 +310,6 @@ fn should_emit_messages() {
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let message_topics = query_view.message_topics();
-
     let (topic_name, message_topic_hash) = message_topics
         .iter()
         .next()
@@ -277,7 +329,7 @@ fn should_emit_messages() {
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
     let expected_message_hash = cryptography::blake2b(
         [
-            0u64.to_bytes().unwrap(),
+            4u64.to_bytes().unwrap(), // there are system messages emitted before the custom one
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -298,7 +350,7 @@ fn should_emit_messages() {
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message_hash = cryptography::blake2b(
         [
-            1u64.to_bytes().unwrap(),
+            5u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1043,16 +1095,16 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(0);
+    assert_last_message_block_index(4); //there are 4 system messages on contract install
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 5))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
     let expected_message_hash = cryptography::blake2b(
         [
-            0u64.to_bytes().unwrap(),
+            4u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1070,16 +1122,16 @@ fn should_produce_per_block_message_ordering() {
         &emitter_contract_hash,
         DEFAULT_BLOCK_TIME,
     );
-    assert_last_message_block_index(1);
+    assert_last_message_block_index(5);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 6))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
     let expected_message_hash = cryptography::blake2b(
         [
-            1u64.to_bytes().unwrap(),
+            5u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1116,16 +1168,16 @@ fn should_produce_per_block_message_ordering() {
         .exec(emit_message_request)
         .expect_success()
         .commit();
-    assert_last_message_block_index(2);
+    assert_last_message_block_index(10);
     assert_eq!(
         query_message_count(),
-        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 11))
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
     let expected_message_hash = cryptography::blake2b(
         [
-            2u64.to_bytes().unwrap(),
+            10u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
         .concat(),
@@ -1221,4 +1273,369 @@ fn emit_message_should_consume_variable_gas_based_on_topic_and_message_size() {
         + COST_PER_MESSAGE_TOPIC_NAME_SIZE * MESSAGE_EMITTER_GENERIC_TOPIC.len() as u32
         + COST_PER_MESSAGE_LENGTH * payload.serialized_length() as u32;
     assert_eq!(emit_message_gas_consume, expected_consume.into());
+}
+
+#[ignore]
+#[test]
+fn on_install_should_emit_system_messages() {
+    let system_account_entity = EntityAddr::Account(PublicKey::System.to_account_hash().value());
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let (contract_hash, contract_package_addr, wasm_addr) =
+        install_messages_emitter_contract_with_metadata(&builder, true);
+
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    // Verify the block-global message counter reflects the 4 system messages.
+    let block_message_count: (BlockTime, u64) = builder
+        .borrow_mut()
+        .query(None, Key::BlockGlobal(BlockGlobalAddr::MessageCount), &[])
+        .expect("should have block message count")
+        .as_cl_value()
+        .expect("should be CLValue")
+        .clone()
+        .into_t()
+        .expect("should deserialize");
+    assert_eq!(
+        block_message_count.1, 4,
+        "block message count should be 4 after install"
+    );
+
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", base16::encode_lower(&contract_package_addr)),
+        "package_key",
+        system_account_entity,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", base16::encode_lower(&contract_hash.value())),
+        "contract_key",
+        system_account_entity,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", base16::encode_lower(&wasm_addr)),
+        "bytecode_key",
+        system_account_entity,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        "2.1",
+        "contract_version",
+        system_account_entity,
+        3,
+        0,
+    );
+}
+
+fn expect_message_on_topic_and_index<'a>(
+    query_view: &'a ContractQueryView<'a>,
+    message: &str,
+    topic_name: &str,
+    entity_addr: EntityAddr,
+    index_in_block: u64,
+    index_in_topic: u32,
+) {
+    let expected_message = MessagePayload::from(message);
+    let expected_message_hash = cryptography::blake2b(
+        [
+            index_in_block.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let topic_name_hash = cryptography::blake2b(topic_name);
+    let queried_message_summary = query_view
+        .message_summary_for_entity(topic_name_hash.into(), index_in_topic, None, entity_addr)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
+    assert_eq!(
+        query_view
+            .message_topic_for_entity(topic_name_hash.into(), entity_addr)
+            .message_count(),
+        1
+    );
+}
+
+#[ignore]
+#[test]
+fn after_upgrade_should_emit_system_messages() {
+    // release_1_5_8 should not have Key::MessageTopic entries under the system account.
+    let (initial_builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_5_8);
+    let builder = RefCell::new(initial_builder);
+
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    // Patch bump keeps protocol major the same, so installed contract versions are "1.x".
+    let new_protocol_version = ProtocolVersion::from_parts(
+        current_protocol_version.value().major,
+        current_protocol_version.value().minor,
+        current_protocol_version.value().patch + 1,
+    );
+
+    assert!(
+        query_system_message_topic_summary(&builder, "package_key").is_none(),
+        "package_key topic must not exist in pre-feature state"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_key").is_none(),
+        "contract_key topic must not exist in pre-feature state"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "bytecode_key").is_none(),
+        "bytecode_key topic must not exist in pre-feature state"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_version").is_none(),
+        "contract_version topic must not exist in pre-feature state"
+    );
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(current_protocol_version)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(EraId::new(1))
+        .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+        .with_new_gas_hold_interval(24 * 60 * 60 * 1000)
+        .build();
+    builder
+        .borrow_mut()
+        .with_block_time(BlockTime::new(DEFAULT_BLOCK_TIME))
+        .upgrade_using_scratch(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    // After the protocol upgrade: all four system messaging topics must have been created.
+    assert!(
+        query_system_message_topic_summary(&builder, "package_key").is_some(),
+        "package_key topic must be created by protocol upgrade"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_key").is_some(),
+        "contract_key topic must be created by protocol upgrade"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "bytecode_key").is_some(),
+        "bytecode_key topic must be created by protocol upgrade"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_version").is_some(),
+        "contract_version topic must be created by protocol upgrade"
+    );
+
+    // Install a contract. The install should emit 4 system messages.
+    let (install_contract_hash, contract_package_addr, install_wasm_addr) =
+        install_messages_emitter_contract_with_metadata(&builder, false);
+
+    let system_account_entity = EntityAddr::Account(PublicKey::System.to_account_hash().value());
+    let query_view = ContractQueryView::new(&builder, install_contract_hash);
+
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", base16::encode_lower(&contract_package_addr)),
+        "package_key",
+        system_account_entity,
+        0,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!(
+            "hash-{}",
+            base16::encode_lower(&install_contract_hash.value())
+        ),
+        "contract_key",
+        system_account_entity,
+        1,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        &format!("hash-{}", base16::encode_lower(&install_wasm_addr)),
+        "bytecode_key",
+        system_account_entity,
+        2,
+        0,
+    );
+    expect_message_on_topic_and_index(
+        &query_view,
+        "2.1",
+        "contract_version",
+        system_account_entity,
+        3,
+        0,
+    );
+}
+
+#[ignore]
+#[test]
+fn multiple_installs_in_same_block_have_sequential_block_indices() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    // First install at block time T — system messages use block indices 0-3.
+    let install_a_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_INSTALLER_WASM,
+        runtime_args! { ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT => false },
+    )
+    .with_block_time(DEFAULT_BLOCK_TIME)
+    .build();
+    builder
+        .borrow_mut()
+        .exec(install_a_request)
+        .expect_success()
+        .commit();
+
+    let block_count_after_a: (BlockTime, u64) = builder
+        .borrow_mut()
+        .query(None, Key::BlockGlobal(BlockGlobalAddr::MessageCount), &[])
+        .expect("should have count")
+        .as_cl_value()
+        .expect("should be CLValue")
+        .clone()
+        .into_t()
+        .expect("should deserialize");
+    assert_eq!(block_count_after_a.1, 4, "4 messages after first install");
+
+    // Second install at the same block time T — system messages continue from index 4.
+    let install_b_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_INSTALLER_WASM,
+        runtime_args! { ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT => false },
+    )
+    .with_block_time(DEFAULT_BLOCK_TIME)
+    .build();
+    builder
+        .borrow_mut()
+        .exec(install_b_request)
+        .expect_success()
+        .commit();
+
+    let block_count_after_b: (BlockTime, u64) = builder
+        .borrow_mut()
+        .query(None, Key::BlockGlobal(BlockGlobalAddr::MessageCount), &[])
+        .expect("should have count")
+        .as_cl_value()
+        .expect("should be CLValue")
+        .clone()
+        .into_t()
+        .expect("should deserialize");
+    assert_eq!(
+        block_count_after_b.1, 8,
+        "8 total messages after two installs in the same block"
+    );
+}
+
+fn query_system_message_topic_summary(
+    builder: &RefCell<LmdbWasmTestBuilder>,
+    topic_name: &str,
+) -> Option<MessageTopicSummary> {
+    let system_account_entity = EntityAddr::Account(PublicKey::System.to_account_hash().value());
+    let topic_name_hash = cryptography::blake2b(topic_name);
+    let topic_key = Key::message_topic(system_account_entity, topic_name_hash.into());
+    match builder.borrow_mut().query(None, topic_key, &[]) {
+        Ok(StoredValue::MessageTopic(summary)) => Some(summary),
+        Ok(_) | Err(_) => None,
+    }
+}
+
+#[ignore]
+#[test]
+fn protocol_upgrade_creates_messaging_topics_and_is_idempotent() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    // After genesis, the 4 system messaging topics must already exist.
+    assert!(
+        query_system_message_topic_summary(&builder, "package_key").is_some(),
+        "package_key topic must exist after genesis"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_key").is_some(),
+        "contract_key topic must exist after genesis"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "bytecode_key").is_some(),
+        "bytecode_key topic must exist after genesis"
+    );
+    assert!(
+        query_system_message_topic_summary(&builder, "contract_version").is_some(),
+        "contract_version topic must exist after genesis"
+    );
+
+    // Capture the blocktime stored in the topics before the first upgrade.
+    let blocktime_before = query_system_message_topic_summary(&builder, "package_key")
+        .unwrap()
+        .blocktime();
+
+    // First protocol upgrade.
+    let new_protocol_version = ProtocolVersion::from_parts(
+        DEFAULT_PROTOCOL_VERSION.value().major,
+        DEFAULT_PROTOCOL_VERSION.value().minor + 1,
+        0,
+    );
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(EraId::new(0))
+        .build();
+    builder
+        .borrow_mut()
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    // Topics must still exist after upgrade.
+    assert!(
+        query_system_message_topic_summary(&builder, "package_key").is_some(),
+        "package_key topic must survive protocol upgrade"
+    );
+
+    // the topic was already created, so its blocktime is NOT updated by the
+    // upgrade (add_topic_to_system_account returns early if topic already exists).
+    let blocktime_after_first_upgrade = query_system_message_topic_summary(&builder, "package_key")
+        .unwrap()
+        .blocktime();
+    assert_eq!(
+        blocktime_before, blocktime_after_first_upgrade,
+        "topic blocktime must not change on protocol upgrade (idempotency)"
+    );
+
+    // Second protocol upgrade — topics must remain unchanged.
+    let newer_protocol_version = ProtocolVersion::from_parts(
+        new_protocol_version.value().major,
+        new_protocol_version.value().minor + 1,
+        0,
+    );
+    let mut upgrade_request_2 = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(new_protocol_version)
+        .with_new_protocol_version(newer_protocol_version)
+        .with_activation_point(EraId::new(0))
+        .build();
+    builder
+        .borrow_mut()
+        .upgrade(&mut upgrade_request_2)
+        .expect_upgrade_success();
+
+    let blocktime_after_second_upgrade =
+        query_system_message_topic_summary(&builder, "package_key")
+            .unwrap()
+            .blocktime();
+    assert_eq!(
+        blocktime_before, blocktime_after_second_upgrade,
+        "topic blocktime must remain unchanged after second protocol upgrade"
+    );
 }

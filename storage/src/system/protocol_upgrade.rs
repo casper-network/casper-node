@@ -1,4 +1,8 @@
 //! Support for applying upgrades on the execution engine.
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2bVar,
+};
 use num_rational::Ratio;
 use std::{
     cell::RefCell,
@@ -316,6 +320,11 @@ where
         );
 
         let system_hash_addresses = SystemHashAddresses::new(mint, auction, handle_payment);
+
+        let block_time = self.tracking_copy.get_block_time()?.unwrap_or_default();
+        self.tracking_copy
+            .add_system_message_topics(block_time)
+            .map_err(ProtocolUpgradeError::TrackingCopy)?;
 
         Ok(system_hash_addresses)
     }
@@ -1879,4 +1888,15 @@ enum AccountRepr {
     None,
     Account(Account),
     Entity(AddressableEntity),
+}
+
+const DIGEST_LENGTH: usize = 32;
+
+/// The 32-byte digest blake2b hash function
+pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
+    let mut result = [0; DIGEST_LENGTH];
+    let mut hasher = Blake2bVar::new(DIGEST_LENGTH).expect("should create hasher");
+    hasher.update(data.as_ref());
+    hasher.finalize_variable(&mut result).ok();
+    result
 }
