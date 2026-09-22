@@ -549,8 +549,12 @@ mod tests {
     use alloy_consensus::{
         SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
     };
-    use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
-    use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
+    use alloy_eips::{
+        eip2718::Encodable2718,
+        eip2930::{AccessList, AccessListItem},
+        eip7702::Authorization as AlloyAuthorization,
+    };
+    use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256};
     use casper_types::{
         evm, EvmTransactionError, InitiatorAddr, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
     };
@@ -732,6 +736,53 @@ mod tests {
 
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("EIP-2930 gas price equal to base fee should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_accepts_eip2930_with_access_list() {
+        let chainspec = chainspec();
+        // Intrinsic gas: 21,000 base plus one 2,400 address and one 1,900
+        // storage key prepayment.
+        let meta = evm_meta(
+            &chainspec,
+            eip2930_transaction_with_access_list(
+                BASE_FEE_WEI,
+                21_000 + 2_400 + 1_900,
+                AccessList(vec![AccessListItem {
+                    address: AlloyAddress::from([2u8; 20]),
+                    storage_keys: vec![B256::from([3u8; 32])],
+                }]),
+            ),
+        );
+
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("access-list transaction with sufficient gas limit should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_access_list_intrinsic_gas_above_gas_limit() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip2930_transaction_with_access_list(
+                BASE_FEE_WEI,
+                21_000 + 2_400 + 1_900 - 1,
+                AccessList(vec![AccessListItem {
+                    address: AlloyAddress::from([2u8; 20]),
+                    storage_keys: vec![B256::from([3u8; 32])],
+                }]),
+            ),
+        );
+
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::IntrinsicGasExceedsGasLimit {
+                    intrinsic_gas,
+                    gas_limit
+                }
+            )) if intrinsic_gas == 21_000 + 2_400 + 1_900 && gas_limit == 21_000 + 2_400 + 1_900 - 1
+        ));
     }
 
     #[test]
@@ -1124,6 +1175,14 @@ mod tests {
     }
 
     fn eip2930_transaction(gas_price: u128, gas_limit: u64) -> EvmTransaction {
+        eip2930_transaction_with_access_list(gas_price, gas_limit, AccessList::default())
+    }
+
+    fn eip2930_transaction_with_access_list(
+        gas_price: u128,
+        gas_limit: u64,
+        access_list: AccessList,
+    ) -> EvmTransaction {
         let tx = TxEip2930 {
             chain_id: CHAIN_ID,
             nonce: 0,
@@ -1131,7 +1190,7 @@ mod tests {
             gas_limit,
             to: TxKind::Call(AlloyAddress::from([1u8; 20])),
             value: U256::ZERO,
-            access_list: Default::default(),
+            access_list,
             input: Default::default(),
         };
         signed_transaction(tx.into_signed(Signature::test_signature()).into())
