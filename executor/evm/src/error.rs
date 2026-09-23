@@ -51,6 +51,12 @@ pub enum DbError {
     /// Failed while reading from the tracking copy.
     #[error(transparent)]
     TrackingCopy(#[from] TrackingCopyError),
+    /// The bytecode referenced by a non-empty EVM code hash is missing.
+    #[error("missing referenced EVM bytecode at {key}")]
+    MissingBytecode {
+        /// Global-state key of the missing bytecode.
+        key: Box<Key>,
+    },
     /// The value stored under an EVM key has an unexpected variant.
     #[error("unexpected stored value for {key}: expected {expected}, found {found}")]
     TypeMismatch {

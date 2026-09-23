@@ -1025,6 +1025,209 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 }
 
 #[test]
+fn missing_bytecode_rejects_signed_value_transfer_without_state_changes() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let target = evm::Address::new([0xa1; 20]);
+    let transaction = legacy_transaction_to(
+        Some(7),
+        to_alloy_address(target),
+        U256::from(DEFAULT_WEI_PER_MOTE),
+        100_000,
+    );
+    let sender = transaction.from();
+    seed_evm_balance(&mut tracking_copy, sender, U512::from(100));
+    seed_evm_balance(&mut tracking_copy, target, U512::zero());
+    seed_evm_code(&mut tracking_copy, target, reverting_runtime());
+    let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(
+        &mut tracking_copy,
+        target,
+    )));
+    tracking_copy.prune(missing_key);
+
+    let error = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            ExecuteRequest {
+                block: block(),
+                kind: ExecuteKind::Transaction(Box::new(transaction)),
+            },
+        )
+        .expect_err("missing contract bytecode must abort execution");
+
+    assert!(matches!(
+        error,
+        Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
+    ));
+    assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(100));
+    assert_eq!(read_balance(&mut tracking_copy, target), U512::zero());
+    assert_eq!(read_evm_nonce(&mut tracking_copy, sender), 0);
+}
+
+#[test]
+fn empty_accounts_accept_value_transfers_without_stored_bytecode() {
+    for has_code_hash in [true, false] {
+        let executor = executor(EvmSpec::Prague);
+        let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+        let target = evm::Address::new([0xa1; 20]);
+        let transaction = legacy_transaction_to(
+            Some(7),
+            to_alloy_address(target),
+            U256::from(DEFAULT_WEI_PER_MOTE),
+            21_000,
+        );
+        let sender = transaction.from();
+        seed_evm_balance(&mut tracking_copy, sender, U512::from(100));
+        seed_evm_balance(&mut tracking_copy, target, U512::zero());
+        if !has_code_hash {
+            tracking_copy.prune(Key::Evm(EvmAddr::CodeHash(target)));
+        }
+        assert!(read_code(&mut tracking_copy, EMPTY_CODE_HASH).is_none());
+
+        let outcome = execute_transaction(
+            &executor,
+            &data_access_layer,
+            &mut tracking_copy,
+            transaction,
+        );
+
+        assert_eq!(outcome.status, ExecutionStatus::Success);
+        assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(99));
+        assert_eq!(read_balance(&mut tracking_copy, target), U512::one());
+        assert_eq!(read_evm_nonce(&mut tracking_copy, sender), 1);
+        assert_eq!(read_code_hash(&mut tracking_copy, target), EMPTY_CODE_HASH);
+        assert!(read_code(&mut tracking_copy, EMPTY_CODE_HASH).is_none());
+    }
+}
+
+#[test]
+fn missing_bytecode_aborts_nested_execution_without_state_changes() {
+    for instruction in [opcode::CALL, opcode::EXTCODESIZE, opcode::EXTCODECOPY] {
+        let executor = executor(EvmSpec::Prague);
+        let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+        let sender = evm::Address::new([0xa0; 20]);
+        let outer = evm::Address::new([0xa1; 20]);
+        let inner = evm::Address::new([0xa2; 20]);
+        seed_evm_balance(&mut tracking_copy, sender, U512::from(100));
+        seed_evm_balance(&mut tracking_copy, outer, U512::zero());
+        seed_evm_code(&mut tracking_copy, inner, reverting_runtime());
+        let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(&mut tracking_copy, inner)));
+        tracking_copy.prune(missing_key);
+
+        // Write storage before loading the corrupt account to verify that the
+        // database error discards earlier execution as well as the value transfer.
+        let mut runtime = vec![opcode::PUSH1, 1, opcode::PUSH0, opcode::SSTORE];
+        match instruction {
+            opcode::CALL => runtime.extend_from_slice(&[
+                opcode::PUSH0, // return size
+                opcode::PUSH0, // return offset
+                opcode::PUSH0, // input size
+                opcode::PUSH0, // input offset
+                opcode::PUSH0, // value
+            ]),
+            opcode::EXTCODECOPY => runtime.extend_from_slice(&[
+                opcode::PUSH1,
+                32,            // size
+                opcode::PUSH0, // code offset
+                opcode::PUSH0, // memory offset
+            ]),
+            _ => {}
+        }
+        runtime.push(opcode::PUSH20);
+        runtime.extend_from_slice(inner.as_bytes());
+        if instruction == opcode::CALL {
+            runtime.push(opcode::GAS);
+        }
+        runtime.extend_from_slice(&[instruction, opcode::STOP]);
+        seed_evm_code(&mut tracking_copy, outer, runtime);
+
+        let error = executor
+            .execute(
+                &data_access_layer,
+                &mut tracking_copy,
+                checked_call_request(sender, Some(outer), Vec::new(), CasperU256::one()),
+            )
+            .expect_err("missing nested bytecode must abort execution");
+
+        assert!(matches!(
+            error,
+            Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
+        ));
+        assert_eq!(
+            read_storage(&mut tracking_copy, outer, CasperU256::zero()),
+            None
+        );
+        assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(100));
+        assert_eq!(read_balance(&mut tracking_copy, outer), U512::zero());
+        assert_eq!(read_evm_nonce(&mut tracking_copy, sender), 0);
+    }
+}
+
+#[test]
+fn missing_bytecode_rejects_delegated_call() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let authority = evm::Address::new([0xa1; 20]);
+    let delegate = evm::Address::new([0xa2; 20]);
+    seed_evm_code(&mut tracking_copy, authority, delegation_code(delegate));
+    seed_evm_code(&mut tracking_copy, delegate, reverting_runtime());
+    let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(
+        &mut tracking_copy,
+        delegate,
+    )));
+    tracking_copy.prune(missing_key);
+
+    let error = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            call_request(
+                evm::Address::ZERO,
+                Some(authority),
+                Vec::new(),
+                CasperU256::zero(),
+            ),
+        )
+        .expect_err("missing delegated bytecode must abort execution");
+
+    assert!(matches!(
+        error,
+        Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
+    ));
+}
+
+#[test]
+fn missing_bytecode_rejects_system_call() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let target = evm::Address::new([0xa1; 20]);
+    seed_evm_code(&mut tracking_copy, target, reverting_runtime());
+    let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(
+        &mut tracking_copy,
+        target,
+    )));
+    tracking_copy.prune(missing_key);
+
+    let error = executor
+        .execute_system_call(
+            &data_access_layer,
+            &mut tracking_copy,
+            SystemCallRequest {
+                block: block(),
+                target,
+                input: Vec::new(),
+            },
+        )
+        .expect_err("missing system-call bytecode must abort execution");
+
+    assert!(matches!(
+        error,
+        Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
+    ));
+}
+
+#[test]
 fn prague_bls12_g1_add_precompile_delegates_to_revm() {
     let executor = executor(EvmSpec::Prague);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();

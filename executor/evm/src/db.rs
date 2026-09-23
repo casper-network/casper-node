@@ -134,7 +134,9 @@ where
                 expected: "StoredValue::ByteCode",
                 found: stored_value.type_name(),
             }),
-            None => Ok(Bytecode::default()),
+            // Empty-code accounts do not require a stored bytecode record.
+            None if code_hash == evm::EMPTY_CODE_HASH => Ok(Bytecode::default()),
+            None => Err(DbError::MissingBytecode { key: Box::new(key) }),
         }
     }
 
@@ -185,4 +187,91 @@ fn cl_value_to_u256(key: Key, cl_value: CLValue, wei_per_mote: u64) -> Result<U2
     let mut bytes = [0u8; 64];
     balance_wei.to_big_endian(&mut bytes);
     Ok(U256::from_be_slice(&bytes[32..]))
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_storage::{
+        block_store::lmdb::LmdbBlockStore,
+        global_state::state::{lmdb::make_temporary_global_state, StateProvider},
+    };
+    use casper_types::{ByteCode, ByteCodeKind};
+
+    use super::*;
+
+    fn read_bytecode(
+        code_hash: evm::Hash,
+        stored_value: Option<StoredValue>,
+    ) -> Result<Bytecode, DbError> {
+        let key = Key::Evm(EvmAddr::ByteCode(code_hash));
+        let (state, root, _tempdir) =
+            make_temporary_global_state(stored_value.map(|value| (key, value)));
+        let reader = state.checkout(root).unwrap().unwrap();
+        let mut tracking_copy = TrackingCopy::new(reader, 5, false);
+        let data_access_layer = DataAccessLayer {
+            block_store: LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap(),
+            state,
+            max_query_depth: 5,
+            enable_addressable_entity: false,
+        };
+        CasperDb::new(&data_access_layer, &mut tracking_copy, 1)
+            .code_by_hash(tx::to_revm_hash(code_hash))
+    }
+
+    #[test]
+    fn empty_code_hash_does_not_require_stored_bytecode() {
+        assert!(read_bytecode(evm::EMPTY_CODE_HASH, None)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn non_empty_code_hash_requires_stored_bytecode() {
+        // The all-zero hash is not the canonical empty-code hash.
+        for hash in [evm::Hash::new([0x42; 32]), evm::Hash::new([0; 32])] {
+            let error = read_bytecode(hash, None).unwrap_err();
+            assert!(matches!(
+                error,
+                DbError::MissingBytecode { key } if *key == Key::Evm(EvmAddr::ByteCode(hash))
+            ));
+        }
+    }
+
+    #[test]
+    fn invalid_bytecode_records_preserve_type_errors() {
+        let wrong_value = StoredValue::CLValue(CLValue::from_t(1u64).unwrap());
+        let mut cases = vec![(
+            wrong_value.clone(),
+            "StoredValue::ByteCode",
+            wrong_value.type_name(),
+        )];
+        for kind in [
+            ByteCodeKind::Empty,
+            ByteCodeKind::V1CasperWasm,
+            ByteCodeKind::V2CasperWasm,
+        ] {
+            cases.push((
+                StoredValue::ByteCode(ByteCode::new(kind, vec![])),
+                "EVM bytecode kind",
+                kind.to_string(),
+            ));
+        }
+
+        for (value, expected_type, found_type) in cases {
+            let hash = evm::Hash::new([0x42; 32]);
+            let error = read_bytecode(hash, Some(value)).unwrap_err();
+            match error {
+                DbError::TypeMismatch {
+                    key,
+                    expected,
+                    found,
+                } => {
+                    assert_eq!(*key, Key::Evm(EvmAddr::ByteCode(hash)));
+                    assert_eq!(expected, expected_type);
+                    assert_eq!(found, found_type);
+                }
+                other => panic!("expected bytecode type mismatch, got {other:?}"),
+            }
+        }
+    }
 }
