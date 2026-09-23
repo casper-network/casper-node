@@ -170,6 +170,9 @@ pub enum BlockExecutionError {
     UnsupportedTransactionKind(u8),
     #[error("Error while converting transaction to internal representation: {0}")]
     TransactionConversion(String),
+    /// Failed to reconcile EVM balance rounding with total supply.
+    #[error("Failed to reconcile EVM dust with total supply: {0}")]
+    EvmDust(String),
     /// Invalid gas limit amount.
     #[error("Invalid gas limit amount: {0}")]
     InvalidGasLimit(U512),

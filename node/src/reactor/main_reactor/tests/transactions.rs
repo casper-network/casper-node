@@ -965,6 +965,32 @@ fn evm_coinbase_transfer_init_code() -> Vec<u8> {
     ])
 }
 
+fn evm_one_wei_transfer_init_code(recipient: evm::Address) -> Vec<u8> {
+    let mut runtime = vec![
+        opcode::PUSH1,
+        0, // return size
+        opcode::PUSH1,
+        0, // return offset
+        opcode::PUSH1,
+        0, // calldata size
+        opcode::PUSH1,
+        0, // calldata offset
+        opcode::PUSH1,
+        1, // value in wei
+        opcode::PUSH20,
+    ];
+    runtime.extend_from_slice(recipient.as_bytes());
+    runtime.extend_from_slice(&[
+        opcode::PUSH2,
+        0xff,
+        0xff, // gas
+        opcode::CALL,
+        opcode::POP,
+        opcode::STOP,
+    ]);
+    evm_init_code_returning(runtime)
+}
+
 fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
     signed_evm_create_transaction(chain_id, 0, evm_log_emitting_init_code())
 }
@@ -2002,6 +2028,79 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
     test.fixture
         .assert_execution_in_lane(&large_txn_hash, LARGE_LANE_ID, Duration::from_secs(10))
         .await;
+}
+
+#[tokio::test]
+async fn should_reduce_total_supply_for_evm_rounding_dust_without_debiting_sender_again() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 1,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let recipient = evm::Address::new([0x56; 20]);
+    let deploy = signed_evm_create_transaction(
+        evm_config.chain_id,
+        0,
+        evm_one_wei_transfer_init_code(recipient),
+    );
+    let sender = deploy.from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+    let (_hash, deploy_height, deploy_result) =
+        test.send_transaction(Transaction::from(deploy)).await;
+    let ExecutionResult::Evm(deploy_result) = deploy_result else {
+        panic!("expected EVM deploy execution result");
+    };
+    let contract = deploy_result
+        .receipt
+        .contract_address
+        .expect("EVM deployment should create contract");
+
+    let sender_balance_before = evm_balance(&mut test.fixture, sender, deploy_height);
+    let total_supply_before = test.get_total_supply(Some(deploy_height));
+    let call = signed_evm_call_transaction(evm_config.chain_id, 1, contract, 1, Vec::new());
+    let fee = call
+        .max_fee_amount(&evm_config)
+        .expect("maximum EVM fee should fit");
+    let (_hash, call_height, call_result) = test.send_transaction(Transaction::from(call)).await;
+    let ExecutionResult::Evm(call_result) = call_result else {
+        panic!("expected EVM call execution result");
+    };
+
+    assert_eq!(call_result.receipt.status, evm::ReceiptStatus::Success);
+    assert_eq!(
+        evm_balance(&mut test.fixture, sender, call_height),
+        sender_balance_before - fee - U512::one(),
+    );
+    assert_eq!(
+        evm_balance(&mut test.fixture, contract, call_height),
+        U512::zero()
+    );
+    assert_eq!(
+        evm_balance(&mut test.fixture, recipient, call_height),
+        U512::zero()
+    );
+    assert_eq!(
+        test.get_total_supply(Some(call_height)),
+        total_supply_before - U512::one(),
+    );
 }
 
 #[tokio::test]

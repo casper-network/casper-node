@@ -2,7 +2,10 @@ pub(crate) mod wasm_v2_request;
 
 use casper_executor_wasm::ExecutorV2;
 use itertools::Itertools;
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
+use parking_lot::RwLock;
+use std::{
+    cell::RefCell, collections::BTreeMap, convert::TryInto, rc::Rc, sync::Arc, time::Instant,
+};
 use tracing::{debug, error, info, trace, warn};
 use wasm_v2_request::{WasmV2Request, WasmV2Result};
 
@@ -33,9 +36,12 @@ use casper_storage::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
         StateProvider, StateReader,
     },
-    system::runtime_native::Config as NativeRuntimeConfig,
+    system::{
+        mint::Mint,
+        runtime_native::{Config as NativeRuntimeConfig, Id as NativeRuntimeId, RuntimeNative},
+    },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
-    TrackingCopy,
+    AddressGenerator, TrackingCopy,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -46,12 +52,12 @@ use casper_types::{
         ReceiptStatus as EvmReceiptStatus,
     },
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
-    system::handle_payment::ARG_AMOUNT,
+    system::{handle_payment::ARG_AMOUNT, MINT},
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, EvmTransactionError as CasperEvmTransactionError, FeeHandling,
     Gas, InvalidTransaction, InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling,
-    StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint, AUCTION_LANE_ID,
-    MINT_LANE_ID, U512,
+    Phase, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
+    AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -1321,7 +1327,35 @@ pub fn execute_finalized_block(
                         .map_err(|error| {
                             BlockExecutionError::TransactionConversion(error.to_string())
                         })?;
-                    let execution_effects = tracking_copy.effects();
+                    // EVM balances were already rounded down by the executor. Call mint
+                    // without debiting a purse, using the same tracking copy so its supply
+                    // reduction commits with the EVM balance writes.
+                    // TODO: Move this mint runtime setup out of block execution once the
+                    // runtime refactor is complete.
+                    let execution_effects = if outcome.dust_motes.is_zero() {
+                        tracking_copy.effects()
+                    } else {
+                        let tracking_copy = Rc::new(RefCell::new(tracking_copy));
+                        let id = NativeRuntimeId::Transaction(transaction_hash);
+                        let phase = Phase::Session;
+                        let address_generator =
+                            Arc::new(RwLock::new(AddressGenerator::new(&id.seed(), phase)));
+                        let mut runtime = RuntimeNative::new_system_contract_runtime(
+                            native_runtime_config.clone(),
+                            protocol_version,
+                            id,
+                            address_generator,
+                            Rc::clone(&tracking_copy),
+                            phase,
+                            MINT,
+                        )
+                        .map_err(|error| BlockExecutionError::EvmDust(error.to_string()))?;
+                        runtime
+                            .reduce_total_supply(outcome.dust_motes)
+                            .map_err(|error| BlockExecutionError::EvmDust(error.to_string()))?;
+                        let effects = tracking_copy.borrow().effects();
+                        effects
+                    };
                     state_root_hash =
                         scratch_state.commit_effects(state_root_hash, execution_effects.clone())?;
                     let effective_gas_price = evm_transaction.effective_gas_price(base_fee_wei);
