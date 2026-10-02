@@ -9,6 +9,7 @@
     "block_sync",
     "build_version",
     "chainspec_name",
+    "chainspecs",
     "last_progress",
     "peers",
     "reactor_state",
@@ -85,6 +86,14 @@
         },
         {
           "type": "null"
+        }
+      ]
+    },
+    "chainspecs": {
+      "description": "Complete running and installed future chainspec source documents, or an error diagnostic.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ChainspecStatus"
         }
       ]
     },
@@ -289,6 +298,100 @@
     },
     "ProtocolVersion": {
       "description": "Casper Platform protocol version",
+      "type": "string"
+    },
+    "ChainspecStatus": {
+      "description": "Chainspec discovery availability, independent of status and upgrade selection.",
+      "anyOf": [
+        {
+          "description": "Complete, atomically refreshed chainspec source documents.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Chainspecs"
+            }
+          ]
+        },
+        {
+          "description": "Installed chainspec source documents could not be read or identified.",
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "description": "Diagnostic for the invalid installed chainspec.",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Chainspecs": {
+      "description": "Complete source documents for the running and installed future chainspecs.",
+      "type": "object",
+      "required": [
+        "current",
+        "future"
+      ],
+      "properties": {
+        "current": {
+          "description": "Source documents loaded by the running node, including optional companion files.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ChainspecRawBytes"
+            }
+          ]
+        },
+        "future": {
+          "description": "Installed future source documents, keyed and ordered by protocol version.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ChainspecRawBytes"
+          }
+        }
+      }
+    },
+    "ChainspecRawBytes": {
+      "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
+      "type": "object",
+      "required": [
+        "chainspec_bytes"
+      ],
+      "properties": {
+        "chainspec_bytes": {
+          "description": "Raw bytes of the current chainspec.toml file.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            }
+          ]
+        },
+        "maybe_genesis_accounts_bytes": {
+          "description": "Raw bytes of the current genesis accounts.toml file.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maybe_global_state_bytes": {
+          "description": "Raw bytes of the current global_state.toml file.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Bytes": {
+      "description": "Hex-encoded bytes.",
       "type": "string"
     },
     "ReactorState": {
