@@ -41,12 +41,24 @@ pub const CREATE2_DEPLOYER: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/create2-deployer.bin"),
 };
 
+/// Safe's canonical singleton factory for deterministic contract deployments.
+///
+/// It has the same salt/creation-code interface as the Arachnid deployer, at
+/// the address used by Safe's chain-specific signed deployment transactions.
+pub const SAFE_SINGLETON_FACTORY: EvmPreinstall = EvmPreinstall {
+    name: "Safe Singleton Factory",
+    address: evm::Address::new(hex!("0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7")),
+    code: include_bytes!("preinstalls/safe-singleton-factory.bin"),
+};
+
 /// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
 pub const PREINSTALLS: &[EvmPreinstall] = &[
     // Aggregate reads and expose block/chain information at the standard Multicall3 address.
     MULTICALL3,
     // Support deterministic deployments through Foundry's default CREATE2 factory.
     CREATE2_DEPLOYER,
+    // Support deterministic deployments at the factory address used by Safe tooling.
+    SAFE_SINGLETON_FACTORY,
 ];
 
 #[cfg(test)]
@@ -77,5 +89,19 @@ mod tests {
             CREATE2_DEPLOYER.code_hash().to_hex_string(),
             "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
         );
+    }
+
+    #[test]
+    fn safe_singleton_factory_matches_canonical_deployment() {
+        assert_eq!(
+            SAFE_SINGLETON_FACTORY.address.to_hex_string(),
+            "914d7fec6aac8cd542e72bca78b30650d45643d7"
+        );
+        assert_eq!(SAFE_SINGLETON_FACTORY.code.len(), 69);
+        assert_eq!(
+            SAFE_SINGLETON_FACTORY.code_hash().to_hex_string(),
+            "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+        );
+        assert_eq!(SAFE_SINGLETON_FACTORY.code, CREATE2_DEPLOYER.code);
     }
 }
