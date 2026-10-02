@@ -1289,10 +1289,10 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     );
     assert!(execution_result.receipt.gas_used > 0);
     let max_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("max EVM fee should fit");
     let consumed_fee_amount = evm_transaction
-        .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        .fee_amount(execution_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     assert!(consumed_fee_amount < max_fee_amount);
     assert_eq!(execution_result.cost, max_fee_amount);
@@ -1570,10 +1570,10 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
     };
 
     let max_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("max EVM fee should fit");
     let consumed_fee_amount = evm_transaction
-        .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        .fee_amount(execution_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     let expected_refund = (max_fee_amount - consumed_fee_amount) / U512::from(4);
     let expected_fee = max_fee_amount - expected_refund;
@@ -1644,7 +1644,7 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
     };
 
     let maximum_fee = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
     assert_eq!(execution_result.receipt.gas_used, gas_limit);
@@ -1702,10 +1702,10 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
     );
     let sender = evm_transaction.from();
     let base_fee_amount = evm_transaction
-        .fee_amount(gas_limit, &evm_config)
+        .fee_amount(gas_limit, &evm_config.fee_config())
         .expect("base fee should fit");
     let maximum_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum fee should fit");
     assert!(base_fee_amount < maximum_fee_amount);
     seed_evm_account(&mut test.fixture, sender, base_fee_amount);
@@ -1803,7 +1803,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
     let revert_transaction =
         signed_evm_call_transaction(evm_config.chain_id, 2, revert_contract, 0, Vec::new());
     let revert_maximum_fee = revert_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     let (_hash, revert_height, revert_result) = test
         .send_transaction(Transaction::from(revert_transaction.clone()))
@@ -1812,7 +1812,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
         panic!("expected EVM execution result");
     };
     let revert_consumed_fee = revert_transaction
-        .fee_amount(revert_result.receipt.gas_used, &evm_config)
+        .fee_amount(revert_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     let expected_revert_refund = (revert_maximum_fee - revert_consumed_fee) / U512::from(4);
     assert_eq!(revert_result.receipt.status, evm::ReceiptStatus::Revert);
@@ -1827,7 +1827,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
     let halt_transaction =
         signed_evm_call_transaction(evm_config.chain_id, 3, halt_contract, 0, Vec::new());
     let halt_maximum_fee = halt_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     let (_hash, halt_height, halt_result) = test
         .send_transaction(Transaction::from(halt_transaction.clone()))

@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use num_rational::Ratio;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
@@ -12,10 +11,10 @@ use serde::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::chainspec::TransactionLaneDefinition;
+use super::TransactionLaneDefinition;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    U256, U512,
+    EvmFeeConfig, U256, U512,
 };
 
 /// The default number of wei represented by one mote.
@@ -162,40 +161,28 @@ where
 }
 
 impl EvmConfig {
+    /// Returns the subset of this configuration needed to price EVM transactions.
+    pub fn fee_config(&self) -> EvmFeeConfig {
+        EvmFeeConfig::new(self.base_fee, self.wei_per_mote)
+    }
+
     /// Returns the EVM base fee denominated in wei.
     pub fn base_fee_wei(&self) -> u128 {
-        u128::from(self.base_fee) * u128::from(self.wei_per_mote)
+        self.fee_config().base_fee_wei()
     }
 
     /// Converts an EVM gas cost, denominated in wei, to motes by rounding up.
     ///
-    /// Rounding is applied after multiplying gas by price, so sub-mote totals
-    /// are charged as one mote without overcharging each gas unit separately.
+    /// See [`EvmFeeConfig::gas_fee_motes`].
     pub fn gas_fee_motes(&self, gas: u64, gas_price_wei: u128) -> Option<U512> {
-        if self.wei_per_mote == 0 {
-            return None;
-        }
-        let fee_wei = U512::from(gas).checked_mul(U512::from(gas_price_wei))?;
-        Some(
-            Ratio::new(fee_wei, U512::from(self.wei_per_mote))
-                .ceil()
-                .to_integer(),
-        )
+        self.fee_config().gas_fee_motes(gas, gas_price_wei)
     }
 
     /// Converts an Ethereum transaction value from wei to motes.
     ///
-    /// Casper purse balances have mote precision, so values containing a
-    /// fractional mote are not representable and return `None`.
+    /// See [`EvmFeeConfig::value_motes`].
     pub fn value_motes(&self, value_wei: U256) -> Option<U256> {
-        if self.wei_per_mote == 0 {
-            return None;
-        }
-        let wei_per_mote = U256::from(self.wei_per_mote);
-        if value_wei % wei_per_mote != U256::zero() {
-            return None;
-        }
-        Some(value_wei / wei_per_mote)
+        self.fee_config().value_motes(value_wei)
     }
 }
 

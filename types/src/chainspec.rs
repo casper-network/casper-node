@@ -5,6 +5,7 @@ mod accounts_config;
 mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
+mod evm;
 mod fee_handling;
 pub mod genesis_config;
 mod global_state_update;
@@ -35,7 +36,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, EvmConfig, ProtocolVersion, Timestamp,
+    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -52,6 +53,7 @@ pub use core_config::{
 pub use core_config::{
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
+pub use evm::{EvmConfig, EvmSpec, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE};
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::GenesisConfig;

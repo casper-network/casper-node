@@ -71,21 +71,21 @@ impl AppendableBlock {
         if self
             .transactions
             .keys()
-            .contains(&footprint.transaction_hash)
+            .contains(&footprint.transaction_hash())
         {
             return Err(AddError::Duplicate);
         }
-        if footprint.ttl > self.transaction_config.max_ttl {
+        if footprint.ttl() > self.transaction_config.max_ttl {
             return Err(AddError::ExcessiveTtl);
         }
-        if footprint.timestamp > self.timestamp {
+        if footprint.timestamp() > self.timestamp {
             return Err(AddError::FutureDatedDeploy);
         }
-        let expires = footprint.timestamp.saturating_add(footprint.ttl);
+        let expires = footprint.timestamp().saturating_add(footprint.ttl());
         if expires < self.timestamp {
             return Err(AddError::Expired);
         }
-        let lane_id = footprint.lane_id;
+        let lane_id = footprint.lane_id();
         let limit = if self.evm_config.is_supported(lane_id) {
             self.evm_config.get_max_transaction_count(lane_id)
         } else {
@@ -97,7 +97,7 @@ impl AppendableBlock {
         let count = self
             .transactions
             .iter()
-            .filter(|(_, item)| item.lane_id == lane_id)
+            .filter(|(_, item)| item.lane_id() == lane_id)
             .count();
         if count.checked_add(1).ok_or(AddError::Count(lane_id))? > limit as usize {
             return Err(AddError::Count(lane_id));
@@ -106,10 +106,10 @@ impl AppendableBlock {
         let gas_limit: U512 = self
             .transactions
             .values()
-            .map(|item| item.gas_limit.value())
+            .map(|item| item.gas_limit().value())
             .sum();
         if gas_limit
-            .checked_add(footprint.gas_limit.value())
+            .checked_add(footprint.gas_limit().value())
             .ok_or(AddError::GasLimit)?
             > U512::from(self.transaction_config.block_gas_limit)
         {
@@ -119,10 +119,10 @@ impl AppendableBlock {
         let size: usize = self
             .transactions
             .values()
-            .map(|item| item.size_estimate)
+            .map(|item| item.size_estimate())
             .sum();
         if size
-            .checked_add(footprint.size_estimate)
+            .checked_add(footprint.size_estimate())
             .ok_or(AddError::BlockSize)?
             > self.transaction_config.max_block_size as usize
         {
@@ -142,7 +142,7 @@ impl AppendableBlock {
             return Err(AddError::ApprovalCount);
         }
         self.transactions
-            .insert(footprint.transaction_hash, footprint.clone());
+            .insert(footprint.transaction_hash(), footprint.clone());
         Ok(())
     }
 
@@ -166,8 +166,8 @@ impl AppendableBlock {
             items: &BTreeMap<TransactionHash, TransactionFootprint>,
         ) {
             let mut ret = vec![];
-            for (x, y) in items.iter().filter(|(_, y)| y.lane_id == lane) {
-                ret.push((*x, y.approvals.clone()));
+            for (x, y) in items.iter().filter(|(_, y)| y.lane_id() == lane) {
+                ret.push((*x, y.approvals().clone()));
             }
             if !ret.is_empty() {
                 collater.insert(lane, ret);
@@ -212,7 +212,7 @@ impl AppendableBlock {
     fn category_lane(&self, lane: u8) -> usize {
         self.transactions
             .iter()
-            .filter(|(_, f)| f.lane_id == lane)
+            .filter(|(_, f)| f.lane_id() == lane)
             .count()
     }
 
@@ -232,7 +232,7 @@ impl Display for AppendableBlock {
         let total_gas_limit: Gas = self
             .transactions
             .values()
-            .map(|f| f.gas_limit)
+            .map(|f| f.gas_limit())
             .try_fold(Gas::new(0), |acc, gas| acc.checked_add(gas))
             .unwrap_or(Gas::MAX);
         let total_approvals_count: usize = self
@@ -240,7 +240,8 @@ impl Display for AppendableBlock {
             .values()
             .map(|f| f.approvals_count())
             .sum();
-        let total_size_estimate: usize = self.transactions.values().map(|f| f.size_estimate).sum();
+        let total_size_estimate: usize =
+            self.transactions.values().map(|f| f.size_estimate()).sum();
 
         write!(
             formatter,
@@ -325,11 +326,11 @@ mod tests {
         let block_payload = appendable_block.into_block_payload(vec![], signatures.clone(), false);
         let transaction_hashes: BTreeSet<TransactionHash> =
             block_payload.all_transaction_hashes().collect();
-        assert!(transaction_hashes.contains(&transfer_footprint.transaction_hash));
-        assert!(transaction_hashes.contains(&auction_footprint.transaction_hash));
-        assert!(transaction_hashes.contains(&install_upgrade_footprint.transaction_hash));
-        assert!(transaction_hashes.contains(&large_wasm_footprint.transaction_hash));
-        assert!(transaction_hashes.contains(&evm_footprint.transaction_hash));
+        assert!(transaction_hashes.contains(&transfer_footprint.transaction_hash()));
+        assert!(transaction_hashes.contains(&auction_footprint.transaction_hash()));
+        assert!(transaction_hashes.contains(&install_upgrade_footprint.transaction_hash()));
+        assert!(transaction_hashes.contains(&large_wasm_footprint.transaction_hash()));
+        assert!(transaction_hashes.contains(&evm_footprint.transaction_hash()));
         assert_eq!(transaction_hashes.len(), 5);
         assert_eq!(*block_payload.rewarded_signatures(), signatures);
     }
@@ -363,9 +364,9 @@ mod tests {
         let mut appendable_block = evm_appendable_block(1000, transaction_config);
 
         let mut first = TransactionFootprint::random_of_lane(TEST_EVM_LANE_ID, &mut test_rng);
-        first.gas_limit = Gas::new(100);
+        first.set_gas_limit(Gas::new(100));
         let mut second = TransactionFootprint::random_of_lane(TEST_EVM_LANE_ID, &mut test_rng);
-        second.gas_limit = Gas::new(100);
+        second.set_gas_limit(Gas::new(100));
 
         appendable_block.add_transaction(&first).unwrap();
         // Total gas would be 200 > 150, even though the lane count limit (1000) is nowhere
@@ -389,9 +390,9 @@ mod tests {
         let mut appendable_block = evm_appendable_block(1000, transaction_config);
 
         let mut first = TransactionFootprint::random_of_lane(TEST_EVM_LANE_ID, &mut test_rng);
-        first.size_estimate = 1000;
+        first.set_size_estimate(1000);
         let mut second = TransactionFootprint::random_of_lane(TEST_EVM_LANE_ID, &mut test_rng);
-        second.size_estimate = 1000;
+        second.set_size_estimate(1000);
 
         appendable_block.add_transaction(&first).unwrap();
         // Total size would be 2000 > 1500, even though the lane count limit (1000) is
@@ -435,13 +436,13 @@ mod tests {
         let mut appendable_block = evm_appendable_block(1000, transaction_config);
 
         let mut mint_footprint = TransactionFootprint::random_of_lane(MINT_LANE_ID, &mut test_rng);
-        mint_footprint.gas_limit = Gas::new(100);
+        mint_footprint.set_gas_limit(Gas::new(100));
         let mut wasm_footprint =
             TransactionFootprint::random_of_lane(LARGE_WASM_LANE_ID, &mut test_rng);
-        wasm_footprint.gas_limit = Gas::new(100);
+        wasm_footprint.set_gas_limit(Gas::new(100));
         let mut evm_footprint =
             TransactionFootprint::random_of_lane(TEST_EVM_LANE_ID, &mut test_rng);
-        evm_footprint.gas_limit = Gas::new(100);
+        evm_footprint.set_gas_limit(Gas::new(100));
 
         appendable_block.add_transaction(&mint_footprint).unwrap();
         appendable_block.add_transaction(&wasm_footprint).unwrap();

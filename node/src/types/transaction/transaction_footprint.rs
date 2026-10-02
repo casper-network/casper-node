@@ -17,23 +17,23 @@ use std::collections::BTreeSet;
 /// The block footprint of a transaction.
 pub(crate) struct TransactionFootprint {
     /// The identifying hash.
-    pub(crate) transaction_hash: TransactionHash,
+    transaction_hash: TransactionHash,
     /// Transaction payload hash.
-    pub(crate) payload_hash: Digest,
+    payload_hash: Digest,
     /// The estimated gas consumption.
-    pub(crate) gas_limit: Gas,
+    gas_limit: Gas,
     /// The gas tolerance.
-    pub(crate) gas_price_tolerance: u8,
+    gas_price_tolerance: u8,
     /// The bytesrepr serialized length.
-    pub(crate) size_estimate: usize,
+    size_estimate: usize,
     /// The transaction lane_id.
-    pub(crate) lane_id: u8,
+    lane_id: u8,
     /// Timestamp of the transaction.
-    pub(crate) timestamp: Timestamp,
+    timestamp: Timestamp,
     /// Time to live for the transaction.
-    pub(crate) ttl: TimeDiff,
+    ttl: TimeDiff,
     /// The approvals.
-    pub(crate) approvals: BTreeSet<Approval>,
+    approvals: BTreeSet<Approval>,
 }
 
 impl TransactionFootprint {
@@ -87,6 +87,46 @@ impl TransactionFootprint {
         self
     }
 
+    /// The identifying hash.
+    pub(crate) fn transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
+    }
+
+    /// Transaction payload hash.
+    pub(crate) fn payload_hash(&self) -> &Digest {
+        &self.payload_hash
+    }
+
+    /// The estimated gas consumption.
+    pub(crate) fn gas_limit(&self) -> Gas {
+        self.gas_limit
+    }
+
+    /// The bytesrepr serialized length.
+    pub(crate) fn size_estimate(&self) -> usize {
+        self.size_estimate
+    }
+
+    /// The transaction lane_id.
+    pub(crate) fn lane_id(&self) -> u8 {
+        self.lane_id
+    }
+
+    /// Timestamp of the transaction.
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
+    /// Time to live for the transaction.
+    pub(crate) fn ttl(&self) -> TimeDiff {
+        self.ttl
+    }
+
+    /// The approvals.
+    pub(crate) fn approvals(&self) -> &BTreeSet<Approval> {
+        &self.approvals
+    }
+
     /// The approval count, if known.
     pub(crate) fn approvals_count(&self) -> usize {
         self.approvals.len()
@@ -128,6 +168,16 @@ impl TransactionFootprint {
 
     pub(crate) fn gas_price_tolerance(&self) -> u8 {
         self.gas_price_tolerance
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_gas_limit(&mut self, gas_limit: Gas) {
+        self.gas_limit = gas_limit;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_size_estimate(&mut self, size_estimate: usize) {
+        self.size_estimate = size_estimate;
     }
 
     #[cfg(test)]

@@ -126,8 +126,8 @@ pub use global_state::Pointer;
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
-    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig,
+    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, EvmConfig, EvmSpec, FeeHandling,
+    GenesisAccount, GenesisConfig, GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig,
     GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig, HoldBalanceHandling, HostFunction,
     HostFunctionCost, HostFunctionCostsV1, HostFunctionCostsV2, HostFunctionV2,
     LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts,
@@ -135,7 +135,8 @@ pub use chainspec::{
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionLaneDefinition,
     TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig, WasmV1Config, WasmV2Config,
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING, REWARDS_HANDLING_RATIO_TAG,
+    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING, DEFAULT_WEI_PER_MOTE,
+    MINIMUM_WEI_PER_MOTE, REWARDS_HANDLING_RATIO_TAG,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -166,8 +167,8 @@ pub use digest::{
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use evm::{
-    EvmAddr, EvmApproval, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError,
-    EvmTransactionHash, EvmTransactionKind, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE,
+    EvmAddr, EvmApproval, EvmFeeConfig, EvmTransaction, EvmTransactionError, EvmTransactionHash,
+    EvmTransactionKind,
 };
 pub use gas::Gas;
 #[cfg(feature = "json-schema")]

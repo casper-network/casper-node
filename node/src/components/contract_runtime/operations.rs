@@ -746,7 +746,7 @@ pub fn execute_finalized_block(
             // chainspec's refund and fee handling to the unused amount.
             let cost = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .max_fee_amount(&chainspec.evm_config)
+                    .max_fee_amount(&chainspec.evm_config.fee_config())
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
                             "EVM fee amount overflowed U512".to_string(),
@@ -1029,7 +1029,7 @@ pub fn execute_finalized_block(
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let required_balance = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .required_balance(actual_cost, &chainspec.evm_config)
+                    .required_balance(actual_cost, &chainspec.evm_config.fee_config())
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
                             "EVM value is not an exact mote amount or value plus fee overflowed U512"
@@ -1214,7 +1214,7 @@ pub fn execute_finalized_block(
                         evm_transaction.gas_limit(),
                     );
                     let consumed = evm_transaction
-                        .fee_amount(consumed_gas, &chainspec.evm_config)
+                        .fee_amount(consumed_gas, &chainspec.evm_config.fee_config())
                         .ok_or_else(|| {
                             BlockExecutionError::PaymentError(
                                 "EVM fee amount overflowed U512".to_string(),
