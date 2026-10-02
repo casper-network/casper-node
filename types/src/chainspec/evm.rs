@@ -34,15 +34,15 @@ pub const MINIMUM_WEI_PER_MOTE: u64 = DEFAULT_WEI_PER_MOTE;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EvmSpec {
-    /// Prague.
+    /// Osaka.
     #[default]
-    Prague,
+    Osaka,
 }
 
 impl EvmSpec {
     fn tag(self) -> u8 {
         match self {
-            EvmSpec::Prague => 0,
+            EvmSpec::Osaka => 0,
         }
     }
 }
@@ -66,7 +66,7 @@ impl FromBytes for EvmSpec {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let spec = match tag {
-            0 => EvmSpec::Prague,
+            0 => EvmSpec::Osaka,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((spec, remainder))
@@ -114,7 +114,7 @@ impl Default for EvmConfig {
         EvmConfig {
             enabled: false,
             chain_id: 0,
-            spec: EvmSpec::Prague,
+            spec: EvmSpec::Osaka,
             block_gas_limit: 30_000_000,
             base_fee: 0,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -393,7 +393,7 @@ mod tests {
         json!({
             "enabled": true,
             "chain_id": 7,
-            "spec": "prague",
+            "spec": "osaka",
             "block_gas_limit": 30_000_000,
             "base_fee": 5_000,
             "wei_per_mote": 1_000_000_000,
@@ -525,6 +525,14 @@ mod tests {
             .preinstalls
             .insert(crate::evm::Address::new([1; 20]), Bytes::new());
         assert!(EvmConfig::from_bytes(&config.to_bytes().unwrap()).is_err());
+    }
+
+    #[test]
+    fn osaka_keeps_binary_tag_and_rejects_prague_configuration() {
+        assert_eq!(EvmSpec::Osaka.to_bytes().unwrap(), vec![0]);
+        assert_eq!(EvmSpec::from_bytes(&[0]).unwrap().0, EvmSpec::Osaka);
+        assert_eq!(serde_json::to_string(&EvmSpec::Osaka).unwrap(), "\"osaka\"");
+        assert!(serde_json::from_str::<EvmSpec>("\"prague\"").is_err());
     }
 
     #[test]

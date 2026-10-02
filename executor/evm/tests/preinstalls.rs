@@ -233,7 +233,7 @@ fn assert_preinstalls(state: &LmdbGlobalState, root: Digest) {
                 Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
             ),
             Some(StoredValue::ByteCode(ByteCode::new(
-                ByteCodeKind::EvmPrague,
+                ByteCodeKind::EvmOsaka,
                 preinstall.code().to_vec(),
             ))),
             "{} runtime",

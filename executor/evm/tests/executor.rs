@@ -973,7 +973,7 @@ fn seed_evm_code<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
     );
     tracking_copy.write(
         Key::Evm(EvmAddr::ByteCode(code_hash)),
-        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, code)),
+        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, code)),
     );
 }
 
@@ -1027,7 +1027,7 @@ fn delegation_code(delegate: evm::Address) -> Vec<u8> {
 
 #[test]
 fn missing_bytecode_rejects_signed_value_transfer_without_state_changes() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let target = evm::Address::new([0xa1; 20]);
     let transaction = legacy_transaction_to(
@@ -1069,7 +1069,7 @@ fn missing_bytecode_rejects_signed_value_transfer_without_state_changes() {
 #[test]
 fn empty_accounts_accept_value_transfers_without_stored_bytecode() {
     for has_code_hash in [true, false] {
-        let executor = executor(EvmSpec::Prague);
+        let executor = executor(EvmSpec::Osaka);
         let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
         let target = evm::Address::new([0xa1; 20]);
         let transaction = legacy_transaction_to(
@@ -1105,7 +1105,7 @@ fn empty_accounts_accept_value_transfers_without_stored_bytecode() {
 #[test]
 fn missing_bytecode_aborts_nested_execution_without_state_changes() {
     for instruction in [opcode::CALL, opcode::EXTCODESIZE, opcode::EXTCODECOPY] {
-        let executor = executor(EvmSpec::Prague);
+        let executor = executor(EvmSpec::Osaka);
         let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
         let sender = evm::Address::new([0xa0; 20]);
         let outer = evm::Address::new([0xa1; 20]);
@@ -1167,7 +1167,7 @@ fn missing_bytecode_aborts_nested_execution_without_state_changes() {
 
 #[test]
 fn missing_bytecode_rejects_delegated_call() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let authority = evm::Address::new([0xa1; 20]);
     let delegate = evm::Address::new([0xa2; 20]);
@@ -1200,7 +1200,7 @@ fn missing_bytecode_rejects_delegated_call() {
 
 #[test]
 fn missing_bytecode_rejects_system_call() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let target = evm::Address::new([0xa1; 20]);
     seed_evm_code(&mut tracking_copy, target, reverting_runtime());
@@ -1229,8 +1229,8 @@ fn missing_bytecode_rejects_system_call() {
 }
 
 #[test]
-fn prague_bls12_g1_add_precompile_delegates_to_revm() {
-    let executor = executor(EvmSpec::Prague);
+fn osaka_bls12_g1_add_precompile_delegates_to_revm() {
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let mut precompile_address = [0; evm::ADDRESS_LENGTH];
     precompile_address[evm::ADDRESS_LENGTH - 1] = 0x0b;
@@ -1249,7 +1249,7 @@ fn prague_bls12_g1_add_precompile_delegates_to_revm() {
 
 #[test]
 fn eip4788_native_shortcut_always_returns_zero() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     // The shortcut must bypass the installed bytecode and avoid all state reads.
@@ -1274,7 +1274,7 @@ fn eip4788_native_shortcut_always_returns_zero() {
 
 #[test]
 fn eip2935_native_lookup_reads_indexed_header_and_bypasses_bytecode() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let header = block_header(1);
     let expected_hash = header.block_hash();
@@ -1341,7 +1341,7 @@ fn eip2935_native_lookup_reads_indexed_header_and_bypasses_bytecode() {
 
 #[test]
 fn eip2935_reverts_for_invalid_requests() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     seed_evm_code(
         &mut tracking_copy,
@@ -1378,7 +1378,7 @@ fn eip2935_reverts_for_invalid_requests() {
 
 #[test]
 fn eip2935_preserves_block_store_errors() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     seed_evm_code(
         &mut tracking_copy,
@@ -1418,7 +1418,7 @@ fn eip2935_preserves_block_store_errors() {
 
 #[test]
 fn blockhash_reads_indexed_header_from_data_access_layer() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = execute_call(
@@ -1489,7 +1489,7 @@ fn blockhash_reads_indexed_header_from_data_access_layer() {
 
 #[test]
 fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1529,7 +1529,7 @@ fn eip7702_authorization_installs_delegation_and_executes_delegate_code() {
 
 #[test]
 fn eip7702_delegation_persists_when_call_reverts() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1565,7 +1565,7 @@ fn eip7702_delegation_persists_when_call_reverts() {
 
 #[test]
 fn eip2930_access_list_prepays_intrinsic_gas() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
 
     let transaction = eip2930_transaction(
@@ -1596,7 +1596,7 @@ fn eip2930_access_list_prepays_intrinsic_gas() {
 
 #[test]
 fn eip1559_access_list_warms_counter_storage_slots() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([1; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let counter = deploy(
@@ -1646,7 +1646,7 @@ fn eip1559_access_list_warms_counter_storage_slots() {
 
 #[test]
 fn eip7702_access_list_prepays_intrinsic_gas() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let authority = authorization_authority();
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let delegate = evm::Address::new([2; 20]);
@@ -1686,7 +1686,7 @@ fn eip7702_access_list_prepays_intrinsic_gas() {
 
 #[test]
 fn eip7702_stale_authorization_is_skipped() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1723,7 +1723,7 @@ fn eip7702_stale_authorization_is_skipped() {
 
 #[test]
 fn eip7702_zero_address_authorization_clears_delegation() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([1; 20]);
     let authority = authorization_authority();
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1767,7 +1767,7 @@ fn eip7702_zero_address_authorization_clears_delegation() {
 
 #[test]
 fn counter_supports_committed_and_discarded_execution() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let counter = deploy(
@@ -1812,7 +1812,7 @@ fn counter_supports_committed_and_discarded_execution() {
 
 #[test]
 fn erc20_and_native_purse_balances_update() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let spender = evm::Address::new([3; 20]);
@@ -1921,7 +1921,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
     let executor = EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 7,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -1958,7 +1958,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
 
 #[test]
 fn callvalue_and_balance_opcodes_observe_wei() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x33; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     seed_evm_balance(&mut tracking_copy, sender, U512::from(10u64));
@@ -2005,7 +2005,7 @@ fn callvalue_and_balance_opcodes_observe_wei() {
 
 #[test]
 fn signed_transaction_passes_original_wei_value_to_callvalue() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let deployer = evm::Address::new([0x3c; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = deploy_code(
@@ -2038,7 +2038,7 @@ fn signed_transaction_passes_original_wei_value_to_callvalue() {
 
 #[test]
 fn internal_one_wei_transfer_reports_one_aggregate_dust_mote() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x34; 20]);
     let recipient = evm::Address::new([0x35; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -2106,7 +2106,7 @@ fn selfdestruct_after_one_wei_transfer_reduces_supply_by_one_mote() {
 
 #[test]
 fn constructor_one_wei_transfer_then_selfdestruct_reports_one_mote_for_supply_reduction() {
-    let executor = executor_with_base_fee(EvmSpec::Prague, 1);
+    let executor = executor_with_base_fee(EvmSpec::Osaka, 1);
     let recipient = evm::Address::new([0x5b; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let mut init_code = Vec::new();
@@ -2141,7 +2141,7 @@ fn constructor_one_wei_transfer_then_selfdestruct_reports_one_mote_for_supply_re
 
 #[test]
 fn constructor_selfdestruct_reports_whole_mote_burn_for_supply_reduction() {
-    let executor = executor_with_base_fee(EvmSpec::Prague, 1);
+    let executor = executor_with_base_fee(EvmSpec::Osaka, 1);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = signed_create_transaction(1, vec![opcode::ADDRESS, opcode::SELFDESTRUCT]);
     let sender = transaction.from();
@@ -2179,7 +2179,7 @@ fn constructor_selfdestruct_effects_commit_to_scratch() {
         vec![opcode::ADDRESS, opcode::SELFDESTRUCT],
         fractional_transfer,
     ] {
-        let executor = executor_with_base_fee(EvmSpec::Prague, 1);
+        let executor = executor_with_base_fee(EvmSpec::Osaka, 1);
         let (state, state_root_hash, _tempdir) =
             global_state::state::lmdb::make_temporary_global_state([]);
         let data_access_layer = DataAccessLayer {
@@ -2235,7 +2235,7 @@ fn constructor_selfdestruct_effects_commit_to_scratch() {
 
 #[test]
 fn constructor_selfdestruct_reports_prefunded_balance_and_value_for_supply_reduction() {
-    let executor = executor_with_base_fee(EvmSpec::Prague, 1);
+    let executor = executor_with_base_fee(EvmSpec::Osaka, 1);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = signed_create_transaction(1, vec![opcode::ADDRESS, opcode::SELFDESTRUCT]);
     let sender = transaction.from();
@@ -2263,7 +2263,7 @@ fn constructor_selfdestruct_reports_prefunded_balance_and_value_for_supply_reduc
 
 #[test]
 fn constructor_selfdestruct_to_other_beneficiary_preserves_whole_mote_value() {
-    let executor = executor_with_base_fee(EvmSpec::Prague, 1);
+    let executor = executor_with_base_fee(EvmSpec::Osaka, 1);
     let recipient = evm::Address::new([0x5c; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let mut init_code = vec![opcode::PUSH20];
@@ -2295,8 +2295,8 @@ fn constructor_selfdestruct_to_other_beneficiary_preserves_whole_mote_value() {
 }
 
 #[test]
-fn existing_contract_selfdestruct_to_self_preserves_balance_on_prague() {
-    let executor = executor(EvmSpec::Prague);
+fn existing_contract_selfdestruct_to_self_preserves_balance_on_osaka() {
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x5d; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = deploy_code(
@@ -2328,7 +2328,7 @@ fn existing_contract_selfdestruct_to_self_preserves_balance_on_prague() {
 
 #[test]
 fn existing_contract_one_wei_transfer_then_selfdestruct_reports_one_dust_mote() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x5e; 20]);
     let recipient = evm::Address::new([0x5f; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -2361,7 +2361,7 @@ fn existing_contract_one_wei_transfer_then_selfdestruct_reports_one_dust_mote() 
 
 #[test]
 fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_revert() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x60; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let parent = deploy_code(
@@ -2400,7 +2400,7 @@ fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_revert() {
 
 #[test]
 fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_halt() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x61; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let parent = deploy_code(
@@ -2438,7 +2438,7 @@ fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_halt() {
 #[test]
 fn child_constructor_selfdestruct_reports_one_mote_on_parent_success_for_create_and_create2() {
     for create_opcode in [opcode::CREATE, opcode::CREATE2] {
-        let executor = executor(EvmSpec::Prague);
+        let executor = executor(EvmSpec::Osaka);
         let sender = evm::Address::new([0x62; 20]);
         let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
         let parent = deploy_code(
@@ -2486,7 +2486,7 @@ fn child_constructor_selfdestruct_reports_one_mote_on_parent_success_for_create_
 
 #[test]
 fn transfer_after_child_selfdestruct_reports_initial_and_later_value_for_supply_reduction() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x63; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let mut terminal = vec![
@@ -2558,7 +2558,7 @@ fn transfer_after_child_selfdestruct_reports_initial_and_later_value_for_supply_
 
 #[test]
 fn selfdestruct_to_deleted_child_reports_all_lost_value_for_supply_reduction() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x64; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let parent = deploy_code(
@@ -2603,7 +2603,7 @@ fn selfdestruct_to_deleted_child_reports_all_lost_value_for_supply_reduction() {
 
 #[test]
 fn caught_child_selfdestruct_revert_counts_only_committed_rounding_loss() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x65; 20]);
     let recipient = evm::Address::new([0x66; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -2681,7 +2681,7 @@ fn caught_child_selfdestruct_revert_counts_only_committed_rounding_loss() {
 
 #[test]
 fn recombined_internal_wei_produces_no_dust() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x36; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let returning_contract = deploy_code(
@@ -2727,7 +2727,7 @@ fn recombined_internal_wei_produces_no_dust() {
 
 #[test]
 fn reverted_and_halted_transfers_report_no_dust() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x37; 20]);
     let recipient = evm::Address::new([0x38; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -2795,7 +2795,7 @@ fn reverted_and_halted_transfers_report_no_dust() {
 
 #[test]
 fn scaled_balance_overflow_is_reported() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([0x39; 20]);
     let recipient = evm::Address::new([0x3a; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -2843,7 +2843,7 @@ fn invalid_wei_per_mote_is_rejected() {
 
 #[test]
 fn system_call_reports_zero_dust_for_whole_mote_state() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let target = evm::Address::new([0x3b; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     seed_evm_balance(&mut tracking_copy, target, U512::one());
@@ -2868,7 +2868,7 @@ fn system_call_reports_zero_dust_for_whole_mote_state() {
 
 #[test]
 fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -2918,7 +2918,7 @@ fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
 
 #[test]
 fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
@@ -2966,7 +2966,7 @@ fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
 
 #[test]
 fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
@@ -2998,7 +2998,7 @@ fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
 
 #[test]
 fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
@@ -3047,7 +3047,7 @@ fn coinbase_transfer_to_linked_beneficiary_with_code_executes_code() {
 
 #[test]
 fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([46; SecretKey::ED25519_LENGTH]).unwrap();
@@ -3108,7 +3108,7 @@ fn coinbase_transfer_keeps_existing_evm_native_beneficiary_identity() {
 
 #[test]
 fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
         SecretKey::ed25519_from_bytes([47; SecretKey::ED25519_LENGTH]).unwrap();
@@ -3181,7 +3181,7 @@ fn coinbase_transfer_keeps_existing_account_beneficiary_identity() {
 
 #[test]
 fn nonzero_gas_price_does_not_charge_evm_balances() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let proposer_secret_key =
@@ -3246,7 +3246,7 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 7,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1_000_000,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -3284,7 +3284,7 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
 
 #[test]
 fn erc721_mint_approve_and_transfer() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let owner = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let approved = evm::Address::new([3; 20]);
@@ -3350,7 +3350,7 @@ fn erc721_mint_approve_and_transfer() {
 
 #[test]
 fn storage_zeroes_are_pruned() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = deploy(
@@ -3389,36 +3389,36 @@ fn storage_zeroes_are_pruned() {
 }
 
 #[test]
-fn selfdestruct_preserves_account_on_prague() {
+fn selfdestruct_preserves_account_on_osaka() {
     let from = evm::Address::new([1; 20]);
     let beneficiary = evm::Address::new([2; 20]);
 
-    let prague_executor = executor(EvmSpec::Prague);
-    let (mut prague_tracking_copy, prague_data_access_layer, _prague_tempdir) = tracking_copy();
-    let prague_contract = deploy(
-        &prague_executor,
-        &prague_data_access_layer,
-        &mut prague_tracking_copy,
+    let osaka_executor = executor(EvmSpec::Osaka);
+    let (mut osaka_tracking_copy, osaka_data_access_layer, _osaka_tempdir) = tracking_copy();
+    let osaka_contract = deploy(
+        &osaka_executor,
+        &osaka_data_access_layer,
+        &mut osaka_tracking_copy,
         from,
         "SelfDestruct",
     );
     execute_call(
-        &prague_executor,
-        &prague_data_access_layer,
-        &mut prague_tracking_copy,
+        &osaka_executor,
+        &osaka_data_access_layer,
+        &mut osaka_tracking_copy,
         from,
-        Some(prague_contract),
+        Some(osaka_contract),
         calldata("destroy(address)", &[address_word(beneficiary)]),
     );
-    assert!(prague_tracking_copy
-        .read(&Key::Evm(EvmAddr::Account(prague_contract)))
+    assert!(osaka_tracking_copy
+        .read(&Key::Evm(EvmAddr::Account(osaka_contract)))
         .unwrap()
         .is_some());
 }
 
 #[test]
 fn signed_transactions_require_configured_chain_id() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let missing_chain_id = legacy_transaction_without_chain_id();
     let request = ExecuteRequest {
@@ -3433,7 +3433,7 @@ fn signed_transactions_require_configured_chain_id() {
     let wrong_chain_executor = EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 8,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -3456,7 +3456,7 @@ fn signed_transactions_require_configured_chain_id() {
 
 #[test]
 fn signed_fractional_mote_value_is_rejected() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = legacy_transaction_with_value(Some(7), U256::from(1));
     let request = ExecuteRequest {
@@ -3473,7 +3473,7 @@ fn signed_fractional_mote_value_is_rejected() {
 
 #[test]
 fn signed_transaction_sender_uses_linked_casper_account_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
@@ -3524,7 +3524,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
 
 #[test]
 fn signed_transaction_sender_keeps_evm_native_identity() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let transaction = legacy_transaction(Some(7));
     let signer = transaction
@@ -3571,7 +3571,7 @@ fn signed_transaction_sender_keeps_evm_native_identity() {
 
 #[test]
 fn checked_calls_enforce_transaction_validation() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
     let recipient = evm::Address::new([2; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -3586,7 +3586,7 @@ fn checked_calls_enforce_transaction_validation() {
 
 #[test]
 fn prevrandao_uses_block_context() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let contract = execute_call(
