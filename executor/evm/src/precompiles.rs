@@ -1,5 +1,7 @@
 //! Casper EVM precompile provider.
 
+use std::collections::BTreeMap;
+
 use casper_storage::{
     eip2935::BLOCK_HASH_HISTORY_ADDRESS,
     eip4788::BEACON_ROOTS_ADDRESS,
@@ -21,6 +23,20 @@ use crate::{db::CasperDb, tx, DbError};
 pub(crate) struct CasperEvmPrecompiles(EthPrecompiles);
 
 impl CasperEvmPrecompiles {
+    pub(crate) fn addresses(&self) -> BTreeMap<String, casper_types::evm::Address> {
+        self.0
+            .precompiles
+            .inner()
+            .iter()
+            .map(|(address, precompile)| {
+                (
+                    precompile.id().name().to_string(),
+                    tx::from_revm_address(*address),
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn new(spec: SpecId) -> Self {
         Self(EthPrecompiles::new(spec))
     }
