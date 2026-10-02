@@ -59,3 +59,20 @@ it matches `eth_getCode` on Ethereum mainnet at block 26,104,339. Its distinct
 canonical address comes from Safe's deployer account, not a bytecode change.
 No constructor storage or runtime immutables need initialization. Both
 factories share a content-addressed bytecode record in global state.
+
+## ERC-2470 Singleton Factory
+
+- Address: `0xce0042B868300000d44A59004Da54A005ffdcf9f`.
+- Specification commit: `8dd085d159cb123f545c272c0d871a5339550e79`.
+- Source: [the specification's signed deployment transaction](https://github.com/ethereum/ercs/blob/8dd085d159cb123f545c272c0d871a5339550e79/ERCS/erc-2470.md#deployment-transaction).
+- Deployment transaction hash: `0x803351deb6d745e91545a6a3e1c0ea3e9a6a02a1a4193b70edfcd2f40f71a01c`.
+- Runtime length: 308 bytes.
+- Runtime Keccak-256: `0xc4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807`.
+- License: CC0-1.0; retained in `LICENSE.erc2470-singleton-factory`.
+
+The deployment's 340-byte input starts with the 32-byte creation prefix
+`608060405234801561001057600080fd5b50610134806100206000396000f3fe`.
+The remaining 308 bytes are returned unchanged as runtime code and stored in
+`erc2470-singleton-factory.bin`. They match `eth_getCode` on Ethereum mainnet
+at block 26,104,339. The factory needs no constructor storage or runtime
+immutable initialization.
