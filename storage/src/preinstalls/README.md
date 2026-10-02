@@ -122,3 +122,35 @@ The matching EntryPoint and SenderCreator runtimes must be activated together
 at their canonical addresses. Direct runtime installation executes neither
 constructor. The corresponding [Solidity sources and compiler settings](https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/solcInputs/594e0595d5f1f4861d3b32a5f38cc32f.json)
 are pinned in the upstream deployment's complete compiler input.
+
+## EntryPoint v0.8
+
+- Address: `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`.
+- Release: `eth-infinitism/account-abstraction` v0.8.0.
+- Upstream commit: `4cbc06072cdc19fd60f285c5997f4f7f57a588de`.
+- Source: Ethereum mainnet runtime, fetched with `eth_getCode` at block 26,104,339
+  through `https://ethereum-rpc.publicnode.com`.
+- Upstream reference: [canonical deployment artifact](https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/EntryPoint.json).
+- Deployment transaction hash: `0xae4eafd1fd17e03b5200f6e2ecad4f669b41d9ba3a4fa0018e92cde985b33129`.
+- Runtime length: 21,738 bytes.
+- Runtime Keccak-256: `0x44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86`.
+- License: GPL-3.0 (upstream SPDX identifier), retained in `LICENSE.account-abstraction-v08`;
+  OpenZeppelin Contracts v5.1.0's MIT notice is retained in `LICENSE.openzeppelin-v510`.
+
+`entrypoint-v08.bin` contains the deployed runtime unchanged. The artifact's
+`deployedBytecode` is a compiler template with zero immutable placeholders,
+and must not be installed as-is. The mainnet runtime fills those placeholders
+with the matching SenderCreator address and the constructor's EIP-712 values:
+the EntryPoint address, cached chain ID 1 and domain separator, hashed name and
+version, and short-string encodings of `ERC4337` and `1`. The template is
+embedded in the pinned creation bytecode at offset 1,168; all differences
+between it and the installed runtime are these constructor immutables.
+
+The complete compiler input linked above records Solidity 0.8.28, Cancun,
+via-IR compilation, and optimizer runs 1,000,000. No compiler is needed at node
+build or installation time. EntryPoint v0.8 uses a transient reentrancy guard;
+the Prague EVM supports its opcodes. Deposits, stakes, and nonce mappings start
+at zero, and the short EIP-712 name/version need no fallback string storage.
+Existing state remains intact during upserts. Integration tests verify paired
+account creation at genesis and upgrades, domain selection across chain IDs,
+and repeated empty bundles through the transient guard.

@@ -71,7 +71,17 @@ pub const PERMIT2: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/permit2.bin"),
 };
 
-/// Account-creation helper from the canonical EntryPoint v0.8 deployment.
+/// Canonical ERC-4337 EntryPoint v0.8 for processing UserOperations.
+///
+/// The deployed runtime contains its SenderCreator address and EIP-712
+/// constructor immutables. It uses transient storage supported by Prague.
+pub const ENTRYPOINT_V08: EvmPreinstall = EvmPreinstall {
+    name: "EntryPoint v0.8",
+    address: evm::Address::new(hex!("0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108")),
+    code: include_bytes!("preinstalls/entrypoint-v08.bin"),
+};
+
+/// Account-creation helper from the canonical [`ENTRYPOINT_V08`] deployment.
 ///
 /// Its runtime authorizes only EntryPoint at
 /// `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`. Install the matching pair together;
@@ -82,7 +92,11 @@ pub const SENDER_CREATOR_V08: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/sendercreator-v08.bin"),
 };
 
-/// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
+/// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrades.
+///
+/// EntryPoint and SenderCreator v0.8 are a matching pair activated in the same
+/// genesis or protocol upgrade commit. No constructors or contract calls execute
+/// while iterating this list, so their relative order does not affect the state.
 pub const PREINSTALLS: &[EvmPreinstall] = &[
     // Aggregate reads and expose block/chain information at the standard Multicall3 address.
     MULTICALL3,
@@ -96,6 +110,8 @@ pub const PREINSTALLS: &[EvmPreinstall] = &[
     PERMIT2,
     // Create smart accounts only on behalf of the canonical EntryPoint v0.8.
     SENDER_CREATOR_V08,
+    // Process ERC-4337 UserOperations using the matching SenderCreator v0.8 above.
+    ENTRYPOINT_V08,
 ];
 
 #[cfg(test)]
@@ -179,5 +195,30 @@ mod tests {
             SENDER_CREATOR_V08.code_hash().to_hex_string(),
             "c69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf"
         );
+    }
+
+    #[test]
+    fn entrypoint_v08_matches_canonical_deployment() {
+        assert_eq!(
+            ENTRYPOINT_V08.address.to_hex_string(),
+            "4337084d9e255ff0702461cf8895ce9e3b5ff108"
+        );
+        assert_eq!(ENTRYPOINT_V08.code.len(), 21_738);
+        assert_eq!(
+            ENTRYPOINT_V08.code_hash().to_hex_string(),
+            "44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86"
+        );
+    }
+
+    #[test]
+    fn preinstall_addresses_are_unique() {
+        let mut addresses = std::collections::BTreeSet::new();
+        for preinstall in PREINSTALLS {
+            assert!(
+                addresses.insert(preinstall.address),
+                "duplicate preinstall address: {}",
+                preinstall.address,
+            );
+        }
     }
 }
