@@ -66,8 +66,8 @@ Implemented in this workspace:
   history or pre-block state updates.
 - [EIP-2935][eip-2935] block-hash history predeploy and native direct-call
   lookup backed by indexed Casper block headers.
-- [Multicall3 preinstall](#preinstalls) at its canonical address at genesis
-  and protocol upgrade commit when EVM execution is enabled.
+- [Canonical utility preinstalls](#preinstalls) at their standard addresses at
+  genesis and protocol upgrade commit when EVM execution is enabled.
 
 Implemented in the sidecar workspace for validation:
 
@@ -229,12 +229,13 @@ the [preinstall registry](storage/src/preinstalls.rs).
 | ERC-2470 Singleton Factory | `0xce0042B868300000d44A59004Da54A005ffdcf9f` | [Etherscan: Code](https://etherscan.io/address/0xce0042B868300000d44A59004Da54A005ffdcf9f#code) |
 | Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | [Etherscan: Read Contract](https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#readContract) |
 | SenderCreator v0.8 | `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33` | [Etherscan: Read Contract](https://etherscan.io/address/0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33#readContract) |
+| EntryPoint v0.8 | `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` | [Etherscan: Read Contract](https://etherscan.io/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108#readContract) |
 
-Multicall3 aggregates contract calls in one EVM execution and exposes block and
-chain information. The Etherscan link opens the same address on Ethereum
-mainnet for comparing interfaces and read results. Getters such as
-`getChainId()`, `getBlockNumber()`, and `getBasefee()` return values for the
-network on which they execute.
+The Etherscan references open the same addresses on Ethereum mainnet for
+comparing bytecode, interfaces, and read results. Multicall3 aggregates
+contract calls in one EVM execution and exposes block and chain information.
+Getters such as `getChainId()`, `getBlockNumber()`, and `getBasefee()` return
+values for the network on which they execute.
 
 The Arachnid deployer is Foundry's default CREATE2 factory. Calls contain a
 32-byte salt followed by creation bytecode, and return the created address as
@@ -265,6 +266,21 @@ is EntryPoint v0.8's account-creation helper. Its `entryPoint()` getter returns
 `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`, the only address authorized to call
 `createSender` or `initEip7702Sender`. The embedded runtime preserves that
 constructor-derived authorization; it has no storage to initialize.
+
+[EntryPoint v0.8](https://github.com/eth-infinitism/account-abstraction/releases/tag/v0.8.0)
+processes ERC-4337 UserOperations and exposes deposits, stakes, nonce tracking,
+and account creation through the matching SenderCreator above. Its
+`senderCreator()` getter returns the helper's canonical address. Both runtimes
+come from the same deployment and are installed in the same genesis or
+upgrade commit; their order in the registry does not execute constructors.
+Constructor immutables, including the helper and EIP-712 domain parameters,
+are preserved in the embedded runtime. The domain reflects the executing
+chain ID, and the transient reentrancy guard is supported by Prague.
+
+These preinstalls provide the ERC-4337 contracts. Bundlers, account factories,
+and wallet integrations are configured separately, and bundled transactions
+must pay the chain's configured fees. Preinstallation leaves the base fee and
+transaction admission rules unchanged.
 
 Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
 and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).
