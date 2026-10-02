@@ -18,7 +18,7 @@ use casper_storage::{
     },
     preinstalls::{
         EvmPreinstall, CREATE2_DEPLOYER, ERC2470_SINGLETON_FACTORY, MULTICALL3, PERMIT2,
-        PREINSTALLS, SAFE_SINGLETON_FACTORY,
+        PREINSTALLS, SAFE_SINGLETON_FACTORY, SENDER_CREATOR_V08,
     },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
@@ -240,6 +240,15 @@ fn address_word(address: evm::Address) -> [u8; 32] {
     let mut result = [0; 32];
     result[12..].copy_from_slice(address.as_bytes());
     result
+}
+
+fn bytes_call(signature: &str, data: &[u8]) -> Vec<u8> {
+    let mut input = selector(signature);
+    input.extend_from_slice(&word(32));
+    input.extend_from_slice(&word(data.len() as u64));
+    input.extend_from_slice(data);
+    input.resize(4 + 64 + data.len().div_ceil(32) * 32, 0);
+    input
 }
 
 // Creation code returning a ten-byte runtime whose calls return the word 42.
@@ -664,4 +673,32 @@ fn preinstalled_permit2_accepts_a_signed_allowance_and_rejects_replay() {
     );
     assert_eq!(outcomes[2].status, ExecutionStatus::Revert);
     assert_eq!(outcomes[2].output, selector("InvalidNonce()"));
+}
+
+#[test]
+fn preinstalled_sender_creator_is_linked_and_rejects_unauthorized_creation() {
+    let (state, root, _tempdir) = genesis(true, false);
+    let outcomes = call_sequence(
+        state,
+        root,
+        &[
+            (SENDER_CREATOR_V08.address, selector("entryPoint()")),
+            (
+                SENDER_CREATOR_V08.address,
+                bytes_call("createSender(bytes)", &[0; 20]),
+            ),
+        ],
+    );
+    assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+    assert_eq!(
+        outcomes[0].output,
+        address_word(evm::Address::new(hex!(
+            "4337084D9E255Ff0702461CF8895CE9E3b5Ff108"
+        )))
+    );
+    assert_eq!(outcomes[1].status, ExecutionStatus::Revert);
+    assert_eq!(
+        outcomes[1].output,
+        bytes_call("Error(string)", b"AA97 should call from EntryPoint")
+    );
 }
