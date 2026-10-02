@@ -17,7 +17,8 @@ use casper_storage::{
         CommitProvider, StateProvider,
     },
     preinstalls::{
-        EvmPreinstall, CREATE2_DEPLOYER, MULTICALL3, PREINSTALLS, SAFE_SINGLETON_FACTORY,
+        EvmPreinstall, CREATE2_DEPLOYER, ERC2470_SINGLETON_FACTORY, MULTICALL3, PREINSTALLS,
+        SAFE_SINGLETON_FACTORY,
     },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
@@ -226,6 +227,12 @@ fn word(value: u64) -> [u8; 32] {
     result
 }
 
+fn address_word(address: evm::Address) -> [u8; 32] {
+    let mut result = [0; 32];
+    result[12..].copy_from_slice(address.as_bytes());
+    result
+}
+
 // Creation code returning a ten-byte runtime whose calls return the word 42.
 const TEST_INIT_CODE: &[u8] = &hex!("600a600c600039600a6000f3602a60005260206000f3");
 
@@ -235,6 +242,16 @@ fn create2_address(factory: evm::Address, salt: [u8; 32]) -> evm::Address {
     input.extend_from_slice(&salt);
     input.extend_from_slice(keccak256(TEST_INIT_CODE).as_slice());
     evm::Address::new(keccak256(input)[12..].try_into().unwrap())
+}
+
+fn singleton_factory_input(salt: [u8; 32]) -> Vec<u8> {
+    let mut input = selector("deploy(bytes,bytes32)");
+    input.extend_from_slice(&word(64));
+    input.extend_from_slice(&salt);
+    input.extend_from_slice(&word(TEST_INIT_CODE.len() as u64));
+    input.extend_from_slice(TEST_INIT_CODE);
+    input.resize(4 + 128, 0);
+    input
 }
 
 fn assert_raw_create2_deployment(factory: EvmPreinstall) {
@@ -538,4 +555,27 @@ fn preinstalled_create2_deployer_deploys_at_the_deterministic_address() {
 #[test]
 fn preinstalled_safe_singleton_factory_deploys_at_the_deterministic_address() {
     assert_raw_create2_deployment(SAFE_SINGLETON_FACTORY);
+}
+
+#[test]
+fn preinstalled_erc2470_factory_deploys_and_returns_zero_on_collision() {
+    let salt = [0x42; 32];
+    let address = create2_address(ERC2470_SINGLETON_FACTORY.address, salt);
+    let input = singleton_factory_input(salt);
+    let (state, root, _tempdir) = genesis(true, false);
+    let outcomes = call_sequence(
+        state,
+        root,
+        &[
+            (ERC2470_SINGLETON_FACTORY.address, input.clone()),
+            (address, Vec::new()),
+            (ERC2470_SINGLETON_FACTORY.address, input),
+        ],
+    );
+    assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[0].output, address_word(address));
+    assert_eq!(outcomes[1].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[1].output, word(42));
+    assert_eq!(outcomes[2].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[2].output, word(0));
 }
