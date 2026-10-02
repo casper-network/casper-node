@@ -1,4 +1,4 @@
-//! Canonical EVM utility contract addresses and pinned runtime bytecode.
+//! EVM utility contracts installed at their canonical addresses at genesis and protocol upgrades.
 
 use alloy_primitives::{hex, keccak256};
 use casper_types::evm;
@@ -31,7 +31,7 @@ pub const MULTICALL3: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/multicall3.bin"),
 };
 
-/// Registry of canonical EVM utility contract preinstalls.
+/// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
 pub const PREINSTALLS: &[EvmPreinstall] = &[MULTICALL3];
 
 #[cfg(test)]

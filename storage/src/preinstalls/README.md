@@ -1,11 +1,14 @@
 # EVM preinstalls
 
-The registry in `../preinstalls.rs` lists utility contracts and their canonical
-addresses.
+The registry in `../preinstalls.rs` contains utility contracts installed at their
+canonical addresses. Genesis and protocol upgrade commit upsert these after the
+EVM predeploys when EVM execution is enabled. Both genesis storage formats use
+the same registry and upsert logic.
 
 Each `.bin` file contains raw runtime bytecode, including compiler metadata, and
 is embedded with `include_bytes!`. It must not contain hexadecimal text or
-creation bytecode.
+creation bytecode. Installation preserves existing account metadata, balances,
+and storage, and rejects conflicting code.
 
 ## Multicall3
 
@@ -22,4 +25,4 @@ The deployment's 3,840-byte input begins with the 32-byte creation prefix
 That prefix copies and returns the remaining 3,808 bytes as runtime code.
 `multicall3.bin` contains those remaining bytes unchanged. Its address, length,
 and hash are pinned by a unit test; no network access or Solidity compiler is
-needed during compilation.
+needed during compilation, genesis, or protocol upgrade.
