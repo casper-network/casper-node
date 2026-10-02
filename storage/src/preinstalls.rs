@@ -51,6 +51,16 @@ pub const SAFE_SINGLETON_FACTORY: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/safe-singleton-factory.bin"),
 };
 
+/// ERC-2470's canonical singleton factory with the `deploy(bytes,bytes32)` ABI.
+///
+/// Deployments use CREATE2 without forwarding value. Unlike the raw factories,
+/// a failed deployment returns the zero address instead of reverting.
+pub const ERC2470_SINGLETON_FACTORY: EvmPreinstall = EvmPreinstall {
+    name: "ERC-2470 Singleton Factory",
+    address: evm::Address::new(hex!("0xce0042B868300000d44A59004Da54A005ffdcf9f")),
+    code: include_bytes!("preinstalls/erc2470-singleton-factory.bin"),
+};
+
 /// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
 pub const PREINSTALLS: &[EvmPreinstall] = &[
     // Aggregate reads and expose block/chain information at the standard Multicall3 address.
@@ -59,6 +69,8 @@ pub const PREINSTALLS: &[EvmPreinstall] = &[
     CREATE2_DEPLOYER,
     // Support deterministic deployments at the factory address used by Safe tooling.
     SAFE_SINGLETON_FACTORY,
+    // Provide the standard ABI-based, zero-value CREATE2 factory from ERC-2470.
+    ERC2470_SINGLETON_FACTORY,
 ];
 
 #[cfg(test)]
@@ -103,5 +115,18 @@ mod tests {
             "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
         );
         assert_eq!(SAFE_SINGLETON_FACTORY.code, CREATE2_DEPLOYER.code);
+    }
+
+    #[test]
+    fn erc2470_singleton_factory_matches_canonical_deployment() {
+        assert_eq!(
+            ERC2470_SINGLETON_FACTORY.address.to_hex_string(),
+            "ce0042b868300000d44a59004da54a005ffdcf9f"
+        );
+        assert_eq!(ERC2470_SINGLETON_FACTORY.code.len(), 308);
+        assert_eq!(
+            ERC2470_SINGLETON_FACTORY.code_hash().to_hex_string(),
+            "c4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807"
+        );
     }
 }
