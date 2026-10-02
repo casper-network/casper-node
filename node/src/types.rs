@@ -34,7 +34,7 @@ pub use exit_code::ExitCode;
 pub(crate) use max_ttl::MaxTtl;
 pub use node_config::{NodeConfig, SyncHandling};
 pub(crate) use node_id::NodeId;
-pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
+pub use status_feed::{ChainspecInfo, ChainspecStatus, Chainspecs, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub(crate) use transaction::{
     LegacyDeploy, MetaTransaction, TransactionFootprint, TransactionHeader,
