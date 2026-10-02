@@ -225,6 +225,7 @@ the [preinstall registry](storage/src/preinstalls.rs).
 | --- | --- | --- |
 | Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
 | Arachnid CREATE2 deployer | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | [Etherscan: Code](https://etherscan.io/address/0x4e59b44847b379578588920cA78FbF26c0B4956C#code) |
+| Safe Singleton Factory | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | [Etherscan: Code](https://etherscan.io/address/0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7#code) |
 
 Multicall3 aggregates contract calls in one EVM execution and exposes block and
 chain information. The Etherscan link opens the same address on Ethereum
@@ -237,6 +238,11 @@ The Arachnid deployer is Foundry's default CREATE2 factory. Calls contain a
 20 bytes. This permits deterministic deployments using ordinary transactions
 at the configured gas price, without the factory's presigned bootstrap
 transaction. See the [upstream usage guide](https://github.com/Arachnid/deterministic-deployment-proxy).
+
+Safe Singleton Factory exposes the same raw salt/creation-code interface at
+the address used by Safe's deployment tooling. Preinstalling the factory
+provides deterministic deployment infrastructure; Safe wallet implementations
+and proxy factories are deployed separately. See the [Safe factory guide](https://github.com/safe-fndn/safe-singleton-factory).
 
 Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
 and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).

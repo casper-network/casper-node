@@ -16,7 +16,9 @@ use casper_storage::{
         lmdb::{make_temporary_global_state, LmdbGlobalState},
         CommitProvider, StateProvider,
     },
-    preinstalls::{EvmPreinstall, CREATE2_DEPLOYER, MULTICALL3, PREINSTALLS},
+    preinstalls::{
+        EvmPreinstall, CREATE2_DEPLOYER, MULTICALL3, PREINSTALLS, SAFE_SINGLETON_FACTORY,
+    },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
 use casper_types::{
@@ -531,4 +533,9 @@ fn preinstalled_multicall3_aggregates_calls_and_honors_allow_failure() {
 #[test]
 fn preinstalled_create2_deployer_deploys_at_the_deterministic_address() {
     assert_raw_create2_deployment(CREATE2_DEPLOYER);
+}
+
+#[test]
+fn preinstalled_safe_singleton_factory_deploys_at_the_deterministic_address() {
+    assert_raw_create2_deployment(SAFE_SINGLETON_FACTORY);
 }

@@ -42,3 +42,20 @@ The deployment's 83-byte input starts with the 14-byte creation prefix
 as runtime code and stored in `create2-deployer.bin`. They match `eth_getCode`
 on Ethereum mainnet at block 26,104,339. The factory has no constructor storage
 or runtime immutables to initialize.
+
+## Safe Singleton Factory
+
+- Address: `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7`.
+- Upstream commit: `e550557e891dc0418c46daf785198dc05df6645c`.
+- Source: [official Ethereum deployment transaction](https://github.com/safe-fndn/safe-singleton-factory/blob/e550557e891dc0418c46daf785198dc05df6645c/artifacts/1/deployment.json).
+- Deployment transaction hash: `0x69c275b5304db980105b7a6d731f9e1157a3fe29e7ff6ff95235297df53e9928`.
+- Runtime length: 69 bytes.
+- Runtime Keccak-256: `0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989`.
+- License: MIT; the upstream notice is retained in `LICENSE.safe-singleton-factory`.
+
+The deployment has the same 14-byte creation prefix and 69-byte runtime as
+the Arachnid proxy. `safe-singleton-factory.bin` contains that runtime unchanged;
+it matches `eth_getCode` on Ethereum mainnet at block 26,104,339. Its distinct
+canonical address comes from Safe's deployer account, not a bytecode change.
+No constructor storage or runtime immutables need initialization. Both
+factories share a content-addressed bytecode record in global state.
