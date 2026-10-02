@@ -11,7 +11,7 @@ use std::{
 use crate::{
     global_state::state::StateProvider,
     system::{
-        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys},
+        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys, upsert_preinstalls},
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::ProtocolUpgradeError,
     },
@@ -806,6 +806,14 @@ where
         Ok(())
     }
 
+    fn create_evm_preinstalls(&self) -> Result<(), Box<GenesisError>> {
+        if self.config.evm_config().enabled {
+            upsert_preinstalls(&mut self.tracking_copy.borrow_mut())
+                .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn handle_sustain_purse(
         &mut self,
         sustain_purse: Option<URef>,
@@ -864,6 +872,9 @@ where
 
         // Create EVM predeploys.
         self.create_evm_predeploys()?;
+
+        // Create EVM preinstalls.
+        self.create_evm_preinstalls()?;
 
         // Write block time to global state
         self.store_block_time()?;

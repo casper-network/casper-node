@@ -11,7 +11,7 @@ use std::{
 use crate::{
     global_state::state::StateProvider,
     system::{
-        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys},
+        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys, upsert_preinstalls},
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
     },
     AddressGenerator, TrackingCopy,
@@ -875,6 +875,14 @@ where
         Ok(())
     }
 
+    fn create_evm_preinstalls(&self) -> Result<(), Box<GenesisError>> {
+        if self.config.evm_config().enabled {
+            upsert_preinstalls(&mut self.tracking_copy.borrow_mut())
+                .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
+        }
+        Ok(())
+    }
+
     /// Performs a complete system installation.
     pub fn install(
         &mut self,
@@ -900,6 +908,9 @@ where
 
         // Create EVM predeploys.
         self.create_evm_predeploys()?;
+
+        // Create EVM preinstalls.
+        self.create_evm_preinstalls()?;
 
         // Write block time to global state
         self.store_block_time()?;

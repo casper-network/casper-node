@@ -277,6 +277,46 @@ fn upgrade_installs_preinstalls_and_repeated_upgrade_preserves_them() {
 }
 
 #[test]
+fn genesis_installs_preinstalls_and_upgrade_preserves_them() {
+    for enable_entity in [false, true] {
+        let (state, root, _tempdir) = genesis(true, enable_entity);
+        assert_multicall3(&state, root);
+        for address in [
+            eip4788::BEACON_ROOTS_ADDRESS,
+            eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        ] {
+            assert!(read(&state, root, code_hash_key(address)).is_some());
+        }
+        let result = state.protocol_upgrade(upgrade_request(
+            root,
+            0,
+            true,
+            enable_entity,
+            BTreeMap::new(),
+        ));
+        let ProtocolUpgradeResult::Success {
+            post_state_hash,
+            effects,
+        } = result
+        else {
+            panic!("upgrade after genesis failed: {result:?}");
+        };
+        assert_multicall3(&state, post_state_hash);
+        for transform in effects.transforms() {
+            if *transform.key() == code_hash_key(MULTICALL3.address)
+                || *transform.key() == bytecode_key()
+            {
+                assert_eq!(*transform.kind(), TransformKindV2::Identity);
+            }
+        }
+
+        let outcome = call(state, root, selector("getChainId()"));
+        assert_eq!(outcome.status, ExecutionStatus::Success);
+        assert_eq!(outcome.output, word(7));
+    }
+}
+
+#[test]
 fn disabled_genesis_and_upgrade_skip_preinstalls() {
     for enable_entity in [false, true] {
         let (state, root, _tempdir) = genesis(false, enable_entity);
