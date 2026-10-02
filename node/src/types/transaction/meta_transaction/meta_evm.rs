@@ -106,13 +106,7 @@ impl MetaEvmTransaction {
         }
 
         let gas_limit = transaction.gas_limit();
-        let block_gas_limit = evm_config.block_gas_limit;
-        if gas_limit > block_gas_limit {
-            return Err(EvmTransactionError::GasLimitExceedsBlockGasLimit {
-                gas_limit,
-                block_gas_limit,
-            });
-        }
+        evm_config.validate_transaction_gas_limit(gas_limit)?;
 
         // A non-empty access list increases intrinsic gas. Reject a shortfall
         // before packing because `revm` reports transaction-validation errors
@@ -199,5 +193,140 @@ impl MetaEvmTransaction {
 impl Display for MetaEvmTransaction {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.transaction, formatter)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::TransactionFootprint;
+    use alloy_consensus::{
+        SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
+    };
+    use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization};
+    use alloy_primitives::{Address, Signature, TxKind, U256};
+    use casper_types::{testing::TestRng, EvmConfig, Transaction, EVM_TRANSACTION_GAS_LIMIT};
+
+    fn transaction(kind: EvmTransactionKind, gas_limit: u64) -> EvmTransaction {
+        let to = TxKind::Call(Address::from([0x44; 20]));
+        let signature = Signature::test_signature();
+        let envelope: TxEnvelope = match kind {
+            EvmTransactionKind::Legacy => TxLegacy {
+                chain_id: Some(7),
+                gas_limit,
+                gas_price: 0,
+                to,
+                ..Default::default()
+            }
+            .into_signed(signature)
+            .into(),
+            EvmTransactionKind::Eip2930 => TxEip2930 {
+                chain_id: 7,
+                gas_limit,
+                gas_price: 0,
+                to,
+                ..Default::default()
+            }
+            .into_signed(signature)
+            .into(),
+            EvmTransactionKind::Eip1559 => TxEip1559 {
+                chain_id: 7,
+                gas_limit,
+                max_fee_per_gas: 0,
+                max_priority_fee_per_gas: 0,
+                to,
+                ..Default::default()
+            }
+            .into_signed(signature)
+            .into(),
+            EvmTransactionKind::Eip7702 => TxEip7702 {
+                chain_id: 7,
+                gas_limit,
+                max_fee_per_gas: 0,
+                max_priority_fee_per_gas: 0,
+                to: Address::from([0x44; 20]),
+                authorization_list: vec![Authorization {
+                    chain_id: U256::from(7),
+                    address: Address::ZERO,
+                    nonce: 0,
+                }
+                .into_signed(signature)],
+                ..Default::default()
+            }
+            .into_signed(signature)
+            .into(),
+        };
+        EvmTransaction::from_signed_rlp(
+            envelope.encoded_2718(),
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn osaka_admission_and_received_block_footprints_validate_all_envelopes() {
+        let mut chainspec = Chainspec::random(&mut TestRng::new());
+        chainspec.evm_config = EvmConfig {
+            enabled: true,
+            chain_id: 7,
+            ..Default::default()
+        };
+        // Received block validation and packing both construct this same footprint.
+        for kind in [
+            EvmTransactionKind::Legacy,
+            EvmTransactionKind::Eip2930,
+            EvmTransactionKind::Eip1559,
+            EvmTransactionKind::Eip7702,
+        ] {
+            for gas_limit in [
+                EVM_TRANSACTION_GAS_LIMIT - 1,
+                EVM_TRANSACTION_GAS_LIMIT,
+                EVM_TRANSACTION_GAS_LIMIT + 1,
+            ] {
+                let tx = transaction(kind, gas_limit);
+                let meta =
+                    MetaEvmTransaction::from_evm_transaction(&tx, &chainspec.transaction_config)
+                        .unwrap();
+                let admission = meta.is_config_compliant(&chainspec);
+                let footprint =
+                    TransactionFootprint::new(&chainspec, &Transaction::Evm(Box::new(tx)));
+                if gas_limit <= EVM_TRANSACTION_GAS_LIMIT {
+                    assert_eq!(admission, Ok(()), "kind {kind}");
+                    assert!(footprint.is_ok(), "kind {kind}: {footprint:?}");
+                } else {
+                    assert!(matches!(
+                        admission,
+                        Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. })
+                    ));
+                    assert!(matches!(
+                        footprint,
+                        Err(InvalidTransaction::Evm(
+                            EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. }
+                        ))
+                    ));
+                }
+            }
+            let tx = transaction(kind, 100_001);
+            let lower = Chainspec {
+                evm_config: EvmConfig {
+                    block_gas_limit: 100_000,
+                    ..chainspec.evm_config
+                },
+                ..chainspec.clone()
+            };
+            let meta =
+                MetaEvmTransaction::from_evm_transaction(&tx, &lower.transaction_config).unwrap();
+            assert!(matches!(
+                meta.is_config_compliant(&lower),
+                Err(EvmTransactionError::GasLimitExceedsBlockGasLimit { .. })
+            ));
+            assert!(matches!(
+                TransactionFootprint::new(&lower, &Transaction::Evm(Box::new(tx))),
+                Err(InvalidTransaction::Evm(
+                    EvmTransactionError::GasLimitExceedsBlockGasLimit { .. }
+                ))
+            ));
+        }
     }
 }

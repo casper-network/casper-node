@@ -33,4 +33,5 @@ pub use fee_config::EvmFeeConfig;
 pub use transaction::{
     EvmAccessListItem, EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash,
     EvmTransactionKind,
+    EVM_TRANSACTION_GAS_LIMIT,
 };
