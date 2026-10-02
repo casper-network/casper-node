@@ -3611,3 +3611,6 @@ fn prevrandao_uses_block_context() {
 
     assert_eq!(outcome.output.as_slice(), block().prevrandao.as_ref());
 }
+
+#[path = "executor/osaka.rs"]
+mod osaka;
