@@ -26,3 +26,19 @@ That prefix copies and returns the remaining 3,808 bytes as runtime code.
 `multicall3.bin` contains those remaining bytes unchanged. Its address, length,
 and hash are pinned by a unit test; no network access or Solidity compiler is
 needed during compilation, genesis, or protocol upgrade.
+
+## Arachnid CREATE2 deployer
+
+- Address: `0x4e59b44847b379578588920cA78FbF26c0B4956C`.
+- Upstream commit: `be3c5974db5028d502537209329ff2e730ed336c`.
+- Source: [official signed deployment transaction](https://github.com/Arachnid/deterministic-deployment-proxy/blob/be3c5974db5028d502537209329ff2e730ed336c/README.md#deployment-transaction).
+- Deployment transaction hash: `0xeddf9e61fb9d8f5111840daef55e5fde0041f5702856532cdbb5a02998033d26`.
+- Runtime length: 69 bytes.
+- Runtime Keccak-256: `0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989`.
+- License: Unlicense; retained in `LICENSE.create2-deployer`.
+
+The deployment's 83-byte input starts with the 14-byte creation prefix
+`604580600e600039806000f350fe`. The remaining 69 bytes are returned unchanged
+as runtime code and stored in `create2-deployer.bin`. They match `eth_getCode`
+on Ethereum mainnet at block 26,104,339. The factory has no constructor storage
+or runtime immutables to initialize.

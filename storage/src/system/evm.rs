@@ -461,8 +461,11 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_noops_when_canonical_code_is_present() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
-        let (mut tracking_copy, _tempdir) = tracking_copy(predeploy_entries(contract).unwrap());
+        let entries = PREINSTALLS
+            .iter()
+            .flat_map(|preinstall| predeploy_entries((*preinstall).into()).unwrap())
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let (mut tracking_copy, _tempdir) = tracking_copy(entries);
 
         upsert_preinstalls(&mut tracking_copy).expect("preinstall upsert should succeed");
 
@@ -505,7 +508,16 @@ mod tests {
             assert_eq!(read(&mut tracking_copy, &key), value);
         }
         let (writes, prunes, _) = tracking_copy.destructure();
-        assert_eq!(writes.len(), 2);
+        let expected = PREINSTALLS
+            .iter()
+            .flat_map(|preinstall| predeploy_entries((*preinstall).into()).unwrap())
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            writes
+                .into_iter()
+                .collect::<std::collections::BTreeMap<_, _>>(),
+            expected
+        );
         assert!(prunes.is_empty());
     }
 

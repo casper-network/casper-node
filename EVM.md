@@ -224,12 +224,19 @@ the [preinstall registry](storage/src/preinstalls.rs).
 | Preinstall | Canonical address | Ethereum mainnet reference |
 | --- | --- | --- |
 | Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
+| Arachnid CREATE2 deployer | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | [Etherscan: Code](https://etherscan.io/address/0x4e59b44847b379578588920cA78FbF26c0B4956C#code) |
 
 Multicall3 aggregates contract calls in one EVM execution and exposes block and
 chain information. The Etherscan link opens the same address on Ethereum
 mainnet for comparing interfaces and read results. Getters such as
 `getChainId()`, `getBlockNumber()`, and `getBasefee()` return values for the
 network on which they execute.
+
+The Arachnid deployer is Foundry's default CREATE2 factory. Calls contain a
+32-byte salt followed by creation bytecode, and return the created address as
+20 bytes. This permits deterministic deployments using ordinary transactions
+at the configured gas price, without the factory's presigned bootstrap
+transaction. See the [upstream usage guide](https://github.com/Arachnid/deterministic-deployment-proxy).
 
 Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
 and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).
