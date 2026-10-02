@@ -20,6 +20,8 @@ pub mod eip2935;
 pub mod eip4788;
 /// Global state logic.
 pub mod global_state;
+/// Canonical EVM utility contract preinstalls.
+pub mod preinstalls;
 /// Storage layer logic.
 pub mod system;
 /// Tracking copy.
