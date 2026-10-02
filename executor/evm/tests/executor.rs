@@ -2965,7 +2965,7 @@ fn coinbase_transfer_without_prelink_uses_evm_native_identity() {
 }
 
 #[test]
-fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
+fn reading_coinbase_without_credit_does_not_create_identity() {
     let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
     let proposer_secret_key =
@@ -2990,10 +2990,7 @@ fn reading_coinbase_without_credit_creates_only_evm_native_identity() {
         .expect("coinbase observer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert!(matches!(
-        read_evm_identity(&mut tracking_copy, beneficiary),
-        Some(Key::URef(_))
-    ));
+    assert_eq!(read_evm_identity(&mut tracking_copy, beneficiary), None);
 }
 
 #[test]
@@ -3230,10 +3227,7 @@ fn nonzero_gas_price_does_not_charge_evm_balances() {
         read_balance(&mut tracking_copy, recipient),
         U512::from(250u64)
     );
-    assert!(matches!(
-        read_evm_identity(&mut tracking_copy, beneficiary),
-        Some(Key::URef(_))
-    ));
+    assert_eq!(read_evm_identity(&mut tracking_copy, beneficiary), None);
     assert_eq!(read_balance(&mut tracking_copy, beneficiary), U512::zero());
     assert_eq!(
         read_account_balance(&mut tracking_copy, proposer_account_hash),
@@ -3276,10 +3270,11 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
 
     let outcome = executor
         .execute(&data_access_layer, &mut tracking_copy, request)
-        .expect("unchecked call should remove simulated fee transfers without underflow");
+        .expect("unchecked call should execute without charging the unfunded sender");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert!(outcome.output.is_empty());
+    assert_eq!(read_balance(&mut tracking_copy, sender), U512::zero());
 }
 
 #[test]
