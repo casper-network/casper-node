@@ -331,12 +331,23 @@ mod tests {
     #[test]
     fn should_upsert_osaka_predeploys_for_enabled_osaka_or_later_evm() {
         assert!(!should_upsert_osaka_predeploys(&EvmConfig::default()));
+        assert!(EvmConfig::default().active_system_contracts().is_empty());
 
         let config = EvmConfig {
             enabled: true,
             ..Default::default()
         };
         assert!(should_upsert_osaka_predeploys(&config));
+        let advertised = config.active_system_contracts();
+        assert_eq!(advertised.len(), osaka_predeploys().len());
+        assert_eq!(
+            advertised["BEACON_ROOTS_ADDRESS"],
+            EvmContract::eip4788().address
+        );
+        assert_eq!(
+            advertised["HISTORY_STORAGE_ADDRESS"],
+            EvmContract::eip2935().address
+        );
     }
 
     #[test]
