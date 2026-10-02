@@ -17,8 +17,8 @@ use casper_storage::{
         CommitProvider, StateProvider,
     },
     preinstalls::{
-        EvmPreinstall, CREATE2_DEPLOYER, ERC2470_SINGLETON_FACTORY, MULTICALL3, PREINSTALLS,
-        SAFE_SINGLETON_FACTORY,
+        EvmPreinstall, CREATE2_DEPLOYER, ERC2470_SINGLETON_FACTORY, MULTICALL3, PERMIT2,
+        PREINSTALLS, SAFE_SINGLETON_FACTORY,
     },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
@@ -171,6 +171,15 @@ fn call_sequence(
     root: Digest,
     calls: &[(evm::Address, Vec<u8>)],
 ) -> Vec<ExecutionOutcome> {
+    call_sequence_with_config(state, root, calls, evm_config(true))
+}
+
+fn call_sequence_with_config(
+    state: LmdbGlobalState,
+    root: Digest,
+    calls: &[(evm::Address, Vec<u8>)],
+    config: EvmConfig,
+) -> Vec<ExecutionOutcome> {
     let data_access_layer = DataAccessLayer {
         state,
         block_store: LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap(),
@@ -182,7 +191,7 @@ fn call_sequence(
         .tracking_copy(root)
         .unwrap()
         .unwrap();
-    let executor = EvmExecutor::new(evm_config(true));
+    let executor = EvmExecutor::new(config);
     calls
         .iter()
         .enumerate()
@@ -578,4 +587,81 @@ fn preinstalled_erc2470_factory_deploys_and_returns_zero_on_collision() {
     assert_eq!(outcomes[1].output, word(42));
     assert_eq!(outcomes[2].status, ExecutionStatus::Success);
     assert_eq!(outcomes[2].output, word(0));
+}
+
+fn permit2_domain_separator(chain_id: u64) -> [u8; 32] {
+    let mut domain = Vec::new();
+    domain.extend_from_slice(
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)").as_slice(),
+    );
+    domain.extend_from_slice(keccak256("Permit2").as_slice());
+    domain.extend_from_slice(&word(chain_id));
+    domain.extend_from_slice(&address_word(PERMIT2.address));
+    keccak256(domain).0
+}
+
+#[test]
+fn preinstalled_permit2_domain_separator_uses_the_current_chain_id() {
+    for chain_id in [1, 7, 31_337] {
+        let (state, root, _tempdir) = genesis(true, false);
+        let config = EvmConfig {
+            chain_id,
+            ..evm_config(true)
+        };
+        let outcomes = call_sequence_with_config(
+            state,
+            root,
+            &[(PERMIT2.address, selector("DOMAIN_SEPARATOR()"))],
+            config,
+        );
+        assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+        assert_eq!(outcomes[0].output, permit2_domain_separator(chain_id));
+    }
+}
+
+#[test]
+fn preinstalled_permit2_accepts_a_signed_allowance_and_rejects_replay() {
+    let owner = evm::Address::new(hex!("7E5F4552091A69125d5DfCb7b8C2659029395Bdf"));
+    let token = evm::Address::new([3; 20]);
+    let spender = evm::Address::new([4; 20]);
+    // EIP-712 PermitSingle signed with the public test private key 1, for chain 7,
+    // this Permit2 address, token/spender below, amount 123, expiry/deadline
+    // 1_800_000_000, and nonce 0. Generated independently with `cast wallet sign`.
+    let signature = hex!("056bc518f3598cd1cf57a812964edec4272b771dc0a99ebf3a15266a55c6e0e838337fe89ad91837b517eee46473376525f0aaa96936228551484bbb98d3efac1b");
+    let mut permit =
+        selector("permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)");
+    permit.extend_from_slice(&address_word(owner));
+    permit.extend_from_slice(&address_word(token));
+    permit.extend_from_slice(&word(123));
+    permit.extend_from_slice(&word(1_800_000_000));
+    permit.extend_from_slice(&word(0));
+    permit.extend_from_slice(&address_word(spender));
+    permit.extend_from_slice(&word(1_800_000_000));
+    permit.extend_from_slice(&word(256));
+    permit.extend_from_slice(&word(signature.len() as u64));
+    permit.extend_from_slice(&signature);
+    permit.resize(4 + 256 + 128, 0);
+
+    let mut allowance = selector("allowance(address,address,address)");
+    allowance.extend_from_slice(&address_word(owner));
+    allowance.extend_from_slice(&address_word(token));
+    allowance.extend_from_slice(&address_word(spender));
+    let (state, root, _tempdir) = genesis(true, false);
+    let outcomes = call_sequence(
+        state,
+        root,
+        &[
+            (PERMIT2.address, permit.clone()),
+            (PERMIT2.address, allowance),
+            (PERMIT2.address, permit),
+        ],
+    );
+    assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[1].status, ExecutionStatus::Success);
+    assert_eq!(
+        outcomes[1].output,
+        [word(123), word(1_800_000_000), word(1)].concat()
+    );
+    assert_eq!(outcomes[2].status, ExecutionStatus::Revert);
+    assert_eq!(outcomes[2].output, selector("InvalidNonce()"));
 }
