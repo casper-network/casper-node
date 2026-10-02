@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto};
 
-use alloy_primitives::keccak256;
+use alloy_primitives::{hex, keccak256};
 use casper_executor_evm::{
     BlockContext, CallRequest, CallValidation, EvmExecutor, ExecuteKind, ExecuteRequest,
     ExecutionOutcome, ExecutionStatus,
@@ -16,7 +16,7 @@ use casper_storage::{
         lmdb::{make_temporary_global_state, LmdbGlobalState},
         CommitProvider, StateProvider,
     },
-    preinstalls::MULTICALL3,
+    preinstalls::{EvmPreinstall, CREATE2_DEPLOYER, MULTICALL3, PREINSTALLS},
     system::protocol_upgrade::ProtocolUpgradeError,
 };
 use casper_types::{
@@ -124,23 +124,50 @@ fn read(state: &LmdbGlobalState, root: Digest, key: Key) -> Option<StoredValue> 
         .unwrap()
 }
 
-fn assert_multicall3(state: &LmdbGlobalState, root: Digest) {
-    assert_eq!(
-        read(state, root, code_hash_key(MULTICALL3.address)),
-        Some(StoredValue::CLValue(
-            CLValue::from_t(MULTICALL3.code_hash()).unwrap()
-        ))
-    );
-    assert_eq!(
-        read(state, root, bytecode_key()),
-        Some(StoredValue::ByteCode(ByteCode::new(
-            ByteCodeKind::EvmPrague,
-            MULTICALL3.code.to_vec(),
-        )))
-    );
+fn assert_preinstalls(state: &LmdbGlobalState, root: Digest) {
+    for preinstall in PREINSTALLS {
+        assert_eq!(
+            read(state, root, code_hash_key(preinstall.address)),
+            Some(StoredValue::CLValue(
+                CLValue::from_t(preinstall.code_hash()).unwrap(),
+            )),
+            "{} code hash",
+            preinstall.name,
+        );
+        assert_eq!(
+            read(
+                state,
+                root,
+                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
+            ),
+            Some(StoredValue::ByteCode(ByteCode::new(
+                ByteCodeKind::EvmPrague,
+                preinstall.code.to_vec(),
+            ))),
+            "{} runtime",
+            preinstall.name,
+        );
+    }
 }
 
 fn call(state: LmdbGlobalState, root: Digest, input: Vec<u8>) -> ExecutionOutcome {
+    call_contract(state, root, MULTICALL3.address, input)
+}
+
+fn call_contract(
+    state: LmdbGlobalState,
+    root: Digest,
+    address: evm::Address,
+    input: Vec<u8>,
+) -> ExecutionOutcome {
+    call_sequence(state, root, &[(address, input)]).remove(0)
+}
+
+fn call_sequence(
+    state: LmdbGlobalState,
+    root: Digest,
+    calls: &[(evm::Address, Vec<u8>)],
+) -> Vec<ExecutionOutcome> {
     let data_access_layer = DataAccessLayer {
         state,
         block_store: LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap(),
@@ -152,32 +179,39 @@ fn call(state: LmdbGlobalState, root: Digest, input: Vec<u8>) -> ExecutionOutcom
         .tracking_copy(root)
         .unwrap()
         .unwrap();
-    EvmExecutor::new(evm_config(true))
-        .execute(
-            &data_access_layer,
-            &mut tracking_copy,
-            ExecuteRequest {
-                block: BlockContext {
-                    number: 42,
-                    timestamp: 1_714_000_000,
-                    beneficiary: evm::Address::ZERO,
-                    gas_limit: None,
-                    base_fee: None,
-                    prevrandao: evm::Hash::new([0x42; 32]),
-                },
-                kind: ExecuteKind::Call(CallRequest {
-                    from: evm::Address::new([2; 20]),
-                    to: Some(MULTICALL3.address),
-                    value: U256::zero(),
-                    input,
-                    gas_limit: 1_000_000,
-                    gas_price: 0,
-                    nonce: 0,
-                    validation: CallValidation::UncheckedSimulation,
-                }),
-            },
-        )
-        .expect("preinstalled contract execution should succeed")
+    let executor = EvmExecutor::new(evm_config(true));
+    calls
+        .iter()
+        .enumerate()
+        .map(|(index, (address, input))| {
+            executor
+                .execute(
+                    &data_access_layer,
+                    &mut tracking_copy,
+                    ExecuteRequest {
+                        block: BlockContext {
+                            number: 42,
+                            timestamp: 1_714_000_000,
+                            beneficiary: evm::Address::ZERO,
+                            gas_limit: None,
+                            base_fee: None,
+                            prevrandao: evm::Hash::new([0x42; 32]),
+                        },
+                        kind: ExecuteKind::Call(CallRequest {
+                            from: evm::Address::new([2; 20]),
+                            to: Some(*address),
+                            value: U256::zero(),
+                            input: input.clone(),
+                            gas_limit: 1_000_000,
+                            gas_price: 0,
+                            nonce: index as u64,
+                            validation: CallValidation::UncheckedSimulation,
+                        }),
+                    },
+                )
+                .expect("preinstalled contract execution should succeed")
+        })
+        .collect()
 }
 
 fn selector(signature: &str) -> Vec<u8> {
@@ -188,6 +222,39 @@ fn word(value: u64) -> [u8; 32] {
     let mut result = [0; 32];
     result[24..].copy_from_slice(&value.to_be_bytes());
     result
+}
+
+// Creation code returning a ten-byte runtime whose calls return the word 42.
+const TEST_INIT_CODE: &[u8] = &hex!("600a600c600039600a6000f3602a60005260206000f3");
+
+fn create2_address(factory: evm::Address, salt: [u8; 32]) -> evm::Address {
+    let mut input = vec![0xff];
+    input.extend_from_slice(factory.as_bytes());
+    input.extend_from_slice(&salt);
+    input.extend_from_slice(keccak256(TEST_INIT_CODE).as_slice());
+    evm::Address::new(keccak256(input)[12..].try_into().unwrap())
+}
+
+fn assert_raw_create2_deployment(factory: EvmPreinstall) {
+    let salt = [0x42; 32];
+    let address = create2_address(factory.address, salt);
+    let mut input = salt.to_vec();
+    input.extend_from_slice(TEST_INIT_CODE);
+    let (state, root, _tempdir) = genesis(true, false);
+    let outcomes = call_sequence(
+        state,
+        root,
+        &[
+            (factory.address, input.clone()),
+            (address, Vec::new()),
+            (factory.address, input),
+        ],
+    );
+    assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[0].output, address.as_bytes());
+    assert_eq!(outcomes[1].status, ExecutionStatus::Success);
+    assert_eq!(outcomes[1].output, word(42));
+    assert_eq!(outcomes[2].status, ExecutionStatus::Revert);
 }
 
 fn aggregate3_input(calls: &[(&str, bool)]) -> Vec<u8> {
@@ -231,7 +298,7 @@ fn upgrade_installs_preinstalls_and_repeated_upgrade_preserves_them() {
         else {
             panic!("upgrade failed: {result:?}");
         };
-        assert_multicall3(&state, after);
+        assert_preinstalls(&state, after);
         for address in [
             eip4788::BEACON_ROOTS_ADDRESS,
             eip2935::BLOCK_HASH_HISTORY_ADDRESS,
@@ -261,11 +328,12 @@ fn upgrade_installs_preinstalls_and_repeated_upgrade_preserves_them() {
         else {
             panic!("repeated upgrade failed: {repeated:?}");
         };
-        assert_multicall3(&state, post_state_hash);
+        assert_preinstalls(&state, post_state_hash);
         for transform in effects.transforms() {
-            if *transform.key() == code_hash_key(MULTICALL3.address)
-                || *transform.key() == bytecode_key()
-            {
+            if PREINSTALLS.iter().any(|preinstall| {
+                *transform.key() == code_hash_key(preinstall.address)
+                    || *transform.key() == Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
+            }) {
                 assert_eq!(*transform.kind(), TransformKindV2::Identity);
             }
         }
@@ -280,7 +348,7 @@ fn upgrade_installs_preinstalls_and_repeated_upgrade_preserves_them() {
 fn genesis_installs_preinstalls_and_upgrade_preserves_them() {
     for enable_entity in [false, true] {
         let (state, root, _tempdir) = genesis(true, enable_entity);
-        assert_multicall3(&state, root);
+        assert_preinstalls(&state, root);
         for address in [
             eip4788::BEACON_ROOTS_ADDRESS,
             eip2935::BLOCK_HASH_HISTORY_ADDRESS,
@@ -301,11 +369,12 @@ fn genesis_installs_preinstalls_and_upgrade_preserves_them() {
         else {
             panic!("upgrade after genesis failed: {result:?}");
         };
-        assert_multicall3(&state, post_state_hash);
+        assert_preinstalls(&state, post_state_hash);
         for transform in effects.transforms() {
-            if *transform.key() == code_hash_key(MULTICALL3.address)
-                || *transform.key() == bytecode_key()
-            {
+            if PREINSTALLS.iter().any(|preinstall| {
+                *transform.key() == code_hash_key(preinstall.address)
+                    || *transform.key() == Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
+            }) {
                 assert_eq!(*transform.kind(), TransformKindV2::Identity);
             }
         }
@@ -320,8 +389,15 @@ fn genesis_installs_preinstalls_and_upgrade_preserves_them() {
 fn disabled_genesis_and_upgrade_skip_preinstalls() {
     for enable_entity in [false, true] {
         let (state, root, _tempdir) = genesis(false, enable_entity);
-        assert!(read(&state, root, code_hash_key(MULTICALL3.address)).is_none());
-        assert!(read(&state, root, bytecode_key()).is_none());
+        for preinstall in PREINSTALLS {
+            assert!(read(&state, root, code_hash_key(preinstall.address)).is_none());
+            assert!(read(
+                &state,
+                root,
+                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
+            )
+            .is_none());
+        }
         for address in [
             eip4788::BEACON_ROOTS_ADDRESS,
             eip2935::BLOCK_HASH_HISTORY_ADDRESS,
@@ -342,8 +418,15 @@ fn disabled_genesis_and_upgrade_skip_preinstalls() {
         else {
             panic!("disabled EVM upgrade failed: {result:?}");
         };
-        assert!(read(&state, post_state_hash, code_hash_key(MULTICALL3.address)).is_none());
-        assert!(read(&state, post_state_hash, bytecode_key()).is_none());
+        for preinstall in PREINSTALLS {
+            assert!(read(&state, post_state_hash, code_hash_key(preinstall.address)).is_none());
+            assert!(read(
+                &state,
+                post_state_hash,
+                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
+            )
+            .is_none());
+        }
     }
 }
 
@@ -399,7 +482,7 @@ fn upgrade_repairs_missing_preinstall_bytecode() {
     else {
         panic!("repair upgrade failed: {result:?}");
     };
-    assert_multicall3(&state, post_state_hash);
+    assert_preinstalls(&state, post_state_hash);
 }
 
 #[test]
@@ -443,4 +526,9 @@ fn preinstalled_multicall3_aggregates_calls_and_honors_allow_failure() {
         assert_eq!(&failed_tuple[..32], &word(0));
         assert_eq!(&failed_tuple[64..96], &word(0));
     }
+}
+
+#[test]
+fn preinstalled_create2_deployer_deploys_at_the_deterministic_address() {
+    assert_raw_create2_deployment(CREATE2_DEPLOYER);
 }
