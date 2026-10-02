@@ -4,10 +4,7 @@ use alloy_primitives::keccak256;
 use casper_types::evm;
 
 /// EIP-4788 beacon roots contract address.
-pub const BEACON_ROOTS_ADDRESS: evm::Address = evm::Address::new([
-    0x00, 0x0f, 0x3d, 0xf6, 0xd7, 0x32, 0x80, 0x7e, 0xf1, 0x31, 0x9f, 0xb7, 0xb8, 0xbb, 0x85, 0x22,
-    0xd0, 0xbe, 0xac, 0x02,
-]);
+pub const BEACON_ROOTS_ADDRESS: evm::Address = evm::BEACON_ROOTS_ADDRESS;
 
 /// Osaka EIP-4788 beacon roots runtime bytecode.
 pub const BEACON_ROOTS_CODE: &[u8] = &[

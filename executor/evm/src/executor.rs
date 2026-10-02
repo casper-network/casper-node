@@ -1,5 +1,7 @@
 //! Public executor entry point.
 
+use std::collections::BTreeMap;
+
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -102,6 +104,15 @@ impl EvmExecutor {
         handler
             .validate_against_state_and_deduct_caller(&mut evm, &mut initial_gas)
             .map_err(map_revm_validation_error)
+    }
+
+    /// Names and addresses from this executor's selected precompile provider.
+    /// Disabled EVM configurations expose no active precompiles.
+    pub fn precompile_addresses(&self) -> BTreeMap<String, casper_types::evm::Address> {
+        if !self.config.enabled {
+            return BTreeMap::new();
+        }
+        CasperEvmPrecompiles::new(spec_id(self.config.spec)).addresses()
     }
 
     /// Executes an EVM transaction or call against the supplied tracking copy.

@@ -4,10 +4,7 @@ use alloy_primitives::keccak256;
 use casper_types::evm;
 
 /// EIP-2935 block hash history contract address.
-pub const BLOCK_HASH_HISTORY_ADDRESS: evm::Address = evm::Address::new([
-    0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b, 0x17, 0x53,
-    0x20, 0x00, 0x29, 0x35,
-]);
+pub const BLOCK_HASH_HISTORY_ADDRESS: evm::Address = evm::HISTORY_STORAGE_ADDRESS;
 
 /// Number of historical block hashes served by EIP-2935.
 pub const HISTORY_BUFFER_LENGTH: u64 = 8_191;
