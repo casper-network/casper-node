@@ -71,6 +71,17 @@ pub const PERMIT2: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/permit2.bin"),
 };
 
+/// Account-creation helper from the canonical EntryPoint v0.8 deployment.
+///
+/// Its runtime authorizes only EntryPoint at
+/// `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`. Install the matching pair together;
+/// substituting an unlinked compiler artifact would lose that authorization.
+pub const SENDER_CREATOR_V08: EvmPreinstall = EvmPreinstall {
+    name: "SenderCreator v0.8",
+    address: evm::Address::new(hex!("0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33")),
+    code: include_bytes!("preinstalls/sendercreator-v08.bin"),
+};
+
 /// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
 pub const PREINSTALLS: &[EvmPreinstall] = &[
     // Aggregate reads and expose block/chain information at the standard Multicall3 address.
@@ -83,6 +94,8 @@ pub const PREINSTALLS: &[EvmPreinstall] = &[
     ERC2470_SINGLETON_FACTORY,
     // Provide Uniswap's shared ERC-20 allowance and signature-transfer infrastructure.
     PERMIT2,
+    // Create smart accounts only on behalf of the canonical EntryPoint v0.8.
+    SENDER_CREATOR_V08,
 ];
 
 #[cfg(test)]
@@ -152,6 +165,19 @@ mod tests {
         assert_eq!(
             PERMIT2.code_hash().to_hex_string(),
             "c67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131"
+        );
+    }
+
+    #[test]
+    fn sender_creator_v08_matches_canonical_deployment() {
+        assert_eq!(
+            SENDER_CREATOR_V08.address.to_hex_string(),
+            "449ed7c3e6fee6a97311d4b55475df59c44add33"
+        );
+        assert_eq!(SENDER_CREATOR_V08.code.len(), 1_217);
+        assert_eq!(
+            SENDER_CREATOR_V08.code_hash().to_hex_string(),
+            "c69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf"
         );
     }
 }

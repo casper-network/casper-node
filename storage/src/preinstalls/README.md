@@ -97,3 +97,28 @@ The [EIP-712 implementation](https://github.com/Uniswap/permit2/blob/cc56ad0f343
 recomputes the separator when `block.chainid` differs from the cache. Integration
 tests exercise cached and recomputed domains, accept a signed allowance on
 chain 7, and reject replay. No constructor storage initialization is required.
+
+## SenderCreator v0.8
+
+- Address: `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33`.
+- Release: `eth-infinitism/account-abstraction` v0.8.0.
+- Upstream commit: `4cbc06072cdc19fd60f285c5997f4f7f57a588de`.
+- Source: Ethereum mainnet runtime, fetched with `eth_getCode` at block 26,104,339
+  through `https://ethereum-rpc.publicnode.com`.
+- Creator: EntryPoint v0.8 at `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`,
+  using CREATE nonce 1 during construction.
+- Upstream reference: [canonical EntryPoint deployment artifact](https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/EntryPoint.json).
+- Runtime length: 1,217 bytes.
+- Runtime Keccak-256: `0xc69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf`.
+- License: GPL-3.0 (upstream SPDX identifier); retained in `LICENSE.account-abstraction-v08`.
+
+`sendercreator-v08.bin` contains the deployed runtime unchanged. Its immutable
+authorized EntryPoint address occurs at three call/getter sites. Replacing
+that address with the compiler's zero placeholder reproduces the 1,217-byte
+runtime template embedded in the pinned EntryPoint creation bytecode at
+offset 22,958. The helper has no constructor storage to initialize.
+
+The matching EntryPoint and SenderCreator runtimes must be activated together
+at their canonical addresses. Direct runtime installation executes neither
+constructor. The corresponding [Solidity sources and compiler settings](https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/solcInputs/594e0595d5f1f4861d3b32a5f38cc32f.json)
+are pinned in the upstream deployment's complete compiler input.

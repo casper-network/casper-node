@@ -228,6 +228,7 @@ the [preinstall registry](storage/src/preinstalls.rs).
 | Safe Singleton Factory | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | [Etherscan: Code](https://etherscan.io/address/0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7#code) |
 | ERC-2470 Singleton Factory | `0xce0042B868300000d44A59004Da54A005ffdcf9f` | [Etherscan: Code](https://etherscan.io/address/0xce0042B868300000d44A59004Da54A005ffdcf9f#code) |
 | Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | [Etherscan: Read Contract](https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#readContract) |
+| SenderCreator v0.8 | `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33` | [Etherscan: Read Contract](https://etherscan.io/address/0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33#readContract) |
 
 Multicall3 aggregates contract calls in one EVM execution and exposes block and
 chain information. The Etherscan link opens the same address on Ethereum
@@ -258,6 +259,12 @@ to authorize Permit2 through their own `approve` method. Its EIP-712 domain
 uses the executing network's chain ID and canonical Permit2 address; the
 mainnet runtime's cached domain is recomputed on other chain IDs. Allowances
 and signature nonces begin empty and are preserved through protocol upgrades.
+
+[SenderCreator v0.8](https://github.com/eth-infinitism/account-abstraction/blob/v0.8.0/contracts/core/SenderCreator.sol)
+is EntryPoint v0.8's account-creation helper. Its `entryPoint()` getter returns
+`0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`, the only address authorized to call
+`createSender` or `initEip7702Sender`. The embedded runtime preserves that
+constructor-derived authorization; it has no storage to initialize.
 
 Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
 and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).
