@@ -1284,8 +1284,12 @@ impl reactor::Reactor for MainReactor {
             config.block_validator,
             chainspec.vacancy_config.min_gas_price,
         );
-        let upgrade_watcher =
-            UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
+        let upgrade_watcher = UpgradeWatcher::new(
+            chainspec.as_ref(),
+            Arc::clone(&chainspec_raw_bytes),
+            config.upgrade_watcher,
+            &root_dir,
+        )?;
         let transaction_acceptor = TransactionAcceptor::new(
             config.transaction_acceptor,
             Arc::clone(&chainspec),

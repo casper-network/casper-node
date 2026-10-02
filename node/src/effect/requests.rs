@@ -1095,13 +1095,19 @@ impl Display for ChainspecRawBytesRequest {
     }
 }
 
-/// UpgradeWatcher component request to get the next scheduled upgrade, if any.
+/// Upgrade watcher requests for upgrade selection and complete chainspec source documents.
 #[derive(Debug, Serialize)]
-pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>>);
+pub(crate) enum UpgradeWatcherRequest {
+    NextUpgrade(Responder<Option<NextUpgrade>>),
+    Chainspecs(Responder<Result<crate::types::Chainspecs, String>>),
+}
 
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "get next upgrade")
+        match self {
+            Self::NextUpgrade(_) => write!(f, "get next upgrade"),
+            Self::Chainspecs(_) => write!(f, "get chainspec source documents"),
+        }
     }
 }
 
