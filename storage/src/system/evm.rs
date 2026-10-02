@@ -476,34 +476,45 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_preserves_account_metadata_balance_and_storage() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
-        let purse = evm::deterministic_purse(contract.address);
-        let preserved = vec![
-            (
-                Key::Evm(EvmAddr::Account(contract.address)),
-                StoredValue::CLValue(CLValue::from_t(Key::URef(purse)).unwrap()),
-            ),
-            (
-                Key::Evm(EvmAddr::Nonce(contract.address)),
-                StoredValue::CLValue(CLValue::from_t(9u64).unwrap()),
-            ),
-            (
-                Key::Balance(purse.addr()),
-                StoredValue::CLValue(CLValue::from_t(casper_types::U512::from(123)).unwrap()),
-            ),
-            (
-                Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(
-                    contract.address,
-                    casper_types::U256::from(7),
-                ))),
-                StoredValue::CLValue(CLValue::from_t(casper_types::U256::from(42)).unwrap()),
-            ),
-        ];
+        let preserved = PREINSTALLS
+            .iter()
+            .flat_map(|preinstall| {
+                let contract = EvmContract::from(*preinstall);
+                let purse = evm::deterministic_purse(contract.address);
+                vec![
+                    (
+                        Key::Evm(EvmAddr::Account(contract.address)),
+                        StoredValue::CLValue(CLValue::from_t(Key::URef(purse)).unwrap()),
+                    ),
+                    (
+                        Key::Evm(EvmAddr::Nonce(contract.address)),
+                        StoredValue::CLValue(CLValue::from_t(9u64).unwrap()),
+                    ),
+                    (
+                        Key::Balance(purse.addr()),
+                        StoredValue::CLValue(
+                            CLValue::from_t(casper_types::U512::from(123)).unwrap(),
+                        ),
+                    ),
+                    (
+                        Key::Evm(EvmAddr::Storage(evm::StorageAddr::new(
+                            contract.address,
+                            casper_types::U256::from(7),
+                        ))),
+                        StoredValue::CLValue(
+                            CLValue::from_t(casper_types::U256::from(42)).unwrap(),
+                        ),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
         let (mut tracking_copy, _tempdir) = tracking_copy(preserved.clone());
 
         upsert_preinstalls(&mut tracking_copy).expect("preinstall upsert should succeed");
 
-        assert_predeploy_present(&mut tracking_copy, contract);
+        for preinstall in PREINSTALLS {
+            assert_predeploy_present(&mut tracking_copy, (*preinstall).into());
+        }
         for (key, value) in preserved {
             assert_eq!(read(&mut tracking_copy, &key), value);
         }

@@ -17,8 +17,8 @@ use casper_storage::{
         CommitProvider, StateProvider,
     },
     preinstalls::{
-        EvmPreinstall, CREATE2_DEPLOYER, ERC2470_SINGLETON_FACTORY, MULTICALL3, PERMIT2,
-        PREINSTALLS, SAFE_SINGLETON_FACTORY, SENDER_CREATOR_V08,
+        EvmPreinstall, CREATE2_DEPLOYER, ENTRYPOINT_V08, ERC2470_SINGLETON_FACTORY, MULTICALL3,
+        PERMIT2, PREINSTALLS, SAFE_SINGLETON_FACTORY, SENDER_CREATOR_V08,
     },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
@@ -690,15 +690,121 @@ fn preinstalled_sender_creator_is_linked_and_rejects_unauthorized_creation() {
         ],
     );
     assert_eq!(outcomes[0].status, ExecutionStatus::Success);
-    assert_eq!(
-        outcomes[0].output,
-        address_word(evm::Address::new(hex!(
-            "4337084D9E255Ff0702461CF8895CE9E3b5Ff108"
-        )))
-    );
+    assert_eq!(outcomes[0].output, address_word(ENTRYPOINT_V08.address));
     assert_eq!(outcomes[1].status, ExecutionStatus::Revert);
     assert_eq!(
         outcomes[1].output,
         bytes_call("Error(string)", b"AA97 should call from EntryPoint")
     );
+}
+
+#[test]
+fn preinstalled_entrypoint_uses_its_matching_helper_for_sender_creation() {
+    for at_genesis in [false, true] {
+        let (state, root, _tempdir) = genesis(at_genesis, false);
+        let root = if at_genesis {
+            root
+        } else {
+            let result =
+                state.protocol_upgrade(upgrade_request(root, 0, true, false, BTreeMap::new()));
+            let ProtocolUpgradeResult::Success {
+                post_state_hash, ..
+            } = result
+            else {
+                panic!("upgrade failed: {result:?}");
+            };
+            post_state_hash
+        };
+        let salt = [0x42; 32];
+        let address = create2_address(ERC2470_SINGLETON_FACTORY.address, salt);
+        let mut init_code = ERC2470_SINGLETON_FACTORY.address.as_bytes().to_vec();
+        init_code.extend_from_slice(&singleton_factory_input(salt));
+        let outcomes = call_sequence(
+            state,
+            root,
+            &[
+                (ENTRYPOINT_V08.address, selector("senderCreator()")),
+                (
+                    ENTRYPOINT_V08.address,
+                    bytes_call("getSenderAddress(bytes)", &init_code),
+                ),
+            ],
+        );
+        assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+        assert_eq!(outcomes[0].output, address_word(SENDER_CREATOR_V08.address));
+        // getSenderAddress deliberately reverts with the computed sender after
+        // EntryPoint -> SenderCreator -> factory successfully creates it.
+        let mut expected = selector("SenderAddressResult(address)");
+        expected.extend_from_slice(&address_word(address));
+        assert_eq!(outcomes[1].status, ExecutionStatus::Revert);
+        assert_eq!(outcomes[1].output, expected);
+    }
+}
+
+#[test]
+fn preinstalled_entrypoint_domain_separator_uses_the_current_chain_id() {
+    for chain_id in [1, 7, 31_337] {
+        let (state, root, _tempdir) = genesis(true, false);
+        let config = EvmConfig {
+            chain_id,
+            ..evm_config(true)
+        };
+        let outcomes = call_sequence_with_config(
+            state,
+            root,
+            &[(ENTRYPOINT_V08.address, selector("getDomainSeparatorV4()"))],
+            config,
+        );
+        let mut domain = Vec::new();
+        domain.extend_from_slice(
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)").as_slice(),
+        );
+        domain.extend_from_slice(keccak256("ERC4337").as_slice());
+        domain.extend_from_slice(keccak256("1").as_slice());
+        domain.extend_from_slice(&word(chain_id));
+        domain.extend_from_slice(&address_word(ENTRYPOINT_V08.address));
+        assert_eq!(outcomes[0].status, ExecutionStatus::Success);
+        assert_eq!(outcomes[0].output, keccak256(domain).as_slice());
+    }
+}
+
+#[test]
+fn preinstalled_entrypoint_starts_empty_and_executes_bundles_with_transient_guard() {
+    let account = evm::Address::new([3; 20]);
+    let mut nonce = selector("getNonce(address,uint192)");
+    nonce.extend_from_slice(&address_word(account));
+    nonce.extend_from_slice(&word(0));
+    let mut balance = selector("balanceOf(address)");
+    balance.extend_from_slice(&address_word(account));
+    let mut bundle = selector(
+        "handleOps((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes)[],address)",
+    );
+    bundle.extend_from_slice(&word(64));
+    bundle.extend_from_slice(&address_word(evm::Address::new([2; 20])));
+    bundle.extend_from_slice(&word(0));
+    let (state, root, _tempdir) = genesis(true, false);
+    let outcomes = call_sequence(
+        state,
+        root,
+        &[
+            (ENTRYPOINT_V08.address, nonce),
+            (ENTRYPOINT_V08.address, balance),
+            (ENTRYPOINT_V08.address, bundle.clone()),
+            (ENTRYPOINT_V08.address, bundle),
+        ],
+    );
+    for outcome in &outcomes[..2] {
+        assert_eq!(outcome.status, ExecutionStatus::Success);
+        assert_eq!(outcome.output, word(0));
+    }
+    for outcome in &outcomes[2..] {
+        assert_eq!(outcome.status, ExecutionStatus::Success);
+        assert!(outcome.output.is_empty());
+        assert_eq!(outcome.logs.len(), 1);
+        assert_eq!(outcome.logs[0].address, ENTRYPOINT_V08.address);
+        assert_eq!(
+            outcome.logs[0].topics,
+            vec![evm::Topic::new(keccak256("BeforeExecution()").0)]
+        );
+    }
 }
