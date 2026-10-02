@@ -61,6 +61,16 @@ pub const ERC2470_SINGLETON_FACTORY: EvmPreinstall = EvmPreinstall {
     code: include_bytes!("preinstalls/erc2470-singleton-factory.bin"),
 };
 
+/// Uniswap's canonical Permit2 token approval and signature-transfer contract.
+///
+/// The mainnet runtime includes the constructor's cached EIP-712 domain. It
+/// recomputes that domain when the current chain ID differs from the cached one.
+pub const PERMIT2: EvmPreinstall = EvmPreinstall {
+    name: "Permit2",
+    address: evm::Address::new(hex!("0x000000000022D473030F116dDEE9F6B43aC78BA3")),
+    code: include_bytes!("preinstalls/permit2.bin"),
+};
+
 /// Preinstalls upserted after EVM predeploys at EVM-enabled genesis and protocol upgrade commit.
 pub const PREINSTALLS: &[EvmPreinstall] = &[
     // Aggregate reads and expose block/chain information at the standard Multicall3 address.
@@ -71,6 +81,8 @@ pub const PREINSTALLS: &[EvmPreinstall] = &[
     SAFE_SINGLETON_FACTORY,
     // Provide the standard ABI-based, zero-value CREATE2 factory from ERC-2470.
     ERC2470_SINGLETON_FACTORY,
+    // Provide Uniswap's shared ERC-20 allowance and signature-transfer infrastructure.
+    PERMIT2,
 ];
 
 #[cfg(test)]
@@ -127,6 +139,19 @@ mod tests {
         assert_eq!(
             ERC2470_SINGLETON_FACTORY.code_hash().to_hex_string(),
             "c4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807"
+        );
+    }
+
+    #[test]
+    fn permit2_matches_canonical_deployment() {
+        assert_eq!(
+            PERMIT2.address.to_hex_string(),
+            "000000000022d473030f116ddee9f6b43ac78ba3"
+        );
+        assert_eq!(PERMIT2.code.len(), 9_152);
+        assert_eq!(
+            PERMIT2.code_hash().to_hex_string(),
+            "c67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131"
         );
     }
 }

@@ -76,3 +76,24 @@ The remaining 308 bytes are returned unchanged as runtime code and stored in
 `erc2470-singleton-factory.bin`. They match `eth_getCode` on Ethereum mainnet
 at block 26,104,339. The factory needs no constructor storage or runtime
 immutable initialization.
+
+## Permit2
+
+- Address: `0x000000000022D473030F116dDEE9F6B43aC78BA3`.
+- Upstream commit: `cc56ad0f3439c502c246fc5cfcc3db92bb8b7219`.
+- Source: Ethereum mainnet runtime, fetched with `eth_getCode` at block 26,104,339
+  through `https://ethereum-rpc.publicnode.com`.
+- Upstream reference: [precompiled runtime utility](https://github.com/Uniswap/permit2/blob/cc56ad0f3439c502c246fc5cfcc3db92bb8b7219/test/utils/DeployPermit2.sol).
+- Runtime length: 9,152 bytes.
+- Runtime Keccak-256: `0xc67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131`.
+- License: MIT; the upstream notice is retained in `LICENSE.permit2`.
+
+`permit2.bin` contains the deployed runtime unchanged, including constructor
+immutables. It matches the pinned upstream utility's runtime except for the
+constructor-derived cached chain ID and domain separator. The mainnet cached
+chain ID is 1 and its separator is
+`0x866a5aba21966af95d6c7ab78eb2b2fc913915c28be3b9aa07cc04ff903e3f28`.
+The [EIP-712 implementation](https://github.com/Uniswap/permit2/blob/cc56ad0f3439c502c246fc5cfcc3db92bb8b7219/src/EIP712.sol)
+recomputes the separator when `block.chainid` differs from the cache. Integration
+tests exercise cached and recomputed domains, accept a signed allowance on
+chain 7, and reject replay. No constructor storage initialization is required.
