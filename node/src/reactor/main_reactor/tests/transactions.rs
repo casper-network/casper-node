@@ -2116,6 +2116,7 @@ async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_
     ];
     let mut previous_height = deploy_height;
     for transaction in transactions {
+        let nonce = transaction.nonce();
         let sender_balance_before = evm_balance(&mut test.fixture, sender, previous_height);
         let total_supply_before = test.get_total_supply(Some(previous_height));
         let fee = transaction
@@ -2127,7 +2128,12 @@ async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_
             panic!("expected EVM execution result");
         };
 
-        assert_eq!(result.receipt.status, evm::ReceiptStatus::Success);
+        assert_eq!(
+            result.receipt.status,
+            evm::ReceiptStatus::Success,
+            "nonce {nonce}: {:?}",
+            result.error_message
+        );
         assert_eq!(
             evm_balance(&mut test.fixture, sender, height),
             sender_balance_before - fee - U512::one(),

@@ -216,7 +216,7 @@ decisions for [EIP-7002][eip-7002] and
 Contract fixtures compile with `solc --evm-version osaka`; a compiler supporting
 that target is required (Solidity 0.8.31 or newer).
 
-Pinned `revm` 38 implements the five Osaka execution/admission changes:
+Pinned `revm` 43.0.3 implements the five Osaka execution/admission changes:
 
 | EIP | Behavior |
 | --- | --- |
@@ -729,8 +729,8 @@ resolve either the linked Casper account main purse or the EVM-native purse,
 read `Key::Balance(main_purse.addr())`, and multiply the result by
 `[evm].wei_per_mote` before exposing it to `revm`.
 
-After execution and removal of disabled `revm` fee transfers, the executor
-quantizes final changed-account balances once using `balance_wei / wei_per_mote`.
+After execution, the executor quantizes final changed-account balances once
+using `balance_wei / wei_per_mote`.
 Before writing state, it compares the original balances of affected Casper
 purses, scaled to wei, with final EVM balances, counting each purse once and
 accounting for selfdestruct pruning. Their checked difference tracks explicit

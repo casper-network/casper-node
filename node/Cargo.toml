@@ -115,9 +115,9 @@ reqwest = { version = "0.11.27", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 alloy-consensus = { version = "=1.0.41", default-features = false, features = ["k256"] }
 alloy-eips = { version = "=1.4.2", default-features = false, features = ["k256"] }
-alloy-primitives = { version = "=1.5.7", default-features = false, features = ["rlp", "sha3-keccak", "k256"] }
+alloy-primitives = { version = "=1.6.0", default-features = false, features = ["rlp", "sha3-keccak", "k256"] }
 k256 = { version = "0.13.4", default-features = false, features = ["ecdsa"] }
-revm = { version = "38", features = ["dev"] }
+revm = { version = "43.0.3", features = ["dev"] }
 
 [features]
 failpoints = []

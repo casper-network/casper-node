@@ -13,7 +13,7 @@ use revm::{
     database_interface::Database,
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{CallInputs, CallScheme, Gas, InstructionResult, InterpreterResult},
-    primitives::{hardfork::SpecId, Address, Bytes, B256},
+    primitives::{hardfork::SpecId, Address, AddressSet, Bytes, B256},
 };
 
 use crate::{db::CasperDb, tx, DbError};
@@ -128,7 +128,7 @@ where
     }
 
     #[inline(always)]
-    fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
+    fn warm_addresses(&self) -> &AddressSet {
         self.0.warm_addresses()
     }
 
