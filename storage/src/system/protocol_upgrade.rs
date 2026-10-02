@@ -11,7 +11,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     global_state::state::StateProvider,
-    system::evm::{should_upsert_prague_predeploys, upsert_prague_predeploys, upsert_preinstalls},
+    system::evm::{should_upsert_osaka_predeploys, upsert_osaka_predeploys, upsert_preinstalls},
     tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
@@ -1709,8 +1709,8 @@ where
 
     /// Handle EVM predeploy setup.
     pub fn handle_evm_predeploys(&mut self) -> Result<(), ProtocolUpgradeError> {
-        if should_upsert_prague_predeploys(self.config.evm_config()) {
-            upsert_prague_predeploys(&mut self.tracking_copy)
+        if should_upsert_osaka_predeploys(self.config.evm_config()) {
+            upsert_osaka_predeploys(&mut self.tracking_copy)
                 .map_err(|error| ProtocolUpgradeError::EvmPredeploy(error.to_string()))?;
         }
         Ok(())

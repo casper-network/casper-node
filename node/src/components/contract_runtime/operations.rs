@@ -2583,7 +2583,7 @@ mod tests {
             evm_config: EvmConfig {
                 enabled: true,
                 chain_id: 7,
-                spec: EvmSpec::Prague,
+                spec: EvmSpec::Osaka,
                 block_gas_limit: 30_000_000,
                 base_fee: 3,
                 wei_per_mote: DEFAULT_WEI_PER_MOTE,

@@ -284,7 +284,7 @@ fn result_gas(result: &RevmExecutionResult) -> &ResultGas {
 
 fn spec_id(spec: EvmSpec) -> SpecId {
     match spec {
-        EvmSpec::Prague => SpecId::PRAGUE,
+        EvmSpec::Osaka => SpecId::OSAKA,
     }
 }
 
