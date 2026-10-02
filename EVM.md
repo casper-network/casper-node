@@ -66,6 +66,8 @@ Implemented in this workspace:
   history or pre-block state updates.
 - [EIP-2935][eip-2935] block-hash history predeploy and native direct-call
   lookup backed by indexed Casper block headers.
+- [Multicall3 preinstall](#preinstalls) at its canonical address at genesis
+  and protocol upgrade commit when EVM execution is enabled.
 
 Implemented in the sidecar workspace for validation:
 
@@ -206,6 +208,31 @@ The highest-priority smart-contract-visible gaps are request predeploy
 decisions for [EIP-7002][eip-7002] and
 [EIP-7251][eip-7251], and explicit Prague conformance coverage for
 [EIP-2537][eip-2537], [EIP-7623][eip-7623], and [EIP-7702][eip-7702].
+
+## Preinstalls
+
+Preinstalls are utility contracts whose runtime bytecode is installed directly
+at their canonical EVM addresses. When `[evm].enabled = true`, the node upserts
+them at genesis and during protocol upgrade commit, immediately after the EVM
+predeploys. No deployment transaction is required.
+
+Installation is idempotent: matching code is retained, missing code records are
+restored, and conflicting code is rejected. Existing account metadata,
+balances, and storage are preserved. The supported contracts are defined in
+the [preinstall registry](storage/src/preinstalls.rs).
+
+| Preinstall | Canonical address | Ethereum mainnet reference |
+| --- | --- | --- |
+| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
+
+Multicall3 aggregates contract calls in one EVM execution and exposes block and
+chain information. The Etherscan link opens the same address on Ethereum
+mainnet for comparing interfaces and read results. Getters such as
+`getChainId()`, `getBlockNumber()`, and `getBasefee()` return values for the
+network on which they execute.
+
+Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
+and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).
 
 ## Transaction Shape
 
