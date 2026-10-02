@@ -234,7 +234,12 @@ impl MetaTransaction {
                 .deploy()
                 .gas_limit(chainspec)
                 .map_err(InvalidTransaction::from),
-            MetaTransaction::Evm(evm) => Ok(evm.gas_limit()),
+            MetaTransaction::Evm(evm) => {
+                chainspec
+                    .evm_config
+                    .validate_transaction_gas_limit(evm.transaction().gas_limit())?;
+                Ok(evm.gas_limit())
+            }
             MetaTransaction::V1(v1) => v1.gas_limit(chainspec),
         }
     }
@@ -1023,7 +1028,9 @@ mod tests {
 
     #[test]
     fn evm_config_compliance_rejects_gas_limit_above_block_limit() {
-        let chainspec = chainspec();
+        let mut chainspec = chainspec();
+        // Exercise the block check below Osaka's protocol transaction cap.
+        chainspec.evm_config.block_gas_limit = 100_000;
         let gas_limit = chainspec.evm_config.block_gas_limit + 1;
         let meta = evm_meta(
             &chainspec,
@@ -1040,7 +1047,9 @@ mod tests {
 
     #[test]
     fn evm_config_compliance_rejects_eip7702_gas_limit_above_block_limit() {
-        let chainspec = chainspec();
+        let mut chainspec = chainspec();
+        // Exercise the block check below Osaka's protocol transaction cap.
+        chainspec.evm_config.block_gas_limit = 100_000;
         let gas_limit = chainspec.evm_config.block_gas_limit + 1;
         let meta = evm_meta(
             &chainspec,
