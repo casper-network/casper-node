@@ -229,6 +229,9 @@ fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmEx
     cfg.spec = spec_id(config.spec);
     cfg.chain_id = config.chain_id;
     cfg.tx_chain_id_check = matches!(execution_mode, EvmExecutionMode::Checked);
+    // Read-only simulations may consume the block budget, following eth_call.
+    // All checked execution retains revm's Osaka transaction cap.
+    cfg.tx_gas_limit_cap = skip_validation.then_some(u64::MAX);
     cfg.disable_block_gas_limit = matches!(execution_mode, EvmExecutionMode::SystemCall);
     cfg.disable_base_fee = skip_validation;
     cfg.disable_balance_check = skip_validation;

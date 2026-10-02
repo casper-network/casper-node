@@ -2310,7 +2310,14 @@ where
             casper_types::EvmTransactionError::Disabled,
         ));
     }
-    if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
+    if !evm_transaction.is_unsigned_call() {
+        if let Err(error) = chainspec
+            .evm_config
+            .validate_transaction_gas_limit(evm_transaction.gas_limit())
+        {
+            return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(error));
+        }
+    } else if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
             casper_types::EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: evm_transaction.gas_limit(),
@@ -2575,6 +2582,87 @@ mod tests {
             ),
             100_000
         );
+    }
+
+    #[test]
+    fn signed_evm_speculation_checks_osaka_cap_before_state_checkout_and_block_limit() {
+        use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
+        use alloy_eips::eip2718::Encodable2718;
+        use alloy_primitives::{Address, Signature, TxKind};
+        use casper_types::{
+            EvmTransaction, EvmTransactionError, TimeDiff, EVM_TRANSACTION_GAS_LIMIT,
+        };
+        let (state, _, _temp) =
+            casper_storage::global_state::state::lmdb::make_temporary_global_state([]);
+        let dal = DataAccessLayer {
+            state,
+            block_store: LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap(),
+            max_query_depth: 5,
+            enable_addressable_entity: false,
+        };
+        let chainspec = Chainspec {
+            evm_config: EvmConfig {
+                enabled: true,
+                chain_id: 7,
+                block_gas_limit: 100_000,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let header = casper_types::TestBlockBuilder::new()
+            .build_versioned(&mut crate::new_rng())
+            .clone_header();
+        let envelope: TxEnvelope = TxLegacy {
+            chain_id: Some(7),
+            gas_limit: EVM_TRANSACTION_GAS_LIMIT + 1,
+            to: TxKind::Call(Address::from([0x44; 20])),
+            ..Default::default()
+        }
+        .into_signed(Signature::test_signature())
+        .into();
+        let signed = EvmTransaction::from_signed_rlp(
+            envelope.encoded_2718(),
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+        )
+        .unwrap();
+        assert!(matches!(
+            speculatively_execute_evm(&dal, &chainspec, header.clone(), &signed),
+            SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::Evm(
+                EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. }
+            ))
+        ));
+        let large_call = EvmTransaction::new_unsigned_call(
+            Timestamp::zero(),
+            TimeDiff::from_seconds(60),
+            7,
+            casper_types::evm::Address::ZERO,
+            Some(casper_types::evm::Address::new([0x44; 20])),
+            casper_types::U256::zero(),
+            vec![],
+            EVM_TRANSACTION_GAS_LIMIT + 1,
+            0,
+        );
+        assert!(matches!(
+            speculatively_execute_evm(&dal, &chainspec, header.clone(), &large_call),
+            SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::Evm(
+                EvmTransactionError::GasLimitExceedsBlockGasLimit { .. }
+            ))
+        ));
+        let large_block = Chainspec {
+            evm_config: EvmConfig {
+                block_gas_limit: 30_000_000,
+                ..chainspec.evm_config
+            },
+            ..chainspec
+        };
+        // An unsigned call reaches state checkout despite being over the transaction cap.
+        assert!(matches!(
+            speculatively_execute_evm(&dal, &large_block, header, &large_call),
+            SpeculativeExecutionResult::InvalidTransaction(InvalidTransaction::Evm(
+                EvmTransactionError::Decode(_)
+            ))
+        ));
     }
 
     #[test]
