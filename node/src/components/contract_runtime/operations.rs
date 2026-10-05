@@ -686,6 +686,7 @@ pub fn execute_finalized_block(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
             transaction_config,
+            &chainspec.evm_config,
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
@@ -745,7 +746,7 @@ pub fn execute_finalized_block(
             // chainspec's refund and fee handling to the unused amount.
             let cost = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .max_fee_amount(&chainspec.evm_config)
+                    .max_fee_amount(&chainspec.evm_config.fee_config())
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
                             "EVM fee amount overflowed U512".to_string(),
@@ -1028,7 +1029,7 @@ pub fn execute_finalized_block(
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
             let required_balance = if let Some(evm_transaction) = evm_transaction {
                 evm_transaction
-                    .required_balance(actual_cost, &chainspec.evm_config)
+                    .required_balance(actual_cost, &chainspec.evm_config.fee_config())
                     .ok_or_else(|| {
                         BlockExecutionError::PaymentError(
                             "EVM value is not an exact mote amount or value plus fee overflowed U512"
@@ -1198,7 +1199,7 @@ pub fn execute_finalized_block(
                         )?;
                     }
                     apply_evm_proposer_identity(&mut tracking_copy, protocol_version, &proposer)?;
-                    let outcome = EvmExecutor::new(chainspec.evm_config)
+                    let outcome = EvmExecutor::new(chainspec.evm_config.clone())
                         .execute(data_access_layer, &mut tracking_copy, request)
                         .map_err(|error| {
                             BlockExecutionError::TransactionConversion(error.to_string())
@@ -1213,7 +1214,7 @@ pub fn execute_finalized_block(
                         evm_transaction.gas_limit(),
                     );
                     let consumed = evm_transaction
-                        .fee_amount(consumed_gas, &chainspec.evm_config)
+                        .fee_amount(consumed_gas, &chainspec.evm_config.fee_config())
                         .ok_or_else(|| {
                             BlockExecutionError::PaymentError(
                                 "EVM fee amount overflowed U512".to_string(),
@@ -1982,6 +1983,7 @@ where
         &input_transaction,
         chainspec.core_config.pricing_handling,
         transaction_config,
+        &chainspec.evm_config,
     );
     if let Err(error) = maybe_transaction {
         return SpeculativeExecutionResult::invalid_transaction(error);
@@ -2210,7 +2212,7 @@ where
         block: block_context,
         kind,
     };
-    let outcome = match EvmExecutor::new(chainspec.evm_config).execute(
+    let outcome = match EvmExecutor::new(chainspec.evm_config.clone()).execute(
         data_access_layer,
         &mut tracking_copy,
         execute_request,
@@ -2426,6 +2428,7 @@ mod tests {
                 block_gas_limit: 30_000_000,
                 base_fee: 3,
                 wei_per_mote: DEFAULT_WEI_PER_MOTE,
+                transaction_lanes: Vec::new(),
             },
             ..Default::default()
         };

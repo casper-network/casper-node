@@ -25,10 +25,10 @@ use casper_types::{
     testing::TestRng,
     ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithSignatures,
     BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes,
-    Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas,
-    InitiatorAddr, ProtocolVersion, PublicKey, SecretKey, TestBlockBuilder, TestBlockV1Builder,
-    TimeDiff, Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionV1Hash,
-    Transfer, TransferV2, U512,
+    Deploy, DeployHash, Digest, EraId, EvmConfig, ExecutionInfo, FinalitySignature,
+    FinalitySignatureV2, Gas, InitiatorAddr, ProtocolVersion, PublicKey, SecretKey,
+    TestBlockBuilder, TestBlockV1Builder, TimeDiff, Timestamp, Transaction, TransactionConfig,
+    TransactionHash, TransactionV1Hash, Transfer, TransferV2, U512,
 };
 use tempfile::tempdir;
 
@@ -205,6 +205,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         None,
         false,
         TransactionConfig::default(),
+        EvmConfig::default(),
     )
     .expect("could not create storage component fixture");
     storage.initialize_for_test();
@@ -250,6 +251,7 @@ fn storage_fixture_from_parts(
         None,
         false,
         TransactionConfig::default(),
+        EvmConfig::default(),
     )
     .expect("could not create storage component fixture from parts");
     storage.initialize_for_test();
@@ -281,6 +283,7 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
         None,
         true,
         TransactionConfig::default(),
+        EvmConfig::default(),
     )
     .expect("could not create storage component fixture");
     storage.initialize_for_test();
@@ -1827,6 +1830,7 @@ fn should_create_subdir_named_after_network() {
         None,
         false,
         TransactionConfig::default(),
+        EvmConfig::default(),
     )
     .unwrap();
 

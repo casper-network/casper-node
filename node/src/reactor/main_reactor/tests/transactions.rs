@@ -37,7 +37,7 @@ use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     evm,
     execution::ExecutionResultV1,
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, DEFAULT_WEI_PER_MOTE,
+    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -1235,9 +1235,16 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::Burn);
     let mut test = SingleTransactionTestCase::new(
@@ -1282,10 +1289,10 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     );
     assert!(execution_result.receipt.gas_used > 0);
     let max_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("max EVM fee should fit");
     let consumed_fee_amount = evm_transaction
-        .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        .fee_amount(execution_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     assert!(consumed_fee_amount < max_fee_amount);
     assert_eq!(execution_result.cost, max_fee_amount);
@@ -1318,6 +1325,105 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     );
 }
 
+fn signed_evm_value_transfer_transaction_with_nonce(
+    chain_id: u64,
+    nonce: u64,
+    recipient: evm::Address,
+    gas_limit: u64,
+    value: u64,
+) -> EvmTransaction {
+    let transaction = TxLegacy {
+        chain_id: Some(chain_id),
+        nonce,
+        gas_price: EVM_TEST_GAS_PRICE,
+        gas_limit,
+        to: TxKind::Call(AlloyAddress::from(recipient.value())),
+        value: U256::from(value) * U256::from(DEFAULT_WEI_PER_MOTE),
+        input: AlloyBytes::new(),
+    };
+    signed_evm_legacy_transaction(transaction)
+}
+
+/// Proves that EVM transactions are assigned to the smallest `evm.transaction_lanes` lane
+/// that can accommodate their gas limit, analogous to how wasm transactions are sized into
+/// `transactions.v1.wasm_lanes`.
+#[tokio::test]
+async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
+    const SMALL_LANE_ID: u8 = 100;
+    const LARGE_LANE_ID: u8 = 101;
+    const SMALL_LANE_GAS_LIMIT: u64 = 100_000;
+
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 1,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![
+            TransactionLaneDefinition::new(
+                SMALL_LANE_ID,
+                u64::MAX,
+                u64::MAX,
+                SMALL_LANE_GAS_LIMIT,
+                50,
+            ),
+            TransactionLaneDefinition::new(LARGE_LANE_ID, u64::MAX, u64::MAX, u64::MAX, 50),
+        ],
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config.clone())
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let recipient = evm::Address::new([0x22; evm::ADDRESS_LENGTH]);
+
+    // Sized to fit only the small lane's gas limit.
+    let small_transaction = signed_evm_value_transfer_transaction_with_nonce(
+        evm_config.chain_id,
+        0,
+        recipient,
+        SMALL_LANE_GAS_LIMIT,
+        0,
+    );
+    let sender = small_transaction.from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+    let (small_txn_hash, _, small_result) = test
+        .send_transaction(Transaction::from(small_transaction))
+        .await;
+    assert!(matches!(small_result, ExecutionResult::Evm(_)));
+    test.fixture
+        .assert_execution_in_lane(&small_txn_hash, SMALL_LANE_ID, Duration::from_secs(10))
+        .await;
+
+    // Exceeds the small lane's gas limit, so it must land in the large lane instead.
+    let large_transaction = signed_evm_value_transfer_transaction_with_nonce(
+        evm_config.chain_id,
+        1,
+        recipient,
+        SMALL_LANE_GAS_LIMIT + 1,
+        0,
+    );
+    let (large_txn_hash, _, large_result) = test
+        .send_transaction(Transaction::from(large_transaction))
+        .await;
+    assert!(matches!(large_result, ExecutionResult::Evm(_)));
+    test.fixture
+        .assert_execution_in_lane(&large_txn_hash, LARGE_LANE_ID, Duration::from_secs(10))
+        .await;
+}
+
 #[tokio::test]
 async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
     let evm_config = EvmConfig {
@@ -1327,9 +1433,16 @@ async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::Burn);
     let mut test = SingleTransactionTestCase::new(
@@ -1418,9 +1531,16 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::Refund {
             refund_ratio: Ratio::new(1, 4),
         })
@@ -1450,10 +1570,10 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
     };
 
     let max_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("max EVM fee should fit");
     let consumed_fee_amount = evm_transaction
-        .fee_amount(execution_result.receipt.gas_used, &evm_config)
+        .fee_amount(execution_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     let expected_refund = (max_fee_amount - consumed_fee_amount) / U512::from(4);
     let expected_fee = max_fee_amount - expected_refund;
@@ -1480,9 +1600,16 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::PayToProposer);
     let mut test = SingleTransactionTestCase::new(
@@ -1517,7 +1644,7 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
     };
 
     let maximum_fee = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     assert_eq!(execution_result.receipt.status, evm::ReceiptStatus::Success);
     assert_eq!(execution_result.receipt.gas_used, gas_limit);
@@ -1538,9 +1665,16 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::Refund {
             refund_ratio: Ratio::new(1, 1),
         })
@@ -1568,10 +1702,10 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
     );
     let sender = evm_transaction.from();
     let base_fee_amount = evm_transaction
-        .fee_amount(gas_limit, &evm_config)
+        .fee_amount(gas_limit, &evm_config.fee_config())
         .expect("base fee should fit");
     let maximum_fee_amount = evm_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum fee should fit");
     assert!(base_fee_amount < maximum_fee_amount);
     seed_evm_account(&mut test.fixture, sender, base_fee_amount);
@@ -1606,9 +1740,16 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::Refund {
             refund_ratio: Ratio::new(1, 4),
         })
@@ -1662,7 +1803,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
     let revert_transaction =
         signed_evm_call_transaction(evm_config.chain_id, 2, revert_contract, 0, Vec::new());
     let revert_maximum_fee = revert_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     let (_hash, revert_height, revert_result) = test
         .send_transaction(Transaction::from(revert_transaction.clone()))
@@ -1671,7 +1812,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
         panic!("expected EVM execution result");
     };
     let revert_consumed_fee = revert_transaction
-        .fee_amount(revert_result.receipt.gas_used, &evm_config)
+        .fee_amount(revert_result.receipt.gas_used, &evm_config.fee_config())
         .expect("consumed EVM fee should fit");
     let expected_revert_refund = (revert_maximum_fee - revert_consumed_fee) / U512::from(4);
     assert_eq!(revert_result.receipt.status, evm::ReceiptStatus::Revert);
@@ -1686,7 +1827,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
     let halt_transaction =
         signed_evm_call_transaction(evm_config.chain_id, 3, halt_contract, 0, Vec::new());
     let halt_maximum_fee = halt_transaction
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     let (_hash, halt_height, halt_result) = test
         .send_transaction(Transaction::from(halt_transaction.clone()))
@@ -1715,9 +1856,16 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::Burn);
     let mut test = SingleTransactionTestCase::new(
@@ -1782,8 +1930,16 @@ async fn should_not_seed_evm_accounts_at_genesis() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
-    let config = SingleTransactionTestCase::default_test_config().with_evm_config(evm_config);
+    let config =
+        SingleTransactionTestCase::default_test_config().with_evm_config(evm_config.clone());
     let alice_secret_key = Arc::new(
         SecretKey::secp256k1_from_bytes([0x11; SecretKey::SECP256K1_LENGTH])
             .expect("secp256k1 key should be valid"),
@@ -1833,9 +1989,16 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_pricing_handling(PricingHandling::Fixed)
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::NoFee);
@@ -1906,9 +2069,16 @@ async fn should_reject_native_transfer_to_evm_contract_address() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
-        .with_evm_config(evm_config)
+        .with_evm_config(evm_config.clone())
         .with_pricing_handling(PricingHandling::Fixed)
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::Burn);
@@ -3369,6 +3539,7 @@ async fn should_gas_hold_fee_erroneous_wasm(txn_pricing_mode: PricingMode) {
         &txn,
         test.chainspec().core_config.pricing_handling,
         &test.chainspec().transaction_config,
+        &test.chainspec().evm_config,
     )
     .unwrap();
     // Fixed transaction pricing.

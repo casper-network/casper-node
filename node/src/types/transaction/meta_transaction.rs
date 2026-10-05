@@ -6,10 +6,10 @@ use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, Se
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
-    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
-    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmConfig,
+    EvmTransaction, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
+    InvalidTransaction, Phase, PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
     INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
@@ -277,6 +277,7 @@ impl MetaTransaction {
         transaction: &Transaction,
         pricing_handling: PricingHandling,
         transaction_config: &TransactionConfig,
+        evm_config: &EvmConfig,
     ) -> Result<Self, InvalidTransaction> {
         match transaction {
             Transaction::Deploy(deploy) => MetaDeploy::from_deploy(
@@ -291,8 +292,7 @@ impl MetaTransaction {
             )
             .map(MetaTransaction::V1),
             Transaction::Evm(evm) => {
-                MetaEvmTransaction::from_evm_transaction(evm, transaction_config)
-                    .map(MetaTransaction::Evm)
+                MetaEvmTransaction::from_evm_transaction(evm, evm_config).map(MetaTransaction::Evm)
             }
         }
     }
@@ -500,6 +500,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
                 transaction,
                 chainspec.core_config.pricing_handling,
                 &chainspec.transaction_config,
+                &chainspec.evm_config,
             )?;
             Ok(meta.transaction_lane())
         }
@@ -508,6 +509,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
                 transaction,
                 chainspec.core_config.pricing_handling,
                 &chainspec.transaction_config,
+                &chainspec.evm_config,
             )?;
             Ok(meta.transaction_lane())
         }
@@ -556,7 +558,8 @@ mod tests {
     const CHAIN_ID: u64 = 7;
     const BASE_FEE: u64 = 1_000_000;
     const BASE_FEE_WEI: u128 = BASE_FEE as u128 * DEFAULT_WEI_PER_MOTE as u128;
-    const EVM_LANE: u8 = 4;
+    // An arbitrary id for a test EVM lane; the numeric value carries no special meaning.
+    const EVM_LANE: u8 = 100;
 
     #[test]
     fn evm_from_transaction_exposes_metadata() {
@@ -567,6 +570,7 @@ mod tests {
             &transaction,
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect("EVM transaction metadata should be created");
 
@@ -611,16 +615,14 @@ mod tests {
     #[test]
     fn evm_from_transaction_requires_lane() {
         let mut chainspec = chainspec();
-        chainspec
-            .transaction_config
-            .transaction_v1_config
-            .set_wasm_lanes(vec![]);
+        chainspec.evm_config.set_transaction_lanes(vec![]);
         let transaction =
             Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000));
         let error = MetaTransaction::from_transaction(
             &transaction,
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect_err("EVM transaction should need a lane");
         assert!(matches!(
@@ -1023,9 +1025,8 @@ mod tests {
         chainspec.evm_config.base_fee = BASE_FEE;
         chainspec.evm_config.block_gas_limit = 30_000_000;
         chainspec
-            .transaction_config
-            .transaction_v1_config
-            .set_wasm_lanes(vec![TransactionLaneDefinition::new(
+            .evm_config
+            .set_transaction_lanes(vec![TransactionLaneDefinition::new(
                 EVM_LANE,
                 u64::MAX,
                 10_000,
@@ -1040,6 +1041,7 @@ mod tests {
             &Transaction::from_evm(evm_transaction),
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect("EVM transaction metadata should be created")
     }
@@ -1186,7 +1188,7 @@ mod proptests {
                 TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
                 TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
-            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
+            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config, &EvmConfig::default());
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);
         }
     }

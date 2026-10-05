@@ -523,3 +523,13 @@ base_fee = 5_000
 # Number of wei represented by one mote. EVM gas prices are denominated in wei,
 # while Casper fee accounting is denominated in motes.
 wei_per_mote = 1_000_000_000
+# EVM transaction lanes, structured identically to [transactions.v1] wasm_lanes:
+# [0] -> lane id (must be >= 100, unique among themselves and against all v1 lane ids)
+# [1] -> max serialized length of the RLP-encoded EVM transaction, in bytes
+# [2] -> max calldata (input) length, in bytes
+# [3] -> max EVM gas limit for a transaction in this lane
+# [4] -> max number of transactions this lane can hold in a block
+transaction_lanes = [
+    [100, 131_072, 1024, 1_000_000, 50],
+    [101, 262_144, 65_536, 15_000_000, 5],
+]

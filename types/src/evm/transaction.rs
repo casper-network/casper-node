@@ -33,7 +33,7 @@ use schemars::JsonSchema;
 use serde::{de, Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
-use super::{Address, EvmConfig, Hash, HASH_LENGTH};
+use super::{Address, EvmFeeConfig, Hash, HASH_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -1248,19 +1248,19 @@ impl EvmTransaction {
     }
 
     /// Returns the fee amount for `gas_used`, denominated in motes.
-    pub fn fee_amount(&self, gas_used: u64, evm_config: &EvmConfig) -> Option<U512> {
-        let gas_price_wei = self.effective_gas_price(evm_config.base_fee_wei());
-        evm_config.gas_fee_motes(gas_used, gas_price_wei)
+    pub fn fee_amount(&self, gas_used: u64, fee_config: &EvmFeeConfig) -> Option<U512> {
+        let gas_price_wei = self.effective_gas_price(fee_config.base_fee_wei());
+        fee_config.gas_fee_motes(gas_used, gas_price_wei)
     }
 
     /// Returns the maximum signed fee amount that must be reserved, denominated in motes.
-    pub fn max_fee_amount(&self, evm_config: &EvmConfig) -> Option<U512> {
-        evm_config.gas_fee_motes(self.gas_limit, self.maximum_fee_per_gas())
+    pub fn max_fee_amount(&self, fee_config: &EvmFeeConfig) -> Option<U512> {
+        fee_config.gas_fee_motes(self.gas_limit, self.maximum_fee_per_gas())
     }
 
     /// Returns the balance needed for value transfer plus the supplied fee amount, in motes.
-    pub fn required_balance(&self, fee_amount: U512, evm_config: &EvmConfig) -> Option<U512> {
-        let value_motes = evm_config.value_motes(self.value)?;
+    pub fn required_balance(&self, fee_amount: U512, fee_config: &EvmFeeConfig) -> Option<U512> {
+        let value_motes = fee_config.value_motes(self.value)?;
         fee_amount.checked_add(U512::from(value_motes))
     }
 
@@ -1853,12 +1853,7 @@ mod tests {
     #[test]
     fn dynamic_fee_reserves_signed_maximum_but_charges_effective_price() {
         let transaction = signed_eip7702_transaction();
-        let config = EvmConfig {
-            enabled: true,
-            base_fee: 1,
-            wei_per_mote: crate::DEFAULT_WEI_PER_MOTE,
-            ..Default::default()
-        };
+        let config = EvmFeeConfig::new(1, crate::DEFAULT_WEI_PER_MOTE);
 
         assert_eq!(
             transaction.maximum_fee_per_gas(),

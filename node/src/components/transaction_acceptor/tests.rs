@@ -44,11 +44,11 @@ use casper_types::{
     evm,
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, EvmTransaction,
-    EvmTransactionError, Groups, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
-    Key, PackageAddr, PricingHandling, PricingMode, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, EvmConfig,
+    EvmTransaction, EvmTransactionError, Groups, HashAddr, InvalidDeploy, InvalidTransaction,
+    InvalidTransactionV1, Key, PackageAddr, PricingHandling, PricingMode, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
     DEFAULT_BASELINE_MOTES_AMOUNT,
 };
 
@@ -1443,6 +1443,7 @@ impl reactor::Reactor for Reactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();
@@ -1530,6 +1531,7 @@ fn inject_balance_check_for_peer(
         &txn,
         chainspec.core_config.pricing_handling,
         &chainspec.transaction_config,
+        &chainspec.evm_config,
     )
     .unwrap();
     |effect_builder: EffectBuilder<Event>| {

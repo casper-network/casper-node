@@ -5,6 +5,7 @@ mod accounts_config;
 mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
+mod evm;
 mod fee_handling;
 pub mod genesis_config;
 mod global_state_update;
@@ -35,7 +36,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, EvmConfig, ProtocolVersion, Timestamp,
+    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -52,6 +53,7 @@ pub use core_config::{
 pub use core_config::{
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
+pub use evm::{EvmConfig, EvmSpec, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE};
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::GenesisConfig;
@@ -218,7 +220,7 @@ impl Chainspec {
             Some(self.core_config.unbonding_delay),
             global_state_update,
             chainspec_registry,
-            self.evm_config,
+            self.evm_config.clone(),
             fee_handling,
             validator_minimum_bid_amount,
             maximum_delegation_amount,
@@ -239,6 +241,9 @@ impl Chainspec {
 
     /// Is the given transaction lane supported.
     pub fn is_supported(&self, lane: u8) -> bool {
+        if self.evm_config.is_supported(lane) {
+            return true;
+        }
         self.transaction_config
             .transaction_v1_config
             .is_supported(lane)
@@ -246,6 +251,9 @@ impl Chainspec {
 
     /// Returns the max serialized for the given category.
     pub fn get_max_serialized_length_by_category(&self, lane: u8) -> u64 {
+        if self.evm_config.is_supported(lane) {
+            return self.evm_config.get_max_serialized_length(lane);
+        }
         self.transaction_config
             .transaction_v1_config
             .get_max_serialized_length(lane)
@@ -253,6 +261,9 @@ impl Chainspec {
 
     /// Returns the max args length for the given category.
     pub fn get_max_args_length_by_category(&self, lane: u8) -> u64 {
+        if self.evm_config.is_supported(lane) {
+            return self.evm_config.get_max_args_length(lane);
+        }
         self.transaction_config
             .transaction_v1_config
             .get_max_args_length(lane)
@@ -260,6 +271,9 @@ impl Chainspec {
 
     /// Returns the max gas limit for the given category.
     pub fn get_max_gas_limit_by_category(&self, lane: u8) -> u64 {
+        if self.evm_config.is_supported(lane) {
+            return self.evm_config.get_max_transaction_gas_limit(lane);
+        }
         self.transaction_config
             .transaction_v1_config
             .get_max_transaction_gas_limit(lane)
@@ -267,6 +281,9 @@ impl Chainspec {
 
     /// Returns the max transaction count for the given category.
     pub fn get_max_transaction_count_by_category(&self, lane: u8) -> u64 {
+        if self.evm_config.is_supported(lane) {
+            return self.evm_config.get_max_transaction_count(lane);
+        }
         self.transaction_config
             .transaction_v1_config
             .get_max_transaction_count(lane)
@@ -411,5 +428,58 @@ mod tests {
         let mut rng = TestRng::from_entropy();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
+    }
+
+    #[test]
+    fn should_route_lane_lookups_to_v1_when_not_an_evm_lane() {
+        const EVM_LANE_ID: u8 = 100;
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .evm_config
+            .set_transaction_lanes(vec![crate::TransactionLaneDefinition::new(
+                EVM_LANE_ID,
+                111,
+                222,
+                333,
+                444,
+            )]);
+        let wasm_lane_id = chainspec
+            .transaction_config
+            .transaction_v1_config
+            .wasm_lanes()[0]
+            .id();
+
+        assert!(chainspec.is_supported(wasm_lane_id));
+        // Not the configured EVM lane id, and not a v1 lane id either: unsupported by either.
+        assert!(!chainspec.is_supported(EVM_LANE_ID - 1));
+    }
+
+    #[test]
+    fn should_route_lane_lookups_to_evm_based_on_configured_lane_ids() {
+        // Deliberately use a low id to prove routing is decided by membership in
+        // `evm_config.transaction_lanes()`, not by any numeric threshold.
+        const EVM_LANE_ID: u8 = 10;
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .evm_config
+            .set_transaction_lanes(vec![crate::TransactionLaneDefinition::new(
+                EVM_LANE_ID,
+                111,
+                222,
+                333,
+                444,
+            )]);
+
+        assert!(chainspec.is_supported(EVM_LANE_ID));
+        assert_eq!(
+            chainspec.get_max_serialized_length_by_category(EVM_LANE_ID),
+            111
+        );
+        assert_eq!(chainspec.get_max_args_length_by_category(EVM_LANE_ID), 222);
+        assert_eq!(chainspec.get_max_gas_limit_by_category(EVM_LANE_ID), 333);
+        assert_eq!(
+            chainspec.get_max_transaction_count_by_category(EVM_LANE_ID),
+            444
+        );
     }
 }

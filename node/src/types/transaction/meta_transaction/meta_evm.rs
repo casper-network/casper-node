@@ -1,9 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use casper_types::{
-    bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction, EvmTransactionError,
-    EvmTransactionKind, Gas, InitiatorAddr, InvalidTransaction, TimeDiff, Timestamp,
-    TransactionConfig, TransactionHash,
+    bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmConfig, EvmTransaction,
+    EvmTransactionError, EvmTransactionKind, Gas, InitiatorAddr, InvalidTransaction, TimeDiff,
+    Timestamp, TransactionHash,
 };
 use serde::Serialize;
 
@@ -18,14 +18,14 @@ pub(crate) struct MetaEvmTransaction {
 impl MetaEvmTransaction {
     pub(crate) fn from_evm_transaction(
         transaction: &EvmTransaction,
-        transaction_config: &TransactionConfig,
+        evm_config: &EvmConfig,
     ) -> Result<Self, InvalidTransaction> {
-        let lane_id = transaction_config
-            .transaction_v1_config
-            .wasm_lanes()
-            .iter()
-            .last()
-            .map(|lane| lane.id())
+        let lane_id = evm_config
+            .get_evm_lane_id(
+                transaction.gas_limit(),
+                transaction.serialized_length() as u64,
+                transaction.input().len() as u64,
+            )
             .ok_or(EvmTransactionError::MissingTransactionLane)?;
         let payload_hash = Digest::hash(transaction.signing_payload()?);
         Ok(MetaEvmTransaction {

@@ -116,6 +116,7 @@ fn executor(spec: EvmSpec) -> EvmExecutor {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     })
 }
 
@@ -1465,6 +1466,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     });
     let sender = evm::Address::new([0x31; 20]);
     let recipient = evm::Address::new([0x32; 20]);
@@ -2174,6 +2176,7 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
         block_gas_limit: 30_000_000,
         base_fee: 1_000_000,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     };
     let gas_price = evm_config.base_fee_wei();
     let executor = EvmExecutor::new(evm_config);
@@ -2359,6 +2362,7 @@ fn signed_transactions_require_configured_chain_id() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     });
     let transaction = legacy_transaction(Some(7));
     let request = ExecuteRequest {

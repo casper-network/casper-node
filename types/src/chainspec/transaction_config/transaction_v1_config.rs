@@ -35,6 +35,7 @@ const TRANSACTION_COUNT_INDEX: usize = 4;
 /// Structured limits imposed on a transaction lane
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct TransactionLaneDefinition {
     /// The lane identifier
     #[deprecated(
