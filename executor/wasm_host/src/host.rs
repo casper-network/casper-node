@@ -23,7 +23,9 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::{
     global_state::GlobalStateReader,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{
+        NewContractVersionInfo, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt,
+    },
 };
 use casper_types::{
     account::AccountHash,
@@ -677,7 +679,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         seed,
     );
 
-    smart_contract_package.insert_entity_version(
+    let inserted_version = smart_contract_package.insert_entity_version(
         protocol_version_major,
         EntityAddr::SmartContract(smart_contract_addr),
     );
@@ -744,6 +746,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         StoredValue::AddressableEntity(addressable_entity),
     )?;
 
+    let block_time = caller.context().block_time;
+    let package_key = Key::SmartContract(smart_contract_addr);
+    let version_major = inserted_version.protocol_version_major();
+    let version_minor = inserted_version.entity_version();
+
     let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
             // Take the gas spent so far and use it as a limit for the new VM.
@@ -789,10 +796,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     cache,
                     messages,
                 }) => {
-                    // output
                     caller.consume_gas(gas_usage.gas_spent())?;
 
                     if let Some(host_error) = host_error {
+                        // Constructor failed — do not emit system messages; the install is
+                        // considered unsuccessful.
                         return Ok(host_error.into_u32());
                     }
 
@@ -800,6 +808,28 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                         .context_mut()
                         .tracking_copy
                         .apply_changes(effects, cache, messages);
+
+                    // Constructor succeeded — now that all resources are committed, announce
+                    // the new contract.
+                    let message_limits = caller.context().message_limits;
+                    if let Err(e) = caller
+                        .context_mut()
+                        .tracking_copy
+                        .emit_messages_for_new_installed_version(
+                            NewContractVersionInfo {
+                                key_of_package: package_key,
+                                key_of_contract: addressable_entity_key,
+                                key_of_wasm: Key::ByteCode(bytecode_addr),
+                                version_major,
+                                version_minor,
+                            },
+                            block_time,
+                            message_limits,
+                        )
+                    {
+                        error!(?e, "Failed to emit system messages for contract install");
+                        return Err(VMError::Internal(InternalHostError::TrackingCopy));
+                    }
 
                     output
                 }
@@ -811,7 +841,28 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 }
             }
         }
-        None => None,
+        None => {
+            let message_limits = caller.context().message_limits;
+            if let Err(e) = caller
+                .context_mut()
+                .tracking_copy
+                .emit_messages_for_new_installed_version(
+                    NewContractVersionInfo {
+                        key_of_package: package_key,
+                        key_of_contract: addressable_entity_key,
+                        key_of_wasm: Key::ByteCode(bytecode_addr),
+                        version_major,
+                        version_minor,
+                    },
+                    block_time,
+                    message_limits,
+                )
+            {
+                error!(?e, "Failed to emit system messages for contract install");
+                return Err(VMError::Internal(InternalHostError::TrackingCopy));
+            }
+            None
+        }
     };
 
     let create_result = CreateResult {
@@ -1375,22 +1426,58 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     // TODO: Is validating new code worth it if the user pays for the storage anyway? Should we
     // protect users against invalid code?
 
-    // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka
-    //    hash(old_code))
-    let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
-        callee_addressable_entity.byte_code_addr(),
-    ));
+    // 2. Store the new code under a content-addressed key derived from its hash. This preserves old
+    //    bytecode and lets the entity point at the new version unambiguously.
+    let new_bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&code);
+    let new_bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(new_bytecode_hash));
     metered_write(
         &mut caller,
-        bytecode_key,
+        new_bytecode_key,
         StoredValue::ByteCode(ByteCode::new(
             ByteCodeKind::V2CasperWasm,
             code.clone().into(),
         )),
     )?;
 
-    // 3. Execute upgrade routine (if specified)
-    // this code should handle reading old state, and saving new state
+    // Update the entity to reference the new bytecode hash.
+    let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
+    let updated_entity = AddressableEntity::new(
+        callee_addressable_entity.package_hash(),
+        ByteCodeHash::new(new_bytecode_hash),
+        callee_addressable_entity.protocol_version(),
+        callee_addressable_entity.main_purse(),
+        callee_addressable_entity.associated_keys().clone(),
+        callee_addressable_entity.action_thresholds().clone(),
+        callee_addressable_entity.entity_kind(),
+    );
+    metered_write(
+        &mut caller,
+        callee_addressable_entity_key,
+        StoredValue::AddressableEntity(updated_entity),
+    )?;
+
+    // Insert a new version entry in the package and write the package back.
+    let block_time = caller.context().block_time;
+    let package_key = Key::SmartContract(smart_contract_addr);
+
+    // Read the package, insert the new version entry, and write the updated package back.
+    // The read and write are split to avoid a double-borrow of caller.
+    let pkg_result = caller.context_mut().tracking_copy.read(&package_key);
+    let (version_major, version_minor, maybe_updated_package) = match pkg_result {
+        Ok(Some(StoredValue::SmartContract(mut package))) => {
+            let protocol_major = callee_addressable_entity.protocol_version().value().major;
+            let new_version_key = package.insert_entity_version(protocol_major, entity_addr);
+            (
+                new_version_key.protocol_version_major(),
+                new_version_key.entity_version(),
+                Some(package),
+            )
+        }
+        _ => (0, 0, None),
+    };
+    if let Some(pkg) = maybe_updated_package {
+        metered_write(&mut caller, package_key, StoredValue::SmartContract(pkg))?;
+    }
 
     if let Some(entry_point_name) = entry_point {
         // Take the gas spent so far and use it as a limit for the new VM.
@@ -1438,10 +1525,11 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                 cache,
                 messages,
             }) => {
-                // output
                 caller.consume_gas(gas_usage.gas_spent())?;
 
                 if let Some(host_error) = host_error {
+                    // Upgrade entry point failed — do not emit system messages; the upgrade is
+                    // considered unsuccessful.
                     return Ok(host_error.into_u32());
                 }
 
@@ -1449,6 +1537,28 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                     .context_mut()
                     .tracking_copy
                     .apply_changes(effects, cache, messages);
+
+                // Upgrade entry point succeeded — now that all resources are committed, announce
+                // the new version.
+                let message_limits = caller.context().message_limits;
+                if let Err(e) = caller
+                    .context_mut()
+                    .tracking_copy
+                    .emit_messages_for_new_installed_version(
+                        NewContractVersionInfo {
+                            key_of_package: package_key,
+                            key_of_contract: callee_addressable_entity_key,
+                            key_of_wasm: new_bytecode_key,
+                            version_major,
+                            version_minor,
+                        },
+                        block_time,
+                        message_limits,
+                    )
+                {
+                    error!(?e, "Failed to emit system messages for contract upgrade");
+                    return Err(VMError::Internal(InternalHostError::TrackingCopy));
+                }
 
                 if let Some(output) = output {
                     info!(
@@ -1470,6 +1580,26 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                 );
                 return Err(VMError::Execute(execute_error));
             }
+        }
+    } else {
+        let message_limits = caller.context().message_limits;
+        if let Err(e) = caller
+            .context_mut()
+            .tracking_copy
+            .emit_messages_for_new_installed_version(
+                NewContractVersionInfo {
+                    key_of_package: package_key,
+                    key_of_contract: callee_addressable_entity_key,
+                    key_of_wasm: new_bytecode_key,
+                    version_major,
+                    version_minor,
+                },
+                block_time,
+                message_limits,
+            )
+        {
+            error!(?e, "Failed to emit system messages for contract upgrade");
+            return Err(VMError::Internal(InternalHostError::TrackingCopy));
         }
     }
 

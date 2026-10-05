@@ -41,9 +41,9 @@ use casper_types::{
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
-    ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry, Digest,
-    EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
-    GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry,
+    Digest, EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints,
+    EraId, GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
     PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, Tagged,
     URef, U512,
 };
@@ -889,6 +889,11 @@ where
 
         // Write block time to global state
         self.store_block_time()?;
+
+        self.tracking_copy
+            .borrow_mut()
+            .add_system_message_topics(BlockTime::new(self.config.genesis_timestamp_millis()))
+            .map_err(|e| Box::new(GenesisError::TrackingCopy(e)))?;
 
         Ok(())
     }

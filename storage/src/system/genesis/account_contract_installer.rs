@@ -10,10 +10,7 @@ use std::{
 
 use crate::{
     global_state::state::StateProvider,
-    system::{
-        genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
-        protocol_upgrade::ProtocolUpgradeError,
-    },
+    system::genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
     tracking_copy::AddResult,
     AddressGenerator, TrackingCopy,
 };
@@ -49,7 +46,7 @@ use casper_types::{
         standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, Account, AddressableEntity, AddressableEntityHash, AdministratorAccount,
-    BlockGlobalAddr, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue,
+    BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue,
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
     GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
@@ -855,6 +852,11 @@ where
 
         // Write block time to global state
         self.store_block_time()?;
+
+        self.tracking_copy
+            .borrow_mut()
+            .add_system_message_topics(BlockTime::new(self.config.genesis_timestamp_millis()))
+            .map_err(|e| Box::new(GenesisError::TrackingCopy(e)))?;
         Ok(())
     }
 }

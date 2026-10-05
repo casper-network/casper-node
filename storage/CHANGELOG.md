@@ -13,6 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 
+* Added system-level messaging: when a new contract version is installed or upgraded, four
+  system messages are emitted on behalf of the system account advertising the package key,
+  entity key, bytecode key, and version of the new deployment.
+  **Note on system contracts:** The core system contracts (Mint, Auction, HandlePayment,
+  StandardPayment) do not emit these system messages. They are not deployed via the standard
+  WASM install/upgrade path and do not live in WASM space, so tracking them via the messaging
+  system is intentionally out of scope.
+
 * Added a field `rewards` handling to Config in the `runtime_native` module_
 
 ### Changed

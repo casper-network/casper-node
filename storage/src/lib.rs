@@ -31,3 +31,8 @@ pub use block_store::{
     lmdb::{DbTableId, UnknownDbTableId},
     DbRawBytesSpec,
 };
+
+pub(crate) const MESSAGING_PACKAGE_ADDR_TOPIC: &str = "package_key";
+pub(crate) const MESSAGING_CONTRACT_ADDR_TOPIC: &str = "contract_key";
+pub(crate) const MESSAGING_CONTRACT_BYTECODE_ADDR_TOPIC: &str = "bytecode_key";
+pub(crate) const MESSAGING_CONTRACT_VERSION_TOPIC: &str = "contract_version";
