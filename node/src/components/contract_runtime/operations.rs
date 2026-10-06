@@ -2588,6 +2588,7 @@ mod tests {
                 base_fee: 3,
                 wei_per_mote: DEFAULT_WEI_PER_MOTE,
                 transaction_lanes: Vec::new(),
+                preinstalls: Default::default(),
             },
             ..Default::default()
         };

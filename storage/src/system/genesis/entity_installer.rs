@@ -877,8 +877,11 @@ where
 
     fn create_evm_preinstalls(&self) -> Result<(), Box<GenesisError>> {
         if self.config.evm_config().enabled {
-            upsert_preinstalls(&mut self.tracking_copy.borrow_mut())
-                .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
+            upsert_preinstalls(
+                &mut self.tracking_copy.borrow_mut(),
+                &self.config.evm_config().preinstalls,
+            )
+            .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
         }
         Ok(())
     }

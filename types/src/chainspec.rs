@@ -6,6 +6,7 @@ mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
 mod evm;
+mod evm_preinstalls;
 mod fee_handling;
 pub mod genesis_config;
 mod global_state_update;
