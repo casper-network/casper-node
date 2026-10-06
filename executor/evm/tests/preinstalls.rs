@@ -16,10 +16,6 @@ use casper_storage::{
         lmdb::{make_temporary_global_state, LmdbGlobalState},
         CommitProvider, StateProvider,
     },
-    preinstalls::{
-        EvmPreinstall, CREATE2_DEPLOYER, ENTRYPOINT_V08, ERC2470_SINGLETON_FACTORY, MULTICALL3,
-        PERMIT2, PREINSTALLS, SAFE_SINGLETON_FACTORY, SENDER_CREATOR_V08,
-    },
     system::protocol_upgrade::ProtocolUpgradeError,
 };
 use casper_types::{
@@ -28,17 +24,94 @@ use casper_types::{
     Key, Motes, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, SecretKey,
     StorageCosts, StoredValue, SystemConfig, WasmConfig, U256, U512,
 };
+use once_cell::sync::Lazy;
+
+static FIXTURE_CONFIG: Lazy<EvmConfig> = Lazy::new(|| {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/local/chainspec.toml.in");
+    let table: toml::Table = toml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    table["evm"].clone().try_into().unwrap()
+});
+
+#[derive(Clone, Copy)]
+struct TestPreinstall {
+    name: &'static str,
+    address: evm::Address,
+}
+
+impl TestPreinstall {
+    fn code(self) -> &'static [u8] {
+        &FIXTURE_CONFIG.preinstalls[&self.address]
+    }
+
+    fn code_hash(self) -> evm::Hash {
+        evm::Hash::new(keccak256(self.code()).0)
+    }
+}
+
+const MULTICALL3: TestPreinstall = TestPreinstall {
+    name: "Multicall3",
+    address: evm::Address::new(hex!("0xcA11bde05977b3631167028862bE2a173976CA11")),
+};
+
+const CREATE2_DEPLOYER: TestPreinstall = TestPreinstall {
+    name: "Arachnid CREATE2 deployer",
+    address: evm::Address::new(hex!("0x4e59b44847b379578588920cA78FbF26c0B4956C")),
+};
+
+const SAFE_SINGLETON_FACTORY: TestPreinstall = TestPreinstall {
+    name: "Safe Singleton Factory",
+    address: evm::Address::new(hex!("0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7")),
+};
+
+const ERC2470_SINGLETON_FACTORY: TestPreinstall = TestPreinstall {
+    name: "ERC-2470 Singleton Factory",
+    address: evm::Address::new(hex!("0xce0042B868300000d44A59004Da54A005ffdcf9f")),
+};
+
+const PERMIT2: TestPreinstall = TestPreinstall {
+    name: "Permit2",
+    address: evm::Address::new(hex!("0x000000000022D473030F116dDEE9F6B43aC78BA3")),
+};
+
+const SENDER_CREATOR_V08: TestPreinstall = TestPreinstall {
+    name: "SenderCreator v0.8",
+    address: evm::Address::new(hex!("0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33")),
+};
+
+const ENTRYPOINT_V08: TestPreinstall = TestPreinstall {
+    name: "EntryPoint v0.8",
+    address: evm::Address::new(hex!("0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108")),
+};
+
+const PREINSTALLS: &[TestPreinstall] = &[
+    MULTICALL3,
+    CREATE2_DEPLOYER,
+    SAFE_SINGLETON_FACTORY,
+    ERC2470_SINGLETON_FACTORY,
+    PERMIT2,
+    // These runtimes contain immutable references to each other.
+    SENDER_CREATOR_V08,
+    ENTRYPOINT_V08,
+];
 
 fn evm_config(enabled: bool) -> EvmConfig {
     EvmConfig {
         enabled,
         chain_id: 7,
         base_fee: 5_000,
-        ..Default::default()
+        ..FIXTURE_CONFIG.clone()
     }
 }
 
 fn genesis(enabled: bool, enable_entity: bool) -> (LmdbGlobalState, Digest, impl Send) {
+    genesis_with_config(evm_config(enabled), enable_entity)
+}
+
+fn genesis_with_config(
+    evm: EvmConfig,
+    enable_entity: bool,
+) -> (LmdbGlobalState, Digest, impl Send) {
     let (state, _, tempdir) = make_temporary_global_state([]);
     let secret = SecretKey::ed25519_from_bytes([1; 32]).unwrap();
     let config = GenesisConfig::new(
@@ -47,7 +120,7 @@ fn genesis(enabled: bool, enable_entity: bool) -> (LmdbGlobalState, Digest, impl
             balance: Motes::new(U512::from(1_000_000_000_000u64)),
             validator: None,
         }],
-        evm_config(enabled),
+        evm,
         WasmConfig::default(),
         SystemConfig::default(),
         10,
@@ -85,6 +158,22 @@ fn upgrade_request(
     enable_entity: bool,
     updates: BTreeMap<Key, StoredValue>,
 ) -> ProtocolUpgradeRequest {
+    upgrade_request_with_config(
+        root,
+        current_patch,
+        evm_config(enabled),
+        enable_entity,
+        updates,
+    )
+}
+
+fn upgrade_request_with_config(
+    root: Digest,
+    current_patch: u32,
+    evm: EvmConfig,
+    enable_entity: bool,
+    updates: BTreeMap<Key, StoredValue>,
+) -> ProtocolUpgradeRequest {
     ProtocolUpgradeRequest::new(ProtocolUpgradeConfig::new(
         root,
         ProtocolVersion::from_parts(2, 0, current_patch),
@@ -99,7 +188,7 @@ fn upgrade_request(
         None,
         updates,
         ChainspecRegistry::new_with_optional_global_state(b"upgrade", None),
-        evm_config(enabled),
+        evm,
         FeeHandling::NoFee,
         0,
         u64::MAX,
@@ -145,7 +234,7 @@ fn assert_preinstalls(state: &LmdbGlobalState, root: Digest) {
             ),
             Some(StoredValue::ByteCode(ByteCode::new(
                 ByteCodeKind::EvmPrague,
-                preinstall.code.to_vec(),
+                preinstall.code().to_vec(),
             ))),
             "{} runtime",
             preinstall.name,
@@ -272,7 +361,7 @@ fn singleton_factory_input(salt: [u8; 32]) -> Vec<u8> {
     input
 }
 
-fn assert_raw_create2_deployment(factory: EvmPreinstall) {
+fn assert_raw_create2_deployment(factory: TestPreinstall) {
     let salt = [0x42; 32];
     let address = create2_address(factory.address, salt);
     let mut input = salt.to_vec();
@@ -313,6 +402,148 @@ fn aggregate3_input(calls: &[(&str, bool)]) -> Vec<u8> {
         input.extend_from_slice(&[0; 28]);
     }
     input
+}
+
+#[test]
+fn local_chainspec_pins_the_configured_runtimes() {
+    assert_eq!(FIXTURE_CONFIG.preinstalls.len(), PREINSTALLS.len());
+    for (contract, length, hash) in [
+        (
+            MULTICALL3,
+            3_808,
+            "d5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891",
+        ),
+        (
+            CREATE2_DEPLOYER,
+            69,
+            "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
+        ),
+        (
+            SAFE_SINGLETON_FACTORY,
+            69,
+            "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
+        ),
+        (
+            ERC2470_SINGLETON_FACTORY,
+            308,
+            "c4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807",
+        ),
+        (
+            PERMIT2,
+            9_152,
+            "c67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131",
+        ),
+        (
+            SENDER_CREATOR_V08,
+            1_217,
+            "c69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf",
+        ),
+        (
+            ENTRYPOINT_V08,
+            21_738,
+            "44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86",
+        ),
+    ] {
+        assert_eq!(contract.code().len(), length, "{} length", contract.name);
+        assert_eq!(
+            contract.code_hash().to_hex_string(),
+            hash,
+            "{} hash",
+            contract.name
+        );
+    }
+}
+
+#[test]
+fn enabled_evm_with_empty_preinstalls_installs_only_predeploys() {
+    for enable_entity in [false, true] {
+        let config = EvmConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let (state, root, _tempdir) = genesis_with_config(config.clone(), enable_entity);
+        for address in [
+            eip4788::BEACON_ROOTS_ADDRESS,
+            eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        ] {
+            assert!(read(&state, root, code_hash_key(address)).is_some());
+        }
+        for contract in PREINSTALLS {
+            assert!(read(&state, root, code_hash_key(contract.address)).is_none());
+        }
+        let result = state.protocol_upgrade(upgrade_request_with_config(
+            root,
+            0,
+            config,
+            enable_entity,
+            BTreeMap::new(),
+        ));
+        let ProtocolUpgradeResult::Success {
+            post_state_hash, ..
+        } = result
+        else {
+            panic!("empty-map upgrade failed: {result:?}");
+        };
+        for contract in PREINSTALLS {
+            assert!(read(&state, post_state_hash, code_hash_key(contract.address)).is_none());
+        }
+    }
+}
+
+#[test]
+fn chainspec_can_install_arbitrary_runtime_and_extend_it_on_upgrade() {
+    let first = evm::Address::new([0x11; 20]);
+    let second = evm::Address::new([0x22; 20]);
+    let code = hex!("602a60005260206000f3");
+    let code_hash = evm::Hash::new(keccak256(code).0);
+    for enable_entity in [false, true] {
+        let config = EvmConfig {
+            enabled: true,
+            chain_id: 7,
+            preinstalls: BTreeMap::from([(first, code.to_vec().into())]),
+            ..Default::default()
+        };
+        let (state, root, _tempdir) = genesis_with_config(config.clone(), enable_entity);
+        assert_eq!(
+            read(&state, root, code_hash_key(first)),
+            Some(StoredValue::CLValue(CLValue::from_t(code_hash).unwrap()))
+        );
+        assert!(read(&state, root, code_hash_key(second)).is_none());
+        assert!(read(&state, root, code_hash_key(MULTICALL3.address)).is_none());
+        let config = EvmConfig {
+            preinstalls: BTreeMap::from([(second, code.to_vec().into())]),
+            ..config
+        };
+        let result = state.protocol_upgrade(upgrade_request_with_config(
+            root,
+            0,
+            config,
+            enable_entity,
+            BTreeMap::new(),
+        ));
+        let ProtocolUpgradeResult::Success {
+            post_state_hash, ..
+        } = result
+        else {
+            panic!("custom-map upgrade failed: {result:?}");
+        };
+        for address in [first, second] {
+            assert_eq!(
+                read(&state, post_state_hash, code_hash_key(address)),
+                Some(StoredValue::CLValue(CLValue::from_t(code_hash).unwrap()))
+            );
+        }
+        assert!(read(&state, post_state_hash, code_hash_key(MULTICALL3.address)).is_none());
+        let outcomes = call_sequence(
+            state,
+            post_state_hash,
+            &[(first, Vec::new()), (second, Vec::new())],
+        );
+        for outcome in outcomes {
+            assert_eq!(outcome.status, ExecutionStatus::Success);
+            assert_eq!(outcome.output, word(42));
+        }
+    }
 }
 
 #[test]

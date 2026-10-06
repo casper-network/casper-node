@@ -218,18 +218,42 @@ predeploys. No deployment transaction is required.
 
 Installation is idempotent: matching code is retained, missing code records are
 restored, and conflicting code is rejected. Existing account metadata,
-balances, and storage are preserved. The supported contracts are defined in
-the [preinstall registry](storage/src/preinstalls.rs).
+balances, nonces, and storage are preserved. The contracts are supplied by the
+network distribution in the chainspec, with one address and runtime bytecode
+pair per line:
 
-| Preinstall | Canonical address | Ethereum mainnet reference |
-| --- | --- | --- |
-| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
-| Arachnid CREATE2 deployer | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | [Etherscan: Code](https://etherscan.io/address/0x4e59b44847b379578588920cA78FbF26c0B4956C#code) |
-| Safe Singleton Factory | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | [Etherscan: Code](https://etherscan.io/address/0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7#code) |
-| ERC-2470 Singleton Factory | `0xce0042B868300000d44A59004Da54A005ffdcf9f` | [Etherscan: Code](https://etherscan.io/address/0xce0042B868300000d44A59004Da54A005ffdcf9f#code) |
-| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | [Etherscan: Read Contract](https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#readContract) |
-| SenderCreator v0.8 | `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33` | [Etherscan: Read Contract](https://etherscan.io/address/0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33#readContract) |
-| EntryPoint v0.8 | `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` | [Etherscan: Read Contract](https://etherscan.io/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108#readContract) |
+```toml
+[evm.preinstalls]
+# Address and bytecode are 0x-prefixed base16; this example installs STOP.
+"0x1111111111111111111111111111111111111111" = "0x00"
+```
+
+An omitted or empty table installs no utility contracts. The node has no
+compiled preinstall registry. Addresses must contain exactly 20 bytes, bytecode
+must be non-empty, and duplicate addresses, including differences in hex case,
+are rejected. The map is serialized in address order and included in the
+chainspec hash. All validators must receive the same finalized table before
+activation. Only runtime code is installed; constructors are not executed.
+Removing an entry in a later chainspec does not delete existing on-chain code.
+
+For the initial EVM rollout, the protocol upgrade that first enables EVM
+should contain a non-empty `[evm.preinstalls]` table with the expected contracts
+below. EntryPoint and SenderCreator must be included together. This is a
+rollout requirement: the generic installer accepts an empty table and does
+not populate the expected list automatically.
+
+The [local chainspec template](resources/local/chainspec.toml.in) contains this
+initial rollout list, each contract under its upstream license:
+
+| Preinstall | License | Canonical address | Ethereum mainnet reference |
+| --- | --- | --- | --- |
+| Multicall3 | MIT | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
+| Arachnid CREATE2 deployer | Unlicense | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | [Etherscan: Code](https://etherscan.io/address/0x4e59b44847b379578588920cA78FbF26c0B4956C#code) |
+| Safe Singleton Factory | MIT | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | [Etherscan: Code](https://etherscan.io/address/0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7#code) |
+| ERC-2470 Singleton Factory | CC0-1.0 | `0xce0042B868300000d44A59004Da54A005ffdcf9f` | [Etherscan: Code](https://etherscan.io/address/0xce0042B868300000d44A59004Da54A005ffdcf9f#code) |
+| Permit2 | MIT | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | [Etherscan: Read Contract](https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#readContract) |
+| SenderCreator v0.8 | GPL-3.0 | `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33` | [Etherscan: Read Contract](https://etherscan.io/address/0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33#readContract) |
+| EntryPoint v0.8 | GPL-3.0; OpenZeppelin dependencies: MIT | `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` | [Etherscan: Read Contract](https://etherscan.io/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108#readContract) |
 
 The Etherscan references open the same addresses on Ethereum mainnet for
 comparing bytecode, interfaces, and read results. Multicall3 aggregates
@@ -261,29 +285,27 @@ uses the executing network's chain ID and canonical Permit2 address; the
 mainnet runtime's cached domain is recomputed on other chain IDs. Allowances
 and signature nonces begin empty and are preserved through protocol upgrades.
 
-[SenderCreator v0.8](https://github.com/eth-infinitism/account-abstraction/blob/v0.8.0/contracts/core/SenderCreator.sol)
-is EntryPoint v0.8's account-creation helper. Its `entryPoint()` getter returns
-`0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108`, the only address authorized to call
-`createSender` or `initEip7702Sender`. The embedded runtime preserves that
-constructor-derived authorization; it has no storage to initialize.
+[EntryPoint v0.8](https://github.com/eth-infinitism/account-abstraction/tree/4cbc06072cdc19fd60f285c5997f4f7f57a588de)
+processes ERC-4337 UserOperations. It and SenderCreator must be installed
+together: their mainnet runtimes already contain the immutable addresses that
+link the pair, and SenderCreator authorizes only that EntryPoint. The installed
+EntryPoint recomputes its EIP-712 domain on other chain IDs and uses the
+Prague-supported transient reentrancy guard. Deposits, stakes, and nonce
+mappings begin empty and are preserved through upgrades.
 
-[EntryPoint v0.8](https://github.com/eth-infinitism/account-abstraction/releases/tag/v0.8.0)
-processes ERC-4337 UserOperations and exposes deposits, stakes, nonce tracking,
-and account creation through the matching SenderCreator above. Its
-`senderCreator()` getter returns the helper's canonical address. Both runtimes
-come from the same deployment and are installed in the same genesis or
-upgrade commit; their order in the registry does not execute constructors.
-Constructor immutables, including the helper and EIP-712 domain parameters,
-are preserved in the embedded runtime. The domain reflects the executing
-chain ID, and the transient reentrancy guard is supported by Prague.
+Bundlers, account factories, and wallet integrations require configuration for
+the network, and bundled transactions pay the configured fees.
 
-These preinstalls provide the ERC-4337 contracts. Bundlers, account factories,
-and wallet integrations are configured separately, and bundled transactions
-must pay the chain's configured fees. Preinstallation leaves the base fee and
-transaction admission rules unchanged.
+Preinstallation leaves the base fee and transaction admission rules unchanged.
+Runtime bytecode is supplied as configuration data. The chainspec retains
+source attribution, pinned references, runtime hashes, and complete upstream
+license notices beside the configured runtimes.
 
-Runtime bytecode is embedded with `include_bytes!`. Its source, pinned hash,
-and license are documented in [bytecode provenance](storage/src/preinstalls/README.md).
+Attribution and license notices also accompany generated chainspecs as TOML
+comments. Distributors must preserve the notices and provide the exact
+corresponding source for GPL runtimes while distributing them. Later network
+releases can extend the table with additional canonical tools; existing
+matching contracts are retained by the idempotent upsert.
 
 ## Transaction Shape
 

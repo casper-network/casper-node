@@ -1719,8 +1719,11 @@ where
     /// Upsert EVM utility contract preinstalls after predeploy setup.
     pub fn handle_evm_preinstalls(&mut self) -> Result<(), ProtocolUpgradeError> {
         if self.config.evm_config().enabled {
-            upsert_preinstalls(&mut self.tracking_copy)
-                .map_err(|error| ProtocolUpgradeError::EvmPreinstall(error.to_string()))?;
+            upsert_preinstalls(
+                &mut self.tracking_copy,
+                &self.config.evm_config().preinstalls,
+            )
+            .map_err(|error| ProtocolUpgradeError::EvmPreinstall(error.to_string()))?;
         }
         Ok(())
     }

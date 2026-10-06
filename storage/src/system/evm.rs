@@ -1,21 +1,29 @@
 //! EVM system contract support.
 
+use std::collections::BTreeMap;
+
+use alloy_primitives::keccak256;
 use casper_types::{
-    evm, ByteCode, ByteCodeKind, CLValue, CLValueError, EvmAddr, EvmConfig, EvmSpec, Key,
-    StoredValue,
+    bytesrepr::Bytes, evm, ByteCode, ByteCodeKind, CLValue, CLValueError, EvmAddr, EvmConfig,
+    EvmSpec, Key, StoredValue,
 };
 use thiserror::Error;
 
 use crate::{
     eip2935, eip4788,
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    preinstalls::{EvmPreinstall, PREINSTALLS},
     tracking_copy::{TrackingCopy, TrackingCopyError},
 };
 
 /// Error returned while installing or validating an EVM contract's code.
 #[derive(Debug, Error)]
 pub(crate) enum EvmContractError {
+    /// A configured preinstall has no runtime bytecode.
+    #[error("EVM preinstall at {address} has empty runtime bytecode")]
+    EmptyPreinstall {
+        /// Configured address.
+        address: evm::Address,
+    },
     /// Failed to read from the tracking copy.
     #[error(transparent)]
     TrackingCopy(#[from] TrackingCopyError),
@@ -63,14 +71,23 @@ impl From<CLValueError> for EvmContractError {
 }
 
 #[derive(Clone, Copy)]
-struct EvmContract {
+struct EvmContract<'a> {
     name: &'static str,
     address: evm::Address,
-    code: &'static [u8],
+    code: &'a [u8],
     code_hash: evm::Hash,
 }
 
-impl EvmContract {
+impl<'a> EvmContract<'a> {
+    fn preinstall(address: evm::Address, code: &'a [u8]) -> Self {
+        Self {
+            name: "EVM preinstall",
+            address,
+            code,
+            code_hash: evm::Hash::new(keccak256(code).0),
+        }
+    }
+
     fn eip2935() -> Self {
         Self {
             name: "EIP-2935",
@@ -106,18 +123,7 @@ impl EvmContract {
     }
 }
 
-impl From<EvmPreinstall> for EvmContract {
-    fn from(preinstall: EvmPreinstall) -> Self {
-        Self {
-            name: preinstall.name,
-            address: preinstall.address,
-            code: preinstall.code,
-            code_hash: preinstall.code_hash(),
-        }
-    }
-}
-
-fn prague_predeploys() -> [EvmContract; 2] {
+fn prague_predeploys() -> [EvmContract<'static>; 2] {
     [EvmContract::eip4788(), EvmContract::eip2935()]
 }
 
@@ -139,22 +145,26 @@ where
     Ok(())
 }
 
-/// Idempotently installs the canonical EVM utility contract preinstalls.
+/// Idempotently installs EVM runtime bytecode supplied by the chainspec.
 pub(crate) fn upsert_preinstalls<R>(
     tracking_copy: &mut TrackingCopy<R>,
+    preinstalls: &BTreeMap<evm::Address, Bytes>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    for preinstall in PREINSTALLS {
-        upsert_contract(tracking_copy, (*preinstall).into())?;
+    for (address, code) in preinstalls {
+        if code.is_empty() {
+            return Err(EvmContractError::EmptyPreinstall { address: *address });
+        }
+        upsert_contract(tracking_copy, EvmContract::preinstall(*address, code))?;
     }
     Ok(())
 }
 
 fn upsert_contract<R>(
     tracking_copy: &mut TrackingCopy<R>,
-    contract: EvmContract,
+    contract: EvmContract<'_>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -164,7 +174,9 @@ where
 }
 
 #[cfg(test)]
-fn predeploy_entries(predeploy: EvmContract) -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
+fn predeploy_entries(
+    predeploy: EvmContract<'_>,
+) -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
     Ok(vec![
         (predeploy.code_hash_key(), predeploy.code_hash_value()?),
         (predeploy.byte_code_key(), predeploy.byte_code_value()),
@@ -183,7 +195,7 @@ fn prague_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmContractErro
 
 fn upsert_code_hash<R>(
     tracking_copy: &mut TrackingCopy<R>,
-    predeploy: EvmContract,
+    predeploy: EvmContract<'_>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -223,7 +235,7 @@ where
 
 fn upsert_byte_code<R>(
     tracking_copy: &mut TrackingCopy<R>,
-    predeploy: EvmContract,
+    predeploy: EvmContract<'_>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -265,6 +277,22 @@ mod tests {
     use super::*;
     use crate::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider as _};
 
+    fn test_contracts() -> [EvmContract<'static>; 2] {
+        // Two addresses share a tiny, project-authored runtime returning 42.
+        let code = &[0x60, 0x2a, 0x60, 0, 0x52, 0x60, 0x20, 0x60, 0, 0xf3];
+        [
+            EvmContract::preinstall(evm::Address::new([1; 20]), code),
+            EvmContract::preinstall(evm::Address::new([2; 20]), code),
+        ]
+    }
+
+    fn test_preinstalls() -> BTreeMap<evm::Address, Bytes> {
+        test_contracts()
+            .iter()
+            .map(|contract| (contract.address, Bytes::from(contract.code)))
+            .collect()
+    }
+
     fn tracking_copy(
         initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
     ) -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
@@ -286,7 +314,7 @@ mod tests {
 
     fn assert_predeploy_present(
         tracking_copy: &mut TrackingCopy<LmdbGlobalStateView>,
-        predeploy: EvmContract,
+        predeploy: EvmContract<'_>,
     ) {
         assert_eq!(
             read(tracking_copy, &predeploy.code_hash_key()),
@@ -424,13 +452,37 @@ mod tests {
     }
 
     #[test]
+    fn empty_preinstall_map_does_not_write_state() {
+        let (mut tracking_copy, _tempdir) = tracking_copy([]);
+        upsert_preinstalls(&mut tracking_copy, &BTreeMap::new()).unwrap();
+        let (writes, prunes, _) = tracking_copy.destructure();
+        assert!(writes.is_empty());
+        assert!(prunes.is_empty());
+    }
+
+    #[test]
+    fn empty_runtime_bytecode_is_rejected() {
+        let address = evm::Address::new([1; 20]);
+        let preinstalls = BTreeMap::from([(address, Bytes::new())]);
+        let (mut tracking_copy, _tempdir) = tracking_copy([]);
+        let error = upsert_preinstalls(&mut tracking_copy, &preinstalls).unwrap_err();
+        assert!(
+            matches!(error, EvmContractError::EmptyPreinstall { address: actual } if actual == address)
+        );
+        let (writes, prunes, _) = tracking_copy.destructure();
+        assert!(writes.is_empty());
+        assert!(prunes.is_empty());
+    }
+
+    #[test]
     fn upsert_creates_missing_preinstalls_without_predeploys() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
 
-        upsert_preinstalls(&mut tracking_copy).expect("preinstall upsert should succeed");
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            .expect("preinstall upsert should succeed");
 
-        for preinstall in PREINSTALLS {
-            assert_predeploy_present(&mut tracking_copy, (*preinstall).into());
+        for preinstall in test_contracts() {
+            assert_predeploy_present(&mut tracking_copy, preinstall);
         }
         for predeploy in prague_predeploys() {
             assert!(tracking_copy
@@ -442,7 +494,7 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_repairs_empty_hash_and_missing_bytecode() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
+        let contract = test_contracts()[0];
         for hash in [
             evm::EMPTY_CODE_HASH,
             evm::Hash::new([0; 32]),
@@ -453,7 +505,8 @@ mod tests {
                 StoredValue::CLValue(CLValue::from_t(hash).unwrap()),
             )]);
 
-            upsert_preinstalls(&mut tracking_copy).expect("preinstall repair should succeed");
+            upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+                .expect("preinstall repair should succeed");
 
             assert_predeploy_present(&mut tracking_copy, contract);
         }
@@ -461,13 +514,14 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_noops_when_canonical_code_is_present() {
-        let entries = PREINSTALLS
+        let entries = test_contracts()
             .iter()
-            .flat_map(|preinstall| predeploy_entries((*preinstall).into()).unwrap())
+            .flat_map(|preinstall| predeploy_entries(*preinstall).unwrap())
             .collect::<std::collections::BTreeMap<_, _>>();
         let (mut tracking_copy, _tempdir) = tracking_copy(entries);
 
-        upsert_preinstalls(&mut tracking_copy).expect("preinstall upsert should succeed");
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            .expect("preinstall upsert should succeed");
 
         let (writes, prunes, _) = tracking_copy.destructure();
         assert!(writes.is_empty());
@@ -476,10 +530,10 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_preserves_account_metadata_balance_and_storage() {
-        let preserved = PREINSTALLS
+        let preserved = test_contracts()
             .iter()
             .flat_map(|preinstall| {
-                let contract = EvmContract::from(*preinstall);
+                let contract = *preinstall;
                 let purse = evm::deterministic_purse(contract.address);
                 vec![
                     (
@@ -510,18 +564,19 @@ mod tests {
             .collect::<Vec<_>>();
         let (mut tracking_copy, _tempdir) = tracking_copy(preserved.clone());
 
-        upsert_preinstalls(&mut tracking_copy).expect("preinstall upsert should succeed");
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            .expect("preinstall upsert should succeed");
 
-        for preinstall in PREINSTALLS {
-            assert_predeploy_present(&mut tracking_copy, (*preinstall).into());
+        for preinstall in test_contracts() {
+            assert_predeploy_present(&mut tracking_copy, preinstall);
         }
         for (key, value) in preserved {
             assert_eq!(read(&mut tracking_copy, &key), value);
         }
         let (writes, prunes, _) = tracking_copy.destructure();
-        let expected = PREINSTALLS
+        let expected = test_contracts()
             .iter()
-            .flat_map(|preinstall| predeploy_entries((*preinstall).into()).unwrap())
+            .flat_map(|preinstall| predeploy_entries(*preinstall).unwrap())
             .collect::<std::collections::BTreeMap<_, _>>();
         assert_eq!(
             writes
@@ -534,17 +589,18 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_rejects_conflicting_code_hash() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
+        let contract = test_contracts()[0];
         let (mut tracking_copy, _tempdir) = tracking_copy([(
             contract.code_hash_key(),
             StoredValue::CLValue(CLValue::from_t(evm::Hash::new([1; 32])).unwrap()),
         )]);
 
-        let error = upsert_preinstalls(&mut tracking_copy).expect_err("conflict should fail");
+        let error = upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            .expect_err("conflict should fail");
 
         assert!(
             matches!(error, EvmContractError::ConflictingCodeHash { address, name, .. }
-            if address == contract.address && name == "Multicall3")
+            if address == contract.address && name == "EVM preinstall")
         );
         let (writes, prunes, _) = tracking_copy.destructure();
         assert!(writes.is_empty());
@@ -553,7 +609,7 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_rejects_conflicting_bytecode_or_kind() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
+        let contract = test_contracts()[0];
         for bytecode in [
             ByteCode::new(ByteCodeKind::EvmPrague, vec![0xfe]),
             ByteCode::new(ByteCodeKind::V1CasperWasm, contract.code.to_vec()),
@@ -566,7 +622,8 @@ mod tests {
                 (contract.byte_code_key(), StoredValue::ByteCode(bytecode)),
             ]);
 
-            let error = upsert_preinstalls(&mut tracking_copy).expect_err("conflict should fail");
+            let error = upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+                .expect_err("conflict should fail");
 
             assert!(matches!(
                 error,
@@ -580,12 +637,13 @@ mod tests {
 
     #[test]
     fn upsert_preinstalls_rejects_malformed_code_records() {
-        let contract = EvmContract::from(crate::preinstalls::MULTICALL3);
+        let contract = test_contracts()[0];
         for key in [contract.code_hash_key(), contract.byte_code_key()] {
             let (mut tracking_copy, _tempdir) =
                 tracking_copy([(key, StoredValue::CLValue(CLValue::from_t(42u64).unwrap()))]);
 
-            upsert_preinstalls(&mut tracking_copy).expect_err("malformed record should fail");
+            upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+                .expect_err("malformed record should fail");
         }
     }
 }
