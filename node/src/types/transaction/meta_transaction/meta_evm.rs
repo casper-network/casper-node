@@ -311,7 +311,7 @@ mod tests {
             let lower = Chainspec {
                 evm_config: EvmConfig {
                     block_gas_limit: 100_000,
-                    ..chainspec.evm_config
+                    ..chainspec.evm_config.clone()
                 },
                 ..chainspec.clone()
             };
