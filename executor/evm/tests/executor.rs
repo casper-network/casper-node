@@ -2067,7 +2067,7 @@ fn internal_one_wei_transfer_reports_one_aggregate_dust_mote() {
 
 #[test]
 fn selfdestruct_after_one_wei_transfer_reduces_supply_by_one_mote() {
-    let executor = executor(EvmSpec::Prague);
+    let executor = executor(EvmSpec::Osaka);
     let recipient = evm::Address::new([0x42; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let tx = TxLegacy {
