@@ -223,7 +223,6 @@ setup-cargo-packagers:
 
 .PHONY: setup-rs
 setup-rs:
-	$(RUSTUP) update
 	$(RUSTUP) toolchain install $(PINNED_STABLE) nightly
 	$(RUSTUP) target add --toolchain $(PINNED_STABLE) wasm32v1-none wasm32-unknown-unknown
 	$(RUSTUP) component add --toolchain $(PINNED_STABLE) rustfmt clippy-preview
