@@ -516,7 +516,7 @@ fn checked_execution_caps_all_envelopes_and_unsigned_simulations_use_block_budge
     ));
     let lower = EvmExecutor::new(EvmConfig {
         block_gas_limit: 100_000,
-        ..*executor.config()
+        ..executor.config().clone()
     });
     let mut request = call_request(evm::Address::ZERO, Some(target), vec![], CasperU256::zero());
     set_gas(&mut request, 100_001);
