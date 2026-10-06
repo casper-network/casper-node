@@ -3,9 +3,12 @@
 //! Executor and storage tests verify these maps against the selected precompile
 //! provider and the system-contract installation registry.
 
+#[cfg(any(feature = "std", test))]
 use alloc::{collections::BTreeMap, string::String, string::ToString};
 
-use super::{Address, EvmConfig, EvmSpec};
+use super::Address;
+#[cfg(any(feature = "std", test))]
+use crate::{EvmConfig, EvmSpec};
 
 /// EIP-2935 block hash history contract address.
 pub const HISTORY_STORAGE_ADDRESS: Address = Address::new([
@@ -19,6 +22,7 @@ pub const BEACON_ROOTS_ADDRESS: Address = Address::new([
     0xd0, 0xbe, 0xac, 0x02,
 ]);
 
+#[cfg(any(feature = "std", test))]
 impl EvmConfig {
     /// Names and addresses of the configured fork's active precompiles.
     pub fn active_precompiles(&self) -> BTreeMap<String, Address> {

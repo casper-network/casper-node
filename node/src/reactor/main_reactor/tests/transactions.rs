@@ -1158,7 +1158,7 @@ fn seed_evm_account_with_nonce_and_code(
     if let Some(code) = code {
         values_to_write.push((
             Key::Evm(EvmAddr::ByteCode(code_hash)),
-            StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, code)),
+            StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, code)),
         ));
     }
     for runner in fixture.network.runners_mut() {
@@ -1333,7 +1333,7 @@ fn evm_test_config(chain_id: u64) -> EvmConfig {
     EvmConfig {
         enabled: true,
         chain_id,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         preinstalls: Default::default(),
         block_gas_limit: 30_000_000,
         base_fee: 1,
@@ -1977,7 +1977,7 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
