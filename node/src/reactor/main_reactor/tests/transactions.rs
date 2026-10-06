@@ -2039,6 +2039,13 @@ async fn should_reduce_total_supply_for_evm_rounding_dust_without_debiting_sende
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config)
@@ -2077,7 +2084,7 @@ async fn should_reduce_total_supply_for_evm_rounding_dust_without_debiting_sende
     let total_supply_before = test.get_total_supply(Some(deploy_height));
     let call = signed_evm_call_transaction(evm_config.chain_id, 1, contract, 1, Vec::new());
     let fee = call
-        .max_fee_amount(&evm_config)
+        .max_fee_amount(&evm_config.fee_config())
         .expect("maximum EVM fee should fit");
     let (_hash, call_height, call_result) = test.send_transaction(Transaction::from(call)).await;
     let ExecutionResult::Evm(call_result) = call_result else {
