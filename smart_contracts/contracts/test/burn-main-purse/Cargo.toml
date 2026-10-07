@@ -1,0 +1,16 @@
+[package]
+name = "burn-main-purse"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "burn_main_purse"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

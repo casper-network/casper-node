@@ -45,7 +45,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::NodeId,
+    types::{NodeId, TransactionProvenance},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -175,6 +175,7 @@ impl TestFixture {
             pricing_handling_override,
             allow_prepaid_override,
             balance_hold_interval_override,
+            baseline_motes_amount_override,
             administrators,
             chain_name,
             gas_hold_balance_handling,
@@ -220,6 +221,9 @@ impl TestFixture {
         }
         if let Some(balance_hold_interval) = balance_hold_interval_override {
             chainspec.core_config.gas_hold_interval = balance_hold_interval;
+        }
+        if let Some(baseline_motes_amount) = baseline_motes_amount_override {
+            chainspec.core_config.baseline_motes_amount = baseline_motes_amount;
         }
         if let Some(administrators) = administrators {
             chainspec.core_config.administrators = administrators;
@@ -857,10 +861,23 @@ impl TestFixture {
                         .ignore()
                 })
                 .await;
+
+            let highest_block_header = *runner
+                .main_reactor()
+                .storage
+                .read_highest_block()
+                .expect("must have block")
+                .hash();
+
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .announce_new_transaction_accepted(Arc::new(txn.clone()), Source::Client)
+                        .announce_new_transaction_accepted(
+                            Arc::new(txn.clone()),
+                            Source::Client,
+                            TransactionProvenance::Client,
+                            highest_block_header,
+                        )
                         .ignore()
                 })
                 .await;

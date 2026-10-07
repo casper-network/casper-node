@@ -240,7 +240,7 @@ impl ExecutionArtifactBuilder {
                     base16::encode_lower(&purse),
                     minimum_amount
                 ));
-                return Ok(self);
+                return Err(false);
             }
         }
         Ok(self)

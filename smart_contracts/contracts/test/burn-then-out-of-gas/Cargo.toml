@@ -1,0 +1,16 @@
+[package]
+name = "burn-then-out-of-gas"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "burn_then_out_of_gas"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

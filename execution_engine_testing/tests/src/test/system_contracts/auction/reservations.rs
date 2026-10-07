@@ -25,8 +25,9 @@ use casper_types::{
     system::auction::{
         BidsExt, DelegationRate, DelegatorKind, Error as AuctionError, Reservation,
         SeigniorageAllocation, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATORS,
-        ARG_ENTRY_POINT, ARG_PUBLIC_KEY, ARG_RESERVATIONS, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP,
-        ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        ARG_ENTRY_POINT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_PUBLIC_KEY,
+        ARG_RESERVATIONS, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP, ARG_VALIDATOR,
+        DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
     },
     ProtocolVersion, PublicKey, SecretKey, U512,
 };
@@ -39,12 +40,17 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_ADD_RESERVATIONS: &str = "add_reservations.wasm";
 const CONTRACT_CANCEL_RESERVATIONS: &str = "cancel_reservations.wasm";
+const CONTRACT_CHANGE_BID_PUBLIC_KEY: &str = "change_bid_public_key.wasm";
 
 const ADD_BID_AMOUNT_1: u64 = 1_000_000_000_000;
 const ADD_BID_RESERVED_SLOTS: u32 = 1;
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
 static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
@@ -978,4 +984,125 @@ fn should_distribute_rewards_with_reserved_slots() {
         Some(SeigniorageAllocation::DelegatorKind { delegator_kind: DelegatorKind::PublicKey(delegator_public_key), amount, .. })
         if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
     ));
+}
+
+/// Regression for audit-confirmed-64: an `add_bid` call that raises `minimum_delegation_amount`
+/// (forcing an existing under-minimum delegator into an unbond in the same execution) and at the
+/// same time sets `reserved_slots = 1` must be accepted - the freed delegator slot should make
+/// room for the new reservation. Without the fix the auction's reservation-slot validation does
+/// a prefix scan via the raw state reader, which doesn't see the same-execution prune of the
+/// freed delegator, so the bid is rejected with `ExceededReservationSlotsLimit`.
+#[test]
+fn should_reserve_slot_after_forced_delegator_unbond_in_same_add_bid_call() {
+    let mut builder = setup_accounts(1);
+    setup_validator_bid(&mut builder, 0);
+
+    let delegation_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+    builder.exec(delegation_request).expect_success().commit();
+
+    let update_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            ARG_AMOUNT => U512::from(1),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_MINIMUM_DELEGATION_AMOUNT => DEFAULT_MINIMUM_DELEGATION_AMOUNT + 1,
+            ARG_RESERVED_SLOTS => 1u32,
+        },
+    )
+    .build();
+
+    builder.exec(update_bid_request).expect_success().commit();
+
+    let bids = builder.get_bids();
+    assert!(
+        bids.delegator_by_kind(&VALIDATOR_1, &DelegatorKind::PublicKey(DELEGATOR_1.clone()))
+            .is_none(),
+        "delegator below the raised minimum should be fully unbonded"
+    );
+
+    let validator_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        .expect("validator bid should remain after updating delegation constraints");
+    assert_eq!(validator_bid.reserved_slots(), 1);
+}
+
+/// Regression for audit-confirmed-61: `change_bid_public_key` must migrate reservation bid
+/// records (and their embedded `validator_public_key`) to the new validator key, not leave them
+/// indexed under the old key.
+#[ignore]
+#[test]
+fn should_move_reservations_when_validator_bid_public_key_changes() {
+    let mut builder = setup_accounts(3);
+    setup_validator_bid(&mut builder, ADD_BID_RESERVED_SLOTS);
+
+    let reservation = Reservation::new(
+        VALIDATOR_1.clone(),
+        DelegatorKind::PublicKey(DELEGATOR_1.clone()),
+        VALIDATOR_1_RESERVATION_DELEGATION_RATE,
+    );
+    let reservation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_RESERVATIONS,
+        runtime_args! {
+            ARG_RESERVATIONS => vec![reservation],
+        },
+    )
+    .build();
+    builder.exec(reservation_request).expect_success().commit();
+
+    let reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_1)
+        .expect("old validator key should have a reservation before key rotation");
+    assert_eq!(reservations.len(), 1);
+
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
+        runtime_args! {
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            ARG_NEW_PUBLIC_KEY => VALIDATOR_2.clone(),
+        },
+    )
+    .build();
+    builder
+        .exec(change_bid_public_key_request)
+        .expect_success()
+        .commit();
+
+    let old_key_reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_1);
+    assert!(
+        old_key_reservations.is_none(),
+        "reservation stayed under the old validator key after key rotation"
+    );
+
+    let new_key_reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_2)
+        .expect("reservation did not move to the new validator key");
+    assert_eq!(new_key_reservations.len(), 1);
+    assert_eq!(
+        new_key_reservations[0].validator_public_key(),
+        &*VALIDATOR_2
+    );
+    assert_eq!(
+        new_key_reservations[0].delegator_kind(),
+        &DelegatorKind::PublicKey(DELEGATOR_1.clone())
+    );
+    assert_eq!(
+        *new_key_reservations[0].delegation_rate(),
+        VALIDATOR_1_RESERVATION_DELEGATION_RATE
+    );
 }

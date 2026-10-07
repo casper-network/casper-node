@@ -74,6 +74,7 @@ impl From<TransactionAcceptorAnnouncement> for Event<Transaction> {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
+                ..
             } => Event::GotRemotely {
                 item: Box::new((*transaction).clone()),
                 source,

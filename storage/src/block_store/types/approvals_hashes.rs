@@ -99,6 +99,7 @@ impl ApprovalsHashes {
         &self,
         v1_block: &BlockV1,
     ) -> Result<Vec<DeployId>, ApprovalsHashesValidationError> {
+        self.ensure_approvals_hashes_len(v1_block.deploy_and_transfer_hashes().count())?;
         let deploy_approvals_hashes = self.approvals_hashes.clone();
         Ok(v1_block
             .deploy_and_transfer_hashes()
@@ -114,6 +115,7 @@ impl ApprovalsHashes {
         &self,
         v2_block: &BlockV2,
     ) -> Result<Vec<TransactionId>, ApprovalsHashesValidationError> {
+        self.ensure_approvals_hashes_len(v2_block.all_transactions().count())?;
         v2_block
             .all_transactions()
             .zip(self.approvals_hashes.clone())
@@ -121,6 +123,19 @@ impl ApprovalsHashes {
                 Ok(TransactionId::new(*txn_hash, txn_approvals_hash))
             })
             .collect()
+    }
+
+    fn ensure_approvals_hashes_len(
+        &self,
+        expected: usize,
+    ) -> Result<(), ApprovalsHashesValidationError> {
+        let actual = self.approvals_hashes.len();
+        if actual != expected {
+            return Err(
+                ApprovalsHashesValidationError::ApprovalsHashesLengthMismatch { expected, actual },
+            );
+        }
+        Ok(())
     }
 
     /// Block hash.
@@ -226,6 +241,17 @@ pub enum ApprovalsHashesValidationError {
         value_in_proof: Digest,
     },
 
+    /// The number of approvals hashes doesn't match the number of block transactions.
+    #[error(
+        "approvals hashes count doesn't match block transaction count: expected {expected}, actual {actual}"
+    )]
+    ApprovalsHashesLengthMismatch {
+        /// The number of transactions in the block.
+        expected: usize,
+        /// The number of approvals hashes.
+        actual: usize,
+    },
+
     /// Variant mismatch.
     #[error("mismatch in variants: {0:?}")]
     #[data_size(skip)]
@@ -249,5 +275,144 @@ impl From<LegacyApprovalsHashes> for ApprovalsHashes {
         }: LegacyApprovalsHashes,
     ) -> Self {
         ApprovalsHashes::new(block_hash, approvals_hashes, merkle_proof_approvals)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, VecDeque};
+
+    use casper_types::{
+        global_state::TrieMerkleProof, testing::TestRng, ApprovalsHash, CLValue, ChecksumRegistry,
+        StoredValue, TestBlockBuilder, Transaction,
+    };
+
+    use super::*;
+
+    fn approvals_hashes_for_block(
+        transactions: &[Transaction],
+        block: &Block,
+    ) -> Vec<ApprovalsHash> {
+        let transaction_approvals_hashes: BTreeMap<_, _> = transactions
+            .iter()
+            .map(|transaction| {
+                (
+                    transaction.hash(),
+                    transaction
+                        .compute_approvals_hash()
+                        .expect("should compute approvals hash"),
+                )
+            })
+            .collect();
+
+        match block {
+            Block::V1(_) => unreachable!("test helper builds V2 blocks"),
+            Block::V2(v2_block) => v2_block
+                .all_transactions()
+                .map(|txn_hash| {
+                    *transaction_approvals_hashes
+                        .get(txn_hash)
+                        .expect("transaction should be in block")
+                })
+                .collect(),
+        }
+    }
+
+    fn approvals_hashes_with_proof(
+        rng: &mut TestRng,
+        transactions: &[Transaction],
+        supplied_approvals_hashes: Vec<ApprovalsHash>,
+        registry_approvals_hashes: Vec<ApprovalsHash>,
+    ) -> (Block, ApprovalsHashes) {
+        let ordering_block = TestBlockBuilder::new()
+            .transactions(transactions)
+            .build_versioned(rng);
+        let transaction_hashes: Vec<_> = match &ordering_block {
+            Block::V1(_) => unreachable!("test helper builds V2 blocks"),
+            Block::V2(v2_block) => v2_block.all_transactions().copied().collect(),
+        };
+        let transaction_ids = transaction_hashes
+            .into_iter()
+            .zip(registry_approvals_hashes)
+            .map(|(txn_hash, txn_approvals_hash)| TransactionId::new(txn_hash, txn_approvals_hash))
+            .collect();
+        let approvals_checksum =
+            compute_approvals_checksum(transaction_ids).expect("should compute checksum");
+
+        let mut checksum_registry = ChecksumRegistry::new();
+        checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+        let merkle_proof_approvals = TrieMerkleProof::new(
+            Key::ChecksumRegistry,
+            StoredValue::CLValue(
+                CLValue::from_t(checksum_registry).expect("should build checksum registry"),
+            ),
+            VecDeque::new(),
+        );
+        let state_root_hash =
+            compute_state_hash(&merkle_proof_approvals).expect("should compute state root hash");
+
+        let block = TestBlockBuilder::new()
+            .state_root_hash(state_root_hash)
+            .transactions(transactions)
+            .build_versioned(rng);
+
+        let approvals_hashes = ApprovalsHashes::new(
+            *block.hash(),
+            supplied_approvals_hashes,
+            merkle_proof_approvals,
+        );
+
+        (block, approvals_hashes)
+    }
+
+    #[test]
+    fn verify_rejects_extra_approvals_hashes() {
+        let rng = &mut TestRng::new();
+        let transactions: Vec<_> = (0..3).map(|_| Transaction::random(rng)).collect();
+        let ordering_block = TestBlockBuilder::new()
+            .transactions(&transactions)
+            .build_versioned(rng);
+        let valid_approvals_hashes = approvals_hashes_for_block(&transactions, &ordering_block);
+
+        let mut supplied_approvals_hashes = valid_approvals_hashes.clone();
+        supplied_approvals_hashes.push(ApprovalsHash::from(Digest::from([42; Digest::LENGTH])));
+        let (block, approvals_hashes) = approvals_hashes_with_proof(
+            rng,
+            &transactions,
+            supplied_approvals_hashes,
+            valid_approvals_hashes,
+        );
+
+        let result = approvals_hashes.verify(&block);
+        assert!(
+            result.is_err(),
+            "verify must reject overlong ApprovalsHashes, got {:?}",
+            result,
+        );
+    }
+
+    #[test]
+    fn verify_rejects_missing_approvals_hashes() {
+        let rng = &mut TestRng::new();
+        let transactions: Vec<_> = (0..3).map(|_| Transaction::random(rng)).collect();
+        let ordering_block = TestBlockBuilder::new()
+            .transactions(&transactions)
+            .build_versioned(rng);
+        let valid_approvals_hashes = approvals_hashes_for_block(&transactions, &ordering_block);
+
+        let supplied_approvals_hashes = valid_approvals_hashes[..2].to_vec();
+        let (block, approvals_hashes) = approvals_hashes_with_proof(
+            rng,
+            &transactions,
+            supplied_approvals_hashes,
+            valid_approvals_hashes,
+        );
+
+        let result = approvals_hashes.verify(&block);
+        assert!(
+            result.is_err(),
+            "verify must reject missing ApprovalsHashes entries, got {:?}",
+            result,
+        );
     }
 }

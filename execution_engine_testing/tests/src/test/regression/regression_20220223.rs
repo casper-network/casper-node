@@ -34,6 +34,7 @@ const CONTRACT_REGRESSION_TRANSFER: &str = "regression_transfer.wasm";
 
 const ARG_TARGET: &str = "target";
 const ARG_PURSE_NAME: &str = "purse_name";
+const ARG_CALL_COUNT: &str = "call_count";
 const TEST_PURSE: &str = "test_purse";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 const ADD_BID_AMOUNT_1: u64 = 95_000;
@@ -232,6 +233,61 @@ fn should_fail_to_update_existing_delegator_over_the_approved_amount() {
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
+        error
+    );
+}
+
+/// Regression for audit-confirmed-59: a session that calls auction `delegate` twice within one
+/// transaction must hit `UnapprovedSpendingAmount` on the second call. Without the fix
+/// `call_host_auction` does not propagate the child auction runtime's reduced
+/// `remaining_spending_limit` back to the parent context, so each call sees the full approved
+/// amount and the session can spend twice from the caller's main purse.
+#[ignore]
+#[test]
+fn should_fail_to_delegate_twice_over_the_approved_amount() {
+    let mut builder = setup();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => VALIDATOR_1_PUBLIC_KEY.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_REGRESSION_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => VALIDATOR_1_PUBLIC_KEY.clone(),
+            ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            ARG_CALL_COUNT => 2u32,
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_delegate_request)
+        .expect_failure()
+        .commit();
+
+    let error = builder.get_error().expect("should have returned an error");
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
+            if mint_error == mint::Error::UnapprovedSpendingAmount as u8
+        ),
+        "auction system calls spent more than the approved amount: {:?}",
         error
     );
 }

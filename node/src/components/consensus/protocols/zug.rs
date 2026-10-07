@@ -1110,6 +1110,16 @@ impl<C: Context + 'static> Zug<C> {
             return Err(FaultySender(sender));
         };
 
+        if signed_msg.instance_id != *self.instance_id() {
+            warn!(
+                our_idx,
+                ?signed_msg,
+                %sender,
+                "invalid incoming message: signed instance ID does not match current instance",
+            );
+            return Err(FaultySender(sender));
+        }
+
         if self.faults.contains_key(&validator_idx) {
             debug!(
                 our_idx,
@@ -1195,6 +1205,15 @@ impl<C: Context + 'static> Zug<C> {
             );
             return Err(FaultySender(sender));
         };
+        if signed_msg.instance_id != *self.instance_id() {
+            warn!(
+                our_idx,
+                ?signed_msg,
+                %sender,
+                "invalid incoming evidence: signed instance ID does not match current instance",
+            );
+            return Err(FaultySender(sender));
+        }
         if !signed_msg.content.contradicts(&content2) {
             warn!(
                 our_idx,

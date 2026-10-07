@@ -57,6 +57,12 @@ impl Reservation {
         &self.validator_public_key
     }
 
+    /// Replaces the validator public key.
+    pub fn with_validator_public_key(&mut self, validator_public_key: PublicKey) -> &mut Self {
+        self.validator_public_key = validator_public_key;
+        self
+    }
+
     /// Gets the delegation rate of the provided bid
     pub fn delegation_rate(&self) -> &DelegationRate {
         &self.delegation_rate

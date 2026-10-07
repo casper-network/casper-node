@@ -8,7 +8,10 @@ use crate::{
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        transaction::ProposedTransaction, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap,
+        TrieOrChunk,
+    },
     utils::Source,
     FetcherConfig, NodeRng,
 };
@@ -25,6 +28,7 @@ pub(super) struct Fetchers {
     transaction_fetcher: Fetcher<Transaction>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
+    proposed_transaction_fetcher: Fetcher<ProposedTransaction>,
 }
 
 impl Fetchers {
@@ -47,6 +51,11 @@ impl Fetchers {
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
             block_execution_results_or_chunk_fetcher: Fetcher::new(
                 "block_execution_results_or_chunk_fetcher",
+                config,
+                metrics_registry,
+            )?,
+            proposed_transaction_fetcher: Fetcher::new(
+                "proposed_transaction",
                 config,
                 metrics_registry,
             )?,
@@ -129,6 +138,16 @@ impl Fetchers {
                 self.transaction_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            MainEvent::ProposedTransactionFetcher(event) => reactor::wrap_effects(
+                MainEvent::ProposedTransactionFetcher,
+                self.proposed_transaction_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::ProposedTransactionFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::ProposedTransactionFetcher,
+                self.proposed_transaction_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             MainEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
                 MainEvent::TrieOrChunkFetcher,
                 self.trie_or_chunk_fetcher
@@ -163,18 +182,36 @@ impl Fetchers {
                 TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                     transaction,
                     source,
+                    provenance,
+                    block_hash: _,
                 },
-            ) if matches!(source, Source::Peer(..)) => reactor::wrap_effects(
-                MainEvent::TransactionFetcher,
-                self.transaction_fetcher.handle_event(
-                    effect_builder,
-                    rng,
-                    fetcher::Event::GotRemotely {
-                        item: Box::new((*transaction).clone()),
-                        source,
-                    },
-                ),
-            ),
+            ) if matches!(source, Source::Peer(..)) => {
+                if !provenance.is_proposed() {
+                    reactor::wrap_effects(
+                        MainEvent::TransactionFetcher,
+                        self.transaction_fetcher.handle_event(
+                            effect_builder,
+                            rng,
+                            fetcher::Event::GotRemotely {
+                                item: Box::new((*transaction).clone()),
+                                source,
+                            },
+                        ),
+                    )
+                } else {
+                    reactor::wrap_effects(
+                        MainEvent::ProposedTransactionFetcher,
+                        self.proposed_transaction_fetcher.handle_event(
+                            effect_builder,
+                            rng,
+                            fetcher::Event::GotRemotely {
+                                item: Box::new(ProposedTransaction::new((*transaction).clone())),
+                                source,
+                            },
+                        ),
+                    )
+                }
+            }
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

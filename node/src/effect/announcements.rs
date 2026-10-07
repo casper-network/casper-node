@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
-    PublicKey, Timestamp, Transaction, TransactionHash, U512,
+    execution::Effects, Block, BlockHash, EraId, FinalitySignature, FinalitySignatureV2,
+    NextUpgrade, PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
     },
     effect::Responder,
     failpoints::FailpointActivation,
-    types::{FinalizedBlock, MetaBlock, NodeId},
+    types::{FinalizedBlock, MetaBlock, NodeId, TransactionProvenance},
     utils::Source,
 };
 
@@ -208,6 +208,10 @@ pub(crate) enum TransactionAcceptorAnnouncement {
         transaction: Arc<Transaction>,
         /// The source (peer or client) of the transaction.
         source: Source,
+        /// Is this transaction part of a proposal
+        provenance: TransactionProvenance,
+        /// The block hash for which the transaction was accepted.
+        block_hash: BlockHash,
     },
 
     /// An invalid transaction was received.
@@ -225,6 +229,7 @@ impl Display for TransactionAcceptorAnnouncement {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
+                ..
             } => write!(
                 formatter,
                 "accepted new transaction {} from {}",

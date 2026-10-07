@@ -584,12 +584,14 @@ where
             .map_err(Into::into)
     }
 
-    /// Returns all key's that start with prefix, if any.
+    /// Returns all key's that start with prefix, if any. Uses the cache-aware path so that
+    /// same-execution prunes are filtered and same-execution writes are included; the previous
+    /// implementation went through `reader()` and could not see in-flight changes (e.g. a
+    /// delegator pruned earlier in the same `add_bid` call would still be counted).
     pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, ExecError> {
         self.tracking_copy
-            .borrow_mut()
-            .reader()
-            .keys_with_prefix(prefix)
+            .borrow()
+            .keys_with_prefix_cached(prefix)
             .map_err(Into::into)
     }
 
@@ -1578,7 +1580,10 @@ where
             })
     }
 
-    pub(super) fn remaining_spending_limit(&self) -> U512 {
+    /// Returns the runtime context's remaining approved spending limit on the caller's main
+    /// purse. Public so the executor can forward the post-execution leftover into the next
+    /// phase of a custom-payment transaction.
+    pub fn remaining_spending_limit(&self) -> U512 {
         self.remaining_spending_limit
     }
 

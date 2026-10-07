@@ -44,6 +44,7 @@ pub(crate) enum InvalidProposalError {
         transaction_era_id: u64,
         proposed_block_era_id: u64,
     },
+    ExceedsSignatureMaxDelay,
 }
 
 impl From<crate::types::appendable_block::AddError> for Box<InvalidProposalError> {

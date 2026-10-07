@@ -22,7 +22,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
-    ConfigBuilder, GasUsage, VMError, WasmInstance,
+    ConfigBuilder, GasUsage, VMError, WasmInstance, WasmPreparationError,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{
@@ -696,7 +696,11 @@ impl ExecutorV2 {
         let executable_item =
             ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
         let entry_point = entry_point.clone();
-        let args = bytesrepr::deserialize_from_slice(input).expect("should deserialize");
+        let args = bytesrepr::deserialize_from_slice(input).map_err(|_| {
+            ExecuteError::WasmPreparation(WasmPreparationError::Compile(
+                "Unexpected input deserialization error".to_string(),
+            ))
+        })?;
         let phase = Phase::Session;
 
         let wasm_v1_result = {

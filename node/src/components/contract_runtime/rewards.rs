@@ -138,7 +138,7 @@ impl RewardsInfo {
                 // We do not attempt to reward blocks from before an upgrade!
                 previous_era_switch_block_header.height()
             } else {
-                // Here we do not substract 1, because we want one block more:
+                // Here we do not subtract 1, because we want one block more:
                 previous_era_switch_block_header
                     .height()
                     .saturating_sub(signature_rewards_max_delay)

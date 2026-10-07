@@ -98,6 +98,7 @@ pub(crate) enum NetRequest {
     SyncLeap(Vec<u8>),
     ApprovalsHashes(Vec<u8>),
     BlockExecutionResults(Vec<u8>),
+    ProposedTransaction(Vec<u8>),
 }
 
 impl Display for NetRequest {
@@ -115,6 +116,7 @@ impl Display for NetRequest {
             NetRequest::BlockExecutionResults(_) => {
                 f.write_str("request for block execution results")
             }
+            NetRequest::ProposedTransaction(_) => f.write_str("request for a proposed transaction"),
         }
     }
 }
@@ -130,7 +132,8 @@ impl NetRequest {
             | NetRequest::FinalitySignature(ref id)
             | NetRequest::SyncLeap(ref id)
             | NetRequest::ApprovalsHashes(ref id)
-            | NetRequest::BlockExecutionResults(ref id) => id,
+            | NetRequest::BlockExecutionResults(ref id)
+            | NetRequest::ProposedTransaction(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -150,6 +153,7 @@ impl NetRequest {
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
             NetRequest::ApprovalsHashes(_) => Tag::ApprovalsHashes,
             NetRequest::BlockExecutionResults(_) => Tag::BlockExecutionResults,
+            NetRequest::ProposedTransaction(_) => Tag::ProposedTransaction,
         }
     }
 }
@@ -167,6 +171,7 @@ pub(crate) enum NetResponse {
     SyncLeap(Arc<[u8]>),
     ApprovalsHashes(Arc<[u8]>),
     BlockExecutionResults(Arc<[u8]>),
+    ProposedTransaction(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -192,6 +197,9 @@ impl Display for NetResponse {
             NetResponse::ApprovalsHashes(_) => f.write_str("response for approvals hashes"),
             NetResponse::BlockExecutionResults(_) => {
                 f.write_str("response for block execution results")
+            }
+            NetResponse::ProposedTransaction(_) => {
+                f.write_str("response for a proposed transaction")
             }
         }
     }

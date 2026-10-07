@@ -28,6 +28,7 @@ use casper_storage::{
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
+    tracking_copy::TrackingCopyEntityExt,
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
@@ -35,8 +36,8 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, TimeDiff, Transaction, TransactionEntryPoint,
-    AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    Motes, ProtocolVersion, PublicKey, RefundHandling, TimeDiff, Transaction,
+    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -206,13 +207,11 @@ pub fn execute_finalized_block(
         }
     }
 
-    let transaction_config = &chainspec.transaction_config;
-
     for stored_transaction in executable_block.transactions {
         let transaction = MetaTransaction::from_transaction(
             &stored_transaction,
             chainspec.core_config.pricing_handling,
-            transaction_config,
+            chainspec,
         )
         .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
 
@@ -299,6 +298,79 @@ pub fn execute_finalized_block(
         let is_v1_wasm = transaction.is_v1_wasm();
         let is_v2_wasm = transaction.is_v2_wasm();
         let refund_purse_active = is_custom_payment;
+
+        // Authorize the declared initiator against the transaction's signer set *before* any
+        // payment / fee work happens. Otherwise a forged transaction (initiator = victim, signed
+        // by an unrelated key) reaches block execution, contract-runtime selects the victim as
+        // the standard-payment payer, the Wasm execution then fails with Authorization, and fee
+        // finalization charges the victim's main purse for the full declared payment amount.
+        let initiator_account_hash = initiator_addr.clone().account_hash();
+        if initiator_account_hash != PublicKey::System.to_account_hash() {
+            let administrative_accounts: std::collections::BTreeSet<
+                casper_types::account::AccountHash,
+            > = chainspec
+                .core_config
+                .administrators
+                .iter()
+                .map(|pk| pk.to_account_hash())
+                .collect();
+            let admin_signed = !administrative_accounts.is_empty()
+                && administrative_accounts
+                    .intersection(&authorization_keys)
+                    .next()
+                    .is_some();
+            if !admin_signed {
+                let mut tc = match scratch_state.tracking_copy(state_root_hash) {
+                    Ok(Some(tc)) => tc,
+                    Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+                    Err(err) => {
+                        return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
+                    }
+                };
+                let authorized = match tc
+                    .runtime_footprint_by_account_hash(protocol_version, initiator_account_hash)
+                {
+                    Ok((_addr, footprint)) => {
+                        footprint.can_authorize(&authorization_keys)
+                            && footprint.can_deploy_with(&authorization_keys)
+                    }
+                    Err(_) => false,
+                };
+                if !authorized {
+                    debug!(%transaction_hash, "forged-initiator authorization failure; skipping payment/fee");
+                    artifact_builder.with_error_message("Authorization failure".to_string());
+                    artifacts.push(artifact_builder.build());
+                    continue;
+                }
+            }
+        }
+
+        {
+            // Ensure the initiator's main purse can cover the penalty payment before proceeding,
+            // and before any effects (e.g. SetRefundPurse for custom payment) are committed.
+            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
+                state_root_hash,
+                protocol_version,
+                initiator_addr.clone().into(),
+                balance_handling,
+                ProofHandling::NoProofs,
+            ));
+
+            if let Err(root_not_found) = artifact_builder
+                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
+            {
+                if root_not_found {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                trace!(%transaction_hash, "insufficient initial balance");
+                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
+                artifacts.push(artifact_builder.build());
+                // only reads have happened so far, and we can't charge due
+                // to insufficient balance, so move on with no effects committed
+                continue;
+            }
+        }
+
         if refund_purse_active {
             // if custom payment before doing any processing, initialize the initiator's main purse
             //  to be the refund purse for this transaction.
@@ -327,31 +399,15 @@ pub fn execute_finalized_block(
                 .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
-        {
-            // Ensure the initiator's main purse can cover the penalty payment before proceeding.
-            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
-                state_root_hash,
-                protocol_version,
-                initiator_addr.clone().into(),
-                balance_handling,
-                ProofHandling::NoProofs,
-            ));
-
-            if let Err(root_not_found) = artifact_builder
-                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
-            {
-                if root_not_found {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                trace!(%transaction_hash, "insufficient initial balance");
-                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
-                artifacts.push(artifact_builder.build());
-                // only reads have happened so far, and we can't charge due
-                // to insufficient balance, so move on with no effects committed
-                continue;
-            }
-        }
-
+        // For custom payment, track how much of the payment-purse balance is attributable to
+        // *this* transaction (success: full required amount; failure: penalty amount transferred
+        // from the initiator's main purse). The shared payment purse may already contain
+        // unrelated funds; without this cap, fee finalization treats those unrelated funds as
+        // available for this transaction and can settle them as proposer fee / burn / accumulate.
+        let mut custom_payment_unwind_amount: Option<U512> = None;
+        // Captured from successful custom payment so the same approved-spending-limit budget is
+        // not handed fresh to the session phase.
+        let mut custom_payment_remaining_spending_limit: Option<U512> = None;
         let mut balance_identifier = {
             if is_standard_payment {
                 let contract_might_pay =
@@ -388,9 +444,13 @@ pub fn execute_finalized_block(
             } else if is_custom_payment {
                 // this is the custom payment flow
                 // the initiating account will pay, but wants to do so with a different purse or
-                // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                let custom_payment_gas_limit =
-                    Gas::new(chainspec.transaction_config.native_transfer_minimum_motes * 5);
+                // in a custom way. If anything goes wrong, penalize the sender, do not execute.
+                //
+                // Custom payment execution must be bounded by the transaction's declared
+                // payment-limited gas budget, not an unrelated constant. Otherwise payment-phase
+                // Wasm can spend significantly more gas than the transaction limit while cost is
+                // later capped at the limit, undercharging the sender.
+                let custom_payment_gas_limit = artifact_builder.gas_limit();
                 let pay_result = match WasmV1Request::new_custom_payment(
                     BlockInfo::new(
                         state_root_hash,
@@ -420,9 +480,18 @@ pub fn execute_finalized_block(
                 );
 
                 if insufficient_payment_deposited || pay_result.error().is_some() {
-                    // Charge initiator for the penalty payment amount
-                    // the most expedient way to do this that aligns with later code
-                    // is to transfer from the initiator's main purse to the payment purse
+                    // Charge initiator for the failed-payment penalty. The transfer amount must
+                    // cover the gas burned by the failed payment Wasm (capped by the transaction
+                    // cost), with the baseline as the minimum so cheap failures still pay it.
+                    let consumed_payment_motes =
+                        Motes::from_gas(pay_result.consumed(), current_gas_price)
+                            .map(|m| m.value())
+                            .unwrap_or(U512::zero());
+                    let transaction_cost = artifact_builder.actual_cost();
+                    let penalty_amount = consumed_payment_motes
+                        .min(transaction_cost)
+                        .max(baseline_motes_amount);
+                    custom_payment_unwind_amount = Some(penalty_amount);
                     let transfer_result = scratch_state.transfer(TransferRequest::new_indirect(
                         native_runtime_config.clone(),
                         state_root_hash,
@@ -434,7 +503,7 @@ pub fn execute_finalized_block(
                             None,
                             initiator_addr.clone().into(),
                             BalanceIdentifier::Payment,
-                            baseline_motes_amount,
+                            penalty_amount,
                             None,
                         ),
                     ));
@@ -456,7 +525,12 @@ pub fn execute_finalized_block(
                     // commit penalty payment effects
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, transfer_result.effects().clone())?;
+                    // Failed custom payment must still record the gas the payment Wasm burned,
+                    // so the eventual cost reflects the work the sender forced the validator to
+                    // perform; otherwise expensive payment work that underdeposits would pay
+                    // only the baseline penalty.
                     artifact_builder
+                        .with_added_consumed(pay_result.consumed())
                         .with_error_message(msg)
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -466,6 +540,23 @@ pub fn execute_finalized_block(
                     // commit successful effects
                     state_root_hash = scratch_state
                         .commit_effects(state_root_hash, pay_result.effects().clone())?;
+                    // Cap fee/refund finalization to this transaction's actual deposit into the
+                    // shared payment purse, not just the required cost. The payment purse is
+                    // empty before custom payment (audit-082 guard), so the balance the effects
+                    // leave is exactly this txn's contribution; using it as the unwind amount
+                    // keeps audit-080's "don't drain unrelated balance" invariant while also
+                    // settling any overpayment the payment Wasm pushed in past the declared cost
+                    // (audit-156's "no funds stuck in shared payment purse" invariant). Floor at
+                    // `cost_to_use()` so we never lose money the runtime promised to charge.
+                    let actual_deposit = pay_result
+                        .balance_after_effects(payment_balance_addr)
+                        .unwrap_or_else(|| artifact_builder.cost_to_use());
+                    custom_payment_unwind_amount =
+                        Some(actual_deposit.max(artifact_builder.cost_to_use()));
+                    // Carry over the *post-payment* approved-spending-limit budget so the
+                    // following V1 session phase cannot re-spend the full transaction amount
+                    // from the caller's main purse.
+                    custom_payment_remaining_spending_limit = pay_result.remaining_spending_limit();
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -485,7 +576,18 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
+        // For custom payment, the *available* the artifact builder uses to derive cost/fee must
+        // be bounded by the amount this transaction itself put into the shared payment purse
+        // (`custom_payment_unwind_amount`), not the full post-payment purse balance. Otherwise a
+        // failed custom payment whose penalty is smaller than the transaction's payment_limit
+        // can settle pre-existing payment-purse funds as its own fee.
+        let post_payment_available = post_payment_balance_result.available_balance().copied();
+        let transaction_available = if is_custom_payment {
+            custom_payment_unwind_amount.or(post_payment_available)
+        } else {
+            post_payment_available
+        };
+        artifact_builder.with_available(transaction_available);
         let lane_id = transaction.transaction_lane();
 
         let allow_execution = {
@@ -636,15 +738,44 @@ pub fn execute_finalized_block(
                         artifact_builder.gas_limit(),
                         &session_input_data,
                     ) {
-                        Ok(wasm_v1_request) => {
+                        Ok(mut wasm_v1_request) => {
+                            // For VM1 custom payment, the session phase must inherit the
+                            // *remaining* approved-spending-limit budget from the payment phase.
+                            // Otherwise the runtime would derive it freshly from the transaction
+                            // `amount` arg, letting the session debit the caller main purse for
+                            // the same amount that was already approved (and possibly spent) by
+                            // custom payment. `RuntimeArgs::insert` appends rather than replaces,
+                            // so we rebuild the args with `amount` taken from the post-payment
+                            // remaining spending limit.
+                            if let Some(remaining) = custom_payment_remaining_spending_limit {
+                                let mut new_args = casper_types::RuntimeArgs::new();
+                                if new_args.insert(ARG_AMOUNT, remaining).is_ok() {
+                                    for named in wasm_v1_request.args.named_args() {
+                                        if named.name() != ARG_AMOUNT {
+                                            new_args.insert_cl_value(
+                                                named.name(),
+                                                named.cl_value().clone(),
+                                            );
+                                        }
+                                    }
+                                    wasm_v1_request.args = new_args;
+                                }
+                            }
                             trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
-                            state_root_hash = scratch_state.commit_effects(
-                                state_root_hash,
-                                wasm_v1_result.effects().clone(),
-                            )?;
+                            // Only commit session effects when the Wasm execution itself
+                            // succeeded. Otherwise (e.g. "Out of gas error" after a mint
+                            // `burn` call) the failed transaction would leave its
+                            // state-changing side effects, including total-supply burns,
+                            // applied even though the execution result reports an error.
+                            if wasm_v1_result.error().is_none() {
+                                state_root_hash = scratch_state.commit_effects(
+                                    state_root_hash,
+                                    wasm_v1_result.effects().clone(),
+                                )?;
+                            }
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
@@ -840,9 +971,17 @@ pub fn execute_finalized_block(
         };
         artifact_builder.with_refund_amount(refund_amount);
 
-        // take the lower of the difference between cost - refund OR available
-        let fee_amount = artifact_builder
-            .cost_to_use()
+        // For custom payment, fee finalization must consume whatever amount this transaction put
+        // into the shared payment purse after refund processing. Otherwise a payment Wasm that
+        // deposits more than the declared cost leaves the excess stranded in the payment purse.
+        let fee_basis = if is_custom_payment {
+            custom_payment_unwind_amount.unwrap_or_else(|| artifact_builder.cost_to_use())
+        } else {
+            artifact_builder.cost_to_use()
+        };
+
+        // take the lower of the difference between the fee basis - refund OR available
+        let fee_amount = fee_basis
             .saturating_sub(refund_amount)
             .min(artifact_builder.available().unwrap_or(U512::zero()));
 
@@ -1343,11 +1482,10 @@ pub(super) fn speculatively_execute<S>(
 where
     S: StateProvider,
 {
-    let transaction_config = &chainspec.transaction_config;
     let maybe_transaction = MetaTransaction::from_transaction(
         &input_transaction,
         chainspec.core_config.pricing_handling,
-        transaction_config,
+        chainspec,
     );
     if let Err(error) = maybe_transaction {
         return SpeculativeExecutionResult::invalid_transaction(error);

@@ -4,26 +4,26 @@
 use casper_contract::contract_api::{runtime, storage, system};
 use casper_types::{
     addressable_entity::{EntityEntryPoint, EntryPoints, Parameters},
-    CLType, EntryPointAccess, EntryPointPayment, EntryPointType, Key, RuntimeArgs, URef,
+    runtime_args,
+    system::mint,
+    CLType, EntryPointAccess, EntryPointPayment, EntryPointType, Key, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "call_system";
-const HASH_KEY_NAME: &str = "stored_call_handle_payment_hash";
-const PACKAGE_KEY_NAME: &str = "stored_call_handle_payment_package";
-const ACCESS_KEY_NAME: &str = "stored_call_handle_payment_access";
-const ENTRY_POINT_GET_PAYMENT_PURSE: &str = "get_payment_purse";
+const HASH_KEY_NAME: &str = "stored_call_all_system_contracts_hash";
+const PACKAGE_KEY_NAME: &str = "stored_call_all_system_contracts_package";
+const ACCESS_KEY_NAME: &str = "stored_call_all_system_contracts_access";
 
 #[no_mangle]
 pub extern "C" fn call_system() {
-    let handle_payment = system::get_handle_payment();
+    // A called contract has no access to the caller's main purse, so use a purse it creates.
+    let purse = system::create_purse();
 
-    let _: URef = runtime::call_contract(
-        handle_payment,
-        ENTRY_POINT_GET_PAYMENT_PURSE,
-        RuntimeArgs::default(),
+    let _: Option<U512> = runtime::call_contract(
+        system::get_mint(),
+        mint::METHOD_BALANCE,
+        runtime_args! { mint::ARG_PURSE => purse },
     );
-
-    let _ = system::create_purse();
 }
 
 #[no_mangle]

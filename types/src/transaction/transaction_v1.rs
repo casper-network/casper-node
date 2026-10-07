@@ -50,7 +50,7 @@ use super::{
 };
 #[cfg(any(feature = "std", feature = "testing", test))]
 use crate::bytesrepr::Bytes;
-use crate::{Digest, DisplayIter, SecretKey, TimeDiff, Timestamp};
+use crate::{Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp};
 
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
@@ -202,6 +202,43 @@ impl TransactionV1 {
         transaction
     }
 
+    #[cfg(any(feature = "std", test, feature = "testing"))]
+    pub(crate) fn build_with_system_initiator(
+        chain_name: String,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        pricing_mode: PricingMode,
+        fields: BTreeMap<u16, Bytes>,
+        should_use_public_key: bool,
+        initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
+    ) -> TransactionV1 {
+        let initiator_addr = if should_use_public_key {
+            InitiatorAddr::PublicKey(PublicKey::System)
+        } else {
+            InitiatorAddr::AccountHash(PublicKey::System.to_account_hash())
+        };
+        let transaction_v1_payload = TransactionV1Payload::new(
+            chain_name,
+            timestamp,
+            ttl,
+            pricing_mode,
+            initiator_addr,
+            fields,
+        );
+        let hash = Digest::hash(
+            transaction_v1_payload
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+        );
+        let mut transaction =
+            TransactionV1::new(hash.into(), transaction_v1_payload, BTreeSet::new());
+
+        if let Some(secret_key) = initiator_addr_and_secret_key.secret_key() {
+            transaction.sign(secret_key);
+        }
+        transaction
+    }
+
     /// Adds a signature of this transaction's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
         let approval = Approval::create(&self.hash.into(), secret_key);
@@ -290,7 +327,7 @@ impl TransactionV1 {
         let container = FieldsContainer::random(rng);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
         let pricing_mode = PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 0,
         };
         TransactionV1::build(
@@ -319,7 +356,7 @@ impl TransactionV1 {
         let container = FieldsContainer::random_of_lane(rng, lane);
         let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
         let pricing_mode = PricingMode::Fixed {
-            gas_price_tolerance: 5,
+            gas_price_tolerance: 1,
             additional_computation_factor: 0,
         };
         TransactionV1::build(
@@ -328,6 +365,37 @@ impl TransactionV1 {
             TimeDiff::from_millis(ttl_millis),
             pricing_mode,
             container.to_map().unwrap(),
+            initiator_addr_and_secret_key,
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_with_system_initiator(
+        rng: &mut TestRng,
+        should_use_public_key: bool,
+        maybe_timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let secret_key = SecretKey::random(rng);
+        let timestamp = maybe_timestamp.unwrap_or_else(Timestamp::now);
+        let ttl_millis = ttl.map_or(
+            rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
+            |ttl| ttl.millis(),
+        );
+        let container = FieldsContainer::random_of_lane(rng, MINT_LANE_ID);
+        let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
+        let pricing_mode = PricingMode::PaymentLimited {
+            payment_amount: 10_000_000_000u64,
+            gas_price_tolerance: 1,
+            standard_payment: false,
+        };
+        TransactionV1::build_with_system_initiator(
+            "casper-example".to_string(),
+            timestamp,
+            TimeDiff::from_millis(ttl_millis),
+            pricing_mode,
+            container.to_map().unwrap(),
+            should_use_public_key,
             initiator_addr_and_secret_key,
         )
     }
@@ -441,6 +509,19 @@ impl TransactionV1 {
         if self.approvals.is_empty() {
             trace!(?self, "transaction has no approvals");
             return Err(InvalidTransactionV1::EmptyApprovals);
+        }
+
+        match &self.initiator_addr() {
+            InitiatorAddr::PublicKey(public_key) => {
+                if public_key == &PublicKey::System {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
+            InitiatorAddr::AccountHash(account_hash) => {
+                if account_hash == &PublicKey::System.to_account_hash() {
+                    return Err(InvalidTransactionV1::InvalidInitiator);
+                }
+            }
         }
 
         self.has_valid_hash()?;
