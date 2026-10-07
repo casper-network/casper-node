@@ -114,6 +114,19 @@ impl MetaEvmTransaction {
             });
         }
 
+        // A non-empty access list increases intrinsic gas. Reject a shortfall
+        // before packing because `revm` reports transaction-validation errors
+        // as fatal block-execution errors.
+        if !transaction.access_list().is_empty() {
+            let intrinsic_gas = transaction.intrinsic_gas();
+            if intrinsic_gas > gas_limit as u128 {
+                return Err(EvmTransactionError::IntrinsicGasExceedsGasLimit {
+                    intrinsic_gas,
+                    gas_limit,
+                });
+            }
+        }
+
         if !transaction.is_unsigned_call() && evm_config.value_motes(transaction.value()).is_none()
         {
             return Err(EvmTransactionError::ValueNotRepresentable {
