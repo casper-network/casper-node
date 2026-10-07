@@ -1740,7 +1740,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
         .expect("whole-mote Ethereum value should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(
         read_balance(&mut tracking_copy, sender),
         initial_motes - U512::from(transferred_motes)
@@ -1779,7 +1779,7 @@ fn callvalue_and_balance_opcodes_observe_wei() {
     assert_eq!(decode_word(&outcome.output[0..32]), expected_wei);
     assert_eq!(decode_word(&outcome.output[32..64]), expected_wei);
     assert_eq!(decode_word(&outcome.output[64..96]), expected_wei);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(3u64));
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(7u64));
 
@@ -1793,7 +1793,7 @@ fn callvalue_and_balance_opcodes_observe_wei() {
     assert_eq!(decode_word(&fractional.output[0..32]), 1);
     assert_eq!(decode_word(&fractional.output[32..64]), expected_wei + 1);
     assert_eq!(decode_word(&fractional.output[64..96]), expected_wei + 1);
-    assert_eq!(fractional.dust_motes, U512::one());
+    assert_eq!(fractional.supply_reduction_motes().unwrap(), U512::one());
     assert_eq!(read_balance(&mut tracking_copy, sender), U512::from(2u64));
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(7u64));
 }
@@ -1827,7 +1827,7 @@ fn signed_transaction_passes_original_wei_value_to_callvalue() {
         decode_word(&outcome.output[0..32]),
         2 * DEFAULT_WEI_PER_MOTE
     );
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::from(2u64));
 }
 
@@ -1855,13 +1855,13 @@ fn internal_one_wei_transfer_reports_one_aggregate_dust_mote() {
         .expect("one-wei internal transfer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
 }
 
 #[test]
-fn selfdestruct_after_one_wei_transfer_reports_one_dust_mote() {
+fn selfdestruct_after_one_wei_transfer_reduces_supply_by_one_mote() {
     let executor = executor(EvmSpec::Prague);
     let recipient = evm::Address::new([0x42; 20]);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
@@ -1895,7 +1895,7 @@ fn selfdestruct_after_one_wei_transfer_reports_one_dust_mote() {
         .expect("self-destructed wei and final balance remainders should aggregate into motes");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
     assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
 }
 
@@ -1931,7 +1931,7 @@ fn constructor_one_wei_transfer_then_selfdestruct_reports_one_mote_for_supply_re
     assert_eq!(read_evm_identity(&mut tracking_copy, contract), None);
     // The constructor burns 999,999,999 wei and the recipient's remaining one
     // wei is rounded down, removing one whole mote from persisted balances.
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
 }
 
 #[test]
@@ -1961,7 +1961,7 @@ fn constructor_selfdestruct_reports_whole_mote_burn_for_supply_reduction() {
     assert_eq!(read_evm_identity(&mut tracking_copy, contract), None);
     // Explicit EVM burns must reduce supply even when no fractional balance
     // remains to be rounded down.
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
 }
 
 #[test]
@@ -2000,7 +2000,7 @@ fn constructor_selfdestruct_effects_commit_to_scratch() {
         );
 
         assert_eq!(outcome.status, ExecutionStatus::Success);
-        assert_eq!(outcome.dust_motes, U512::one());
+        assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
         let contract = outcome.created_contract_address.unwrap();
         // Block execution commits effects through ScratchGlobalState, which
         // rejects prune transforms targeting keys that have never existed.
@@ -2053,7 +2053,7 @@ fn constructor_selfdestruct_reports_prefunded_balance_and_value_for_supply_reduc
         initial_motes - U512::one()
     );
     assert_eq!(read_evm_identity(&mut tracking_copy, contract), None);
-    assert_eq!(outcome.dust_motes, U512::from(5u64));
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::from(5u64));
 }
 
 #[test]
@@ -2077,7 +2077,7 @@ fn constructor_selfdestruct_to_other_beneficiary_preserves_whole_mote_value() {
     );
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(
         read_balance(&mut tracking_copy, sender),
         initial_motes - U512::one()
@@ -2115,7 +2115,7 @@ fn existing_contract_selfdestruct_to_self_preserves_balance_on_prague() {
         Vec::new(),
     );
 
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, contract), balance);
     assert_eq!(read_evm_identity(&mut tracking_copy, contract), identity);
     assert_eq!(read_code_hash(&mut tracking_copy, contract), code_hash);
@@ -2147,7 +2147,7 @@ fn existing_contract_one_wei_transfer_then_selfdestruct_reports_one_dust_mote() 
         Vec::new(),
     );
 
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
     assert_eq!(read_evm_identity(&mut tracking_copy, contract), identity);
@@ -2185,7 +2185,7 @@ fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_revert() {
     // The returned child address proves CREATE succeeded before the parent
     // reverted its child's selfdestruct and value transfer.
     assert_eq!(decode_address(&outcome.output), child);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, parent), U512::one());
     assert_eq!(read_evm_nonce(&mut tracking_copy, parent), nonce);
     assert_eq!(read_balance(&mut tracking_copy, child), U512::zero());
@@ -2222,7 +2222,7 @@ fn child_constructor_selfdestruct_burn_is_rolled_back_on_parent_halt() {
         ExecutionStatus::Halt(evm::HaltReason::InvalidFEOpcode)
     );
     assert!(outcome.output.is_empty());
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, parent), U512::one());
     assert_eq!(read_evm_nonce(&mut tracking_copy, parent), nonce);
     assert_eq!(read_balance(&mut tracking_copy, child), U512::zero());
@@ -2266,7 +2266,7 @@ fn child_constructor_selfdestruct_reports_one_mote_on_parent_success_for_create_
 
         assert_eq!(outcome.status, ExecutionStatus::Success);
         assert_eq!(decode_address(&outcome.output), child);
-        assert_eq!(outcome.dust_motes, U512::one());
+        assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
         assert_eq!(read_balance(&mut tracking_copy, parent), U512::zero());
         assert_eq!(read_evm_nonce(&mut tracking_copy, parent), nonce + 1);
         assert_eq!(read_evm_identity(&mut tracking_copy, child), None);
@@ -2340,7 +2340,7 @@ fn transfer_after_child_selfdestruct_reports_initial_and_later_value_for_supply_
     assert_eq!(decode_word(&outcome.output[32..]), 1);
     // The first mote burns in the constructor. The second is received after
     // SELFDESTRUCT and is lost when the child's purse is pruned at commit.
-    assert_eq!(outcome.dust_motes, U512::from(2u64));
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::from(2u64));
     assert_eq!(read_balance(&mut tracking_copy, parent), U512::zero());
     assert_eq!(read_evm_identity(&mut tracking_copy, child), None);
     assert_eq!(
@@ -2383,7 +2383,7 @@ fn selfdestruct_to_deleted_child_reports_all_lost_value_for_supply_reduction() {
     );
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::from(2u64));
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::from(2u64));
     assert_eq!(read_balance(&mut tracking_copy, parent), U512::zero());
     assert_eq!(read_evm_identity(&mut tracking_copy, parent), identity);
     assert_eq!(read_code_hash(&mut tracking_copy, parent), code_hash);
@@ -2461,7 +2461,7 @@ fn caught_child_selfdestruct_revert_counts_only_committed_rounding_loss() {
     assert_eq!(decode_word(&outcome.output[..32]), 0);
     // A nonzero child address proves CREATE completed before the inner revert.
     assert_eq!(decode_address(&outcome.output[32..]), child);
-    assert_eq!(outcome.dust_motes, U512::one());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
     assert_eq!(read_balance(&mut tracking_copy, parent), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
     assert_eq!(
@@ -2509,7 +2509,7 @@ fn recombined_internal_wei_produces_no_dust() {
         .expect("round-trip one-wei transfer should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(
         read_balance(&mut tracking_copy, sending_contract),
         U512::one()
@@ -2551,7 +2551,7 @@ fn reverted_and_halted_transfers_report_no_dust() {
         )
         .expect("reverting transfer should produce an outcome");
     assert_eq!(reverted.status, ExecutionStatus::Revert);
-    assert_eq!(reverted.dust_motes, U512::zero());
+    assert_eq!(reverted.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(
         read_balance(&mut tracking_copy, reverting_contract),
         U512::one()
@@ -2580,7 +2580,7 @@ fn reverted_and_halted_transfers_report_no_dust() {
         )
         .expect("halting transfer should produce an outcome");
     assert!(matches!(halted.status, ExecutionStatus::Halt(_)));
-    assert_eq!(halted.dust_motes, U512::zero());
+    assert_eq!(halted.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(
         read_balance(&mut tracking_copy, halting_contract),
         U512::one()
@@ -2657,7 +2657,7 @@ fn system_call_reports_zero_dust_for_whole_mote_state() {
         .expect("system call should execute");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_balance(&mut tracking_copy, target), U512::one());
 }
 
@@ -3298,7 +3298,7 @@ fn signed_transaction_sender_uses_linked_casper_account_identity() {
         .expect("EVM execution should succeed");
 
     assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.dust_motes, U512::zero());
+    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
     assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
     assert_eq!(
         read_balance(&mut tracking_copy, transaction.from()),

@@ -55,8 +55,8 @@ use casper_types::{
     system::{handle_payment::ARG_AMOUNT, MINT},
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, EvmTransactionError as CasperEvmTransactionError, FeeHandling,
-    Gas, InvalidTransaction, InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling,
-    Phase, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
+    Gas, InvalidTransaction, InvalidTransactionV1, Key, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
     AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
@@ -1327,12 +1327,16 @@ pub fn execute_finalized_block(
                         .map_err(|error| {
                             BlockExecutionError::TransactionConversion(error.to_string())
                         })?;
-                    // EVM balances were already rounded down by the executor. Call mint
-                    // without debiting a purse, using the same tracking copy so its supply
-                    // reduction commits with the EVM balance writes.
+                    let supply_reduction_motes =
+                        outcome.supply_reduction_motes().map_err(|error| {
+                            BlockExecutionError::EvmSupplyReduction(error.to_string())
+                        })?;
+                    // The executor already applied EVM burns and balance rounding. Call
+                    // mint without debiting a purse, using the same tracking copy so its
+                    // supply reduction commits with the EVM balance writes.
                     // TODO: Move this mint runtime setup out of block execution once the
                     // runtime refactor is complete.
-                    let execution_effects = if outcome.dust_motes.is_zero() {
+                    let execution_effects = if supply_reduction_motes.is_zero() {
                         tracking_copy.effects()
                     } else {
                         let tracking_copy = Rc::new(RefCell::new(tracking_copy));
@@ -1349,10 +1353,14 @@ pub fn execute_finalized_block(
                             phase,
                             MINT,
                         )
-                        .map_err(|error| BlockExecutionError::EvmDust(error.to_string()))?;
+                        .map_err(|error| {
+                            BlockExecutionError::EvmSupplyReduction(error.to_string())
+                        })?;
                         runtime
-                            .reduce_total_supply(outcome.dust_motes)
-                            .map_err(|error| BlockExecutionError::EvmDust(error.to_string()))?;
+                            .reduce_total_supply(supply_reduction_motes)
+                            .map_err(|error| {
+                                BlockExecutionError::EvmSupplyReduction(error.to_string())
+                            })?;
                         let effects = tracking_copy.borrow().effects();
                         effects
                     };

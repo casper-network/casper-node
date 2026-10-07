@@ -1838,11 +1838,10 @@ async fn should_not_fatally_exit_for_selfdestruct_after_one_wei_transfer() {
         ),
         U512::zero()
     );
-    // Dust is only reported by the executor for now. The fee is burned, but the discarded mote
-    // remains in total supply until a later consumer handles the outcome's dust amount.
+    // The fee and the discarded mote both reduce total supply.
     assert_eq!(
         test.get_total_supply(Some(block_height)),
-        initial_total_supply - max_fee_amount
+        initial_total_supply - max_fee_amount - U512::one()
     );
 }
 

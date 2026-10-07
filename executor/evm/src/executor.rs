@@ -163,10 +163,11 @@ impl EvmExecutor {
         let disabled_fee_transfers =
             disabled_fee_transfers(&self.config, &request, &result_and_state.result);
         state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
-        let dust_motes = state::apply(tracking_copy, state, self.config.wei_per_mote)?;
+        let balance_losses = state::apply(tracking_copy, state, self.config.wei_per_mote)?;
         Ok(ExecutionOutcome::from_revm_result(
             &result_and_state.result,
-            dust_motes,
+            balance_losses,
+            self.config.wei_per_mote,
         ))
     }
 
@@ -206,14 +207,15 @@ impl EvmExecutor {
             .map_err(map_revm_error)?
         };
 
-        let dust_motes = state::apply(
+        let balance_losses = state::apply(
             tracking_copy,
             result_and_state.state,
             self.config.wei_per_mote,
         )?;
         Ok(ExecutionOutcome::from_revm_result(
             &result_and_state.result,
-            dust_motes,
+            balance_losses,
+            self.config.wei_per_mote,
         ))
     }
 }
