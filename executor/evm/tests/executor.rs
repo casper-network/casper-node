@@ -349,6 +349,13 @@ fn one_wei_transfer_init_code(recipient: evm::Address, terminal: &[u8]) -> Vec<u
     init_code_returning(runtime)
 }
 
+fn one_wei_transfer_then_selfdestruct_init_code(recipient: evm::Address) -> Vec<u8> {
+    let mut init_code = Vec::new();
+    append_one_wei_call(&mut init_code, recipient);
+    init_code.extend([opcode::ADDRESS, opcode::SELFDESTRUCT]);
+    init_code
+}
+
 fn return_call_value_to_caller_init_code() -> Vec<u8> {
     let runtime = vec![
         opcode::PUSH1,
@@ -1794,6 +1801,45 @@ fn internal_one_wei_transfer_reports_one_aggregate_dust_mote() {
     assert_eq!(outcome.status, ExecutionStatus::Success);
     assert_eq!(outcome.dust_motes, U512::one());
     assert_eq!(read_balance(&mut tracking_copy, contract), U512::zero());
+    assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
+}
+
+#[test]
+fn selfdestruct_after_one_wei_transfer_reports_one_dust_mote() {
+    let executor = executor(EvmSpec::Prague);
+    let recipient = evm::Address::new([0x42; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let tx = TxLegacy {
+        chain_id: Some(7),
+        nonce: 0,
+        gas_price: 1,
+        gas_limit: 200_000,
+        to: TxKind::Create,
+        value: U256::from(DEFAULT_WEI_PER_MOTE),
+        input: one_wei_transfer_then_selfdestruct_init_code(recipient).into(),
+    };
+    let tx = tx.into_signed(Signature::test_signature().with_parity(true));
+    let transaction = EvmTransaction::from_signed_rlp(
+        TxEnvelope::from(tx).encoded_2718(),
+        Timestamp::zero(),
+        casper_types::TimeDiff::from_seconds(60),
+    )
+    .expect("transaction should decode");
+    seed_evm_balance(&mut tracking_copy, transaction.from(), U512::from(10u64));
+
+    let outcome = executor
+        .execute(
+            &data_access_layer,
+            &mut tracking_copy,
+            ExecuteRequest {
+                block: block(),
+                kind: ExecuteKind::Transaction(Box::new(transaction)),
+            },
+        )
+        .expect("self-destructed wei and final balance remainders should aggregate into motes");
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.dust_motes, U512::one());
     assert_eq!(read_balance(&mut tracking_copy, recipient), U512::zero());
 }
 

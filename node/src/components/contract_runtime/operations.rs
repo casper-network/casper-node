@@ -11,8 +11,9 @@ use casper_execution_engine::engine_state::{
 };
 use casper_executor_evm::{
     BlockContext as EvmBlockContext, CallRequest as EvmExecutorCallRequest,
-    CallValidation as EvmCallValidation, EvmExecutor, ExecuteKind as EvmExecuteKind,
-    ExecuteRequest as EvmExecuteRequest, ExecutionStatus as EvmExecutionStatus,
+    CallValidation as EvmCallValidation, Error as EvmExecutorError, EvmExecutor,
+    ExecuteKind as EvmExecuteKind, ExecuteRequest as EvmExecuteRequest,
+    ExecutionStatus as EvmExecutionStatus,
 };
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, types::ApprovalsHashes},
@@ -47,9 +48,10 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, InvalidTransaction, InvalidTransactionV1, Key,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, TimeDiff, Transaction,
-    TransactionEntryPoint, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, EvmTransactionError as CasperEvmTransactionError, FeeHandling,
+    Gas, InvalidTransaction, InvalidTransactionV1, Key, ProtocolVersion, PublicKey, RefundHandling,
+    StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint, AUCTION_LANE_ID,
+    MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -141,6 +143,65 @@ fn evm_consumed_gas(status: EvmExecutionStatus, gas_used: u64, gas_limit: u64) -
         EvmExecutionStatus::Success | EvmExecutionStatus::Revert => gas_used,
         EvmExecutionStatus::Halt(_) => gas_limit,
     }
+}
+
+fn evm_transaction_precondition_failure<R, S>(
+    data_access_layer: &DataAccessLayer<S>,
+    tracking_copy: &mut TrackingCopy<R>,
+    protocol_version: ProtocolVersion,
+    chainspec: &Chainspec,
+    block_context: EvmBlockContext,
+    transaction: &MetaTransaction,
+    identity_plan: EvmIdentityPlan,
+) -> Result<Option<CasperEvmTransactionError>, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    let evm_transaction = transaction
+        .as_evm()
+        .ok_or(BlockExecutionError::InvalidTransactionVariant)?;
+    // Transactions obtained while validating a proposed block do not necessarily pass through
+    // the transaction acceptor. Repeat its chainspec checks so network-reachable policy failures
+    // are recorded on the transaction instead of reaching payment or execution.
+    let block_timestamp = Timestamp::from(block_context.timestamp.saturating_mul(1_000));
+    if let Err(error) =
+        transaction.is_config_compliant(chainspec, TimeDiff::default(), block_timestamp)
+    {
+        return match error {
+            InvalidTransaction::Evm(error) => Ok(Some(error)),
+            error => Err(BlockExecutionError::TransactionConversion(
+                error.to_string(),
+            )),
+        };
+    }
+
+    // Execution applies this plan immediately before entering the EVM. Apply it
+    // only to this disposable tracking copy so validation sees the same caller
+    // identity without committing identity state for a rejected transaction.
+    apply_evm_identity_plan(tracking_copy, protocol_version, identity_plan)?;
+
+    let result = EvmExecutor::new(chainspec.evm_config.clone()).validate_transaction(
+        data_access_layer,
+        tracking_copy,
+        block_context,
+        evm_transaction,
+    );
+    let invalid_request = match result {
+        Ok(()) => return Ok(None),
+        Err(EvmExecutorError::Disabled) => CasperEvmTransactionError::Disabled,
+        Err(EvmExecutorError::MissingChainId) => CasperEvmTransactionError::MissingChainId,
+        Err(EvmExecutorError::ChainIdMismatch { expected, actual }) => {
+            CasperEvmTransactionError::ChainIdMismatch { expected, actual }
+        }
+        Err(EvmExecutorError::InvalidTransaction(error)) => error,
+        Err(EvmExecutorError::Transaction(error)) => CasperEvmTransactionError::Validation(error),
+        Err(error) => {
+            return Err(BlockExecutionError::TransactionConversion(
+                error.to_string(),
+            ))
+        }
+    };
+    Ok(Some(invalid_request))
 }
 
 #[derive(Clone, Debug)]
@@ -383,22 +444,32 @@ fn evm_account_has_nonce<R>(
 where
     R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
 {
+    Ok(evm_account_nonce(tracking_copy, address)?.is_some())
+}
+
+fn evm_account_nonce<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: EvmAddress,
+) -> Result<Option<u64>, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
     let key = Key::Evm(casper_types::EvmAddr::Nonce(address));
     match tracking_copy
         .read(&key)
         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
     {
         Some(StoredValue::CLValue(cl_value)) => {
-            let _nonce = cl_value
+            let nonce = cl_value
                 .into_t::<u64>()
                 .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            Ok(true)
+            Ok(Some(nonce))
         }
         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
             "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
             stored_value.type_name()
         ))),
-        None => Ok(false),
+        None => Ok(None),
     }
 }
 
@@ -1019,30 +1090,76 @@ pub fn execute_finalized_block(
         ));
 
         artifact_builder.with_available(post_payment_balance_result.available_balance().copied());
+        let is_valid_evm_request;
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
+            // Transactions are accepted against a shared pre-state, but execute sequentially
+            // against the evolving block state. Run all EVM transaction preconditions here so
+            // any state-dependent mismatch becomes a per-transaction failure before a payment
+            // hold or other durable effect is created. This must also precede required-balance
+            // calculation: EVM validation rejects values that cannot be represented as motes,
+            // whereas required-balance calculation cannot report a transaction-scoped error.
+            is_valid_evm_request = if let (Some(_), Some(origin_resolution)) =
+                (evm_transaction, evm_origin_resolution.as_ref())
+            {
+                let block_context = evm_block_context(
+                    chainspec,
+                    block_height,
+                    block_time,
+                    &proposer,
+                    evm_prevrandao(parent_seed),
+                );
+                let mut tracking_copy = scratch_state
+                    .tracking_copy(state_root_hash)?
+                    .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+                match evm_transaction_precondition_failure(
+                    data_access_layer,
+                    &mut tracking_copy,
+                    protocol_version,
+                    chainspec,
+                    block_context,
+                    &transaction,
+                    origin_resolution.identity_plan,
+                )? {
+                    Some(invalid_request) => {
+                        debug!(%transaction_hash, %invalid_request, "invalid EVM request");
+                        artifact_builder.with_invalid_evm_request(&invalid_request);
+                        false
+                    }
+                    None => true,
+                }
+            } else {
+                true
+            };
             // in the case of custom payment, we do all payment processing up front after checking
             // if the initiator can cover the penalty payment, and then either charge the full
             // amount in the happy path or the penalty amount in the sad path...in whichever case
             // the sad path is handled by is_penalty and the balance in the payment purse is
             // the penalty payment or the full amount but is 'sufficient' either way
             let actual_cost = artifact_builder.actual_cost(); // use actual cost here
-            let required_balance = if let Some(evm_transaction) = evm_transaction {
-                evm_transaction
-                    .required_balance(actual_cost, &chainspec.evm_config.fee_config())
-                    .ok_or_else(|| {
-                        BlockExecutionError::PaymentError(
-                            "EVM value is not an exact mote amount or value plus fee overflowed U512"
-                                .to_string(),
-                        )
-                    })?
+            let is_sufficient_balance = if is_valid_evm_request {
+                let required_balance = if let Some(evm_transaction) = evm_transaction {
+                    evm_transaction
+                        .required_balance(actual_cost, &chainspec.evm_config.fee_config())
+                        .ok_or_else(|| {
+                            BlockExecutionError::PaymentError(
+                                "EVM value is not an exact mote amount or value plus fee overflowed U512"
+                                    .to_string(),
+                            )
+                        })?
+                } else {
+                    actual_cost
+                };
+                is_custom_payment || post_payment_balance_result.is_sufficient(required_balance)
             } else {
-                actual_cost
+                // Preserve the EVM validation error already recorded on the artifact builder.
+                true
             };
-            let is_sufficient_balance =
-                is_custom_payment || post_payment_balance_result.is_sufficient(required_balance);
             let is_allowed_by_chainspec = chainspec.is_supported(lane_id);
-            let allow = is_not_penalized && is_sufficient_balance && is_allowed_by_chainspec;
+            let allow = is_not_penalized
+                && is_sufficient_balance
+                && is_allowed_by_chainspec
+                && is_valid_evm_request;
             if !allow {
                 let err_msg = {
                     if !is_sufficient_balance {
@@ -1057,9 +1174,9 @@ pub fn execute_finalized_block(
                 if artifact_builder.error_message().is_none() {
                     artifact_builder.with_error_message(err_msg);
                 }
-                info!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, "payment preprocessing unsuccessful");
+                info!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, ?is_valid_evm_request, "payment preprocessing unsuccessful");
             } else {
-                debug!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, "payment preprocessing successful");
+                debug!(%transaction_hash, ?balance_identifier, ?is_sufficient_balance, ?is_not_penalized, ?is_allowed_by_chainspec, ?is_valid_evm_request, "payment preprocessing successful");
             }
             allow
         };

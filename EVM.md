@@ -760,19 +760,10 @@ cargo build -p casper-sidecar
 `casper-devnet` checkout, not from this workspace.
 
 The devnet tool needs a custom asset named `evm` that points at the debug node
-and sidecar binaries built above, plus the local chainspec and config files
-from this workspace. Use a node config where
-`[binary_port_server].allow_request_speculative_exec = true`; the checked-in local
-config defaults this to `false`, so copy `resources/local/config.toml` and
-enable it in the copy used for this custom asset.
-
-For example:
-
-```bash
-export EVM_DEVNET_NODE_CONFIG=/tmp/casper-node-evm-devnet-config.toml
-cp "$CASPER_NODE_WORKSPACE/resources/local/config.toml" "$EVM_DEVNET_NODE_CONFIG"
-# Edit $EVM_DEVNET_NODE_CONFIG so allow_request_speculative_exec = true.
-```
+and sidecar binaries built above. Use the EVM-specific chainspec and node config
+from `resources/evm`. They enable EVM execution, addressable entities, and
+speculative execution and contain the higher temporary request limits required
+by sidecar until its caching is improved.
 
 From a separate `casper-devnet` checkout, register the asset with:
 
@@ -781,8 +772,8 @@ cd /path/to/casper-devnet
 cargo run -- assets add evm \
     --casper-node "$CASPER_NODE_WORKSPACE/target/debug/casper-node" \
     --casper-sidecar "$CASPER_SIDECAR_WORKSPACE/target/debug/casper-sidecar" \
-    --chainspec "$CASPER_NODE_WORKSPACE/resources/local/chainspec.toml" \
-    --node-config "$EVM_DEVNET_NODE_CONFIG" \
+    --chainspec "$CASPER_NODE_WORKSPACE/resources/evm/chainspec.toml" \
+    --node-config "$CASPER_NODE_WORKSPACE/resources/evm/config-example.toml" \
     --sidecar-config "$CASPER_SIDECAR_WORKSPACE/resources/example_configs/default_rpc_only_config.toml"
 ```
 
@@ -792,8 +783,8 @@ If `casper-devnet` is already installed on `PATH`, the equivalent command is:
 casper-devnet assets add evm \
     --casper-node "$CASPER_NODE_WORKSPACE/target/debug/casper-node" \
     --casper-sidecar "$CASPER_SIDECAR_WORKSPACE/target/debug/casper-sidecar" \
-    --chainspec "$CASPER_NODE_WORKSPACE/resources/local/chainspec.toml" \
-    --node-config "$EVM_DEVNET_NODE_CONFIG" \
+    --chainspec "$CASPER_NODE_WORKSPACE/resources/evm/chainspec.toml" \
+    --node-config "$CASPER_NODE_WORKSPACE/resources/evm/config-example.toml" \
     --sidecar-config "$CASPER_SIDECAR_WORKSPACE/resources/example_configs/default_rpc_only_config.toml"
 ```
 
@@ -815,8 +806,7 @@ After the `evm` asset is registered, start the network from any directory where
 the `casper-devnet` binary is available:
 
 ```bash
-casper-devnet start --custom-asset evm --force-setup \
-    --chainspec-override evm.enabled=true
+casper-devnet start --custom-asset evm --force-setup
 ```
 
 The `evm` custom asset uses the debug node binary from

@@ -1,6 +1,6 @@
 //! EVM transaction execution result types.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -26,6 +26,8 @@ use crate::{
 pub struct EvmExecutionResult {
     /// Who initiated this EVM transaction.
     pub initiator: evm::Address,
+    /// If present, the transaction failed to fully process for the stated reason.
+    pub error_message: Option<String>,
     /// The current Casper gas price used for fee accounting.
     pub current_price: u8,
     /// The maximum allowed gas limit for this transaction.
@@ -49,15 +51,17 @@ impl EvmExecutionResult {
         let limit = Gas::new(rng.gen::<u64>());
         let gas_price = rng.gen_range(1..6);
         let cost = limit.value() * U512::from(gas_price);
+        let receipt = evm::Receipt::random(rng);
         EvmExecutionResult {
             initiator: evm::Address::new(rng.gen()),
+            error_message: receipt.status.message().map(String::from),
             current_price: gas_price,
             limit,
             cost,
             refund: rng.gen::<u64>().into(),
             size_estimate: rng.gen(),
             effects: Effects::random(rng),
-            receipt: evm::Receipt::random(rng),
+            receipt,
         }
     }
 }
@@ -71,6 +75,7 @@ impl ToBytes for EvmExecutionResult {
 
     fn serialized_length(&self) -> usize {
         self.initiator.serialized_length()
+            + self.error_message.serialized_length()
             + self.current_price.serialized_length()
             + self.limit.serialized_length()
             + self.cost.serialized_length()
@@ -82,6 +87,7 @@ impl ToBytes for EvmExecutionResult {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.initiator.write_bytes(writer)?;
+        self.error_message.write_bytes(writer)?;
         self.current_price.write_bytes(writer)?;
         self.limit.write_bytes(writer)?;
         self.cost.write_bytes(writer)?;
@@ -95,6 +101,7 @@ impl ToBytes for EvmExecutionResult {
 impl FromBytes for EvmExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (initiator, remainder) = evm::Address::from_bytes(bytes)?;
+        let (error_message, remainder) = Option::<String>::from_bytes(remainder)?;
         let (current_price, remainder) = u8::from_bytes(remainder)?;
         let (limit, remainder) = Gas::from_bytes(remainder)?;
         let (cost, remainder) = U512::from_bytes(remainder)?;
@@ -105,6 +112,7 @@ impl FromBytes for EvmExecutionResult {
         Ok((
             EvmExecutionResult {
                 initiator,
+                error_message,
                 current_price,
                 limit,
                 cost,

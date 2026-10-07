@@ -74,7 +74,7 @@ fn apply_account<R>(
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    // Check how to deal with Key::Balance after selfdestruct
+    // A self-destruct removes persisted EVM state while preserving any linked Casper account.
     let address = tx::from_revm_address(address);
     let account_key = Key::Evm(EvmAddr::Account(address));
 
@@ -149,12 +149,29 @@ where
     for key in storage_keys {
         tracking_copy.prune(key);
     }
+    // A contract created and destroyed within one transaction has no persisted balance or EVM
+    // metadata to remove. Avoid emitting prunes for those missing keys: scratch-state commits
+    // reject such transforms instead of treating them as no-ops.
     if !matches!(identity, Some(account_state::AccountIdentity::Account(_))) {
-        tracking_copy.prune(Key::Balance(main_purse.addr()));
+        prune_if_exists(tracking_copy, Key::Balance(main_purse.addr()))?;
     }
-    tracking_copy.prune(account_key);
-    tracking_copy.prune(Key::Evm(EvmAddr::Nonce(address)));
-    tracking_copy.prune(Key::Evm(EvmAddr::CodeHash(address)));
+    prune_if_exists(tracking_copy, account_key)?;
+    prune_if_exists(tracking_copy, Key::Evm(EvmAddr::Nonce(address)))?;
+    prune_if_exists(tracking_copy, Key::Evm(EvmAddr::CodeHash(address)))?;
+    Ok(())
+}
+
+fn prune_if_exists<R>(tracking_copy: &mut TrackingCopy<R>, key: Key) -> Result<(), Error>
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    if tracking_copy
+        .read(&key)
+        .map_err(|error| Error::State(error.to_string()))?
+        .is_some()
+    {
+        tracking_copy.prune(key);
+    }
     Ok(())
 }
 
@@ -214,9 +231,21 @@ fn resolve_balances(
     let wei_per_mote = U512::from(wei_per_mote);
     let mut balances = AddressMap::with_capacity_and_hasher(state.len(), Default::default());
     let mut aggregate_remainder_wei = U512::zero();
+    let mut aggregate_original_balance_wei = U512::zero();
+    let mut aggregate_final_balance_wei = U512::zero();
     for (address, account) in state {
         let balance_wei = u256_to_u512(account.info.balance);
         balances.insert(*address, balance_wei / wei_per_mote);
+        aggregate_original_balance_wei = aggregate_original_balance_wei
+            .checked_add(u256_to_u512(account.original_info.balance))
+            .ok_or_else(|| {
+                Error::State("aggregate original EVM balance overflowed U512".to_string())
+            })?;
+        aggregate_final_balance_wei = aggregate_final_balance_wei
+            .checked_add(balance_wei)
+            .ok_or_else(|| {
+                Error::State("aggregate final EVM balance overflowed U512".to_string())
+            })?;
         aggregate_remainder_wei = aggregate_remainder_wei
             .checked_add(balance_wei % wei_per_mote)
             .ok_or_else(|| {
@@ -224,14 +253,32 @@ fn resolve_balances(
             })?;
     }
 
-    if aggregate_remainder_wei % wei_per_mote != U512::zero() {
+    // A self-destruct can remove wei which never appear in the final account balances. Combine
+    // that amount with the remainders discarded while converting final balances to motes. The
+    // original balances came from mote-denominated Casper purses, so the combined amount must be
+    // an exact number of motes even when neither component is independently representable.
+    let destroyed_balance_wei = aggregate_original_balance_wei
+        .checked_sub(aggregate_final_balance_wei)
+        .ok_or_else(|| {
+            Error::State(format!(
+                "aggregate EVM balance increased from {aggregate_original_balance_wei} wei to \
+                 {aggregate_final_balance_wei} wei"
+            ))
+        })?;
+    let discarded_balance_wei = aggregate_remainder_wei
+        .checked_add(destroyed_balance_wei)
+        .ok_or_else(|| {
+            Error::State("aggregate discarded EVM balance overflowed U512".to_string())
+        })?;
+
+    if discarded_balance_wei % wei_per_mote != U512::zero() {
         return Err(Error::State(format!(
-            "aggregate EVM balance remainder {aggregate_remainder_wei} wei is not divisible by \
+            "aggregate discarded EVM balance {discarded_balance_wei} wei is not divisible by \
              {wei_per_mote} wei per mote"
         )));
     }
 
-    Ok((balances, aggregate_remainder_wei / wei_per_mote))
+    Ok((balances, discarded_balance_wei / wei_per_mote))
 }
 
 #[cfg(test)]
@@ -277,7 +324,7 @@ mod tests {
         assert!(matches!(
             resolve_balances(&state, 10),
             Err(Error::State(message))
-                if message.contains("aggregate EVM balance remainder 1 wei is not divisible")
+                if message.contains("aggregate discarded EVM balance 1 wei is not divisible")
         ));
     }
 }

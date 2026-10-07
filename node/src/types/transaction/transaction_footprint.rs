@@ -62,6 +62,12 @@ impl TransactionFootprint {
                 InvalidTransactionV1::InvalidTransactionLane(lane_id),
             ));
         }
+        // A transaction fetched while validating a proposed block may not have passed through the
+        // transaction acceptor. EVM chainspec compliance does not depend on the validation time,
+        // so enforce it here before the transaction can enter a block or the transaction buffer.
+        if matches!(transaction, MetaTransaction::Evm(_)) {
+            transaction.is_config_compliant(chainspec, TimeDiff::ZERO, transaction.timestamp())?;
+        }
         let transaction_hash = transaction.hash();
         let size_estimate = transaction.size_estimate();
         let payload_hash = transaction.payload_hash();

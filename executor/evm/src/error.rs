@@ -1,7 +1,7 @@
 //! Error types returned by the Casper EVM executor.
 
 use casper_storage::{block_store::BlockStoreError, tracking_copy::TrackingCopyError};
-use casper_types::Key;
+use casper_types::{EvmTransactionError, Key};
 
 use crate::account_state::AccountStorageError;
 
@@ -40,6 +40,9 @@ pub enum Error {
     /// Failed to apply EVM state changes to the tracking copy.
     #[error("failed to apply EVM state changes: {0}")]
     State(String),
+    /// revm rejected the transaction during pre-execution validation.
+    #[error("EVM transaction validation failed: {0}")]
+    InvalidTransaction(#[source] EvmTransactionError),
 }
 
 /// Errors emitted by the revm database adapter.

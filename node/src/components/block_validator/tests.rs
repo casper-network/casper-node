@@ -1,21 +1,28 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
+use alloy_consensus::{SignableTransaction, TxEnvelope, TxLegacy};
+use alloy_eips::Encodable2718;
+use alloy_primitives::{
+    Address as AlloyAddress, Bytes as AlloyBytes, Signature as AlloySignature, TxKind,
+    U256 as AlloyU256,
+};
 use derive_more::From;
 use itertools::Itertools;
+use k256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
 use rand::Rng;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
-    BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
-    FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionHash, TransactionId, TransactionV1, TransactionV1Config, AUCTION_LANE_ID,
-    INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
+    BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, EvmTransaction,
+    ExecutableDeployItem, FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff,
+    Transaction, TransactionHash, TransactionId, TransactionV1, TransactionV1Config,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use crate::{
     components::{
         consensus::BlockContext,
-        fetcher::{self, FetchItem},
+        fetcher::{self, EmptyValidationMetadata, FetchItem},
     },
     effect::requests::StorageRequest,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
@@ -276,6 +283,37 @@ pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     } else {
         new_deploy(rng, timestamp, ttl)
     }
+}
+
+fn signed_evm_legacy_transaction(
+    chain_id: u64,
+    timestamp: Timestamp,
+    gas_price: u128,
+    value: AlloyU256,
+) -> Transaction {
+    let transaction = TxLegacy {
+        chain_id: Some(chain_id),
+        nonce: 0,
+        gas_price,
+        gas_limit: 21_000,
+        to: TxKind::Call(AlloyAddress::repeat_byte(0x22)),
+        value,
+        input: AlloyBytes::new(),
+    };
+    let signing_key =
+        SigningKey::from_slice(&[0x11; 32]).expect("test EVM private key should be valid");
+    let (signature, recovery_id) = signing_key
+        .sign_prehash(transaction.signature_hash().as_ref())
+        .expect("test EVM transaction signing should succeed");
+    let signed = transaction.into_signed(AlloySignature::from((signature, recovery_id)));
+    Transaction::from(
+        EvmTransaction::from_signed_rlp(
+            TxEnvelope::from(signed).encoded_2718(),
+            timestamp,
+            TimeDiff::from_seconds(60),
+        )
+        .expect("test EVM transaction should decode"),
+    )
 }
 
 pub(super) fn new_non_transfer(
@@ -788,6 +826,78 @@ async fn empty_block() {
     let mut rng = TestRng::new();
     let mut empty_context = ValidationContext::new().with_num_validators(&mut rng, 1);
     assert!(empty_context.proposal_is_valid(&mut rng, 1000.into()).await);
+}
+
+async fn assert_peer_fetched_evm_transaction_is_rejected(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    make_transaction: impl FnOnce(&Chainspec) -> Transaction,
+    expected_error_fragment: &str,
+) {
+    let mut context = ValidationContext::new().with_num_validators(rng, 1);
+    context.chainspec.evm_config.enabled = true;
+    let transaction = make_transaction(&context.chainspec);
+
+    // This is the validation performed when the transaction is fetched from a peer. A valid
+    // signature is not sufficient to establish chainspec compliance.
+    transaction
+        .validate(&EmptyValidationMetadata)
+        .expect("peer fetch validation should accept the signed transaction");
+
+    let mut context = context
+        .with_transactions(vec![transaction])
+        .include_all_transactions();
+    let error = context
+        .validate_proposed_block(rng, timestamp)
+        .await
+        .expect_err("block validation should reject the chainspec-incompliant EVM transaction");
+    match *error {
+        InvalidProposalError::InvalidTransaction(message) => assert!(
+            message.contains(expected_error_fragment),
+            "unexpected block validation error: {message}"
+        ),
+        error => panic!("unexpected block validation error: {error:?}"),
+    }
+}
+
+#[tokio::test]
+async fn should_reject_peer_fetched_evm_transaction_with_fractional_mote_value() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1_000);
+    assert_peer_fetched_evm_transaction_is_rejected(
+        &mut rng,
+        timestamp,
+        |chainspec| {
+            signed_evm_legacy_transaction(
+                chainspec.evm_config.chain_id,
+                timestamp,
+                chainspec.evm_config.base_fee_wei(),
+                AlloyU256::ONE,
+            )
+        },
+        "is not an exact number of motes",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn should_reject_peer_fetched_evm_transaction_with_positive_effective_priority_fee() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1_000);
+    assert_peer_fetched_evm_transaction_is_rejected(
+        &mut rng,
+        timestamp,
+        |chainspec| {
+            signed_evm_legacy_transaction(
+                chainspec.evm_config.chain_id,
+                timestamp,
+                chainspec.evm_config.base_fee_wei() + 1,
+                AlloyU256::ZERO,
+            )
+        },
+        "effective priority fee per gas 1 is unsupported",
+    )
+    .await;
 }
 
 /// Verifies that the block validator checks transaction and transfer timestamps and ttl.

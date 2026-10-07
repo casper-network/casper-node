@@ -5449,6 +5449,13 @@
             }
           ]
         },
+        "error_message": {
+          "description": "If present, the transaction failed to fully process for the stated reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "current_price": {
           "description": "The current Casper gas price used for fee accounting.",
           "type": "integer",

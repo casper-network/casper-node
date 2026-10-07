@@ -595,6 +595,8 @@ pub enum EvmTransactionError {
         /// EvmTransaction nonce.
         actual: u64,
     },
+    /// The execution engine rejected an EVM transaction precondition.
+    Validation(String),
     /// The transaction does not contain an EVM approval.
     MissingApproval,
     /// The approval is not a secp256k1 signature and public key.
@@ -721,6 +723,9 @@ impl Display for EvmTransactionError {
                     formatter,
                     "EVM transaction nonce {actual} does not match account nonce {expected}"
                 )
+            }
+            EvmTransactionError::Validation(error) => {
+                write!(formatter, "EVM transaction validation error: {error}")
             }
             EvmTransactionError::MissingApproval => formatter.write_str("missing EVM approval"),
             EvmTransactionError::NonSecp256k1Approval => {
