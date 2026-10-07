@@ -99,7 +99,7 @@ impl From<&Chainspec> for TomlChainspec {
         };
         let core = chainspec.core_config.clone();
         let transactions = chainspec.transaction_config.clone();
-        let evm = chainspec.evm_config;
+        let evm = chainspec.evm_config.clone();
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;

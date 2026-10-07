@@ -187,6 +187,7 @@ impl TransactionAcceptor {
             &input_transaction,
             self.chainspec.as_ref().core_config.pricing_handling,
             transaction_config,
+            &self.chainspec.as_ref().evm_config,
         );
         let meta_transaction = match maybe_meta_transaction {
             Ok(transaction) => transaction,

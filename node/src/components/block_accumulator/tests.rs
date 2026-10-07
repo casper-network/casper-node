@@ -16,8 +16,8 @@ use tokio::time;
 
 use casper_types::{
     generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, ChainNameDigest,
-    Chainspec, ChainspecRawBytes, FinalitySignature, FinalitySignatureV2, ProtocolVersion,
-    PublicKey, SecretKey, Signature, TestBlockBuilder, TransactionConfig, U512,
+    Chainspec, ChainspecRawBytes, EvmConfig, FinalitySignature, FinalitySignatureV2,
+    ProtocolVersion, PublicKey, SecretKey, Signature, TestBlockBuilder, TransactionConfig, U512,
 };
 use reactor::ReactorEvent;
 
@@ -208,6 +208,7 @@ impl Reactor for MockReactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();

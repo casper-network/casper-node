@@ -67,8 +67,9 @@ use casper_types::{
     execution::{execution_result_v1, ExecutionResult, ExecutionResultV1},
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockHeaderWithSignatures, BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2,
-    ChainNameDigest, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, ProtocolVersion,
-    Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionId, Transfer, U512,
+    ChainNameDigest, DeployHash, Digest, EraId, EvmConfig, ExecutionInfo, FinalitySignature,
+    ProtocolVersion, Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionId,
+    Transfer, U512,
 };
 use datasize::DataSize;
 use num_rational::Ratio;
@@ -150,6 +151,8 @@ pub struct Storage {
     chain_name_hash: ChainNameDigest,
     /// The transaction config as specified by the chainspec.
     transaction_config: TransactionConfig,
+    /// The EVM config as specified by the chainspec.
+    evm_config: EvmConfig,
     /// The utilization of blocks.
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
     /// Component initialization state.
@@ -446,6 +449,7 @@ impl Storage {
         registry: Option<&Registry>,
         force_resync: bool,
         transaction_config: TransactionConfig,
+        evm_config: EvmConfig,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
         let metrics = registry.map(Metrics::new).transpose()?;
@@ -464,6 +468,7 @@ impl Storage {
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
             transaction_config,
+            evm_config,
             state: ComponentState::Uninitialized,
             protocol_version,
             force_resync,
@@ -624,6 +629,7 @@ impl Storage {
                         }
                         let utilization = Self::calculate_block_utilization(
                             &self.transaction_config,
+                            &self.evm_config,
                             &block,
                             &map,
                         );
@@ -1028,6 +1034,7 @@ impl Storage {
                 if let Some(block) = maybe_block {
                     let utilization = Self::calculate_block_utilization(
                         &self.transaction_config,
+                        &self.evm_config,
                         &block,
                         &execution_results,
                     );
@@ -1340,8 +1347,12 @@ impl Storage {
         let era_id = block.era_id();
         let block_hash = txn.write_block(block)?;
         let _ = txn.write_approvals_hashes(approvals_hashes)?;
-        let utilization =
-            Self::calculate_block_utilization(&self.transaction_config, block, &execution_results);
+        let utilization = Self::calculate_block_utilization(
+            &self.transaction_config,
+            &self.evm_config,
+            block,
+            &execution_results,
+        );
 
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
         debug!("Utilization for block is {utilization}");
@@ -2307,12 +2318,14 @@ impl Storage {
 
     fn calculate_block_utilization(
         transaction_config_input: impl Borrow<TransactionConfig>,
+        evm_config_input: impl Borrow<EvmConfig>,
         block: &Block,
         execution_results: &HashMap<TransactionHash, ExecutionResult>,
     ) -> u64 {
         let transaction_config = transaction_config_input.borrow();
-        let block_utilization_score = block.block_utilization(transaction_config);
-        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config);
+        let evm_config = evm_config_input.borrow();
+        let block_utilization_score = block.block_utilization(transaction_config, evm_config);
+        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config, evm_config);
 
         let utilization = if has_hit_slot_limit {
             debug!("Block is at slot capacity, using slot utilization score");

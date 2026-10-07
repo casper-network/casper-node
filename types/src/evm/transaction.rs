@@ -13,7 +13,7 @@ use alloy_consensus::{
 };
 use alloy_eips::{
     eip2718::{Decodable2718, Encodable2718},
-    eip2930::AccessList,
+    eip2930::{AccessList, AccessListItem as AlloyAccessListItem},
     eip7702::{
         Authorization as AlloyAuthorization, SignedAuthorization as AlloyAuthorizationListItem,
     },
@@ -33,7 +33,7 @@ use schemars::JsonSchema;
 use serde::{de, Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
-use super::{Address, EvmConfig, Hash, HASH_LENGTH};
+use super::{Address, EvmFeeConfig, Hash, HASH_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -46,7 +46,18 @@ use crate::{
 };
 
 const TRANSACTION_KIND_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
-const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 15;
+const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 16;
+
+// Prague initial-transaction-gas parameters, matching the values revm uses
+// for the configured `EvmSpec::Prague` execution rules.
+const TX_BASE_GAS: u128 = 21_000;
+const TX_CALLDATA_TOKEN_COST: u128 = 4;
+const TX_CALLDATA_NON_ZERO_BYTE_MULTIPLIER: u128 = 4;
+const TX_ACCESS_LIST_ADDRESS_GAS: u128 = 2_400;
+const TX_ACCESS_LIST_STORAGE_KEY_GAS: u128 = 1_900;
+const TX_CREATE_GAS: u128 = 32_000;
+const TX_INITCODE_WORD_GAS: u128 = 2;
+const TX_PER_AUTHORIZATION_GAS: u128 = 25_000;
 
 const TIMESTAMP_FIELD_INDEX: u16 = 0;
 const TTL_FIELD_INDEX: u16 = 1;
@@ -67,15 +78,23 @@ const LEGACY_INPUT_FIELD_INDEX: u16 = 10;
 const LEGACY_CHAIN_ID_FIELD_INDEX: u16 = 11;
 const LEGACY_APPROVAL_FIELD_INDEX: u16 = 12;
 
+// The EIP-2930 access list is appended after the approval field so that
+// payloads written before access-list support was introduced still decode.
+// It is only written for EIP-2930 transactions; legacy transactions never
+// carry an access list.
+const LEGACY_ACCESS_LIST_FIELD_INDEX: u16 = 13;
+
 const DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX: u16 = 8;
 const DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX: u16 = 9;
 const DYNAMIC_VALUE_FIELD_INDEX: u16 = 10;
 const DYNAMIC_INPUT_FIELD_INDEX: u16 = 11;
 const DYNAMIC_CHAIN_ID_FIELD_INDEX: u16 = 12;
 const DYNAMIC_APPROVAL_FIELD_INDEX: u16 = 13;
+const DYNAMIC_ACCESS_LIST_FIELD_INDEX: u16 = 14;
 
 const EIP7702_AUTHORIZATION_LIST_FIELD_INDEX: u16 = 13;
 const EIP7702_APPROVAL_FIELD_INDEX: u16 = 14;
+const EIP7702_ACCESS_LIST_FIELD_INDEX: u16 = 15;
 
 /// Ethereum transaction type ID for legacy transactions.
 pub const LEGACY_TRANSACTION_TYPE_ID: u8 = 0;
@@ -415,6 +434,76 @@ impl FromBytes for SetCodeAuthorization {
     }
 }
 
+/// A single EIP-2930 access-list entry.
+///
+/// The entry pre-pays and pre-warms one address and a set of its storage
+/// slots for the duration of the transaction, following EIP-2929 warm/cold
+/// access accounting.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct EvmAccessListItem {
+    /// The 20-byte account or contract address being pre-warmed.
+    pub address: Address,
+    /// The 32-byte storage slot keys being pre-warmed for the address.
+    pub storage_keys: Vec<Hash>,
+}
+
+impl EvmAccessListItem {
+    fn from_alloy(value: &AlloyAccessListItem) -> Self {
+        EvmAccessListItem {
+            address: alloy_address_to_address(value.address),
+            storage_keys: value
+                .storage_keys
+                .iter()
+                .map(|key| Hash::new(key.0))
+                .collect(),
+        }
+    }
+
+    fn to_alloy(&self) -> AlloyAccessListItem {
+        AlloyAccessListItem {
+            address: to_alloy_address(self.address),
+            storage_keys: self
+                .storage_keys
+                .iter()
+                .map(|key| B256::from(key.value()))
+                .collect(),
+        }
+    }
+}
+
+impl ToBytes for EvmAccessListItem {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.address.serialized_length() + self.storage_keys.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.address.write_bytes(writer)?;
+        self.storage_keys.write_bytes(writer)
+    }
+}
+
+impl FromBytes for EvmAccessListItem {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (address, remainder) = Address::from_bytes(bytes)?;
+        let (storage_keys, remainder) = Vec::<Hash>::from_bytes(remainder)?;
+        Ok((
+            EvmAccessListItem {
+                address,
+                storage_keys,
+            },
+            remainder,
+        ))
+    }
+}
+
 /// Errors returned while decoding or validating EVM transactions.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -426,8 +515,13 @@ pub enum EvmTransactionError {
     Disabled,
     /// The transaction envelope type is not supported by this first-pass executor.
     UnsupportedTransactionType(u8),
-    /// The transaction contains an access list, which this first-pass executor does not model.
-    UnsupportedAccessList,
+    /// The transaction gas limit is lower than the intrinsic gas required before execution.
+    IntrinsicGasExceedsGasLimit {
+        /// Intrinsic gas required by the transaction.
+        intrinsic_gas: u128,
+        /// EvmTransaction gas limit.
+        gas_limit: u64,
+    },
     /// Only EIP-7702 transactions may carry a set-code authorization list.
     UnexpectedAuthorizationList,
     /// An EIP-7702 transaction must contain at least one authorization.
@@ -529,8 +623,14 @@ impl Display for EvmTransactionError {
             EvmTransactionError::UnsupportedTransactionType(kind) => {
                 write!(formatter, "unsupported EVM transaction type: {kind}")
             }
-            EvmTransactionError::UnsupportedAccessList => {
-                formatter.write_str("unsupported EVM transaction access list")
+            EvmTransactionError::IntrinsicGasExceedsGasLimit {
+                intrinsic_gas,
+                gas_limit,
+            } => {
+                write!(
+                    formatter,
+                    "EVM transaction intrinsic gas {intrinsic_gas} exceeds gas limit {gas_limit}"
+                )
             }
             EvmTransactionError::UnexpectedAuthorizationList => {
                 formatter.write_str("unexpected EVM set-code authorization list")
@@ -679,6 +779,9 @@ pub struct EvmTransaction {
     max_priority_fee_per_gas: Option<u128>,
     value: U256,
     input: Vec<u8>,
+    // EIP-2930 access-list entries. Empty for legacy transactions and for
+    // typed transactions signed without an access list.
+    access_list: Vec<EvmAccessListItem>,
     chain_id: Option<u64>,
     authorization_list: Vec<SetCodeAuthorization>,
     approval: Option<EvmApproval>,
@@ -700,6 +803,7 @@ struct EvmTransactionSerHelper<'a> {
     max_priority_fee_per_gas: Option<u128>,
     value: U256,
     input: &'a Vec<u8>,
+    access_list: &'a Vec<EvmAccessListItem>,
     chain_id: Option<u64>,
     authorization_list: &'a Vec<SetCodeAuthorization>,
     approval: &'a Option<EvmApproval>,
@@ -721,6 +825,7 @@ struct EvmTransactionDeserHelper {
     max_priority_fee_per_gas: Option<u128>,
     value: U256,
     input: Vec<u8>,
+    access_list: Vec<EvmAccessListItem>,
     chain_id: Option<u64>,
     authorization_list: Vec<SetCodeAuthorization>,
     approval: Option<EvmApproval>,
@@ -743,6 +848,7 @@ impl Serialize for EvmTransaction {
             max_priority_fee_per_gas: self.max_priority_fee_per_gas,
             value: self.value,
             input: &self.input,
+            access_list: &self.access_list,
             chain_id: self.chain_id,
             authorization_list: &self.authorization_list,
             approval: &self.approval,
@@ -769,6 +875,7 @@ impl<'de> Deserialize<'de> for EvmTransaction {
             max_priority_fee_per_gas: helper.max_priority_fee_per_gas,
             value: helper.value,
             input: helper.input,
+            access_list: helper.access_list,
             chain_id: helper.chain_id,
             authorization_list: helper.authorization_list,
             approval: helper.approval,
@@ -812,6 +919,7 @@ impl EvmTransaction {
             max_priority_fee_per_gas: None,
             value,
             input,
+            access_list: Vec::new(),
             chain_id: Some(chain_id),
             authorization_list: Vec::new(),
             approval: None,
@@ -866,7 +974,7 @@ impl EvmTransaction {
             self.gas_limit.serialized_length(),
         ];
         match self.kind {
-            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+            EvmTransactionKind::Legacy => {
                 field_lengths.extend([
                     self.gas_price.serialized_length(),
                     self.value.serialized_length(),
@@ -874,6 +982,18 @@ impl EvmTransaction {
                     self.chain_id.serialized_length(),
                     self.approval.serialized_length(),
                 ]);
+            }
+            EvmTransactionKind::Eip2930 => {
+                field_lengths.extend([
+                    self.gas_price.serialized_length(),
+                    self.value.serialized_length(),
+                    input_length,
+                    self.chain_id.serialized_length(),
+                    self.approval.serialized_length(),
+                ]);
+                if !self.access_list.is_empty() {
+                    field_lengths.push(self.access_list.serialized_length());
+                }
             }
             EvmTransactionKind::Eip1559 => {
                 field_lengths.extend([
@@ -884,6 +1004,9 @@ impl EvmTransaction {
                     self.chain_id.serialized_length(),
                     self.approval.serialized_length(),
                 ]);
+                if !self.access_list.is_empty() {
+                    field_lengths.push(self.access_list.serialized_length());
+                }
             }
             EvmTransactionKind::Eip7702 => {
                 field_lengths.extend([
@@ -895,6 +1018,9 @@ impl EvmTransaction {
                     self.authorization_list.serialized_length(),
                     self.approval.serialized_length(),
                 ]);
+                if !self.access_list.is_empty() {
+                    field_lengths.push(self.access_list.serialized_length());
+                }
             }
         }
         field_lengths
@@ -940,12 +1066,6 @@ impl EvmTransaction {
             return Err(EvmTransactionError::Decode(
                 "trailing bytes after transaction envelope".to_string(),
             ));
-        }
-        if envelope
-            .access_list()
-            .is_some_and(|access_list| !access_list.is_empty())
-        {
-            return Err(EvmTransactionError::UnsupportedAccessList);
         }
 
         let kind = if envelope.is_legacy() {
@@ -1000,6 +1120,16 @@ impl EvmTransaction {
             max_priority_fee_per_gas: envelope.max_priority_fee_per_gas(),
             value: alloy_u256_to_casper(envelope.value()),
             input: envelope.input().to_vec(),
+            access_list: envelope
+                .access_list()
+                .map(|access_list| {
+                    access_list
+                        .0
+                        .iter()
+                        .map(EvmAccessListItem::from_alloy)
+                        .collect()
+                })
+                .unwrap_or_default(),
             chain_id: envelope.chain_id(),
             authorization_list,
             approval: Some(approval),
@@ -1191,6 +1321,14 @@ impl EvmTransaction {
         &self.input
     }
 
+    /// Returns the EIP-2930 access-list entries.
+    ///
+    /// Legacy transactions and typed transactions signed without an access
+    /// list return an empty slice.
+    pub fn access_list(&self) -> &[EvmAccessListItem] {
+        &self.access_list
+    }
+
     /// Returns the Ethereum chain ID encoded in the transaction, if present.
     pub fn chain_id(&self) -> Option<u64> {
         self.chain_id
@@ -1253,19 +1391,55 @@ impl EvmTransaction {
     }
 
     /// Returns the fee amount for `gas_used`, denominated in motes.
-    pub fn fee_amount(&self, gas_used: u64, evm_config: &EvmConfig) -> Option<U512> {
-        let gas_price_wei = self.effective_gas_price(evm_config.base_fee_wei());
-        evm_config.gas_fee_motes(gas_used, gas_price_wei)
+    pub fn fee_amount(&self, gas_used: u64, fee_config: &EvmFeeConfig) -> Option<U512> {
+        let gas_price_wei = self.effective_gas_price(fee_config.base_fee_wei());
+        fee_config.gas_fee_motes(gas_used, gas_price_wei)
     }
 
     /// Returns the maximum signed fee amount that must be reserved, denominated in motes.
-    pub fn max_fee_amount(&self, evm_config: &EvmConfig) -> Option<U512> {
-        evm_config.gas_fee_motes(self.gas_limit, self.maximum_fee_per_gas())
+    pub fn max_fee_amount(&self, fee_config: &EvmFeeConfig) -> Option<U512> {
+        fee_config.gas_fee_motes(self.gas_limit, self.maximum_fee_per_gas())
+    }
+
+    /// Returns the intrinsic gas that must be available before execution can start.
+    ///
+    /// The returned `intrinsic_gas` follows the Prague initial-transaction-gas
+    /// rules: the 21,000 gas base stipend, calldata token costs,
+    /// contract-creation and EIP-3860 initcode costs, EIP-2930 access-list
+    /// prepayments of 2,400 gas per address and 1,900 gas per storage key,
+    /// and EIP-7702 authorization costs of 25,000 gas per entry.
+    ///
+    /// Node admission compares this value against the transaction gas limit so
+    /// an access list cannot introduce a transaction-validation failure during
+    /// block execution.
+    pub fn intrinsic_gas(&self) -> u128 {
+        let zero_bytes = self.input.iter().filter(|byte| **byte == 0).count() as u128;
+        let non_zero_bytes = self.input.len() as u128 - zero_bytes;
+        let tokens_in_calldata = zero_bytes + non_zero_bytes * TX_CALLDATA_NON_ZERO_BYTE_MULTIPLIER;
+
+        let access_list_addresses = self.access_list.len() as u128;
+        let access_list_storage_keys = self
+            .access_list
+            .iter()
+            .map(|item| item.storage_keys.len() as u128)
+            .sum::<u128>();
+
+        let mut intrinsic_gas = TX_BASE_GAS
+            + tokens_in_calldata * TX_CALLDATA_TOKEN_COST
+            + access_list_addresses * TX_ACCESS_LIST_ADDRESS_GAS
+            + access_list_storage_keys * TX_ACCESS_LIST_STORAGE_KEY_GAS
+            + self.authorization_list.len() as u128 * TX_PER_AUTHORIZATION_GAS;
+        if self.to.is_none() {
+            let initcode_words = (self.input.len() as u128).div_ceil(32);
+            intrinsic_gas += TX_CREATE_GAS + initcode_words * TX_INITCODE_WORD_GAS;
+        }
+
+        intrinsic_gas
     }
 
     /// Returns the balance needed for value transfer plus the supplied fee amount, in motes.
-    pub fn required_balance(&self, fee_amount: U512, evm_config: &EvmConfig) -> Option<U512> {
-        let value_motes = evm_config.value_motes(self.value)?;
+    pub fn required_balance(&self, fee_amount: U512, fee_config: &EvmFeeConfig) -> Option<U512> {
+        let value_motes = fee_config.value_motes(self.value)?;
         fee_amount.checked_add(U512::from(value_motes))
     }
 
@@ -1335,7 +1509,7 @@ impl EvmTransaction {
                 gas_limit: self.gas_limit,
                 to,
                 value,
-                access_list: AccessList::default(),
+                access_list: self.alloy_access_list(),
                 input,
             })),
             EvmTransactionKind::Eip1559 => Ok(TypedTransaction::Eip1559(TxEip1559 {
@@ -1348,7 +1522,7 @@ impl EvmTransaction {
                     .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?,
                 to,
                 value,
-                access_list: AccessList::default(),
+                access_list: self.alloy_access_list(),
                 input,
             })),
             EvmTransactionKind::Eip7702 => {
@@ -1363,7 +1537,7 @@ impl EvmTransaction {
                         .ok_or(EvmTransactionError::MissingMaxPriorityFeePerGas)?,
                     to: to_alloy_address(address),
                     value,
-                    access_list: AccessList::default(),
+                    access_list: self.alloy_access_list(),
                     authorization_list: self
                         .authorization_list
                         .iter()
@@ -1373,6 +1547,15 @@ impl EvmTransaction {
                 }))
             }
         }
+    }
+
+    fn alloy_access_list(&self) -> AccessList {
+        AccessList(
+            self.access_list
+                .iter()
+                .map(EvmAccessListItem::to_alloy)
+                .collect(),
+        )
     }
 
     fn approval_signature(
@@ -1423,7 +1606,7 @@ impl ToBytes for EvmTransaction {
             .add_field(GAS_LIMIT_FIELD_INDEX, &self.gas_limit)?;
 
         match self.kind {
-            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+            EvmTransactionKind::Legacy => {
                 let input = Bytes::from(self.input.clone());
                 builder
                     .add_field(LEGACY_GAS_PRICE_FIELD_INDEX, &self.gas_price)?
@@ -1433,9 +1616,27 @@ impl ToBytes for EvmTransaction {
                     .add_field(LEGACY_APPROVAL_FIELD_INDEX, &self.approval)?
                     .binary_payload_bytes()
             }
+            EvmTransactionKind::Eip2930 => {
+                let input = Bytes::from(self.input.clone());
+                let builder = builder
+                    .add_field(LEGACY_GAS_PRICE_FIELD_INDEX, &self.gas_price)?
+                    .add_field(LEGACY_VALUE_FIELD_INDEX, &self.value)?
+                    .add_field(LEGACY_INPUT_FIELD_INDEX, &input)?
+                    .add_field(LEGACY_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
+                    .add_field(LEGACY_APPROVAL_FIELD_INDEX, &self.approval)?;
+                // The access list is only written when non-empty so that
+                // transactions without one keep their pre-access-list byte
+                // representation.
+                let builder = if self.access_list.is_empty() {
+                    builder
+                } else {
+                    builder.add_field(LEGACY_ACCESS_LIST_FIELD_INDEX, &self.access_list)?
+                };
+                builder.binary_payload_bytes()
+            }
             EvmTransactionKind::Eip1559 => {
                 let input = Bytes::from(self.input.clone());
-                builder
+                let builder = builder
                     .add_field(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX, &self.max_fee_per_gas)?
                     .add_field(
                         DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX,
@@ -1444,12 +1645,17 @@ impl ToBytes for EvmTransaction {
                     .add_field(DYNAMIC_VALUE_FIELD_INDEX, &self.value)?
                     .add_field(DYNAMIC_INPUT_FIELD_INDEX, &input)?
                     .add_field(DYNAMIC_CHAIN_ID_FIELD_INDEX, &self.chain_id)?
-                    .add_field(DYNAMIC_APPROVAL_FIELD_INDEX, &self.approval)?
-                    .binary_payload_bytes()
+                    .add_field(DYNAMIC_APPROVAL_FIELD_INDEX, &self.approval)?;
+                let builder = if self.access_list.is_empty() {
+                    builder
+                } else {
+                    builder.add_field(DYNAMIC_ACCESS_LIST_FIELD_INDEX, &self.access_list)?
+                };
+                builder.binary_payload_bytes()
             }
             EvmTransactionKind::Eip7702 => {
                 let input = Bytes::from(self.input.clone());
-                builder
+                let builder = builder
                     .add_field(DYNAMIC_MAX_FEE_PER_GAS_FIELD_INDEX, &self.max_fee_per_gas)?
                     .add_field(
                         DYNAMIC_MAX_PRIORITY_FEE_PER_GAS_FIELD_INDEX,
@@ -1462,8 +1668,13 @@ impl ToBytes for EvmTransaction {
                         EIP7702_AUTHORIZATION_LIST_FIELD_INDEX,
                         &self.authorization_list,
                     )?
-                    .add_field(EIP7702_APPROVAL_FIELD_INDEX, &self.approval)?
-                    .binary_payload_bytes()
+                    .add_field(EIP7702_APPROVAL_FIELD_INDEX, &self.approval)?;
+                let builder = if self.access_list.is_empty() {
+                    builder
+                } else {
+                    builder.add_field(EIP7702_ACCESS_LIST_FIELD_INDEX, &self.access_list)?
+                };
+                builder.binary_payload_bytes()
             }
         }
     }
@@ -1511,7 +1722,7 @@ impl EvmTransaction {
         let (gas_limit, window) = window.deserialize_and_maybe_next::<u64>()?;
 
         let transaction = match kind {
-            EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => {
+            EvmTransactionKind::Legacy => {
                 let window = window.ok_or(bytesrepr::Error::Formatting)?;
                 window.verify_index(LEGACY_GAS_PRICE_FIELD_INDEX)?;
                 let (gas_price, window) = window.deserialize_and_maybe_next::<Option<u128>>()?;
@@ -1550,6 +1761,62 @@ impl EvmTransaction {
                     max_priority_fee_per_gas: None,
                     value,
                     input: input.into(),
+                    access_list: Vec::new(),
+                    chain_id,
+                    authorization_list: Vec::new(),
+                    approval,
+                }
+            }
+            EvmTransactionKind::Eip2930 => {
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_GAS_PRICE_FIELD_INDEX)?;
+                let (gas_price, window) = window.deserialize_and_maybe_next::<Option<u128>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_VALUE_FIELD_INDEX)?;
+                let (value, window) = window.deserialize_and_maybe_next::<U256>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_INPUT_FIELD_INDEX)?;
+                let (input, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_CHAIN_ID_FIELD_INDEX)?;
+                let (chain_id, window) = window.deserialize_and_maybe_next::<Option<u64>>()?;
+                let window = window.ok_or(bytesrepr::Error::Formatting)?;
+                window.verify_index(LEGACY_APPROVAL_FIELD_INDEX)?;
+                let (approval, window) =
+                    window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let (access_list, window) = match window {
+                    Some(access_list_window)
+                        if access_list_window.field_index() == LEGACY_ACCESS_LIST_FIELD_INDEX =>
+                    {
+                        access_list_window.deserialize_and_maybe_next::<Vec<EvmAccessListItem>>()?
+                    }
+                    // Payloads written before access-list support carry no
+                    // access-list field.
+                    _ => (Vec::new(), window),
+                };
+                if window.is_some() {
+                    return Err(bytesrepr::Error::Formatting);
+                }
+                let max_fee_per_gas = if approval.is_none() {
+                    0
+                } else {
+                    gas_price.unwrap_or_default()
+                };
+                EvmTransaction {
+                    timestamp,
+                    ttl,
+                    hash,
+                    from,
+                    kind,
+                    to,
+                    nonce,
+                    gas_limit,
+                    gas_price,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas: None,
+                    value,
+                    input: input.into(),
+                    access_list,
                     chain_id,
                     authorization_list: Vec::new(),
                     approval,
@@ -1576,6 +1843,14 @@ impl EvmTransaction {
                 window.verify_index(DYNAMIC_APPROVAL_FIELD_INDEX)?;
                 let (approval, window) =
                     window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let (access_list, window) = match window {
+                    Some(access_list_window)
+                        if access_list_window.field_index() == DYNAMIC_ACCESS_LIST_FIELD_INDEX =>
+                    {
+                        access_list_window.deserialize_and_maybe_next::<Vec<EvmAccessListItem>>()?
+                    }
+                    _ => (Vec::new(), window),
+                };
                 if window.is_some() {
                     return Err(bytesrepr::Error::Formatting);
                 }
@@ -1593,6 +1868,7 @@ impl EvmTransaction {
                     max_priority_fee_per_gas,
                     value,
                     input: input.into(),
+                    access_list,
                     chain_id,
                     authorization_list: Vec::new(),
                     approval,
@@ -1623,6 +1899,14 @@ impl EvmTransaction {
                 window.verify_index(EIP7702_APPROVAL_FIELD_INDEX)?;
                 let (approval, window) =
                     window.deserialize_and_maybe_next::<Option<EvmApproval>>()?;
+                let (access_list, window) = match window {
+                    Some(access_list_window)
+                        if access_list_window.field_index() == EIP7702_ACCESS_LIST_FIELD_INDEX =>
+                    {
+                        access_list_window.deserialize_and_maybe_next::<Vec<EvmAccessListItem>>()?
+                    }
+                    _ => (Vec::new(), window),
+                };
                 if window.is_some() {
                     return Err(bytesrepr::Error::Formatting);
                 }
@@ -1640,6 +1924,7 @@ impl EvmTransaction {
                     max_priority_fee_per_gas,
                     value,
                     input: input.into(),
+                    access_list,
                     chain_id,
                     authorization_list,
                     approval,
@@ -1858,12 +2143,7 @@ mod tests {
     #[test]
     fn dynamic_fee_reserves_signed_maximum_but_charges_effective_price() {
         let transaction = signed_eip7702_transaction();
-        let config = EvmConfig {
-            enabled: true,
-            base_fee: 1,
-            wei_per_mote: crate::DEFAULT_WEI_PER_MOTE,
-            ..Default::default()
-        };
+        let config = EvmFeeConfig::new(1, crate::DEFAULT_WEI_PER_MOTE);
 
         assert_eq!(
             transaction.maximum_fee_per_gas(),

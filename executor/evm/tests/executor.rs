@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
-use alloy_consensus::{crypto::secp256k1, SignableTransaction, TxEip7702, TxEnvelope, TxLegacy};
+use alloy_consensus::{
+    crypto::secp256k1, SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
+};
 use alloy_eips::{
     eip2718::Encodable2718,
+    eip2930::{AccessList, AccessListItem},
     eip7702::{
         Authorization as AlloyAuthorization, SignedAuthorization as AlloySignedAuthorization,
     },
@@ -116,6 +119,7 @@ fn executor(spec: EvmSpec) -> EvmExecutor {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     })
 }
 
@@ -623,6 +627,24 @@ fn eip7702_transaction(
     transaction_nonce: u64,
     input: Vec<u8>,
 ) -> (EvmTransaction, evm::Address) {
+    eip7702_transaction_with_access_list(
+        to,
+        delegate,
+        authorization_nonce,
+        transaction_nonce,
+        input,
+        AccessList::default(),
+    )
+}
+
+fn eip7702_transaction_with_access_list(
+    to: evm::Address,
+    delegate: evm::Address,
+    authorization_nonce: u64,
+    transaction_nonce: u64,
+    input: Vec<u8>,
+    access_list: AccessList,
+) -> (EvmTransaction, evm::Address) {
     let authorization = signed_authorization(delegate, authorization_nonce);
     let authority = alloy_address_to_evm(
         authorization
@@ -637,7 +659,7 @@ fn eip7702_transaction(
         max_priority_fee_per_gas: 0,
         to: to_alloy_address(to),
         value: U256::ZERO,
-        access_list: Default::default(),
+        access_list,
         authorization_list: vec![authorization],
         input: input.into(),
     };
@@ -651,6 +673,56 @@ fn eip7702_transaction(
     )
     .expect("transaction should decode");
     (transaction, authority)
+}
+
+fn eip2930_transaction(access_list: AccessList, nonce: u64) -> EvmTransaction {
+    let tx = TxEip2930 {
+        chain_id: 7,
+        nonce,
+        gas_price: 1,
+        gas_limit: 1_000_000,
+        to: TxKind::Call(AlloyAddress::from([2u8; 20])),
+        value: U256::ZERO,
+        input: Default::default(),
+        access_list,
+    };
+    let signature = secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+        .expect("transaction signing should succeed");
+    let envelope: TxEnvelope = tx.into_signed(signature).into();
+    EvmTransaction::from_signed_rlp(
+        envelope.encoded_2718(),
+        Timestamp::zero(),
+        casper_types::TimeDiff::from_seconds(60),
+    )
+    .expect("transaction should decode")
+}
+
+fn eip1559_transaction_with_access_list(
+    to: evm::Address,
+    input: Vec<u8>,
+    access_list: AccessList,
+    nonce: u64,
+) -> EvmTransaction {
+    let tx = TxEip1559 {
+        chain_id: 7,
+        nonce,
+        gas_limit: 1_000_000,
+        max_fee_per_gas: 1,
+        max_priority_fee_per_gas: 0,
+        to: TxKind::Call(to_alloy_address(to)),
+        value: U256::ZERO,
+        input: input.into(),
+        access_list,
+    };
+    let signature = secp256k1::sign_message(B256::from(SIGNING_SECRET), tx.signature_hash())
+        .expect("transaction signing should succeed");
+    let envelope: TxEnvelope = tx.into_signed(signature).into();
+    EvmTransaction::from_signed_rlp(
+        envelope.encoded_2718(),
+        Timestamp::zero(),
+        casper_types::TimeDiff::from_seconds(60),
+    )
+    .expect("transaction should decode")
 }
 
 fn signed_authorization(delegate: evm::Address, nonce: u64) -> AlloySignedAuthorization {
@@ -1232,6 +1304,127 @@ fn eip7702_delegation_persists_when_call_reverts() {
 }
 
 #[test]
+fn eip2930_access_list_prepays_intrinsic_gas() {
+    let executor = executor(EvmSpec::Prague);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+
+    let transaction = eip2930_transaction(
+        AccessList(vec![AccessListItem {
+            address: AlloyAddress::from([2u8; 20]),
+            storage_keys: vec![B256::from([3u8; 32])],
+        }]),
+        0,
+    );
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    // 21,000 base gas plus the 2,400 per-address and 1,900 per-storage-key
+    // access-list prepayments charged before execution.
+    assert_eq!(outcome.gas_used, 21_000 + 2_400 + 1_900);
+}
+
+#[test]
+fn eip1559_access_list_warms_counter_storage_slots() {
+    let executor = executor(EvmSpec::Prague);
+    let deployer = evm::Address::new([1; 20]);
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let counter = deploy(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        deployer,
+        "Counter",
+    );
+    execute_call(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        deployer,
+        Some(counter),
+        selector("increment()"),
+    );
+
+    let prewarmed = eip1559_transaction_with_access_list(
+        counter,
+        selector("get()"),
+        AccessList(vec![AccessListItem {
+            address: to_alloy_address(counter),
+            storage_keys: vec![B256::from([0u8; 32])],
+        }]),
+        0,
+    );
+    let cold =
+        eip1559_transaction_with_access_list(counter, selector("get()"), AccessList::default(), 1);
+    seed_evm_balance(
+        &mut tracking_copy,
+        prewarmed.from(),
+        U512::from(1_000_000_000u64),
+    );
+
+    let prewarmed_outcome =
+        execute_transaction(&executor, &data_access_layer, &mut tracking_copy, prewarmed);
+    let cold_outcome = execute_transaction(&executor, &data_access_layer, &mut tracking_copy, cold);
+
+    assert_eq!(prewarmed_outcome.status, ExecutionStatus::Success);
+    assert_eq!(cold_outcome.status, ExecutionStatus::Success);
+    // The access list raises intrinsic gas by 2,400 + 1,900 but turns the
+    // cold `SLOAD` (2,100 gas) into a warm read (100 gas).
+    let delta = prewarmed_outcome.gas_used as i64 - cold_outcome.gas_used as i64;
+    assert_eq!(delta, (2_400 + 1_900 - 2_100 + 100) as i64);
+}
+
+#[test]
+fn eip7702_access_list_prepays_intrinsic_gas() {
+    let executor = executor(EvmSpec::Prague);
+    let authority = authorization_authority();
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
+    let delegate = evm::Address::new([2; 20]);
+    seed_evm_code(&mut tracking_copy, delegate, vec![opcode::STOP]);
+    let (transaction, recovered_authority) = eip7702_transaction_with_access_list(
+        authority,
+        delegate,
+        0,
+        0,
+        Vec::new(),
+        AccessList(vec![AccessListItem {
+            address: to_alloy_address(delegate),
+            storage_keys: vec![B256::from([0u8; 32])],
+        }]),
+    );
+    assert_eq!(recovered_authority, authority);
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000_000u64),
+    );
+
+    let outcome = execute_transaction(
+        &executor,
+        &data_access_layer,
+        &mut tracking_copy,
+        transaction,
+    );
+
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(outcome.output, Vec::<u8>::new());
+    // 21,000 base gas, 25,000 per authorization entry, and the 2,400 +
+    // 1,900 access-list prepayments. The authority does not exist yet, so
+    // no EIP-7702 authorization refund applies.
+    assert_eq!(outcome.gas_used, 21_000 + 25_000 + 2_400 + 1_900);
+}
+
+#[test]
 fn eip7702_stale_authorization_is_skipped() {
     let executor = executor(EvmSpec::Prague);
     let deployer = evm::Address::new([1; 20]);
@@ -1472,6 +1665,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     });
     let sender = evm::Address::new([0x31; 20]);
     let recipient = evm::Address::new([0x32; 20]);
@@ -2220,6 +2414,7 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
         block_gas_limit: 30_000_000,
         base_fee: 1_000_000,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     };
     let gas_price = evm_config.base_fee_wei();
     let executor = EvmExecutor::new(evm_config);
@@ -2405,6 +2600,7 @@ fn signed_transactions_require_configured_chain_id() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: Vec::new(),
     });
     let transaction = legacy_transaction(Some(7));
     let request = ExecuteRequest {

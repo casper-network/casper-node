@@ -1188,6 +1188,7 @@ impl reactor::Reactor for MainReactor {
             Some(registry),
             config.node.force_resync,
             chainspec.transaction_config.clone(),
+            chainspec.evm_config.clone(),
         )?;
 
         let allow_handshake = config.node.sync_handling != SyncHandling::Isolated;

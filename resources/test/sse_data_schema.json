@@ -1804,6 +1804,7 @@
       "description": "An unsigned Ethereum transaction payload plus one Ethereum-style approval.",
       "type": "object",
       "required": [
+        "access_list",
         "authorization_list",
         "from",
         "gas_limit",
@@ -1884,6 +1885,12 @@
             "minimum": 0.0
           }
         },
+        "access_list": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EvmAccessListItem"
+          }
+        },
         "chain_id": {
           "type": [
             "integer",
@@ -1945,6 +1952,35 @@
     },
     "U256": {
       "description": "Decimal representation of a 256-bit integer.",
+      "type": "string"
+    },
+    "EvmAccessListItem": {
+      "description": "A single EIP-2930 access-list entry.\n\nThe entry pre-pays and pre-warms one address and a set of its storage slots for the duration of the transaction, following EIP-2929 warm/cold access accounting.",
+      "type": "object",
+      "required": [
+        "address",
+        "storage_keys"
+      ],
+      "properties": {
+        "address": {
+          "description": "The 20-byte account or contract address being pre-warmed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Address"
+            }
+          ]
+        },
+        "storage_keys": {
+          "description": "The 32-byte storage slot keys being pre-warmed for the address.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EvmHash"
+          }
+        }
+      }
+    },
+    "EvmHash": {
+      "description": "A 32-byte EVM hash encoded as 0x-prefixed hexadecimal.",
       "type": "string"
     },
     "SetCodeAuthorization": {

@@ -6,10 +6,10 @@ use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, Se
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmTransaction,
-    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
-    PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
+    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Digest, EvmConfig,
+    EvmTransaction, ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr,
+    InvalidTransaction, Phase, PricingHandling, PricingMode, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
     INSTALL_UPGRADE_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
@@ -277,6 +277,7 @@ impl MetaTransaction {
         transaction: &Transaction,
         pricing_handling: PricingHandling,
         transaction_config: &TransactionConfig,
+        evm_config: &EvmConfig,
     ) -> Result<Self, InvalidTransaction> {
         match transaction {
             Transaction::Deploy(deploy) => MetaDeploy::from_deploy(
@@ -291,8 +292,7 @@ impl MetaTransaction {
             )
             .map(MetaTransaction::V1),
             Transaction::Evm(evm) => {
-                MetaEvmTransaction::from_evm_transaction(evm, transaction_config)
-                    .map(MetaTransaction::Evm)
+                MetaEvmTransaction::from_evm_transaction(evm, evm_config).map(MetaTransaction::Evm)
             }
         }
     }
@@ -500,6 +500,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
                 transaction,
                 chainspec.core_config.pricing_handling,
                 &chainspec.transaction_config,
+                &chainspec.evm_config,
             )?;
             Ok(meta.transaction_lane())
         }
@@ -508,6 +509,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
                 transaction,
                 chainspec.core_config.pricing_handling,
                 &chainspec.transaction_config,
+                &chainspec.evm_config,
             )?;
             Ok(meta.transaction_lane())
         }
@@ -547,8 +549,12 @@ mod tests {
     use alloy_consensus::{
         SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
     };
-    use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization as AlloyAuthorization};
-    use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, U256};
+    use alloy_eips::{
+        eip2718::Encodable2718,
+        eip2930::{AccessList, AccessListItem},
+        eip7702::Authorization as AlloyAuthorization,
+    };
+    use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256};
     use casper_types::{
         evm, EvmTransactionError, InitiatorAddr, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
     };
@@ -556,7 +562,8 @@ mod tests {
     const CHAIN_ID: u64 = 7;
     const BASE_FEE: u64 = 1_000_000;
     const BASE_FEE_WEI: u128 = BASE_FEE as u128 * DEFAULT_WEI_PER_MOTE as u128;
-    const EVM_LANE: u8 = 4;
+    // An arbitrary id for a test EVM lane; the numeric value carries no special meaning.
+    const EVM_LANE: u8 = 100;
 
     #[test]
     fn evm_from_transaction_exposes_metadata() {
@@ -567,6 +574,7 @@ mod tests {
             &transaction,
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect("EVM transaction metadata should be created");
 
@@ -611,16 +619,14 @@ mod tests {
     #[test]
     fn evm_from_transaction_requires_lane() {
         let mut chainspec = chainspec();
-        chainspec
-            .transaction_config
-            .transaction_v1_config
-            .set_wasm_lanes(vec![]);
+        chainspec.evm_config.set_transaction_lanes(vec![]);
         let transaction =
             Transaction::from_evm(legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, 21_000));
         let error = MetaTransaction::from_transaction(
             &transaction,
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect_err("EVM transaction should need a lane");
         assert!(matches!(
@@ -730,6 +736,53 @@ mod tests {
 
         meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
             .expect("EIP-2930 gas price equal to base fee should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_accepts_eip2930_with_access_list() {
+        let chainspec = chainspec();
+        // Intrinsic gas: 21,000 base plus one 2,400 address and one 1,900
+        // storage key prepayment.
+        let meta = evm_meta(
+            &chainspec,
+            eip2930_transaction_with_access_list(
+                BASE_FEE_WEI,
+                21_000 + 2_400 + 1_900,
+                AccessList(vec![AccessListItem {
+                    address: AlloyAddress::from([2u8; 20]),
+                    storage_keys: vec![B256::from([3u8; 32])],
+                }]),
+            ),
+        );
+
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("access-list transaction with sufficient gas limit should be accepted");
+    }
+
+    #[test]
+    fn evm_config_compliance_rejects_access_list_intrinsic_gas_above_gas_limit() {
+        let chainspec = chainspec();
+        let meta = evm_meta(
+            &chainspec,
+            eip2930_transaction_with_access_list(
+                BASE_FEE_WEI,
+                21_000 + 2_400 + 1_900 - 1,
+                AccessList(vec![AccessListItem {
+                    address: AlloyAddress::from([2u8; 20]),
+                    storage_keys: vec![B256::from([3u8; 32])],
+                }]),
+            ),
+        );
+
+        assert!(matches!(
+            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+            Err(InvalidTransaction::Evm(
+                EvmTransactionError::IntrinsicGasExceedsGasLimit {
+                    intrinsic_gas,
+                    gas_limit
+                }
+            )) if intrinsic_gas == 21_000 + 2_400 + 1_900 && gas_limit == 21_000 + 2_400 + 1_900 - 1
+        ));
     }
 
     #[test]
@@ -1023,9 +1076,8 @@ mod tests {
         chainspec.evm_config.base_fee = BASE_FEE;
         chainspec.evm_config.block_gas_limit = 30_000_000;
         chainspec
-            .transaction_config
-            .transaction_v1_config
-            .set_wasm_lanes(vec![TransactionLaneDefinition::new(
+            .evm_config
+            .set_transaction_lanes(vec![TransactionLaneDefinition::new(
                 EVM_LANE,
                 u64::MAX,
                 10_000,
@@ -1040,6 +1092,7 @@ mod tests {
             &Transaction::from_evm(evm_transaction),
             chainspec.core_config.pricing_handling,
             &chainspec.transaction_config,
+            &chainspec.evm_config,
         )
         .expect("EVM transaction metadata should be created")
     }
@@ -1122,6 +1175,14 @@ mod tests {
     }
 
     fn eip2930_transaction(gas_price: u128, gas_limit: u64) -> EvmTransaction {
+        eip2930_transaction_with_access_list(gas_price, gas_limit, AccessList::default())
+    }
+
+    fn eip2930_transaction_with_access_list(
+        gas_price: u128,
+        gas_limit: u64,
+        access_list: AccessList,
+    ) -> EvmTransaction {
         let tx = TxEip2930 {
             chain_id: CHAIN_ID,
             nonce: 0,
@@ -1129,7 +1190,7 @@ mod tests {
             gas_limit,
             to: TxKind::Call(AlloyAddress::from([1u8; 20])),
             value: U256::ZERO,
-            access_list: Default::default(),
+            access_list,
             input: Default::default(),
         };
         signed_transaction(tx.into_signed(Signature::test_signature()).into())
@@ -1186,7 +1247,7 @@ mod proptests {
                 TransactionLaneDefinition::new(3, u64::MAX / 2, 10000, u64::MAX / 2, 10),
                 TransactionLaneDefinition::new(4, u64::MAX, 10000, u64::MAX, 10),
                 ]);
-            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config);
+            let maybe_transaction = MetaTransaction::from_transaction(&transaction, PricingHandling::PaymentLimited, &transaction_config, &EvmConfig::default());
             prop_assert!(maybe_transaction.is_ok(), "{:?}", maybe_transaction);
         }
     }

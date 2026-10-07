@@ -46,7 +46,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -97,7 +97,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -140,7 +140,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -174,7 +174,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -219,7 +219,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -264,7 +264,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 

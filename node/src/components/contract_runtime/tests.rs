@@ -13,7 +13,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, BlockHeader,
-    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmTransaction,
+    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmConfig, EvmTransaction,
     ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey,
     TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionConfig,
     TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
@@ -149,6 +149,7 @@ impl reactor::Reactor for Reactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();

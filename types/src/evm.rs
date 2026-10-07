@@ -7,8 +7,8 @@
 
 mod account;
 mod address;
-mod config;
 mod evm_addr;
+mod fee_config;
 mod hash;
 mod receipt;
 mod topic;
@@ -28,8 +28,9 @@ pub use transaction::{
 // (`casper_types::EvmFoo`), not through `casper_types::evm::EvmFoo`.
 // They are re-exported here so the rest of `casper-types` can import them
 // without going through the crate root.
-pub use config::{EvmConfig, EvmSpec, DEFAULT_WEI_PER_MOTE, MINIMUM_WEI_PER_MOTE};
 pub use evm_addr::EvmAddr;
+pub use fee_config::EvmFeeConfig;
 pub use transaction::{
-    EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash, EvmTransactionKind,
+    EvmAccessListItem, EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash,
+    EvmTransactionKind,
 };
