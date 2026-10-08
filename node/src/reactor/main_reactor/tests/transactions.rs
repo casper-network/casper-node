@@ -965,18 +965,58 @@ fn evm_coinbase_transfer_init_code() -> Vec<u8> {
     ])
 }
 
+fn evm_one_wei_transfer_init_code(recipient: evm::Address) -> Vec<u8> {
+    let mut runtime = evm_one_wei_transfer_code(recipient);
+    runtime.push(opcode::STOP);
+    evm_init_code_returning(runtime)
+}
+
+fn evm_one_wei_transfer_code(recipient: evm::Address) -> Vec<u8> {
+    let mut code = vec![
+        opcode::PUSH1,
+        0, // return size
+        opcode::PUSH1,
+        0, // return offset
+        opcode::PUSH1,
+        0, // calldata size
+        opcode::PUSH1,
+        0, // calldata offset
+        opcode::PUSH1,
+        1, // value in wei
+        opcode::PUSH20,
+    ];
+    code.extend_from_slice(recipient.as_bytes());
+    code.extend_from_slice(&[
+        opcode::PUSH2,
+        0xff,
+        0xff, // gas
+        opcode::CALL,
+        opcode::POP,
+    ]);
+    code
+}
+
 fn signed_evm_deploy_transaction(chain_id: u64) -> EvmTransaction {
     signed_evm_create_transaction(chain_id, 0, evm_log_emitting_init_code())
 }
 
 fn signed_evm_create_transaction(chain_id: u64, nonce: u64, init_code: Vec<u8>) -> EvmTransaction {
+    signed_evm_create_transaction_with_value(chain_id, nonce, 0, init_code)
+}
+
+fn signed_evm_create_transaction_with_value(
+    chain_id: u64,
+    nonce: u64,
+    value_motes: u64,
+    init_code: Vec<u8>,
+) -> EvmTransaction {
     let transaction = TxLegacy {
         chain_id: Some(chain_id),
         nonce,
         gas_price: EVM_TEST_GAS_PRICE,
         gas_limit: EVM_TEST_GAS_LIMIT,
         to: TxKind::Create,
-        value: U256::ZERO,
+        value: U256::from(value_motes) * U256::from(DEFAULT_WEI_PER_MOTE),
         input: AlloyBytes::from(init_code),
     };
     signed_evm_legacy_transaction(transaction)
@@ -1798,11 +1838,10 @@ async fn should_not_fatally_exit_for_selfdestruct_after_one_wei_transfer() {
         ),
         U512::zero()
     );
-    // Dust is only reported by the executor for now. The fee is burned, but the discarded mote
-    // remains in total supply until a later consumer handles the outcome's dust amount.
+    // The fee and the discarded mote both reduce total supply.
     assert_eq!(
         test.get_total_supply(Some(block_height)),
-        initial_total_supply - max_fee_amount
+        initial_total_supply - max_fee_amount - U512::one()
     );
 }
 
@@ -2002,6 +2041,127 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
     test.fixture
         .assert_execution_in_lane(&large_txn_hash, LARGE_LANE_ID, Duration::from_secs(10))
         .await;
+}
+
+#[tokio::test]
+async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_sender_again() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Prague,
+        block_gas_limit: 30_000_000,
+        base_fee: 1,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config.clone())
+        .with_minimum_era_height(10)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let recipient = evm::Address::new([0x56; 20]);
+    let deploy = signed_evm_create_transaction(
+        evm_config.chain_id,
+        0,
+        evm_one_wei_transfer_init_code(recipient),
+    );
+    let sender = deploy.from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+    let (_hash, deploy_height, deploy_result) =
+        test.send_transaction(Transaction::from(deploy)).await;
+    let ExecutionResult::Evm(deploy_result) = deploy_result else {
+        panic!("expected EVM deploy execution result");
+    };
+    assert_eq!(deploy_result.receipt.status, evm::ReceiptStatus::Success);
+    let contract = deploy_result
+        .receipt
+        .contract_address
+        .expect("EVM deployment should create contract");
+
+    let mut constructor = evm_one_wei_transfer_code(recipient);
+    constructor.extend([opcode::ADDRESS, opcode::SELFDESTRUCT]);
+    let transactions = [
+        // Ordinary rounding: contract and recipient each lose fractional wei.
+        signed_evm_call_transaction(evm_config.chain_id, 1, contract, 1, Vec::new()),
+        // Exact PR case: burn 999,999,999 wei and round away the remaining wei.
+        signed_evm_create_transaction_with_value(evm_config.chain_id, 2, 1, constructor),
+        // Whole-mote burn, with no balance remainder to round away.
+        signed_evm_create_transaction_with_value(
+            evm_config.chain_id,
+            3,
+            1,
+            vec![opcode::ADDRESS, opcode::SELFDESTRUCT],
+        ),
+    ];
+    let mut previous_height = deploy_height;
+    for transaction in transactions {
+        let sender_balance_before = evm_balance(&mut test.fixture, sender, previous_height);
+        let total_supply_before = test.get_total_supply(Some(previous_height));
+        let fee = transaction
+            .max_fee_amount(&evm_config.fee_config())
+            .expect("maximum EVM fee should fit");
+        let is_create = transaction.to().is_none();
+        let (_hash, height, result) = test.send_transaction(Transaction::from(transaction)).await;
+        let ExecutionResult::Evm(result) = result else {
+            panic!("expected EVM execution result");
+        };
+
+        assert_eq!(result.receipt.status, evm::ReceiptStatus::Success);
+        assert_eq!(
+            evm_balance(&mut test.fixture, sender, height),
+            sender_balance_before - fee - U512::one(),
+        );
+        assert_eq!(
+            evm_balance(&mut test.fixture, contract, height),
+            U512::zero()
+        );
+        assert_eq!(
+            evm_balance(&mut test.fixture, recipient, height),
+            U512::zero()
+        );
+        assert_eq!(
+            test.get_total_supply(Some(height)),
+            total_supply_before - U512::one(),
+        );
+        if is_create {
+            let created = result
+                .receipt
+                .contract_address
+                .expect("create should report the selfdestructed contract address");
+            let block = test.fixture.get_block_by_height(height);
+            let state_root_hash = *block.state_root_hash();
+            assert!(query_global_state(
+                &mut test.fixture,
+                state_root_hash,
+                Key::Evm(EvmAddr::Account(created)),
+            )
+            .is_none());
+            assert!(query_global_state(
+                &mut test.fixture,
+                state_root_hash,
+                Key::Balance(evm::deterministic_purse(created).addr()),
+            )
+            .is_none());
+        }
+        previous_height = height;
+    }
 }
 
 #[tokio::test]

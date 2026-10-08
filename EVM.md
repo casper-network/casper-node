@@ -445,7 +445,8 @@ When execution proceeds:
    `SELFBALANCE`, and EVM value-transfer accounting. The `BASEFEE` opcode observes
    `[evm].base_fee * [evm].wei_per_mote`, denominated in wei per EVM gas.
 7. The executor resolves final changed-account balances back to motes, reports
-   aggregate quantization dust, and runtime commits the EVM tracking-copy
+   whole-mote losses from EVM burns and quantization, and runtime reduces mint's
+   total supply by that amount on the same tracking copy before committing its
    effects into scratch global state.
 8. `ExecutionArtifactBuilder` records the EVM receipt, EVM effects, and the
    consumed amount.
@@ -564,15 +565,24 @@ read `Key::Balance(main_purse.addr())`, and multiply the result by
 `[evm].wei_per_mote` before exposing it to `revm`.
 
 After execution and removal of disabled `revm` fee transfers, the executor
-quantizes final changed-account balances once. It first computes each
-`balance_wei / wei_per_mote` and `balance_wei % wei_per_mote` without writing
-state, then checked-sums all remainders. The aggregate must be divisible by
-`wei_per_mote`; otherwise execution fails deterministically before balance
-writes. Rounded-down whole-mote balances are then persisted and
-`ExecutionOutcome.dust_motes` reports the aggregate whole-mote amount discarded
-by quantization. That outcome value is intended for a subsequent supply-burning
-step; the executor does not itself reduce total supply and the dust is not part
-of the Ethereum receipt.
+quantizes final changed-account balances once using `balance_wei / wei_per_mote`.
+Before writing state, it compares the original balances of affected Casper
+purses, scaled to wei, with final EVM balances, counting each purse once and
+accounting for selfdestruct pruning. Their checked difference tracks explicit
+EVM burns, while final purse balance remainders track rounding losses separately.
+Selfdestruct prunes only records that exist in the tracking copy: contracts
+created and destroyed within one execution may never have persisted records,
+and scratch-state commits reject pruning absent keys.
+An increase in aggregate EVM balances is rejected before state writes. Both
+loss components are kept private in `ExecutionOutcome` in wei.
+`ExecutionOutcome::supply_reduction_motes()` combines them before converting at
+the configured rate, returning an error on overflow, a zero conversion rate, or
+a combined loss that is not divisible by `wei_per_mote`.
+Final wei remainders alone do not have to sum to a whole mote because EVM
+execution may already have burned value.
+Contract runtime passes that amount to mint's `reduce_total_supply` entry point
+on the same tracking copy as the EVM state writes. The executor does not itself
+reduce total supply, and this accounting is not part of the Ethereum receipt.
 
 Genesis does not create EVM account records for Casper genesis accounts.
 Funding an EVM identity is explicit: a native Casper transfer can use a

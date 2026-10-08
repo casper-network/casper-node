@@ -1,5 +1,7 @@
 //! Translation from revm state changes into Casper tracking copy writes.
 
+use std::collections::{btree_map::Entry, BTreeMap};
+
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     KeyPrefix, TrackingCopy,
@@ -12,15 +14,22 @@ use revm::{
 
 use crate::{account_state, tx, Error};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BalanceLosses {
+    pub(crate) evm_burn_wei: U512,
+    pub(crate) rounding_loss_wei: U512,
+}
+
 pub(crate) fn apply<R>(
     tracking_copy: &mut TrackingCopy<R>,
     state: EvmState,
     wei_per_mote: u64,
-) -> Result<U512, Error>
+) -> Result<BalanceLosses, Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    let (mut balance_motes_by_address, dust_motes) = resolve_balances(&state, wei_per_mote)?;
+    let (mut balance_motes_by_address, balance_losses) =
+        resolve_balances(tracking_copy, &state, wei_per_mote)?;
 
     for (address, account) in state {
         let balance_motes = balance_motes_by_address.remove(&address).ok_or_else(|| {
@@ -30,7 +39,7 @@ where
         })?;
         apply_account(tracking_copy, address, account, balance_motes)?;
     }
-    Ok(dust_motes)
+    Ok(balance_losses)
 }
 
 pub(crate) struct DisabledFeeTransfers {
@@ -74,7 +83,6 @@ fn apply_account<R>(
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    // A self-destruct removes persisted EVM state while preserving any linked Casper account.
     let address = tx::from_revm_address(address);
     let account_key = Key::Evm(EvmAddr::Account(address));
 
@@ -147,24 +155,27 @@ where
         .get_keys_by_prefix(&KeyPrefix::EvmStorageByAddress(address))
         .map_err(|error| Error::State(error.to_string()))?;
     for key in storage_keys {
-        tracking_copy.prune(key);
+        prune_existing_key(tracking_copy, key)?;
     }
-    // A contract created and destroyed within one transaction has no persisted balance or EVM
-    // metadata to remove. Avoid emitting prunes for those missing keys: scratch-state commits
-    // reject such transforms instead of treating them as no-ops.
     if !matches!(identity, Some(account_state::AccountIdentity::Account(_))) {
-        prune_if_exists(tracking_copy, Key::Balance(main_purse.addr()))?;
+        prune_existing_key(tracking_copy, Key::Balance(main_purse.addr()))?;
     }
-    prune_if_exists(tracking_copy, account_key)?;
-    prune_if_exists(tracking_copy, Key::Evm(EvmAddr::Nonce(address)))?;
-    prune_if_exists(tracking_copy, Key::Evm(EvmAddr::CodeHash(address)))?;
+    for key in [
+        account_key,
+        Key::Evm(EvmAddr::Nonce(address)),
+        Key::Evm(EvmAddr::CodeHash(address)),
+    ] {
+        prune_existing_key(tracking_copy, key)?;
+    }
     Ok(())
 }
 
-fn prune_if_exists<R>(tracking_copy: &mut TrackingCopy<R>, key: Key) -> Result<(), Error>
+fn prune_existing_key<R>(tracking_copy: &mut TrackingCopy<R>, key: Key) -> Result<(), Error>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
+    // A contract created and destroyed in one execution may never have had
+    // persisted account records. Scratch state rejects pruning absent keys.
     if tracking_copy
         .read(&key)
         .map_err(|error| Error::State(error.to_string()))?
@@ -220,72 +231,148 @@ fn u256_to_u512(value: U256) -> U512 {
     U512::from_big_endian(&bytes)
 }
 
-fn resolve_balances(
+fn read_balance<R>(tracking_copy: &mut TrackingCopy<R>, key: Key) -> Result<U512, Error>
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    match tracking_copy
+        .read(&key)
+        .map_err(|error| Error::State(error.to_string()))?
+    {
+        Some(StoredValue::CLValue(cl_value)) => cl_value
+            .into_t::<U512>()
+            .map_err(|error| Error::State(format!("failed to decode balance at {key}: {error}"))),
+        Some(stored_value) => Err(Error::State(format!(
+            "unexpected balance at {key}: expected CLValue(U512), found {}",
+            stored_value.type_name()
+        ))),
+        None => Ok(U512::zero()),
+    }
+}
+
+fn resolve_balances<R>(
+    tracking_copy: &mut TrackingCopy<R>,
     state: &EvmState,
     wei_per_mote: u64,
-) -> Result<(AddressMap<U512>, U512), Error> {
+) -> Result<(AddressMap<U512>, BalanceLosses), Error>
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
     if wei_per_mote == 0 {
         return Err(Error::InvalidWeiPerMote);
     }
 
     let wei_per_mote = U512::from(wei_per_mote);
     let mut balances = AddressMap::with_capacity_and_hasher(state.len(), Default::default());
-    let mut aggregate_remainder_wei = U512::zero();
-    let mut aggregate_original_balance_wei = U512::zero();
-    let mut aggregate_final_balance_wei = U512::zero();
+    // Compare original Casper purse balances with final EVM balances to find
+    // burns, then account separately for wei discarded by rounding. Both
+    // components must stay in wei until their sum is converted to motes.
+    // Key by purse so shared purses are counted once and updates follow the
+    // same account iteration order as apply_account.
+    let mut purse_balances = BTreeMap::<Key, (U512, U512)>::new();
     for (address, account) in state {
         let balance_wei = u256_to_u512(account.info.balance);
-        balances.insert(*address, balance_wei / wei_per_mote);
-        aggregate_original_balance_wei = aggregate_original_balance_wei
-            .checked_add(u256_to_u512(account.original_info.balance))
-            .ok_or_else(|| {
-                Error::State("aggregate original EVM balance overflowed U512".to_string())
-            })?;
-        aggregate_final_balance_wei = aggregate_final_balance_wei
-            .checked_add(balance_wei)
-            .ok_or_else(|| {
-                Error::State("aggregate final EVM balance overflowed U512".to_string())
-            })?;
-        aggregate_remainder_wei = aggregate_remainder_wei
-            .checked_add(balance_wei % wei_per_mote)
-            .ok_or_else(|| {
-                Error::State("aggregate EVM balance remainder overflowed U512".to_string())
-            })?;
+        let balance_motes = balance_wei / wei_per_mote;
+        balances.insert(*address, balance_motes);
+
+        let address = tx::from_revm_address(*address);
+        let identity = account_state::read_account_identity(tracking_copy, address)?;
+        let main_purse = existing_main_purse(tracking_copy, address, identity)?;
+        let balance_key = Key::Balance(main_purse.addr());
+        let (_, final_balance_wei) = match purse_balances.entry(balance_key) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let original_balance = read_balance(tracking_copy, balance_key)?
+                    .checked_mul(wei_per_mote)
+                    .ok_or_else(|| {
+                        Error::State(format!("original EVM purse balance at {balance_key} overflowed U512 when scaled to wei"))
+                    })?;
+                entry.insert((original_balance, original_balance))
+            }
+        };
+
+        if account.is_selfdestructed() {
+            // prune_account leaves linked Casper main purses intact. Pruned
+            // EVM-native purses retain no value, even if revm reports a balance.
+            if !matches!(identity, Some(account_state::AccountIdentity::Account(_))) {
+                *final_balance_wei = U512::zero();
+            }
+        } else {
+            *final_balance_wei = balance_wei;
+        }
     }
 
-    // A self-destruct can remove wei which never appear in the final account balances. Combine
-    // that amount with the remainders discarded while converting final balances to motes. The
-    // original balances came from mote-denominated Casper purses, so the combined amount must be
-    // an exact number of motes even when neither component is independently representable.
-    let destroyed_balance_wei = aggregate_original_balance_wei
-        .checked_sub(aggregate_final_balance_wei)
+    let mut original_total_wei = U512::zero();
+    let mut final_total_wei = U512::zero();
+    let mut rounding_loss_wei = U512::zero();
+    for (original_balance_wei, final_balance_wei) in purse_balances.values() {
+        original_total_wei = original_total_wei
+            .checked_add(*original_balance_wei)
+            .ok_or_else(|| {
+                Error::State("aggregate original EVM purse balance overflowed U512 wei".to_string())
+            })?;
+        final_total_wei = final_total_wei
+            .checked_add(*final_balance_wei)
+            .ok_or_else(|| {
+                Error::State("aggregate final EVM purse balance overflowed U512 wei".to_string())
+            })?;
+        rounding_loss_wei = rounding_loss_wei
+            .checked_add(*final_balance_wei % wei_per_mote)
+            .ok_or_else(|| {
+                Error::State("aggregate EVM rounding loss overflowed U512 wei".to_string())
+            })?;
+    }
+    let evm_burn_wei = original_total_wei
+        .checked_sub(final_total_wei)
         .ok_or_else(|| {
             Error::State(format!(
-                "aggregate EVM balance increased from {aggregate_original_balance_wei} wei to \
-                 {aggregate_final_balance_wei} wei"
+                "EVM purse balances increased from {original_total_wei} to {final_total_wei} wei"
             ))
         })?;
-    let discarded_balance_wei = aggregate_remainder_wei
-        .checked_add(destroyed_balance_wei)
-        .ok_or_else(|| {
-            Error::State("aggregate discarded EVM balance overflowed U512".to_string())
-        })?;
-
-    if discarded_balance_wei % wei_per_mote != U512::zero() {
+    let total_loss_wei = evm_burn_wei.checked_add(rounding_loss_wei).ok_or_else(|| {
+        Error::State("aggregate EVM balance loss overflowed U512 wei".to_string())
+    })?;
+    if total_loss_wei % wei_per_mote != U512::zero() {
         return Err(Error::State(format!(
-            "aggregate discarded EVM balance {discarded_balance_wei} wei is not divisible by \
+            "aggregate EVM balance loss {total_loss_wei} wei is not divisible by \
              {wei_per_mote} wei per mote"
         )));
     }
 
-    Ok((balances, discarded_balance_wei / wei_per_mote))
+    Ok((
+        balances,
+        BalanceLosses {
+            evm_burn_wei,
+            rounding_loss_wei,
+        },
+    ))
 }
 
 #[cfg(test)]
 mod tests {
+    use casper_storage::global_state::state::{
+        lmdb::{make_temporary_global_state, LmdbGlobalStateView},
+        StateProvider,
+    };
     use revm::state::AccountInfo;
 
     use super::*;
+
+    fn tracking_copy(balances: &[u64]) -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
+        let (global_state, state_root_hash, tempdir) = make_temporary_global_state([]);
+        let reader = global_state.checkout(state_root_hash).unwrap().unwrap();
+        let mut tracking_copy = TrackingCopy::new(reader, 5, false);
+        for (index, balance) in balances.iter().enumerate() {
+            let mut address = [0u8; 20];
+            address[19] = u8::try_from(index).unwrap();
+            let purse = evm::deterministic_purse(evm::Address::new(address));
+            tracking_copy.write(
+                Key::Balance(purse.addr()),
+                StoredValue::CLValue(CLValue::from_t(U512::from(*balance)).unwrap()),
+            );
+        }
+        (tracking_copy, tempdir)
+    }
 
     fn state_with_balances(balances: &[u64]) -> EvmState {
         balances
@@ -307,24 +394,79 @@ mod tests {
     }
 
     #[test]
-    fn should_sum_all_remainders_before_converting_to_dust_motes() {
+    fn should_account_for_rounding_across_all_purses() {
+        let (mut tracking_copy, _tempdir) = tracking_copy(&[1, 0, 0]);
         let state = state_with_balances(&[8, 1, 1]);
 
-        let (balances, dust_motes) =
-            resolve_balances(&state, 10).expect("aggregate remainder should resolve");
+        let (balances, balance_losses) = resolve_balances(&mut tracking_copy, &state, 10)
+            .expect("aggregate rounding should resolve");
 
         assert!(balances.values().all(U512::is_zero));
-        assert_eq!(dust_motes, U512::one());
+        assert_eq!(balance_losses.evm_burn_wei, U512::zero());
+        assert_eq!(balance_losses.rounding_loss_wei, U512::from(10u64));
     }
 
     #[test]
-    fn should_reject_non_divisible_aggregate_remainder() {
+    fn should_account_for_burn_and_non_divisible_remainder() {
+        let (mut tracking_copy, _tempdir) = tracking_copy(&[1]);
         let state = state_with_balances(&[1]);
 
-        assert!(matches!(
-            resolve_balances(&state, 10),
-            Err(Error::State(message))
-                if message.contains("aggregate discarded EVM balance 1 wei is not divisible")
-        ));
+        let (balances, balance_losses) = resolve_balances(&mut tracking_copy, &state, 10)
+            .expect("burn and rounding should resolve together");
+
+        assert!(balances.values().all(U512::is_zero));
+        assert_eq!(balance_losses.evm_burn_wei, U512::from(9u64));
+        assert_eq!(balance_losses.rounding_loss_wei, U512::one());
+    }
+
+    #[test]
+    fn should_account_for_whole_mote_burn_without_remainder() {
+        let (mut tracking_copy, _tempdir) = tracking_copy(&[3]);
+        let state = state_with_balances(&[0]);
+
+        let (_, balance_losses) = resolve_balances(&mut tracking_copy, &state, 10)
+            .expect("whole-mote burn should resolve");
+
+        assert_eq!(balance_losses.evm_burn_wei, U512::from(30u64));
+        assert_eq!(balance_losses.rounding_loss_wei, U512::zero());
+    }
+
+    #[test]
+    fn should_count_shared_purse_once() {
+        let (mut tracking_copy, _tempdir) = tracking_copy(&[1]);
+        let state = state_with_balances(&[0, 0]);
+        let purse = evm::deterministic_purse(evm::Address::ZERO);
+        for address in state.keys() {
+            account_state::write_account_identity(
+                &mut tracking_copy,
+                tx::from_revm_address(*address),
+                Key::URef(purse),
+            )
+            .unwrap();
+        }
+
+        let balance_losses =
+            apply(&mut tracking_copy, state, 10).expect("shared purse should resolve once");
+
+        assert_eq!(balance_losses.evm_burn_wei, U512::from(10u64));
+        assert_eq!(balance_losses.rounding_loss_wei, U512::zero());
+    }
+
+    #[test]
+    fn should_reject_whole_and_fractional_balance_increase_before_writing_state() {
+        for final_balance_wei in [1, 10] {
+            let (mut tracking_copy, _tempdir) = tracking_copy(&[0]);
+            let state = state_with_balances(&[final_balance_wei]);
+            let (original_writes, original_prunes, _) = tracking_copy.fork2().destructure();
+
+            assert!(matches!(
+                apply(&mut tracking_copy, state, 10),
+                Err(Error::State(message))
+                    if message == format!("EVM purse balances increased from 0 to {final_balance_wei} wei")
+            ));
+            let (writes, prunes, _) = tracking_copy.destructure();
+            assert_eq!(writes, original_writes);
+            assert_eq!(prunes, original_prunes);
+        }
     }
 }
