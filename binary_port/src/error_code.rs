@@ -388,6 +388,9 @@ pub enum ErrorCode {
     /// EVM transaction gas limit is lower than its intrinsic gas.
     #[error("the EVM transaction intrinsic gas exceeds its gas limit")]
     InvalidTransactionEvmIntrinsicGasExceedsGasLimit = 123,
+    /// EVM gas limit exceeds the protocol transaction gas limit.
+    #[error("EVM gas limit exceeds the protocol transaction gas limit")]
+    InvalidTransactionEvmGasLimitExceedsTransactionGasLimit = 124,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -424,6 +427,9 @@ impl From<InvalidTransaction> for ErrorCode {
             InvalidTransaction::Evm(
                 EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas { .. },
             ) => ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas,
+            InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsTransactionGasLimit {
+                ..
+            }) => ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit,
             InvalidTransaction::Evm(EvmTransactionError::IntrinsicGasExceedsGasLimit {
                 ..
             }) => ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit,
@@ -618,6 +624,20 @@ mod tests {
         EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
     };
     use strum::IntoEnumIterator;
+
+    #[test]
+    fn osaka_transaction_cap_error_code_is_appended() {
+        let error =
+            InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsTransactionGasLimit {
+                gas_limit: 16_777_217,
+                transaction_gas_limit: 16_777_216,
+            });
+        assert_eq!(ErrorCode::from(error) as u16, 124);
+        assert_eq!(
+            ErrorCode::try_from(124u16).unwrap(),
+            ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit
+        );
+    }
 
     #[test]
     fn verify_all_invalid_transaction_v1_errors_have_error_codes() {

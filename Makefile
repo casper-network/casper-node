@@ -69,7 +69,7 @@ setup-evm:
 
 build-contract-evm/%: setup-evm
 	mkdir -p $(EVM_CONTRACT_TARGET_DIR)
-	solc --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
+	solc --evm-version osaka --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
 
 .PHONY: build-contracts-evm
 build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))

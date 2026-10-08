@@ -119,27 +119,27 @@ impl<'a> EvmContract<'a> {
     }
 
     fn byte_code_value(self) -> StoredValue {
-        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, self.code.to_vec()))
+        StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, self.code.to_vec()))
     }
 }
 
-fn prague_predeploys() -> [EvmContract<'static>; 2] {
+fn osaka_predeploys() -> [EvmContract<'static>; 2] {
     [EvmContract::eip4788(), EvmContract::eip2935()]
 }
 
-/// Returns whether Prague EVM predeploys should be installed for the supplied EVM config.
-pub(crate) fn should_upsert_prague_predeploys(config: &EvmConfig) -> bool {
-    config.enabled && config.spec >= EvmSpec::Prague
+/// Returns whether Osaka EVM predeploys should be installed for the supplied EVM config.
+pub(crate) fn should_upsert_osaka_predeploys(config: &EvmConfig) -> bool {
+    config.enabled && config.spec >= EvmSpec::Osaka
 }
 
-/// Idempotently installs the Prague EVM predeploys.
-pub(crate) fn upsert_prague_predeploys<R>(
+/// Idempotently installs the Osaka EVM predeploys.
+pub(crate) fn upsert_osaka_predeploys<R>(
     tracking_copy: &mut TrackingCopy<R>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    for predeploy in prague_predeploys() {
+    for predeploy in osaka_predeploys() {
         upsert_contract(tracking_copy, predeploy)?;
     }
     Ok(())
@@ -184,8 +184,8 @@ fn predeploy_entries(
 }
 
 #[cfg(test)]
-fn prague_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
-    prague_predeploys()
+fn osaka_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
+    osaka_predeploys()
         .iter()
         .copied()
         .map(predeploy_entries)
@@ -246,13 +246,13 @@ where
             tracking_copy.write(key, predeploy.byte_code_value());
         }
         Some(StoredValue::ByteCode(byte_code)) => {
-            if byte_code.kind() == ByteCodeKind::EvmPrague && byte_code.bytes() == predeploy.code {
+            if byte_code.kind() == ByteCodeKind::EvmOsaka && byte_code.bytes() == predeploy.code {
                 return Ok(());
             }
             return Err(EvmContractError::ConflictingByteCode {
                 key: Box::new(key),
                 details: format!(
-                    "expected Prague {} bytecode, found kind {} with {} bytes",
+                    "expected Osaka {} bytecode, found kind {} with {} bytes",
                     predeploy.name,
                     byte_code.kind(),
                     byte_code.bytes().len()
@@ -262,7 +262,7 @@ where
         Some(stored_value) => {
             return Err(EvmContractError::UnexpectedStoredValue {
                 key: Box::new(key),
-                expected: "StoredValue::ByteCode(EvmPrague)",
+                expected: "StoredValue::ByteCode(EvmOsaka)",
                 found: stored_value.type_name(),
             });
         }
@@ -329,21 +329,32 @@ mod tests {
     }
 
     #[test]
-    fn should_upsert_prague_predeploys_for_enabled_prague_or_later_evm() {
-        assert!(!should_upsert_prague_predeploys(&EvmConfig::default()));
+    fn should_upsert_osaka_predeploys_for_enabled_osaka_or_later_evm() {
+        assert!(!should_upsert_osaka_predeploys(&EvmConfig::default()));
+        assert!(EvmConfig::default().active_system_contracts().is_empty());
 
         let config = EvmConfig {
             enabled: true,
             ..Default::default()
         };
-        assert!(should_upsert_prague_predeploys(&config));
+        assert!(should_upsert_osaka_predeploys(&config));
+        let advertised = config.active_system_contracts();
+        assert_eq!(advertised.len(), osaka_predeploys().len());
+        assert_eq!(
+            advertised["BEACON_ROOTS_ADDRESS"],
+            EvmContract::eip4788().address
+        );
+        assert_eq!(
+            advertised["HISTORY_STORAGE_ADDRESS"],
+            EvmContract::eip2935().address
+        );
     }
 
     #[test]
-    fn upsert_creates_missing_prague_predeploys() {
+    fn upsert_creates_missing_osaka_predeploys() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
 
-        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, EvmContract::eip4788());
         assert_predeploy_present(&mut tracking_copy, EvmContract::eip2935());
@@ -359,17 +370,17 @@ mod tests {
                 .expect("code hash value should build"),
         )]);
 
-        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, predeploy);
     }
 
     #[test]
-    fn upsert_noops_when_prague_predeploys_are_present() {
+    fn upsert_noops_when_osaka_predeploys_are_present() {
         let (mut tracking_copy, _tempdir) =
-            tracking_copy(prague_predeploy_entries().expect("entries should build"));
+            tracking_copy(osaka_predeploy_entries().expect("entries should build"));
 
-        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
     }
 
     #[test]
@@ -381,7 +392,7 @@ mod tests {
             StoredValue::CLValue(CLValue::from_t(conflicting_hash).expect("hash should encode")),
         )]);
 
-        let error = upsert_prague_predeploys(&mut tracking_copy)
+        let error = upsert_osaka_predeploys(&mut tracking_copy)
             .expect_err("conflicting code hash should fail");
 
         assert!(matches!(
@@ -404,11 +415,11 @@ mod tests {
             ),
             (
                 predeploy.byte_code_key(),
-                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, vec![0xfe])),
+                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, vec![0xfe])),
             ),
         ]);
 
-        let error = upsert_prague_predeploys(&mut tracking_copy)
+        let error = upsert_osaka_predeploys(&mut tracking_copy)
             .expect_err("conflicting bytecode should fail");
 
         assert!(matches!(
@@ -427,7 +438,7 @@ mod tests {
             ),
         )]);
 
-        upsert_prague_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, predeploy);
     }
@@ -445,7 +456,7 @@ mod tests {
             ),
         )]);
 
-        let error = upsert_prague_predeploys(&mut tracking_copy)
+        let error = upsert_osaka_predeploys(&mut tracking_copy)
             .expect_err("invalid code hash value should fail");
 
         assert!(matches!(error, EvmContractError::CLValue(_)));
@@ -484,7 +495,7 @@ mod tests {
         for preinstall in test_contracts() {
             assert_predeploy_present(&mut tracking_copy, preinstall);
         }
-        for predeploy in prague_predeploys() {
+        for predeploy in osaka_predeploys() {
             assert!(tracking_copy
                 .read(&predeploy.code_hash_key())
                 .unwrap()
@@ -611,7 +622,7 @@ mod tests {
     fn upsert_preinstalls_rejects_conflicting_bytecode_or_kind() {
         let contract = test_contracts()[0];
         for bytecode in [
-            ByteCode::new(ByteCodeKind::EvmPrague, vec![0xfe]),
+            ByteCode::new(ByteCodeKind::EvmOsaka, vec![0xfe]),
             ByteCode::new(ByteCodeKind::V1CasperWasm, contract.code.to_vec()),
         ] {
             let (mut tracking_copy, _tempdir) = tracking_copy([

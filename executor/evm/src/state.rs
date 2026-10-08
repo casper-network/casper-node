@@ -103,7 +103,7 @@ where
                 Key::Evm(EvmAddr::ByteCode(tx::from_revm_hash(
                     account.info.code_hash,
                 ))),
-                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, bytes.to_vec())),
+                StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, bytes.to_vec())),
             );
         }
     }

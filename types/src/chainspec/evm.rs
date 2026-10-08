@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::TransactionLaneDefinition;
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EvmFeeConfig, U256, U512,
+    EvmFeeConfig, EvmTransactionError, EVM_TRANSACTION_GAS_LIMIT, U256, U512,
 };
 
 /// The default number of wei represented by one mote.
@@ -34,15 +34,15 @@ pub const MINIMUM_WEI_PER_MOTE: u64 = DEFAULT_WEI_PER_MOTE;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EvmSpec {
-    /// Prague.
+    /// Osaka.
     #[default]
-    Prague,
+    Osaka,
 }
 
 impl EvmSpec {
     fn tag(self) -> u8 {
         match self {
-            EvmSpec::Prague => 0,
+            EvmSpec::Osaka => 0,
         }
     }
 }
@@ -66,7 +66,7 @@ impl FromBytes for EvmSpec {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let spec = match tag {
-            0 => EvmSpec::Prague,
+            0 => EvmSpec::Osaka,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((spec, remainder))
@@ -114,7 +114,7 @@ impl Default for EvmConfig {
         EvmConfig {
             enabled: false,
             chain_id: 0,
-            spec: EvmSpec::Prague,
+            spec: EvmSpec::Osaka,
             block_gas_limit: 30_000_000,
             base_fee: 0,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -175,6 +175,28 @@ impl EvmConfig {
     /// Returns the subset of this configuration needed to price EVM transactions.
     pub fn fee_config(&self) -> EvmFeeConfig {
         EvmFeeConfig::new(self.base_fee, self.wei_per_mote)
+    }
+
+    /// Validates transaction gas against the protocol cap, then the block limit.
+    ///
+    /// Unchecked, unsigned simulations use the block limit directly instead.
+    pub fn validate_transaction_gas_limit(
+        &self,
+        gas_limit: u64,
+    ) -> Result<(), EvmTransactionError> {
+        if gas_limit > EVM_TRANSACTION_GAS_LIMIT {
+            return Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit {
+                gas_limit,
+                transaction_gas_limit: EVM_TRANSACTION_GAS_LIMIT,
+            });
+        }
+        if gas_limit > self.block_gas_limit {
+            return Err(EvmTransactionError::GasLimitExceedsBlockGasLimit {
+                gas_limit,
+                block_gas_limit: self.block_gas_limit,
+            });
+        }
+        Ok(())
     }
 
     /// Returns the EVM base fee denominated in wei.
@@ -393,7 +415,7 @@ mod tests {
         json!({
             "enabled": true,
             "chain_id": 7,
-            "spec": "prague",
+            "spec": "osaka",
             "block_gas_limit": 30_000_000,
             "base_fee": 5_000,
             "wei_per_mote": 1_000_000_000,
@@ -525,6 +547,39 @@ mod tests {
             .preinstalls
             .insert(crate::evm::Address::new([1; 20]), Bytes::new());
         assert!(EvmConfig::from_bytes(&config.to_bytes().unwrap()).is_err());
+    }
+
+    #[test]
+    fn osaka_gas_boundaries_and_error_order() {
+        let config = EvmConfig::default();
+        for gas in [EVM_TRANSACTION_GAS_LIMIT - 1, EVM_TRANSACTION_GAS_LIMIT] {
+            assert_eq!(config.validate_transaction_gas_limit(gas), Ok(()));
+        }
+        let lower_block_limit = EvmConfig {
+            block_gas_limit: 100_000,
+            ..config
+        };
+        assert!(
+            matches!(lower_block_limit.validate_transaction_gas_limit(EVM_TRANSACTION_GAS_LIMIT + 1),
+            Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit { gas_limit, transaction_gas_limit })
+            if gas_limit == EVM_TRANSACTION_GAS_LIMIT + 1 && transaction_gas_limit == EVM_TRANSACTION_GAS_LIMIT)
+        );
+        assert!(matches!(
+            lower_block_limit.validate_transaction_gas_limit(100_001),
+            Err(EvmTransactionError::GasLimitExceedsBlockGasLimit { .. })
+        ));
+        assert_eq!(
+            lower_block_limit.validate_transaction_gas_limit(100_000),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn osaka_keeps_binary_tag_and_rejects_prague_configuration() {
+        assert_eq!(EvmSpec::Osaka.to_bytes().unwrap(), vec![0]);
+        assert_eq!(EvmSpec::from_bytes(&[0]).unwrap().0, EvmSpec::Osaka);
+        assert_eq!(serde_json::to_string(&EvmSpec::Osaka).unwrap(), "\"osaka\"");
+        assert!(serde_json::from_str::<EvmSpec>("\"prague\"").is_err());
     }
 
     #[test]

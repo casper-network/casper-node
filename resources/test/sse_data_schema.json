@@ -5112,10 +5112,10 @@
           ]
         },
         {
-          "description": "Prague-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Prague EVM rules. When support for a future bytecode-affecting EVM spec is added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
+          "description": "Osaka-compatible EVM bytecode.\n\nThis variant records bytecode that is valid for the Osaka EVM rules. When support for a future bytecode-affecting EVM spec is added, introduce a new `Evm<Spec>` variant instead of changing the meaning of this one.",
           "type": "string",
           "enum": [
-            "EvmPrague"
+            "EvmOsaka"
           ]
         }
       ]
