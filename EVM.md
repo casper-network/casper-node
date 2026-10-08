@@ -66,6 +66,8 @@ Implemented in this workspace:
   history or pre-block state updates.
 - [EIP-2935][eip-2935] block-hash history predeploy and native direct-call
   lookup backed by indexed Casper block headers.
+- [Canonical utility preinstalls](#preinstalls) at their standard addresses at
+  genesis and protocol upgrade commit when EVM execution is enabled.
 
 Implemented in the sidecar workspace for validation:
 
@@ -206,6 +208,104 @@ The highest-priority smart-contract-visible gaps are request predeploy
 decisions for [EIP-7002][eip-7002] and
 [EIP-7251][eip-7251], and explicit Prague conformance coverage for
 [EIP-2537][eip-2537], [EIP-7623][eip-7623], and [EIP-7702][eip-7702].
+
+## Preinstalls
+
+Preinstalls are utility contracts whose runtime bytecode is installed directly
+at their canonical EVM addresses. When `[evm].enabled = true`, the node upserts
+them at genesis and during protocol upgrade commit, immediately after the EVM
+predeploys. No deployment transaction is required.
+
+Installation is idempotent: matching code is retained, missing code records are
+restored, and conflicting code is rejected. Existing account metadata,
+balances, nonces, and storage are preserved. The contracts are supplied by the
+network distribution in the chainspec, with one address and runtime bytecode
+pair per line:
+
+```toml
+[evm.preinstalls]
+# Address and bytecode are 0x-prefixed base16; this example installs STOP.
+"0x1111111111111111111111111111111111111111" = "0x00"
+```
+
+An omitted or empty table installs no utility contracts. The node has no
+compiled preinstall registry. Addresses must contain exactly 20 bytes, bytecode
+must be non-empty, and duplicate addresses, including differences in hex case,
+are rejected. The map is serialized in address order and included in the
+chainspec hash. All validators must receive the same finalized table before
+activation. Only runtime code is installed; constructors are not executed.
+Removing an entry in a later chainspec does not delete existing on-chain code.
+
+For the initial EVM rollout, the protocol upgrade that first enables EVM
+should contain a non-empty `[evm.preinstalls]` table with the expected contracts
+below. EntryPoint and SenderCreator must be included together. This is a
+rollout requirement: the generic installer accepts an empty table and does
+not populate the expected list automatically.
+
+The [local chainspec template](resources/local/chainspec.toml.in) contains this
+initial rollout list, each contract under its upstream license:
+
+| Preinstall | License | Canonical address | Ethereum mainnet reference |
+| --- | --- | --- | --- |
+| Multicall3 | MIT | `0xcA11bde05977b3631167028862bE2a173976CA11` | [Etherscan: Read Contract](https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11#readContract) |
+| Arachnid CREATE2 deployer | Unlicense | `0x4e59b44847b379578588920cA78FbF26c0B4956C` | [Etherscan: Code](https://etherscan.io/address/0x4e59b44847b379578588920cA78FbF26c0B4956C#code) |
+| Safe Singleton Factory | MIT | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | [Etherscan: Code](https://etherscan.io/address/0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7#code) |
+| ERC-2470 Singleton Factory | CC0-1.0 | `0xce0042B868300000d44A59004Da54A005ffdcf9f` | [Etherscan: Code](https://etherscan.io/address/0xce0042B868300000d44A59004Da54A005ffdcf9f#code) |
+| Permit2 | MIT | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | [Etherscan: Read Contract](https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#readContract) |
+| SenderCreator v0.8 | GPL-3.0 | `0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33` | [Etherscan: Read Contract](https://etherscan.io/address/0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33#readContract) |
+| EntryPoint v0.8 | GPL-3.0; OpenZeppelin dependencies: MIT | `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` | [Etherscan: Read Contract](https://etherscan.io/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108#readContract) |
+
+The Etherscan references open the same addresses on Ethereum mainnet for
+comparing bytecode, interfaces, and read results. Multicall3 aggregates
+contract calls in one EVM execution and exposes block and chain information.
+Getters such as `getChainId()`, `getBlockNumber()`, and `getBasefee()` return
+values for the network on which they execute.
+
+The Arachnid deployer is Foundry's default CREATE2 factory. Calls contain a
+32-byte salt followed by creation bytecode, and return the created address as
+20 bytes. This permits deterministic deployments using ordinary transactions
+at the configured gas price, without the factory's presigned bootstrap
+transaction. See the [upstream usage guide](https://github.com/Arachnid/deterministic-deployment-proxy).
+
+Safe Singleton Factory exposes the same raw salt/creation-code interface at
+the address used by Safe's deployment tooling. Preinstalling the factory
+provides deterministic deployment infrastructure; Safe wallet implementations
+and proxy factories are deployed separately. See the [Safe factory guide](https://github.com/safe-fndn/safe-singleton-factory).
+
+The [ERC-2470 Singleton Factory](https://eips.ethereum.org/EIPS/eip-2470)
+provides the ABI method `deploy(bytes initCode, bytes32 salt)`. It deploys via
+CREATE2 with zero value and returns an ABI-encoded address, or the zero
+address on failure. Its calldata and failure behavior differ from the two
+raw factories above.
+
+[Permit2](https://docs.uniswap.org/contracts/permit2/overview) provides shared
+ERC-20 allowance management and signature-based transfers. Tokens still need
+to authorize Permit2 through their own `approve` method. Its EIP-712 domain
+uses the executing network's chain ID and canonical Permit2 address; the
+mainnet runtime's cached domain is recomputed on other chain IDs. Allowances
+and signature nonces begin empty and are preserved through protocol upgrades.
+
+[EntryPoint v0.8](https://github.com/eth-infinitism/account-abstraction/tree/4cbc06072cdc19fd60f285c5997f4f7f57a588de)
+processes ERC-4337 UserOperations. It and SenderCreator must be installed
+together: their mainnet runtimes already contain the immutable addresses that
+link the pair, and SenderCreator authorizes only that EntryPoint. The installed
+EntryPoint recomputes its EIP-712 domain on other chain IDs and uses the
+Prague-supported transient reentrancy guard. Deposits, stakes, and nonce
+mappings begin empty and are preserved through upgrades.
+
+Bundlers, account factories, and wallet integrations require configuration for
+the network, and bundled transactions pay the configured fees.
+
+Preinstallation leaves the base fee and transaction admission rules unchanged.
+Runtime bytecode is supplied as configuration data. The chainspec retains
+source attribution, pinned references, runtime hashes, and complete upstream
+license notices beside the configured runtimes.
+
+Attribution and license notices also accompany generated chainspecs as TOML
+comments. Distributors must preserve the notices and provide the exact
+corresponding source for GPL runtimes while distributing them. Later network
+releases can extend the table with additional canonical tools; existing
+matching contracts are retained by the idempotent upsert.
 
 ## Transaction Shape
 

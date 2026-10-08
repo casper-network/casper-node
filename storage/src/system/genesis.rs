@@ -137,6 +137,8 @@ pub enum GenesisError {
     TrackingCopy(TrackingCopyError),
     /// Failed to install an EVM predeploy.
     EvmPredeploy(String),
+    /// Failed to install an EVM preinstall.
+    EvmPreinstall(String),
 }
 
 impl fmt::Display for GenesisError {

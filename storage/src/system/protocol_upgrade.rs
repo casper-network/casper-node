@@ -11,7 +11,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     global_state::state::StateProvider,
-    system::evm::{should_upsert_prague_predeploys, upsert_prague_predeploys},
+    system::evm::{should_upsert_prague_predeploys, upsert_prague_predeploys, upsert_preinstalls},
     tracking_copy::{AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
@@ -94,6 +94,9 @@ pub enum ProtocolUpgradeError {
     /// Failed to install an EVM predeploy.
     #[error("EVM predeploy error: {0}")]
     EvmPredeploy(String),
+    /// Failed to install an EVM preinstall.
+    #[error("EVM preinstall error: {0}")]
+    EvmPreinstall(String),
 }
 
 impl From<CLValueError> for ProtocolUpgradeError {
@@ -188,6 +191,7 @@ where
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
         self.handle_evm_predeploys()?;
+        self.handle_evm_preinstalls()?;
         let system_entity_addresses = self.handle_system_hashes()?;
 
         self.read_only_system_purse(system_entity_addresses.mint)?;
@@ -1708,6 +1712,18 @@ where
         if should_upsert_prague_predeploys(self.config.evm_config()) {
             upsert_prague_predeploys(&mut self.tracking_copy)
                 .map_err(|error| ProtocolUpgradeError::EvmPredeploy(error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Upsert EVM utility contract preinstalls after predeploy setup.
+    pub fn handle_evm_preinstalls(&mut self) -> Result<(), ProtocolUpgradeError> {
+        if self.config.evm_config().enabled {
+            upsert_preinstalls(
+                &mut self.tracking_copy,
+                &self.config.evm_config().preinstalls,
+            )
+            .map_err(|error| ProtocolUpgradeError::EvmPreinstall(error.to_string()))?;
         }
         Ok(())
     }
