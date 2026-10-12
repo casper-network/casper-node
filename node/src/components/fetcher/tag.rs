@@ -53,4 +53,8 @@ pub enum Tag {
     /// The execution results for a single block.
     #[display(fmt = "block execution results")]
     BlockExecutionResults,
+    /// A transaction fetched for an EVM transaction batch, identified by its hash and its
+    /// approvals hash.  Unlike [`Tag::Transaction`], the requester does not store it on arrival.
+    #[display(fmt = "batched transaction")]
+    BatchedTransaction,
 }

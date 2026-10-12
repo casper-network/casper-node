@@ -388,6 +388,9 @@ pub enum ErrorCode {
     /// EVM transaction gas limit is lower than its intrinsic gas.
     #[error("the EVM transaction intrinsic gas exceeds its gas limit")]
     InvalidTransactionEvmIntrinsicGasExceedsGasLimit = 123,
+    /// EVM transaction nonce is further ahead of the account nonce than the chainspec allows.
+    #[error("the EVM transaction nonce is too far ahead of the account nonce")]
+    InvalidTransactionEvmNonceTooFarAhead = 124,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -417,6 +420,9 @@ impl From<InvalidTransaction> for ErrorCode {
             InvalidTransaction::V1(invalid_transaction) => ErrorCode::from(invalid_transaction),
             InvalidTransaction::Evm(EvmTransactionError::InvalidNonce { .. }) => {
                 ErrorCode::InvalidTransactionEvmInvalidNonce
+            }
+            InvalidTransaction::Evm(EvmTransactionError::NonceTooFarAhead { .. }) => {
+                ErrorCode::InvalidTransactionEvmNonceTooFarAhead
             }
             InvalidTransaction::Evm(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
                 ..
@@ -664,6 +670,19 @@ mod tests {
             ErrorCode::from(error),
             ErrorCode::InvalidTransactionEvmInvalidNonce
         );
+    }
+
+    #[test]
+    fn evm_nonce_too_far_ahead_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::NonceTooFarAhead {
+            current: 0,
+            actual: 17,
+            max_nonce_gap: 16,
+        });
+        let code = ErrorCode::from(error);
+
+        assert_eq!(code, ErrorCode::InvalidTransactionEvmNonceTooFarAhead);
+        assert_eq!(code as u16, 124);
     }
 
     #[test]

@@ -43,6 +43,7 @@ use crate::{
         contract_runtime::ContractRuntime,
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
+        evm_transaction_batcher::{self, EvmTransactionBatcher},
         gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
@@ -58,7 +59,7 @@ use crate::{
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, FetchedNewBlockAnnouncement,
+            ControlAnnouncement, EvmTransactionBatcherAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
             NonExecutableBlockAnnouncement, PeerBehaviorAnnouncement,
             TransactionAcceptorAnnouncement, TransactionBufferAnnouncement,
@@ -85,7 +86,8 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
+        EvmTransactionBatchId, ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling,
+        TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -163,10 +165,13 @@ pub(crate) struct MainReactor {
     // transaction handling
     transaction_acceptor: TransactionAcceptor,
     transaction_buffer: TransactionBuffer,
+    evm_transaction_batcher: EvmTransactionBatcher,
 
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
     transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
+    evm_transaction_batch_gossiper:
+        Gossiper<{ EvmTransactionBatchId::ID_IS_COMPLETE_ITEM }, EvmTransactionBatchId>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
@@ -749,9 +754,9 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
+                source,
                 responder,
             }) => {
-                let source = Source::Client;
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source,
@@ -788,15 +793,35 @@ impl reactor::Reactor for MainReactor {
                     }
                     Source::Client | Source::PeerGossiped(_) => {
                         // we must attempt to gossip onwards
-                        effects.extend(self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
-                                item_id: transaction.gossip_id(),
-                                source,
-                                target: transaction.gossip_target(),
-                            }),
-                        ));
+                        if source.is_client() && transaction.as_evm().is_some() {
+                            // A client's EVM transactions are held briefly so a sender's
+                            // consecutive transactions can be gossiped as one batch.
+                            effects.extend(self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                MainEvent::EvmTransactionBatcher(
+                                    evm_transaction_batcher::Event::ClientTransactionAccepted(
+                                        Arc::clone(&transaction),
+                                    ),
+                                ),
+                            ));
+                        } else if self
+                            .evm_transaction_batcher
+                            .is_accepting(&transaction.hash())
+                        {
+                            // Part of a received batch, which is gossiped onwards as a whole
+                            // once all of its transactions have been accepted.
+                        } else {
+                            effects.extend(self.dispatch_event(
+                                effect_builder,
+                                rng,
+                                MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
+                                    item_id: transaction.gossip_id(),
+                                    source,
+                                    target: transaction.gossip_target(),
+                                }),
+                            ));
+                        }
                         // notify event stream
                         effects.extend(self.dispatch_event(
                             effect_builder,
@@ -862,6 +887,85 @@ impl reactor::Reactor for MainReactor {
                     transaction_buffer::Event::ReceiveTransactionGossiped(gossiped_txn_id),
                 );
                 self.dispatch_event(effect_builder, rng, reactor_event)
+            }
+            MainEvent::EvmTransactionBatcher(event) => reactor::wrap_effects(
+                MainEvent::EvmTransactionBatcher,
+                self.evm_transaction_batcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::EvmTransactionBatcherAnnouncement(
+                EvmTransactionBatcherAnnouncement::GossipTransaction {
+                    transaction_id,
+                    source,
+                },
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
+                    item_id: transaction_id,
+                    source,
+                    target: GossipTarget::All,
+                }),
+            ),
+            MainEvent::EvmTransactionBatcherAnnouncement(
+                EvmTransactionBatcherAnnouncement::GossipBatch { batch_id, source },
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::EvmTransactionBatchGossiper(gossiper::Event::ItemReceived {
+                    item_id: batch_id,
+                    source,
+                    target: GossipTarget::All,
+                }),
+            ),
+            MainEvent::EvmTransactionBatchGossiper(event) => reactor::wrap_effects(
+                MainEvent::EvmTransactionBatchGossiper,
+                self.evm_transaction_batch_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::EvmTransactionBatchGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::EvmTransactionBatchGossiper,
+                self.evm_transaction_batch_gossiper.handle_event(
+                    effect_builder,
+                    rng,
+                    incoming.into(),
+                ),
+            ),
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(
+                GossiperAnnouncement::GossipReceived { .. },
+            ) => Effects::new(),
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(
+                GossiperAnnouncement::NewCompleteItem(batch_id),
+            ) => {
+                error!(%batch_id, "gossiper should not announce new EVM transaction batch");
+                Effects::new()
+            }
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(
+                GossiperAnnouncement::NewItemBody { item, sender },
+            ) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::EvmTransactionBatcher(evm_transaction_batcher::Event::BatchAnnounced {
+                    batch_id: *item,
+                    sender,
+                }),
+            ),
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(batch_id),
+            ) => {
+                // The whole run reaches the transaction buffer together, so it can be proposed
+                // together.
+                let mut effects = Effects::new();
+                for transaction_id in batch_id.transaction_ids() {
+                    effects.extend(self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        MainEvent::TransactionBuffer(
+                            transaction_buffer::Event::ReceiveTransactionGossiped(*transaction_id),
+                        ),
+                    ));
+                }
+                effects
             }
             MainEvent::TransactionBuffer(event) => reactor::wrap_effects(
                 MainEvent::TransactionBuffer,
@@ -1065,6 +1169,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::BlockFetcherRequest(..)
             | MainEvent::TransactionFetcher(..)
             | MainEvent::TransactionFetcherRequest(..)
+            | MainEvent::BatchedTransactionFetcher(..)
+            | MainEvent::BatchedTransactionFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)
             | MainEvent::TrieOrChunkFetcher(..)
@@ -1245,6 +1351,24 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
+        // A batch's transactions are fetched before they are validated and stored, so the batch
+        // gossiper waits for both.
+        let evm_batch_fetch_deadline = evm_transaction_batcher::fetch_deadline(
+            config.fetcher.get_from_peer_timeout(),
+            config.evm_transaction_batcher.max_batch_size(),
+        );
+        let mut evm_transaction_batch_gossip_config = config.gossip;
+        evm_transaction_batch_gossip_config.validate_and_store_timeout += evm_batch_fetch_deadline;
+        let evm_transaction_batch_gossiper =
+            Gossiper::<{ EvmTransactionBatchId::ID_IS_COMPLETE_ITEM }, _>::new(
+                "evm_transaction_batch_gossiper",
+                evm_transaction_batch_gossip_config,
+                registry,
+            )?;
+        let evm_transaction_batcher = EvmTransactionBatcher::new(
+            config.evm_transaction_batcher,
+            evm_batch_fetch_deadline.into(),
+        );
         let finality_signature_gossiper = Gossiper::<
             { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
             _,
@@ -1311,9 +1435,11 @@ impl reactor::Reactor for MainReactor {
 
             block_gossiper,
             transaction_gossiper,
+            evm_transaction_batch_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             transaction_buffer,
+            evm_transaction_batcher,
             consensus,
             block_validator,
             block_accumulator,

@@ -164,10 +164,11 @@ use crate::{
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
-    FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-    PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    ControlAnnouncement, EvmTransactionBatcherAnnouncement, FatalAnnouncement,
+    FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
+    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat,
+    TransactionAcceptorAnnouncement, TransactionBufferAnnouncement, UnexecutedBlockAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use casper_storage::data_access_layer::EntryPointExistsResult;
 use diagnostics_port::DumpConsensusStateRequest;
@@ -736,6 +737,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Announces a transaction or EVM transaction batch which is ready to be gossiped.
+    pub(crate) async fn announce_evm_gossip(self, announcement: EvmTransactionBatcherAnnouncement)
+    where
+        REv: From<EvmTransactionBatcherAnnouncement>,
+    {
+        self.event_queue
+            .schedule(announcement, QueueKind::Gossip)
+            .await;
+    }
+
     /// Announces which transactions have expired.
     pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
@@ -863,9 +874,34 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
+                source: Source::Client,
                 responder,
             },
             QueueKind::Api,
+        )
+        .await
+        .map_err(Box::new)
+    }
+
+    /// Tries to accept a transaction which `sender` gossiped as part of an EVM transaction batch.
+    ///
+    /// Unlike the gossiper's own hand-off, this reports the outcome, including for a transaction
+    /// which was already stored.
+    pub(crate) async fn try_accept_gossiped_transaction(
+        self,
+        transaction: Transaction,
+        sender: NodeId,
+    ) -> Result<(), Box<transaction_acceptor::Error>>
+    where
+        REv: From<AcceptTransactionRequest>,
+    {
+        self.make_request(
+            |responder| AcceptTransactionRequest {
+                transaction,
+                source: Source::PeerGossiped(sender),
+                responder,
+            },
+            QueueKind::Gossip,
         )
         .await
         .map_err(Box::new)

@@ -1202,6 +1202,9 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
+    /// Where the transaction came from: a client, or a peer which gossiped it as part of a batch.
+    #[data_size(skip)]
+    pub(crate) source: Source,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 

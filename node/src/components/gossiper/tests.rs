@@ -49,7 +49,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{EvmTransactionBatchId, NodeId},
     utils::WithDir,
     NodeRng,
 };
@@ -115,6 +115,7 @@ impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
 impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
+impl Unhandled for GossiperIncoming<EvmTransactionBatchId> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
 impl Unhandled for TrieRequestIncoming {}
@@ -279,11 +280,12 @@ impl reactor::Reactor for Reactor {
             ),
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
+                source,
                 responder,
             }) => {
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
-                    source: Source::Client,
+                    source,
                     maybe_responder: Some(responder),
                 };
                 self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))

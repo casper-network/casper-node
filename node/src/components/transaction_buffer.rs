@@ -20,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction, TransactionHash,
-    TransactionId, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
+    evm, Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction,
+    TransactionHash, TransactionId, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use crate::{
@@ -50,6 +50,40 @@ use crate::effect::{requests::ContractRuntimeRequest, Responder};
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
+
+/// A group of proposable transactions which `appendable_block` draws from round-robin.
+///
+/// Non-EVM transactions are grouped by payload hash. EVM transactions are grouped by sender and
+/// ordered by nonce, so a proposal takes each sender's transactions lowest nonce first and the
+/// senders' runs are interleaved: senders `A = [a1, a2, a3]` and `B = [b1, b2, b3]` are proposed
+/// as `a1, b1, a2, b2, a3, b3`.
+///
+/// EVM ordering is a proposer courtesy, not a validity rule. Block validation does not check it
+/// and execution runs transactions in block order, failing (at no cost) any EVM transaction
+/// whose nonce is not the sender's next nonce at that point. The assumptions and limitations:
+///
+/// * The proposer does not read global state, so it cannot know a sender's current nonce. It
+///   starts each sender's run at the lowest nonce it holds. If that nonce is not the sender's
+///   next nonce (for example an earlier transaction was sent to a different node and has not
+///   reached this one yet), every transaction in the run fails at execution.
+/// * A run stops at the first nonce gap and at any transaction which cannot be added to the
+///   block. The rest of the run waits for a later proposal, because including it would only make
+///   it fail. Further transactions reusing an already proposed nonce are left out, since only one
+///   transaction per nonce can succeed; the run continues past them.
+/// * Blocks execute lane by lane in lane id order. A run also stops if a transaction would land
+///   in a lower lane id than the one before it, since it would then execute first.
+/// * A sender's transactions which are held by an earlier, not yet executed proposal are not
+///   proposable here; the run starts after them on the assumption that proposal is finalized
+///   first. If it is not, the later transactions can fail.
+/// * Transactions are only ordered if this node holds them when it proposes. Submitting a
+///   sender's transactions to the same node within a short time, so they are gossiped together,
+///   is what makes them likely to share a block. Transactions sent out of order, or to different
+///   nodes, can still end up failing; that is a limitation of running EVM transactions on Casper.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum ProposalBucket {
+    Payload(Digest),
+    EvmSender(evm::Address),
+}
 
 #[derive(DataSize, Debug)]
 pub(crate) struct TransactionBuffer {
@@ -406,15 +440,30 @@ impl TransactionBuffer {
     fn buckets(
         &mut self,
         current_era_gas_price: u8,
-    ) -> HashMap<&Digest, Vec<(TransactionHash, &TransactionFootprint)>> {
+    ) -> HashMap<ProposalBucket, Vec<(TransactionHash, &TransactionFootprint)>> {
         let proposable = self.proposable(current_era_gas_price);
 
         let mut buckets: HashMap<_, Vec<_>> = HashMap::new();
         for (transaction_hash, footprint) in proposable {
+            let bucket = match footprint.evm_sender_nonce() {
+                Some((sender, _)) => ProposalBucket::EvmSender(sender),
+                None => ProposalBucket::Payload(*footprint.payload_hash()),
+            };
             buckets
-                .entry(footprint.payload_hash())
-                .and_modify(|vec| vec.push((*transaction_hash, footprint)))
-                .or_insert(vec![(*transaction_hash, footprint)]);
+                .entry(bucket)
+                .or_default()
+                .push((*transaction_hash, footprint));
+        }
+        // Buckets are drained with `pop`, so EVM buckets are sorted by descending nonce to yield
+        // the lowest nonce first. Ties are broken by hash to keep the order deterministic.
+        for (bucket, transactions) in buckets.iter_mut() {
+            if let ProposalBucket::EvmSender(_) = bucket {
+                transactions.sort_by(|(lhs_hash, lhs), (rhs_hash, rhs)| {
+                    let lhs_nonce = lhs.evm_sender_nonce().map(|(_, nonce)| nonce);
+                    let rhs_nonce = rhs.evm_sender_nonce().map(|(_, nonce)| nonce);
+                    (rhs_nonce, rhs_hash).cmp(&(lhs_nonce, lhs_hash))
+                });
+            }
         }
         buckets
     }
@@ -462,6 +511,8 @@ impl TransactionBuffer {
 
         let mut buckets = self.buckets(current_era_gas_price);
         let mut payload_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
+        // The last nonce and lane proposed for each EVM sender in this proposal.
+        let mut evm_runs: HashMap<evm::Address, (u64, u8)> = HashMap::new();
 
         while let Some(payload_hash) = payload_hashes_queue.pop_front() {
             if Timestamp::now() > request_expiry {
@@ -478,7 +529,7 @@ impl TransactionBuffer {
             }
 
             let Some((transaction_hash, footprint)) =
-                buckets.get_mut(payload_hash).and_then(Vec::<_>::pop)
+                buckets.get_mut(&payload_hash).and_then(Vec::<_>::pop)
             else {
                 continue;
             };
@@ -487,16 +538,51 @@ impl TransactionBuffer {
             // next pass
             payload_hashes_queue.push_back(payload_hash);
 
-            if footprint.is_mint() && have_hit_mint_limit {
-                continue;
+            // Once an EVM transaction is left out, the rest of its sender's run would execute out
+            // of sequence, so the run is dropped from this proposal.
+            let evm_sender_nonce = footprint.evm_sender_nonce();
+            let mut end_evm_run = || {
+                if let Some(bucket) = buckets.get_mut(&payload_hash) {
+                    bucket.clear();
+                }
+            };
+            if let Some((sender, nonce)) = evm_sender_nonce {
+                let continues_run = match evm_runs.get(&sender) {
+                    Some((last_nonce, _)) if nonce <= *last_nonce => {
+                        debug!(
+                            %transaction_hash,
+                            %sender,
+                            nonce,
+                            "TransactionBuffer: skipping EVM transaction with already proposed nonce"
+                        );
+                        continue;
+                    }
+                    Some((last_nonce, last_lane)) => {
+                        last_nonce.checked_add(1) == Some(nonce)
+                            && footprint.lane_id() >= *last_lane
+                    }
+                    None => true,
+                };
+                if !continues_run {
+                    debug!(
+                        %transaction_hash,
+                        %sender,
+                        nonce,
+                        "TransactionBuffer: EVM transaction does not continue its sender's run"
+                    );
+                    end_evm_run();
+                    continue;
+                }
             }
-            if footprint.is_install_upgrade() && have_hit_install_upgrade_limit {
-                continue;
-            }
-            if footprint.is_auction() && have_hit_auction_limit {
-                continue;
-            }
-            if footprint.is_wasm_based() && have_hit_wasm_limit {
+
+            if (footprint.is_mint() && have_hit_mint_limit)
+                || (footprint.is_install_upgrade() && have_hit_install_upgrade_limit)
+                || (footprint.is_auction() && have_hit_auction_limit)
+                || (footprint.is_wasm_based() && have_hit_wasm_limit)
+            {
+                if evm_sender_nonce.is_some() {
+                    end_evm_run();
+                }
                 continue;
             }
 
@@ -505,8 +591,14 @@ impl TransactionBuffer {
                 Ok(_) => {
                     debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
                     holds.insert(transaction_hash);
+                    if let Some((sender, nonce)) = evm_sender_nonce {
+                        evm_runs.insert(sender, (nonce, footprint.lane_id()));
+                    }
                 }
                 Err(error) => {
+                    if evm_sender_nonce.is_some() {
+                        end_evm_run();
+                    }
                     match error {
                         AddError::Duplicate => {
                             // it should be physically impossible for a duplicate transaction or

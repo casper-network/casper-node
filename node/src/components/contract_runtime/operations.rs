@@ -443,17 +443,7 @@ where
     }
 }
 
-fn evm_account_has_nonce<R>(
-    tracking_copy: &mut TrackingCopy<R>,
-    address: EvmAddress,
-) -> Result<bool, BlockExecutionError>
-where
-    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
-{
-    Ok(evm_account_nonce(tracking_copy, address)?.is_some())
-}
-
-fn evm_account_nonce<R>(
+fn read_evm_nonce<R>(
     tracking_copy: &mut TrackingCopy<R>,
     address: EvmAddress,
 ) -> Result<Option<u64>, BlockExecutionError>
@@ -465,18 +455,26 @@ where
         .read(&key)
         .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?
     {
-        Some(StoredValue::CLValue(cl_value)) => {
-            let nonce = cl_value
-                .into_t::<u64>()
-                .map_err(|error| BlockExecutionError::PaymentError(error.to_string()))?;
-            Ok(Some(nonce))
-        }
+        Some(StoredValue::CLValue(cl_value)) => cl_value
+            .into_t::<u64>()
+            .map(Some)
+            .map_err(|error| BlockExecutionError::PaymentError(error.to_string())),
         Some(stored_value) => Err(BlockExecutionError::PaymentError(format!(
             "unexpected stored value for {key}: expected StoredValue::CLValue(u64), found {}",
             stored_value.type_name()
         ))),
         None => Ok(None),
     }
+}
+
+fn evm_account_has_nonce<R>(
+    tracking_copy: &mut TrackingCopy<R>,
+    address: EvmAddress,
+) -> Result<bool, BlockExecutionError>
+where
+    R: StateReader<Key, StoredValue, Error = casper_storage::global_state::error::Error>,
+{
+    Ok(read_evm_nonce(tracking_copy, address)?.is_some())
 }
 
 fn account_main_purse<R>(
@@ -857,6 +855,39 @@ pub fn execute_finalized_block(
                 min_cost,
             )
         };
+
+        // EVM transactions only execute when their nonce is exactly the sender's next nonce.
+        // The acceptor admits future nonces (up to `evm.max_nonce_gap`) and proposers are
+        // trusted, not required, to order a sender's transactions by nonce. Execution follows
+        // block order as-is, so a transaction that arrives here out of sequence (a gap, a
+        // duplicate, or a misordered proposal) is failed without being charged or touching
+        // state, instead of reaching revm's nonce check.
+        if let Some(evm_transaction) = evm_transaction {
+            let expected = {
+                let mut tracking_copy = scratch_state
+                    .tracking_copy(state_root_hash)?
+                    .ok_or(BlockExecutionError::RootNotFound(state_root_hash))?;
+                read_evm_nonce(&mut tracking_copy, evm_transaction.from())?.unwrap_or(0)
+            };
+            let actual = evm_transaction.nonce();
+            if actual != expected {
+                info!(
+                    %transaction_hash,
+                    sender = %evm_transaction.from(),
+                    "EVM transaction failed: {}",
+                    CasperEvmTransactionError::InvalidNonce { expected, actual }
+                );
+                let effective_gas_price =
+                    evm_transaction.effective_gas_price(chainspec.evm_config.base_fee_wei());
+                artifact_builder.with_zero_cost().with_evm_receipt(
+                    evm_precondition_receipt(effective_gas_price),
+                    U512::zero(),
+                    Effects::new(),
+                );
+                artifacts.push(artifact_builder.build());
+                continue;
+            }
+        }
 
         let is_standard_payment = transaction.is_standard_payment();
         let is_custom_payment = !is_standard_payment && transaction.is_custom_payment();
@@ -2307,12 +2338,12 @@ where
 {
     if !chainspec.evm_config.enabled {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::EvmTransactionError::Disabled,
+            CasperEvmTransactionError::Disabled,
         ));
     }
     if evm_transaction.gas_limit() > chainspec.evm_config.block_gas_limit {
         return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-            casper_types::EvmTransactionError::GasLimitExceedsBlockGasLimit {
+            CasperEvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit: evm_transaction.gas_limit(),
                 block_gas_limit: chainspec.evm_config.block_gas_limit,
             },
@@ -2324,14 +2355,14 @@ where
         Ok(Some(tracking_copy)) => tracking_copy,
         Ok(None) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(format!(
+                CasperEvmTransactionError::Decode(format!(
                     "state root {state_root_hash} not found"
                 )),
             ))
         }
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(format!(
+                CasperEvmTransactionError::Decode(format!(
                     "failed to check out EVM speculative execution state: {error}"
                 )),
             ))
@@ -2347,7 +2378,7 @@ where
         Ok(prevrandao) => prevrandao,
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(error),
+                CasperEvmTransactionError::Decode(error),
             ))
         }
     };
@@ -2379,7 +2410,7 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             return SpeculativeExecutionResult::invalid_transaction(InvalidTransaction::Evm(
-                casper_types::EvmTransactionError::Decode(error.to_string()),
+                CasperEvmTransactionError::Decode(error.to_string()),
             ))
         }
     };
@@ -2587,6 +2618,7 @@ mod tests {
                 block_gas_limit: 30_000_000,
                 base_fee: 3,
                 wei_per_mote: DEFAULT_WEI_PER_MOTE,
+                max_nonce_gap: 0,
                 transaction_lanes: Vec::new(),
             },
             ..Default::default()

@@ -91,9 +91,9 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap, SyncLeapIdentifier,
-        TransactionHeader, VariantMismatch,
+        BatchedTransaction, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockWithMetadata, ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap,
+        SyncLeapIdentifier, TransactionHeader, VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -800,6 +800,18 @@ impl Storage {
                 let item_id = decode_item_id::<BlockExecutionResultsOrChunk>(serialized_id)?;
                 let opt_item = self.read_block_execution_results_or_chunk(&item_id)?;
                 let fetch_response = FetchResponse::from_opt(item_id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
+            NetRequest::BatchedTransaction(ref serialized_id) => {
+                let id = decode_item_id::<BatchedTransaction>(serialized_id)?;
+                let opt_item = self.get_transaction_by_id(id)?.map(BatchedTransaction::new);
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
                     effect_builder,

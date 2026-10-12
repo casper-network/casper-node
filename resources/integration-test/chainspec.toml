@@ -523,6 +523,10 @@ base_fee = 5_000
 # Number of wei represented by one mote. EVM gas prices are denominated in wei,
 # while Casper fee accounting is denominated in motes.
 wei_per_mote = 1_000_000_000
+# How far ahead of a sender's current nonce an incoming EVM transaction's nonce may be. Lets a
+# sender queue consecutive transactions before the earlier ones execute; 0 only admits the next
+# nonce. Transactions which still have a gap when executed fail without being charged.
+max_nonce_gap = 16
 # EVM transaction lanes, structured identically to [transactions.v1] wasm_lanes:
 # [0] -> lane id (must be >= 100, unique among themselves and against all v1 lane ids)
 # [1] -> max serialized length of the RLP-encoded EVM transaction, in bytes

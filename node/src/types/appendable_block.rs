@@ -43,6 +43,9 @@ pub(crate) struct AppendableBlock {
     evm_config: EvmConfig,
     current_gas_price: u8,
     transactions: BTreeMap<TransactionHash, TransactionFootprint>,
+    /// Transaction hashes in the order they were added. EVM lanes are emitted in this order,
+    /// which lets the proposer place a sender's transactions in nonce order.
+    insertion_order: Vec<TransactionHash>,
     timestamp: Timestamp,
 }
 
@@ -59,6 +62,7 @@ impl AppendableBlock {
             evm_config,
             current_gas_price,
             transactions: BTreeMap::new(),
+            insertion_order: Vec::new(),
             timestamp,
         }
     }
@@ -143,6 +147,7 @@ impl AppendableBlock {
         }
         self.transactions
             .insert(footprint.transaction_hash(), footprint.clone());
+        self.insertion_order.push(footprint.transaction_hash());
         Ok(())
     }
 
@@ -156,18 +161,22 @@ impl AppendableBlock {
     ) -> BlockPayload {
         let AppendableBlock {
             transactions: footprints,
+            insertion_order,
             current_gas_price: price,
             ..
         } = self;
 
-        fn collate(
+        fn collate<'a>(
             lane: u8,
             collater: &mut BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
+            ordered_hashes: impl Iterator<Item = &'a TransactionHash>,
             items: &BTreeMap<TransactionHash, TransactionFootprint>,
         ) {
             let mut ret = vec![];
-            for (x, y) in items.iter().filter(|(_, y)| y.lane_id() == lane) {
-                ret.push((*x, y.approvals().clone()));
+            for hash in ordered_hashes {
+                if let Some(footprint) = items.get(hash).filter(|item| item.lane_id() == lane) {
+                    ret.push((*hash, footprint.approvals().clone()));
+                }
             }
             if !ret.is_empty() {
                 collater.insert(lane, ret);
@@ -175,9 +184,24 @@ impl AppendableBlock {
         }
 
         let mut transactions = BTreeMap::new();
-        collate(MINT_LANE_ID, &mut transactions, &footprints);
-        collate(AUCTION_LANE_ID, &mut transactions, &footprints);
-        collate(INSTALL_UPGRADE_LANE_ID, &mut transactions, &footprints);
+        collate(
+            MINT_LANE_ID,
+            &mut transactions,
+            footprints.keys(),
+            &footprints,
+        );
+        collate(
+            AUCTION_LANE_ID,
+            &mut transactions,
+            footprints.keys(),
+            &footprints,
+        );
+        collate(
+            INSTALL_UPGRADE_LANE_ID,
+            &mut transactions,
+            footprints.keys(),
+            &footprints,
+        );
         for lane_id in self
             .transaction_config
             .transaction_v1_config
@@ -185,15 +209,23 @@ impl AppendableBlock {
             .iter()
             .map(|lane| lane.id())
         {
-            collate(lane_id, &mut transactions, &footprints);
+            collate(lane_id, &mut transactions, footprints.keys(), &footprints);
         }
+        // Blocks execute lane by lane in lane id order, and within a lane in payload order. EVM
+        // lanes keep the order in which the proposer added transactions, so a sender's
+        // transactions run in the nonce order the proposer chose.
         for lane_id in self
             .evm_config
             .transaction_lanes()
             .iter()
             .map(|lane| lane.id())
         {
-            collate(lane_id, &mut transactions, &footprints);
+            collate(
+                lane_id,
+                &mut transactions,
+                insertion_order.iter(),
+                &footprints,
+            );
         }
 
         BlockPayload::new(

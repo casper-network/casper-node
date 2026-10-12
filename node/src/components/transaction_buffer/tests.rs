@@ -12,7 +12,7 @@ use crate::{
     utils,
 };
 use casper_types::{
-    testing::TestRng, Deploy, EraId, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
+    testing::TestRng, Deploy, EraId, EvmConfig, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
     TransactionConfig, TransactionLaneDefinition, TransactionV1Config,
     DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
 };
@@ -1318,9 +1318,9 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let buckets1: HashMap<_, _> = transaction_buffer
         .buckets(GAS_PRICE_TOLERANCE)
         .into_iter()
-        .map(|(digest, footprints)| {
+        .map(|(bucket, footprints)| {
             (
-                *digest,
+                bucket,
                 footprints
                     .into_iter()
                     .map(|(hash, footprint)| (hash, footprint.clone()))
@@ -1335,9 +1335,9 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let buckets2: HashMap<_, _> = transaction_buffer
         .buckets(GAS_PRICE_TOLERANCE)
         .into_iter()
-        .map(|(digest, footprints)| {
+        .map(|(bucket, footprints)| {
             (
-                *digest,
+                bucket,
                 footprints
                     .into_iter()
                     .map(|(hash, footprint)| (hash, footprint.clone()))
@@ -1536,4 +1536,133 @@ fn test_buckets_mixed_load() {
         ERA_ONE,
         Timestamp::now() + TimeDiff::from_millis(16384 / 6),
     );
+}
+
+const SMALL_EVM_LANE_ID: u8 = 100;
+const LARGE_EVM_LANE_ID: u8 = 101;
+
+fn evm_transaction_buffer(footprints: &[TransactionFootprint]) -> TransactionBuffer {
+    let evm_config = EvmConfig {
+        enabled: true,
+        transaction_lanes: vec![
+            TransactionLaneDefinition::new(SMALL_EVM_LANE_ID, u64::MAX, u64::MAX, 100_000, 20),
+            TransactionLaneDefinition::new(LARGE_EVM_LANE_ID, u64::MAX, u64::MAX, u64::MAX, 20),
+        ],
+        ..Default::default()
+    };
+    let chainspec = Arc::new(Chainspec {
+        evm_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+    for footprint in footprints {
+        transaction_buffer.buffer.insert(
+            footprint.transaction_hash(),
+            (
+                footprint.timestamp().saturating_add(footprint.ttl()),
+                Some(footprint.clone()),
+            ),
+        );
+    }
+    transaction_buffer
+}
+
+/// Proposes a block from the given EVM footprints and returns `(sender, nonce)` for each
+/// proposed transaction, in execution order.
+fn propose_evm(footprints: &[TransactionFootprint]) -> Vec<(evm::Address, u64)> {
+    let mut transaction_buffer = evm_transaction_buffer(footprints);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let payload = transaction_buffer
+        .appendable_block(timestamp, ERA_ONE, expiry)
+        .into_block_payload(vec![], Default::default(), false);
+    payload
+        .finalized_payload()
+        .values()
+        .flatten()
+        .map(|transaction_hash| {
+            footprints
+                .iter()
+                .find(|footprint| footprint.transaction_hash() == *transaction_hash)
+                .and_then(TransactionFootprint::evm_sender_nonce)
+                .expect("only EVM footprints were buffered")
+        })
+        .collect()
+}
+
+fn nonces_of(proposed: &[(evm::Address, u64)], sender: evm::Address) -> Vec<u64> {
+    proposed
+        .iter()
+        .filter(|(proposed_sender, _)| *proposed_sender == sender)
+        .map(|(_, nonce)| *nonce)
+        .collect()
+}
+
+#[test]
+fn should_propose_evm_senders_round_robin_in_nonce_order() {
+    let mut rng = TestRng::new();
+    let a = evm::Address::new([0xaa; evm::ADDRESS_LENGTH]);
+    let b = evm::Address::new([0xbb; evm::ADDRESS_LENGTH]);
+    let footprints: Vec<_> = [(a, 5), (b, 7), (a, 3), (b, 8), (a, 4), (b, 6)]
+        .into_iter()
+        .map(|(sender, nonce)| {
+            TransactionFootprint::random_evm(SMALL_EVM_LANE_ID, sender, nonce, &mut rng)
+        })
+        .collect();
+
+    let proposed = propose_evm(&footprints);
+
+    assert_eq!(nonces_of(&proposed, a), vec![3, 4, 5]);
+    assert_eq!(nonces_of(&proposed, b), vec![6, 7, 8]);
+    assert!(
+        proposed.windows(2).all(|pair| pair[0].0 != pair[1].0),
+        "senders should alternate: {proposed:?}"
+    );
+}
+
+#[test]
+fn should_end_evm_run_at_nonce_gap() {
+    let mut rng = TestRng::new();
+    let a = evm::Address::new([0xaa; evm::ADDRESS_LENGTH]);
+    let footprints: Vec<_> = [0, 1, 3]
+        .into_iter()
+        .map(|nonce| TransactionFootprint::random_evm(SMALL_EVM_LANE_ID, a, nonce, &mut rng))
+        .collect();
+
+    assert_eq!(nonces_of(&propose_evm(&footprints), a), vec![0, 1]);
+}
+
+#[test]
+fn should_skip_duplicate_evm_nonce_and_continue_run() {
+    let mut rng = TestRng::new();
+    let a = evm::Address::new([0xaa; evm::ADDRESS_LENGTH]);
+    let footprints: Vec<_> = [0, 1, 1, 2]
+        .into_iter()
+        .map(|nonce| TransactionFootprint::random_evm(SMALL_EVM_LANE_ID, a, nonce, &mut rng))
+        .collect();
+
+    assert_eq!(nonces_of(&propose_evm(&footprints), a), vec![0, 1, 2]);
+}
+
+#[test]
+fn should_end_evm_run_when_next_nonce_would_execute_in_an_earlier_lane() {
+    let mut rng = TestRng::new();
+    let a = evm::Address::new([0xaa; evm::ADDRESS_LENGTH]);
+    let b = evm::Address::new([0xbb; evm::ADDRESS_LENGTH]);
+    let footprints = vec![
+        // Lanes execute in id order, so a's nonce 1 would run before its nonce 0.
+        TransactionFootprint::random_evm(LARGE_EVM_LANE_ID, a, 0, &mut rng),
+        TransactionFootprint::random_evm(SMALL_EVM_LANE_ID, a, 1, &mut rng),
+        TransactionFootprint::random_evm(SMALL_EVM_LANE_ID, b, 0, &mut rng),
+        TransactionFootprint::random_evm(LARGE_EVM_LANE_ID, b, 1, &mut rng),
+    ];
+
+    let proposed = propose_evm(&footprints);
+
+    assert_eq!(nonces_of(&proposed, a), vec![0]);
+    assert_eq!(nonces_of(&proposed, b), vec![0, 1]);
 }
