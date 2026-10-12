@@ -2,6 +2,7 @@
 
 pub(crate) mod appendable_block;
 mod block;
+mod chainspecs;
 mod chunkable;
 mod exit_code;
 mod max_ttl;
@@ -28,13 +29,14 @@ pub(crate) use block::{
     InvalidProposalError, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
 pub use block::{BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport};
+pub use chainspecs::{ChainspecStatus, Chainspecs};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use exit_code::ExitCode;
 pub(crate) use max_ttl::MaxTtl;
 pub use node_config::{NodeConfig, SyncHandling};
 pub(crate) use node_id::NodeId;
-pub use status_feed::{ChainspecInfo, ChainspecStatus, Chainspecs, GetStatusResult, StatusFeed};
+pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub(crate) use transaction::{
     LegacyDeploy, MetaTransaction, TransactionFootprint, TransactionHeader,

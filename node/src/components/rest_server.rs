@@ -12,11 +12,14 @@
 //! reactor, and an external facing http server that exposes various uri routes and converts
 //! HTTP requests into the appropriate component events.
 //!
-//! Currently this component supports two endpoints, each of which takes no arguments:
+//! This component supports the following endpoints, each of which takes no arguments:
 //! /status : a human readable JSON equivalent of the info-get-status rpc method.
 //!     example: curl -X GET 'http://IP:8888/status'
 //! /metrics : time series data collected from the internals of the node being queried.
 //!     example: curl -X GET 'http://IP:8888/metrics'
+//! /validator-changes : changes to validators' status by public key.
+//! /chainspec : source documents loaded by the running node.
+//! /chainspecs : running and installed future source documents, or HTTP 500 on discovery failure.
 
 mod config;
 mod event;
@@ -194,7 +197,6 @@ where
                             last_added_block,
                             peers,
                             next_upgrade,
-                            chainspecs,
                             consensus_status,
                             reactor_state,
                             last_progress,
@@ -206,7 +208,6 @@ where
                             effect_builder.get_highest_complete_block_from_storage(),
                             effect_builder.network_peers(),
                             effect_builder.get_next_upgrade(),
-                            effect_builder.get_chainspecs(),
                             effect_builder.consensus_status(),
                             effect_builder.get_reactor_state(),
                             effect_builder.get_last_progress(),
@@ -226,7 +227,7 @@ where
                         let status_feed = StatusFeed::new(
                             last_added_block,
                             peers,
-                            ChainspecInfo::new(network_name, next_upgrade, chainspecs.into()),
+                            ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
                             node_uptime.into(),
                             reactor_state,
@@ -354,7 +355,10 @@ impl crate::reactor::Finalize for RestServer {
 
 #[cfg(test)]
 mod schema_tests {
-    use crate::{testing::assert_schema, types::GetStatusResult};
+    use crate::{
+        testing::assert_schema,
+        types::{ChainspecStatus, GetStatusResult},
+    };
     use schemars::schema_for;
 
     use super::{GetChainspecResult, GetValidatorChangesResult};
@@ -390,6 +394,18 @@ mod schema_tests {
         assert_schema(
             schema_path,
             serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_chainspecs_check() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_chainspecs.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(ChainspecStatus)).unwrap(),
         );
     }
 }

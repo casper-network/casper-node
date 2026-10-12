@@ -1,46 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_binary_port::ConsensusStatus;
 use casper_types::{
-    AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, ChainspecRawBytes, Digest,
-    EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId, NextUpgrade,
+    Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
 use crate::{reactor::main_reactor::ReactorState, types::NodeId};
-
-/// Complete source documents for the running and installed future chainspecs.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Chainspecs {
-    /// Source documents loaded by the running node, including optional companion files.
-    pub current: Arc<ChainspecRawBytes>,
-    /// Installed future source documents, keyed and ordered by protocol version.
-    pub future: BTreeMap<ProtocolVersion, Arc<ChainspecRawBytes>>,
-}
-
-/// Chainspec discovery availability, independent of status and upgrade selection.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum ChainspecStatus {
-    /// Complete, atomically refreshed chainspec source documents.
-    Available(Chainspecs),
-    /// Installed chainspec source documents could not be read or identified.
-    Unavailable {
-        /// Diagnostic for the invalid installed chainspec.
-        error: String,
-    },
-}
-
-impl From<Result<Chainspecs, String>> for ChainspecStatus {
-    fn from(result: Result<Chainspecs, String>) -> Self {
-        match result {
-            Ok(chainspecs) => Self::Available(chainspecs),
-            Err(error) => Self::Unavailable { error },
-        }
-    }
-}
 
 /// Summary information from the chainspec.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,19 +17,13 @@ pub struct ChainspecInfo {
     /// Name of the network.
     name: String,
     next_upgrade: Option<NextUpgrade>,
-    chainspecs: ChainspecStatus,
 }
 
 impl ChainspecInfo {
-    pub(crate) fn new(
-        chainspec_network_name: String,
-        next_upgrade: Option<NextUpgrade>,
-        chainspecs: ChainspecStatus,
-    ) -> Self {
+    pub(crate) fn new(chainspec_network_name: String, next_upgrade: Option<NextUpgrade>) -> Self {
         ChainspecInfo {
             name: chainspec_network_name,
             next_upgrade,
-            chainspecs,
         }
     }
 }
@@ -189,8 +152,6 @@ pub struct GetStatusResult {
     pub round_length: Option<TimeDiff>,
     /// Information about the next scheduled upgrade.
     pub next_upgrade: Option<NextUpgrade>,
-    /// Complete running and installed future chainspec source documents, or an error diagnostic.
-    pub chainspecs: ChainspecStatus,
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
     /// The current state of node reactor.
@@ -217,7 +178,6 @@ impl GetStatusResult {
             our_public_signing_key: status_feed.our_public_signing_key,
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
-            chainspecs: status_feed.chainspec_info.chainspecs,
             uptime: status_feed.node_uptime.into(),
             reactor_state: status_feed.reactor_state,
             last_progress: status_feed.last_progress,
@@ -238,35 +198,8 @@ impl GetStatusResult {
 mod tests {
     use super::*;
 
-    fn source(bytes: &[u8]) -> Arc<ChainspecRawBytes> {
-        Arc::new(ChainspecRawBytes::new(bytes.to_vec().into(), None, None))
-    }
-
     #[test]
-    fn chainspec_status_roundtrips_complete_source_documents() {
-        let current = Arc::new(ChainspecRawBytes::new(
-            b"# complete chainspec source\n".to_vec().into(),
-            Some(b"# accounts\n".to_vec().into()),
-            Some(b"# state\n".to_vec().into()),
-        ));
-        let status = ChainspecStatus::Available(Chainspecs {
-            current,
-            future: BTreeMap::from([
-                (ProtocolVersion::from_parts(10, 0, 0), source(b"# last\n")),
-                (ProtocolVersion::from_parts(2, 2, 0), source(b"# next\n")),
-            ]),
-        });
-        let json = serde_json::to_value(&status).unwrap();
-        assert!(json["current"]["chainspec_bytes"].is_string());
-        assert!(json["future"]["2.2.0"]["chainspec_bytes"].is_string());
-        assert_eq!(
-            serde_json::from_value::<ChainspecStatus>(json).unwrap(),
-            status
-        );
-    }
-
-    #[test]
-    fn status_preserves_upgrade_information_when_chainspec_discovery_fails() {
+    fn status_preserves_upgrade_information_without_source_documents() {
         let next_upgrade = NextUpgrade::new(
             casper_types::ActivationPoint::EraId(EraId::new(100)),
             ProtocolVersion::from_parts(2, 2, 0),
@@ -274,11 +207,7 @@ mod tests {
         let feed = StatusFeed::new(
             None,
             BTreeMap::new(),
-            ChainspecInfo::new(
-                "casper-test".to_string(),
-                Some(next_upgrade),
-                Err("unreadable installed chainspec".to_string()).into(),
-            ),
+            ChainspecInfo::new("casper-test".to_string(), Some(next_upgrade)),
             None,
             Duration::ZERO,
             ReactorState::KeepUp,
@@ -291,10 +220,7 @@ mod tests {
         let status = GetStatusResult::new(feed, ProtocolVersion::from_parts(2, 1, 0));
         assert_eq!(status.next_upgrade, Some(next_upgrade));
         let json = serde_json::to_value(status).unwrap();
-        assert_eq!(
-            json["chainspecs"]["error"],
-            "unreadable installed chainspec"
-        );
+        assert!(json.get("chainspecs").is_none());
         assert_eq!(json["chainspec_name"], "casper-test");
     }
 }
