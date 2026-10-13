@@ -1945,7 +1945,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets one authoritative snapshot of installed future chainspec source documents.
     pub(crate) async fn get_future_chainspecs(
         self,
-    ) -> Result<casper_binary_port::FutureChainspecs, String>
+    ) -> Result<Arc<casper_binary_port::FutureChainspecs>, String>
     where
         REv: From<UpgradeWatcherRequest> + Send,
     {

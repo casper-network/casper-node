@@ -1099,7 +1099,7 @@ impl Display for ChainspecRawBytesRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum UpgradeWatcherRequest {
     NextUpgrade(Responder<Option<NextUpgrade>>),
-    FutureChainspecs(Responder<Result<casper_binary_port::FutureChainspecs, String>>),
+    FutureChainspecs(Responder<Result<Arc<casper_binary_port::FutureChainspecs>, String>>),
 }
 
 impl Display for UpgradeWatcherRequest {

@@ -12,6 +12,7 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -149,7 +150,7 @@ pub(crate) struct UpgradeWatcher {
     network_name: String,
     metadata_scan_id: u64,
     #[data_size(skip)]
-    chainspecs: Result<FutureChainspecs, String>,
+    chainspecs: Result<Arc<FutureChainspecs>, String>,
 }
 
 impl UpgradeWatcher {
@@ -168,7 +169,8 @@ impl UpgradeWatcher {
         let next_upgrade = next_upgrade(root_dir.clone(), current_version);
 
         let network_name = chainspec.network_config.name.clone();
-        let chainspecs = installed_chainspecs(&root_dir, &network_name, current_version);
+        let chainspecs =
+            installed_chainspecs(&root_dir, &network_name, current_version).map(Arc::new);
         if let Err(error) = &chainspecs {
             warn!(%error, "invalid installed chainspec metadata");
         }
@@ -265,7 +267,7 @@ impl UpgradeWatcher {
             if let Err(error) = &metadata {
                 warn!(%error, "invalid installed chainspec metadata");
             }
-            self.chainspecs = metadata;
+            self.chainspecs = metadata.map(Arc::new);
         }
         Effects::new()
     }
@@ -353,6 +355,8 @@ where
                     responder.respond(self.next_upgrade).ignore()
                 }
                 Event::Request(UpgradeWatcherRequest::FutureChainspecs(responder)) => {
+                    // Share the immutable snapshot; copying source documents here would block
+                    // the reactor. The binary-port effect serializes it after receiving it.
                     responder.respond(self.chainspecs.clone()).ignore()
                 }
                 Event::GotFutureChainspecs { scan_id, metadata } => {
@@ -661,12 +665,8 @@ setting = "unknown"
             install_chainspec(&mut rng, dir.path(), V1_0_3);
             let mut current = Chainspec::default();
             current.protocol_config.version = V0_9_9;
-            let mut watcher = UpgradeWatcher::new(
-                &current,
-                Config::default(),
-                dir.path().join("0_9_9"),
-            )
-            .unwrap();
+            let mut watcher =
+                UpgradeWatcher::new(&current, Config::default(), dir.path().join("0_9_9")).unwrap();
             let expected = Some(NextUpgrade::new(
                 ActivationPoint::EraId(EraId::new(10)),
                 V1_0_0,
@@ -861,10 +861,70 @@ setting = "unknown"
         let updated = FutureChainspecs::new(updated);
         watcher.metadata_scan_id = 2;
         watcher.handle_got_chainspecs(2, Ok(updated.clone()));
-        watcher.handle_got_chainspecs(1, Ok(original));
-        assert_eq!(watcher.chainspecs, Ok(updated));
+        watcher.handle_got_chainspecs(1, Ok(original.as_ref().clone()));
+        assert_eq!(watcher.chainspecs.as_deref(), Ok(&updated));
         watcher.handle_got_chainspecs(2, Err("unreadable installed chainspec".to_string()));
         assert!(watcher.chainspecs.is_err());
+    }
+
+    #[tokio::test]
+    async fn future_chainspec_requests_share_the_cached_snapshot_across_refreshes() {
+        use std::collections::BTreeMap;
+
+        use futures::channel::oneshot;
+
+        use crate::{
+            effect::Responder,
+            reactor::{EventQueueHandle, QueueKind, Scheduler},
+            utils,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let (mut current, future_source) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        let future_version = current.protocol_config.version;
+        current.protocol_config.version = V1_0_0;
+        let mut watcher =
+            UpgradeWatcher::new(&current, Config::default(), root.path().join("current")).unwrap();
+        watcher.state = ComponentState::Initialized;
+        watcher.handle_got_chainspecs(
+            0,
+            Ok(FutureChainspecs::new(BTreeMap::from([(
+                future_version,
+                future_source,
+            )]))),
+        );
+        let cached = watcher.chainspecs.as_ref().unwrap().clone();
+        let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+        let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+        let mut rng = TestRng::new();
+        let mut received = Vec::new();
+        for _ in 0..2 {
+            let (sender, receiver) = oneshot::channel();
+            let effects = watcher.handle_event(
+                effect_builder,
+                &mut rng,
+                Event::Request(UpgradeWatcherRequest::FutureChainspecs(
+                    Responder::without_shutdown(sender),
+                )),
+            );
+            for effect in effects {
+                effect.await;
+            }
+            let snapshot = receiver.await.unwrap().unwrap();
+            assert!(Arc::ptr_eq(&cached, &snapshot));
+            received.push(snapshot);
+        }
+
+        watcher.metadata_scan_id = 1;
+        watcher.handle_got_chainspecs(1, Ok(FutureChainspecs::new(BTreeMap::new())));
+        let refreshed = watcher.chainspecs.as_ref().unwrap();
+        assert!(!Arc::ptr_eq(&cached, refreshed));
+        assert!(refreshed.as_inner().is_empty());
+        for snapshot in received {
+            assert!(Arc::ptr_eq(&cached, &snapshot));
+            assert!(snapshot.as_inner().contains_key(&future_version));
+        }
     }
 
     #[test]
