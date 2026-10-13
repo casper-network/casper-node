@@ -87,6 +87,7 @@ async fn future_chainspecs_returns_a_complete_snapshot_or_binary_error() {
         let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
         let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
         let expected = metadata.clone();
+        let metadata = metadata.map(Arc::new);
         let request = super::handle_info_request(
             InformationRequest::FutureChainspecs,
             effect_builder,

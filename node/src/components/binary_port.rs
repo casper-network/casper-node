@@ -1105,7 +1105,12 @@ where
             // below the default 4 MiB frame limit. Optional companion files can be much
             // larger, so handle_client_loop still checks the complete response envelope.
             match effect_builder.get_future_chainspecs().await {
-                Ok(chainspecs) => BinaryResponse::from_value(chainspecs),
+                Ok(chainspecs) => match chainspecs.to_bytes() {
+                    Ok(payload) => {
+                        BinaryResponse::from_raw_bytes(ResponseType::FutureChainspecs, payload)
+                    }
+                    Err(_) => BinaryResponse::new_error(ErrorCode::InternalError),
+                },
                 Err(_) => BinaryResponse::new_error(ErrorCode::InternalError),
             }
         }
