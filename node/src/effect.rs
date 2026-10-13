@@ -1942,12 +1942,14 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Gets one authoritative snapshot of running and installed future chainspec source documents.
-    pub(crate) async fn get_chainspecs(self) -> Result<crate::types::Chainspecs, String>
+    /// Gets one authoritative snapshot of installed future chainspec source documents.
+    pub(crate) async fn get_future_chainspecs(
+        self,
+    ) -> Result<casper_binary_port::FutureChainspecs, String>
     where
         REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(UpgradeWatcherRequest::Chainspecs, QueueKind::Control)
+        self.make_request(UpgradeWatcherRequest::FutureChainspecs, QueueKind::Control)
             .await
     }
 

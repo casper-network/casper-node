@@ -30,14 +30,12 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
-    let rest_chainspecs_filter = filters::create_chainspecs_filter(effect_builder);
 
     let service = warp::service(
         rest_status
             .or(rest_metrics)
             .or(rest_validator_changes)
-            .or(rest_chainspec_filter)
-            .or(rest_chainspecs_filter),
+            .or(rest_chainspec_filter),
     );
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
@@ -83,14 +81,12 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
-    let rest_chainspecs_filter = filters::create_chainspecs_filter(effect_builder);
 
     let service = warp::service(
         rest_status
             .or(rest_metrics)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter)
-            .or(rest_chainspecs_filter)
             .with(match cors_origin.as_str() {
                 "*" => warp::cors().allow_any_origin(),
                 origin => warp::cors().allow_origin(origin),

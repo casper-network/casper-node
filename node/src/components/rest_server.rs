@@ -19,7 +19,6 @@
 //!     example: curl -X GET 'http://IP:8888/metrics'
 //! /validator-changes : changes to validators' status by public key.
 //! /chainspec : source documents loaded by the running node.
-//! /chainspecs : running and installed future source documents, or HTTP 500 on discovery failure.
 
 mod config;
 mod event;
@@ -355,10 +354,7 @@ impl crate::reactor::Finalize for RestServer {
 
 #[cfg(test)]
 mod schema_tests {
-    use crate::{
-        testing::assert_schema,
-        types::{ChainspecStatus, GetStatusResult},
-    };
+    use crate::{testing::assert_schema, types::GetStatusResult};
     use schemars::schema_for;
 
     use super::{GetChainspecResult, GetValidatorChangesResult};
@@ -394,18 +390,6 @@ mod schema_tests {
         assert_schema(
             schema_path,
             serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
-        );
-    }
-
-    #[test]
-    fn json_schema_chainspecs_check() {
-        let schema_path = format!(
-            "{}/../resources/test/rest_schema_chainspecs.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        assert_schema(
-            schema_path,
-            serde_json::to_string_pretty(&schema_for!(ChainspecStatus)).unwrap(),
         );
     }
 }

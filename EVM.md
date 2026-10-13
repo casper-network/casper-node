@@ -237,25 +237,23 @@ limits, consensus, and networking are outside this compatibility scope.
 
 ### Adapted EIP-7910 configuration API
 
-`eth_config` takes no parameters and retrieves a fresh node REST `/chainspecs`
-response for each request, without a sidecar configuration cache. The endpoint
-returns the running source documents in `current` and all installed future
-documents in `future`, keyed by protocol version. Each entry uses
-`ChainspecRawBytes`: hexadecimal source bytes for
-`chainspec.toml`, plus optional `accounts.toml` and `global_state.toml` files.
-The running documents are the bytes loaded at node startup. The upgrade
-watcher refreshes future documents on its normal scan interval, including
-edits that keep version and activation unchanged. Whole documents retain
-comments and unknown future settings.
+`eth_config` takes no parameters and retrieves fresh source documents from the
+node's binary port for each request, without a sidecar configuration cache.
+The existing `ChainspecRawBytes` request returns the running documents loaded
+at startup. The new `FutureChainspecs` information request returns all installed
+future source documents, keyed by protocol version. Each entry contains
+`chainspec.toml` plus optional `accounts.toml` and `global_state.toml` bytes.
 
-The node checks readability, directory/version agreement and network identity.
-Discovery errors return HTTP 500 with an `error` object and a logged diagnostic.
-REST `/status` excludes source documents, so routine status polling stays small;
-status and existing upgrade selection continue independently of discovery errors.
-The sidecar selects the nearest and furthest versions, validates every future
-EVM configuration, and assembles the Ethereum fields and contract maps.
-Unsupported EVM settings fail only `eth_config`, with a sidecar diagnostic.
-There is no additional binary-port request or response type.
+The upgrade watcher refreshes future documents on its normal scan interval,
+including edits that keep version and activation unchanged. Whole documents
+retain comments and unknown future settings. The node checks readability,
+directory/version agreement, and network identity. Discovery failures return a
+binary `InternalError` response, with the detailed diagnostic logged by the node.
+An envelope exceeding the configured binary message limit returns `ResponseTooLarge`.
+REST `/status` excludes source documents; status and upgrade selection remain
+independent of discovery failures. The sidecar selects the nearest and furthest
+versions, validates every future EVM configuration, and assembles the Ethereum
+fields and contract maps. Unsupported settings fail only `eth_config`.
 
 `current` describes the running chainspec, `next` the nearest installed future
 protocol version, and `last` the furthest. Both future fields are null when
