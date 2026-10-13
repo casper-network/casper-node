@@ -12,7 +12,6 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -22,6 +21,7 @@ use thiserror::Error;
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
+use casper_binary_port::FutureChainspecs;
 use casper_types::{
     bytesrepr::Bytes, evm, Chainspec, ChainspecRawBytes, EraId, NextUpgrade, ProtocolConfig,
     ProtocolVersion, TimeDiff,
@@ -34,7 +34,6 @@ use crate::{
         EffectExt, Effects,
     },
     reactor::main_reactor::MainEvent,
-    types::Chainspecs,
     utils::{
         chain_specification::{
             parse_toml::{
@@ -77,9 +76,9 @@ pub(crate) enum Event {
     /// If the result of checking for an upgrade is successful, it is passed here.
     GotNextUpgrade(Option<NextUpgrade>),
     /// Atomically refresh complete chainspec documents, even when activation points are unchanged.
-    GotChainspecs {
+    GotFutureChainspecs {
         scan_id: u64,
-        metadata: Box<Result<Chainspecs, String>>,
+        metadata: Box<Result<FutureChainspecs, String>>,
     },
 }
 
@@ -98,7 +97,9 @@ impl Display for Event {
             Event::GotNextUpgrade(Some(next_upgrade)) => {
                 write!(formatter, "got {}", next_upgrade)
             }
-            Event::GotChainspecs { .. } => write!(formatter, "refresh chainspec source documents"),
+            Event::GotFutureChainspecs { .. } => {
+                write!(formatter, "refresh chainspec source documents")
+            }
             Event::GotNextUpgrade(None) => {
                 write!(formatter, "no upgrade detected")
             }
@@ -148,15 +149,12 @@ pub(crate) struct UpgradeWatcher {
     network_name: String,
     metadata_scan_id: u64,
     #[data_size(skip)]
-    current_chainspec: Arc<ChainspecRawBytes>,
-    #[data_size(skip)]
-    chainspecs: Result<Chainspecs, String>,
+    chainspecs: Result<FutureChainspecs, String>,
 }
 
 impl UpgradeWatcher {
     pub(crate) fn new<P: AsRef<Path>>(
         chainspec: &Chainspec,
-        current_chainspec: Arc<ChainspecRawBytes>,
         config: Config,
         chainspec_dir: P,
     ) -> Result<Self, Error> {
@@ -170,12 +168,7 @@ impl UpgradeWatcher {
         let next_upgrade = next_upgrade(root_dir.clone(), current_version);
 
         let network_name = chainspec.network_config.name.clone();
-        let chainspecs = installed_chainspecs(
-            &root_dir,
-            &network_name,
-            current_version,
-            current_chainspec.clone(),
-        );
+        let chainspecs = installed_chainspecs(&root_dir, &network_name, current_version);
         if let Err(error) = &chainspecs {
             warn!(%error, "invalid installed chainspec metadata");
         }
@@ -188,7 +181,6 @@ impl UpgradeWatcher {
             next_upgrade,
             network_name,
             metadata_scan_id: 0,
-            current_chainspec,
             chainspecs,
         };
 
@@ -228,14 +220,12 @@ impl UpgradeWatcher {
         let scan_id = self.metadata_scan_id;
         let root_dir = self.root_dir.clone();
         let current_version = self.current_version;
-        let current = self.current_chainspec.clone();
         let network_name = self.network_name.clone();
         let mut effects = async move {
             let (maybe_next_upgrade, metadata) = task::spawn_blocking(move || {
                 // Metadata validation must not change consensus upgrade selection.
                 let next = next_upgrade(root_dir.clone(), current_version);
-                let metadata =
-                    installed_chainspecs(&root_dir, &network_name, current_version, current);
+                let metadata = installed_chainspecs(&root_dir, &network_name, current_version);
                 (next, metadata)
             })
             .await
@@ -251,7 +241,7 @@ impl UpgradeWatcher {
                 .await;
             metadata
         }
-        .event(move |metadata| Event::GotChainspecs {
+        .event(move |metadata| Event::GotFutureChainspecs {
             scan_id,
             metadata: Box::new(metadata),
         });
@@ -268,7 +258,7 @@ impl UpgradeWatcher {
     fn handle_got_chainspecs(
         &mut self,
         scan_id: u64,
-        metadata: Result<Chainspecs, String>,
+        metadata: Result<FutureChainspecs, String>,
     ) -> Effects<Event> {
         // A slow earlier scan must not overwrite metadata from a later rescan.
         if scan_id == self.metadata_scan_id {
@@ -341,7 +331,7 @@ where
                 Event::Request(_)
                 | Event::CheckForNextUpgrade
                 | Event::GotNextUpgrade(_)
-                | Event::GotChainspecs { .. } => {
+                | Event::GotFutureChainspecs { .. } => {
                     warn!(
                         ?event,
                         name = <Self as Component<MainEvent>>::name(self),
@@ -362,10 +352,10 @@ where
                 Event::Request(UpgradeWatcherRequest::NextUpgrade(responder)) => {
                     responder.respond(self.next_upgrade).ignore()
                 }
-                Event::Request(UpgradeWatcherRequest::Chainspecs(responder)) => {
+                Event::Request(UpgradeWatcherRequest::FutureChainspecs(responder)) => {
                     responder.respond(self.chainspecs.clone()).ignore()
                 }
-                Event::GotChainspecs { scan_id, metadata } => {
+                Event::GotFutureChainspecs { scan_id, metadata } => {
                     self.handle_got_chainspecs(scan_id, *metadata)
                 }
                 Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
@@ -455,8 +445,7 @@ fn installed_chainspecs(
     root: &Path,
     network_name: &str,
     current_version: ProtocolVersion,
-    current: Arc<ChainspecRawBytes>,
-) -> Result<Chainspecs, String> {
+) -> Result<FutureChainspecs, String> {
     let mut future = std::collections::BTreeMap::new();
     for entry in fs::read_dir(root).map_err(|error| format!("{}: {error}", root.display()))? {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -476,7 +465,7 @@ fn installed_chainspecs(
             continue;
         }
         let path = directory.join(CHAINSPEC_FILENAME);
-        let read = || -> Result<Arc<ChainspecRawBytes>, String> {
+        let read = || -> Result<ChainspecRawBytes, String> {
             let contents = fs::read(&path).map_err(|error| error.to_string())?;
             let installed: InstalledChainspec =
                 toml::from_str(std::str::from_utf8(&contents).map_err(|error| error.to_string())?)
@@ -493,18 +482,18 @@ fn installed_chainspecs(
                     installed.network.name
                 ));
             }
-            Ok(Arc::new(ChainspecRawBytes::new(
+            Ok(ChainspecRawBytes::new(
                 contents.into(),
                 read_optional_source(&directory.join(CHAINSPEC_ACCOUNTS_FILENAME))?,
                 read_optional_source(&directory.join(CHAINSPEC_GLOBAL_STATE_FILENAME))?,
-            )))
+            ))
         };
         let source = read().map_err(|error| format!("{}: {error}", path.display()))?;
         if future.insert(version, source).is_some() {
             return Err(format!("duplicate installed protocol version {version}"));
         }
     }
-    Ok(Chainspecs { current, future })
+    Ok(FutureChainspecs::new(future))
 }
 
 fn dir_name_from_version(version: ProtocolVersion) -> PathBuf {
@@ -674,7 +663,6 @@ setting = "unknown"
             current.protocol_config.version = V0_9_9;
             let mut watcher = UpgradeWatcher::new(
                 &current,
-                source(&current),
                 Config::default(),
                 dir.path().join("0_9_9"),
             )
@@ -726,15 +714,15 @@ setting = "unknown"
         assert!(next_upgrade(dir.path().to_path_buf(), V0_9_9).is_none());
     }
 
-    fn source(chainspec: &Chainspec) -> Arc<ChainspecRawBytes> {
-        Arc::new(ChainspecRawBytes::new(
+    fn source(chainspec: &Chainspec) -> ChainspecRawBytes {
+        ChainspecRawBytes::new(
             toml::to_string_pretty(chainspec)
                 .unwrap()
                 .into_bytes()
                 .into(),
             None,
             None,
-        ))
+        )
     }
 
     fn write_chainspec(root: &Path, chainspec: &Chainspec) -> PathBuf {
@@ -751,18 +739,9 @@ setting = "unknown"
         let mut current = Chainspec::random(&mut TestRng::new());
         current.protocol_config.version = V1_0_0;
         current.network_config.name = "snapshot-test-network".to_string();
-        let raw = source(&current);
-        let scan = || {
-            installed_chainspecs(
-                root.path(),
-                &current.network_config.name,
-                V1_0_0,
-                raw.clone(),
-            )
-            .unwrap()
-        };
-        assert_eq!(scan().current, raw);
-        assert!(scan().future.is_empty());
+        let scan =
+            || installed_chainspecs(root.path(), &current.network_config.name, V1_0_0).unwrap();
+        assert!(scan().as_inner().is_empty());
 
         let mut future = current.clone();
         future.protocol_config.version = V1_0_3;
@@ -781,7 +760,7 @@ setting = "unknown"
         )
         .unwrap();
         let one = scan();
-        let found = &one.future[&V1_0_3];
+        let found = &one.as_inner()[&V1_0_3];
         assert_eq!(found.chainspec_bytes(), fs::read(&path).unwrap());
         assert_eq!(
             found.maybe_genesis_accounts_bytes(),
@@ -794,29 +773,32 @@ setting = "unknown"
         let mut edited = toml::to_string_pretty(&future).unwrap();
         edited.push_str("\n[future_engine]\nunknown_setting = 'preserved verbatim'\n");
         fs::write(&path, &edited).unwrap();
-        assert_eq!(scan().future[&V1_0_3].chainspec_bytes(), edited.as_bytes());
+        assert_eq!(
+            scan().as_inner()[&V1_0_3].chainspec_bytes(),
+            edited.as_bytes()
+        );
         assert_eq!(
             next_upgrade(root.path().to_path_buf(), V1_0_0),
             Some(NextUpgrade::from(future.protocol_config.clone()))
         );
         fs::remove_file(path.parent().unwrap().join(CHAINSPEC_GLOBAL_STATE_FILENAME)).unwrap();
-        assert!(scan().future[&V1_0_3].maybe_global_state_bytes().is_none());
+        assert!(scan().as_inner()[&V1_0_3]
+            .maybe_global_state_bytes()
+            .is_none());
 
         for version in [V2_2_2, V1_2_3] {
             future.protocol_config.version = version;
             write_chainspec(root.path(), &future);
         }
         assert_eq!(
-            scan().future.keys().copied().collect::<Vec<_>>(),
+            scan().as_inner().keys().copied().collect::<Vec<_>>(),
             vec![V1_0_3, V1_2_3, V2_2_2]
         );
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
-        assert_eq!(scan().future.len(), 2);
+        assert_eq!(scan().as_inner().len(), 2);
         fs::remove_dir_all(root.path().join(dir_name_from_version(V1_2_3))).unwrap();
         fs::remove_dir_all(root.path().join(dir_name_from_version(V2_2_2))).unwrap();
-        assert!(scan().future.is_empty());
-        // Running source documents always come from the bytes loaded by the node.
-        assert!(Arc::ptr_eq(&scan().current, &raw));
+        assert!(scan().as_inner().is_empty());
     }
 
     #[test]
@@ -829,14 +811,7 @@ setting = "unknown"
         future.protocol_config.version = V1_0_3;
         let path = write_chainspec(root.path(), &future);
         let valid = fs::read_to_string(&path).unwrap();
-        let scan = || {
-            installed_chainspecs(
-                root.path(),
-                &current.network_config.name,
-                V1_0_0,
-                source(&current),
-            )
-        };
+        let scan = || installed_chainspecs(root.path(), &current.network_config.name, V1_0_0);
         fs::write(
             &path,
             valid.replace("snapshot-test-network", "wrong-network"),
@@ -875,19 +850,15 @@ setting = "unknown"
     fn chainspec_refresh_is_atomic_and_ignores_out_of_order_scans() {
         let root = tempfile::tempdir().unwrap();
         let current = Chainspec::random(&mut TestRng::new());
-        let mut watcher = UpgradeWatcher::new(
-            &current,
-            source(&current),
-            Config::default(),
-            root.path().join("current"),
-        )
-        .unwrap();
+        let mut watcher =
+            UpgradeWatcher::new(&current, Config::default(), root.path().join("current")).unwrap();
         let original = watcher.chainspecs.clone().unwrap();
-        let mut updated = original.clone();
-        updated.future.insert(
+        let mut updated = original.as_inner().clone();
+        updated.insert(
             ProtocolVersion::from_parts(u32::MAX, 0, 0),
             source(&current),
         );
+        let updated = FutureChainspecs::new(updated);
         watcher.metadata_scan_id = 2;
         watcher.handle_got_chainspecs(2, Ok(updated.clone()));
         watcher.handle_got_chainspecs(1, Ok(original));
@@ -1077,10 +1048,9 @@ setting = "unknown"
     fn should_register_unstaged_upgrade() {
         let _ = logging::init();
         let tempdir = tempfile::tempdir().expect("should create temp dir");
-        let (chainspec, raw) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        let (chainspec, _raw) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
         let mut upgrade_watcher =
-            UpgradeWatcher::new(&chainspec, Arc::new(raw), Config::default(), tempdir.path())
-                .unwrap();
+            UpgradeWatcher::new(&chainspec, Config::default(), tempdir.path()).unwrap();
         assert!(upgrade_watcher.next_upgrade.is_none());
 
         let next_upgrade = NextUpgrade::new(

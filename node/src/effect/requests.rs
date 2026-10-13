@@ -1099,14 +1099,14 @@ impl Display for ChainspecRawBytesRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum UpgradeWatcherRequest {
     NextUpgrade(Responder<Option<NextUpgrade>>),
-    Chainspecs(Responder<Result<crate::types::Chainspecs, String>>),
+    FutureChainspecs(Responder<Result<casper_binary_port::FutureChainspecs, String>>),
 }
 
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NextUpgrade(_) => write!(f, "get next upgrade"),
-            Self::Chainspecs(_) => write!(f, "get chainspec source documents"),
+            Self::FutureChainspecs(_) => write!(f, "get future chainspec source documents"),
         }
     }
 }

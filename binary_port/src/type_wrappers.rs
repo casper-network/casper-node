@@ -6,9 +6,9 @@ use casper_types::{
     contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::auction::DelegationRate,
-    Account, AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
-    ExecutionInfo, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, ValidatorChange,
-    U512,
+    Account, AddressableEntity, BlockHash, ByteCode, ChainspecRawBytes, Contract, ContractWasm,
+    EntityAddr, EraId, ExecutionInfo, Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff,
+    Timestamp, Transaction, ValidatorChange, U512,
 };
 use serde::Serialize;
 
@@ -90,6 +90,27 @@ impl ConsensusValidatorChanges {
 impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
     fn from(consensus_validator_changes: ConsensusValidatorChanges) -> Self {
         consensus_validator_changes.0
+    }
+}
+
+/// Complete source documents for installed future protocol versions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FutureChainspecs(BTreeMap<ProtocolVersion, ChainspecRawBytes>);
+
+impl FutureChainspecs {
+    /// Constructs a complete snapshot of installed future source documents.
+    pub fn new(chainspecs: BTreeMap<ProtocolVersion, ChainspecRawBytes>) -> Self {
+        Self(chainspecs)
+    }
+
+    /// Returns the source documents, ordered by protocol version.
+    pub fn as_inner(&self) -> &BTreeMap<ProtocolVersion, ChainspecRawBytes> {
+        &self.0
+    }
+
+    /// Consumes the snapshot and returns its source documents.
+    pub fn into_inner(self) -> BTreeMap<ProtocolVersion, ChainspecRawBytes> {
+        self.0
     }
 }
 
@@ -691,6 +712,7 @@ impl<T: FromBytes> FromBytes for ValueWithProof<T> {
 
 impl_bytesrepr_for_type_wrapper!(Uptime);
 impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
+impl_bytesrepr_for_type_wrapper!(FutureChainspecs);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
 impl_bytesrepr_for_type_wrapper!(ReactorStateName);
 impl_bytesrepr_for_type_wrapper!(LastProgress);
@@ -711,6 +733,34 @@ mod tests {
     fn uptime_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&Uptime::new(rng.gen()));
+    }
+
+    #[test]
+    fn future_chainspecs_roundtrip_complete_source_documents() {
+        let source = ChainspecRawBytes::new(
+            b"# unknown future settings\n".to_vec().into(),
+            Some(b"# accounts\n".to_vec().into()),
+            Some(b"# state\n".to_vec().into()),
+        );
+        for entries in [
+            BTreeMap::new(),
+            BTreeMap::from([
+                (ProtocolVersion::from_parts(10, 0, 0), source.clone()),
+                (ProtocolVersion::from_parts(2, 2, 0), source.clone()),
+            ]),
+        ] {
+            let expected = FutureChainspecs::new(entries);
+            let response = crate::BinaryResponse::from_value(expected.clone());
+            assert!(response.is_success());
+            assert_eq!(
+                response.returned_data_type_tag(),
+                Some(crate::ResponseType::FutureChainspecs as u8)
+            );
+            let (actual, remainder) = FutureChainspecs::from_bytes(response.payload()).unwrap();
+            assert!(remainder.is_empty());
+            assert_eq!(actual, expected);
+            assert_eq!(expected.serialized_length(), response.payload().len());
+        }
     }
 
     #[test]

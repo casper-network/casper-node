@@ -391,6 +391,9 @@ pub enum ErrorCode {
     /// EVM gas limit exceeds the protocol transaction gas limit.
     #[error("EVM gas limit exceeds the protocol transaction gas limit")]
     InvalidTransactionEvmGasLimitExceedsTransactionGasLimit = 124,
+    /// The response envelope exceeds the configured binary message size limit.
+    #[error("response exceeds the binary message size limit")]
+    ResponseTooLarge = 125,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -636,6 +639,15 @@ mod tests {
         assert_eq!(
             ErrorCode::try_from(124u16).unwrap(),
             ErrorCode::InvalidTransactionEvmGasLimitExceedsTransactionGasLimit
+        );
+    }
+
+    #[test]
+    fn response_too_large_error_code_is_appended() {
+        assert_eq!(ErrorCode::ResponseTooLarge as u16, 125);
+        assert_eq!(
+            ErrorCode::try_from(125u16).unwrap(),
+            ErrorCode::ResponseTooLarge
         );
     }
 
