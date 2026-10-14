@@ -1118,6 +1118,25 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
+            FunctionIndex::ReadAssociatedKeys => {
+                // args(0) = pointer to array of bytes of an account hash
+                // args(1) = length of array of bytes of an account hash
+                // args(2) (Output) Pointer to number of authorization keys.
+                // args(3) (Output) Pointer to size in bytes of the total bytes.
+                let (key_ptr, key_size, len_ptr, result_ptr): (u32, u32, u32, u32) =
+                    Args::parse(args)?;
+                let account_hash: AccountHash = {
+                    let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
+                };
+                self.charge_host_function_call(
+                    &host_function_costs.load_named_keys,
+                    [len_ptr, result_ptr],
+                )?;
+                let ret = self.get_associated_keys(account_hash, len_ptr, result_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
             FunctionIndex::DictionaryGetFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory

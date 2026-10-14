@@ -25,6 +25,8 @@ const RANDOM_BYTES_RESULT: &str = "random_bytes_result";
 const RANDOM_BYTES_PAYMENT_WASM: &str = "random_bytes_payment.wasm";
 const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
+const READ_ASSOCIATED_KEYS_WASM: &str = "read_associated_keys.wasm";
+
 fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -130,4 +132,22 @@ fn should_hash() {
         let expected_digest = cryptography::blake2b(input);
         assert_eq!(digest, expected_digest);
     }
+}
+
+#[ignore]
+#[test]
+fn should_read_associated_keys() {
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        READ_ASSOCIATED_KEYS_WASM,
+        runtime_args! {
+            "account-hash" => *DEFAULT_ACCOUNT_ADDR
+        },
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
 }

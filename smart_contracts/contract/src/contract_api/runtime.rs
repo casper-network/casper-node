@@ -3,6 +3,8 @@
 use alloc::{collections::BTreeSet, vec, vec::Vec};
 use core::mem::MaybeUninit;
 
+use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
+use casper_types::addressable_entity::AssociatedKeys;
 use casper_types::{
     account::AccountHash,
     api_error,
@@ -14,8 +16,6 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
     PHASE_SERIALIZED_LENGTH,
 };
-
-use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 
 /// Number of random bytes returned from the `random_bytes()` function.
 const RANDOM_BYTES_COUNT: usize = 32;
@@ -502,6 +502,34 @@ pub fn list_named_keys() -> NamedKeys {
     if total_keys == 0 {
         return NamedKeys::new();
     }
+    let bytes = read_host_buffer(result_size).unwrap_or_revert();
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// Returns the set of [`AssociatedKeys`] for the given account hash`.
+pub fn read_associated_keys(account_hash: AccountHash) -> AssociatedKeys {
+    let (account_hash_ptr, account_hash_size, _bytes) = contract_api::to_ptr(account_hash);
+    let (total_keys, result_size) = {
+        let mut total_keys = MaybeUninit::uninit();
+        let mut result_size = 0usize;
+        let ret = unsafe {
+            ext_ffi::casper_read_associated_keys(
+                account_hash_ptr,
+                account_hash_size,
+                total_keys.as_mut_ptr(),
+                &mut result_size as *mut usize
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        let total_keys = unsafe { total_keys.assume_init() };
+        (total_keys, result_size)
+    };
+
+    
+    if total_keys == 0 {
+        return AssociatedKeys::default();
+    }
+
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()
 }

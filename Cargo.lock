@@ -6394,6 +6394,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-associated-keys"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "read-from-key"
 version = "0.1.0"
 dependencies = [

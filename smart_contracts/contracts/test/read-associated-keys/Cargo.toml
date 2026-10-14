@@ -1,0 +1,15 @@
+[package]
+name = "read-associated-keys"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "read_associated_keys"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

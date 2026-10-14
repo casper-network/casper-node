@@ -979,4 +979,12 @@ extern "C" {
         runtime_args_size: usize,
         result_size: *mut usize,
     ) -> i32;
+
+    /// Read the associated keys
+    pub fn casper_read_associated_keys(
+        account_hash_ptr: *const u8,
+        account_hash_size: usize,
+        total_keys: *mut usize, 
+        result_size: *mut usize
+    ) -> i32;
 }

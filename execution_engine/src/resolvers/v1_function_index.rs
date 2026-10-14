@@ -66,6 +66,7 @@ pub(crate) enum FunctionIndex {
     RecoverSecp256k1,
     VerifySignature,
     CallPackageVersion,
+    ReadAssociatedKeys,
 }
 
 impl From<FunctionIndex> for usize {

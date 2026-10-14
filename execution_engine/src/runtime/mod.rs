@@ -4639,6 +4639,57 @@ where
         Ok(Ok(()))
     }
 
+    fn get_associated_keys(
+        &mut self,
+        account_hash: AccountHash,
+        len_ptr: u32,
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let associated_keys = match self.context.read_gs(&Key::Account(account_hash))? {
+            Some(StoredValue::Account(account)) => {
+                Ok(AssociatedKeys::from(account.associated_keys().clone()))
+            }
+            Some(StoredValue::CLValue(cl_value)) => {
+                let key = CLValue::to_t::<Key>(&cl_value).map_err(ExecError::CLValue)?;
+                let entity = self.context.read_gs_typed::<AddressableEntity>(&key)?;
+                Ok(entity.associated_keys().clone())
+            }
+            Some(_other) => Err(ExecError::UnexpectedKeyVariant(Key::Account(account_hash))),
+            None => Ok(AssociatedKeys::default()),
+        }?;
+
+        let total_keys: u32 = match associated_keys.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        let total_keys_bytes = total_keys.to_le_bytes();
+        if let Err(error) = self.try_get_memory()?.set(len_ptr, &total_keys_bytes) {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        if total_keys == 0 {
+            // No need to do anything else, we leave host buffer empty.
+            return Ok(Ok(()));
+        }
+
+        let authorization_keys = CLValue::from_t(associated_keys).map_err(ExecError::CLValue)?;
+
+        let length: u32 = match authorization_keys.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        if let Err(error) = self.write_host_buffer(authorization_keys) {
+            return Ok(Err(error));
+        }
+
+        let length_bytes = length.to_le_bytes();
+        if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
     fn prune(&mut self, key: Key) {
         self.context.prune_gs_unsafe(key);
     }
