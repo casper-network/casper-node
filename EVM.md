@@ -366,8 +366,10 @@ For client-submitted EVM transactions, the acceptor currently validates:
 12. The EVM account identity for `from` must resolve to a balance, or the
     recovered secp256k1 signer must resolve to a Casper account balance or the
     address's deterministic EVM purse balance.
-13. The transaction nonce must match the EVM nonce in global state, defaulting
-    to `0` before the first EVM transaction for that address.
+13. The transaction nonce must be at least the EVM nonce in global state
+    (defaulting to `0` before the first EVM transaction for that address) and
+    at most `[evm].max_nonce_gap` ahead of it. A lower nonce is rejected with
+    `InvalidNonce`; a higher one with `NonceTooFarAhead`.
 14. That balance must meet the chain baseline motes requirement.
 
 The acceptor does not require a Casper `AddressableEntity` for every EVM
@@ -380,8 +382,53 @@ deterministic EVM purse when no Casper account exists. The runtime later checks
 the full EVM maximum fee amount.
 
 The nonce check is also applied to peer-sourced EVM transactions before storage,
-so a gossiped transaction with a nonce that cannot execute at the current state
-root is rejected before it can enter the transaction buffer.
+so a gossiped transaction with a stale nonce, or one too far ahead, is rejected
+before it can enter the transaction buffer.
+
+## Multiple Transactions Per Sender
+
+A sender may have several EVM transactions in flight, and one block may carry
+several of them, as long as they execute in nonce order.
+
+- **Admission.** The acceptor checks the nonce against the latest executed state
+  only, allowing nonces up to `[evm].max_nonce_gap` ahead. It cannot see the
+  sender's other pending transactions, so gaps and duplicate nonces are
+  admitted.
+- **Gossip.** A client's EVM transactions are held for a short window (500 ms,
+  opened by the sender's first transaction). Then they are sorted by nonce and
+  split into runs of consecutive nonces. Runs of two to
+  `[evm_transaction_batcher] max_batch_size` transactions (node config, default
+  10, at most 100) are gossiped as one batch; a lone transaction is gossiped as usual. Only the
+  batch's ordered transaction IDs are gossiped. A peer missing any of them
+  fetches the transactions one at a time, in nonce order, with the
+  `BatchedTransaction` fetch request, and holds them in memory: nothing is
+  stored until the whole batch has arrived. A batch therefore never has to fit
+  into one network message. Peers reject batch IDs listing more than 100
+  transactions, ignore batches larger than their own `max_batch_size`, and drop
+  a batch as soon as a fetched transaction is from
+  another sender or breaks the nonce sequence, or if its transactions are not
+  all fetched within one fetcher peer timeout per transaction of
+  `max_batch_size`. A node fetches at most `[evm_transaction_batcher]
+  max_in_flight_batch_fetches` batches at a time (node config, default 10, 0
+  for unlimited) and ignores batches announced beyond that. A complete batch is
+  accepted in nonce order and enters the transaction buffer as a unit.
+- **Proposal.** The proposer groups EVM transactions by sender and takes each
+  sender's run lowest nonce first, interleaving senders round-robin. A run stops
+  at a nonce gap, at a transaction that does not fit the block, and where the
+  next transaction's lane would execute before the previous one's (lanes
+  execute in id order). Duplicate nonces are skipped.
+- **Execution.** Transactions execute in block order. Ordering is not a block
+  validity rule, so a proposer that ignores it produces a valid block. Any EVM
+  transaction whose nonce is not the sender's next nonce at that point fails
+  with a halt receipt, zero gas and zero cost, without touching state. The
+  reason is logged at `info`.
+
+Limitations: only transactions submitted to the same node within one window are
+batched. A run spread over several nodes, sent out of nonce order, or sent
+further apart than the window may reach proposers piecemeal. Its later
+transactions can then be proposed before the earlier ones and fail. The
+proposer cannot read the sender's current nonce, so a run whose first nonce is
+not the sender's next nonce fails entirely.
 
 ## Runtime Execution
 

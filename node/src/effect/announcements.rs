@@ -16,7 +16,7 @@ use serde::Serialize;
 
 use casper_types::{
     execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
-    PublicKey, Timestamp, Transaction, TransactionHash, U512,
+    PublicKey, Timestamp, Transaction, TransactionHash, TransactionId, U512,
 };
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
     },
     effect::Responder,
     failpoints::FailpointActivation,
-    types::{FinalizedBlock, MetaBlock, NodeId},
+    types::{EvmTransactionBatchId, FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 
@@ -241,6 +241,35 @@ impl Display for TransactionAcceptorAnnouncement {
                     transaction.hash(),
                     source
                 )
+            }
+        }
+    }
+}
+
+/// An announcement by the EVM transaction batcher that something is ready to be gossiped.
+#[derive(Debug, Serialize)]
+pub(crate) enum EvmTransactionBatcherAnnouncement {
+    /// A transaction to gossip on its own.
+    GossipTransaction {
+        transaction_id: TransactionId,
+        source: Source,
+    },
+    /// A batch of a sender's consecutive EVM transactions to gossip together.
+    GossipBatch {
+        batch_id: EvmTransactionBatchId,
+        source: Source,
+    },
+}
+
+impl Display for EvmTransactionBatcherAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EvmTransactionBatcherAnnouncement::GossipTransaction {
+                transaction_id,
+                source,
+            } => write!(f, "gossip {} from {}", transaction_id, source),
+            EvmTransactionBatcherAnnouncement::GossipBatch { batch_id, source } => {
+                write!(f, "gossip {} from {}", batch_id, source)
             }
         }
     }

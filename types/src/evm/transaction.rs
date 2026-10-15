@@ -597,6 +597,15 @@ pub enum EvmTransactionError {
     },
     /// The execution engine rejected an EVM transaction precondition.
     Validation(String),
+    /// The transaction nonce is further ahead of the account nonce than the chainspec allows.
+    NonceTooFarAhead {
+        /// Current account nonce.
+        current: u64,
+        /// EvmTransaction nonce.
+        actual: u64,
+        /// Configured maximum distance from the current nonce.
+        max_nonce_gap: u64,
+    },
     /// The transaction does not contain an EVM approval.
     MissingApproval,
     /// The approval is not a secp256k1 signature and public key.
@@ -726,6 +735,17 @@ impl Display for EvmTransactionError {
             }
             EvmTransactionError::Validation(error) => {
                 write!(formatter, "EVM transaction validation error: {error}")
+            }
+            EvmTransactionError::NonceTooFarAhead {
+                current,
+                actual,
+                max_nonce_gap,
+            } => {
+                write!(
+                    formatter,
+                    "EVM transaction nonce {actual} is more than {max_nonce_gap} ahead of account \
+                    nonce {current}"
+                )
             }
             EvmTransactionError::MissingApproval => formatter.write_str("missing EVM approval"),
             EvmTransactionError::NonSecp256k1Approval => {

@@ -29,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::NodeId,
+    types::{EvmTransactionBatchId, NodeId},
 };
 
 /// Reactor message.
@@ -70,6 +70,9 @@ pub(crate) enum Message {
     /// Finality signature.
     #[from]
     FinalitySignature(Box<FinalitySignatureV2>),
+    /// EVM transaction batch gossiper component message.
+    #[from]
+    EvmTransactionBatchGossiper(gossiper::Message<EvmTransactionBatchId>),
 }
 
 impl Payload for Message {
@@ -82,7 +85,9 @@ impl Payload for Message {
             Message::TransactionGossiper(_) => MessageKind::TransactionGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
-                Tag::Transaction | Tag::LegacyDeploy => MessageKind::TransactionTransfer,
+                Tag::Transaction | Tag::LegacyDeploy | Tag::BatchedTransaction => {
+                    MessageKind::TransactionTransfer
+                }
                 Tag::Block => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
@@ -93,6 +98,7 @@ impl Payload for Message {
             },
             Message::FinalitySignature(_) => MessageKind::Consensus,
             Message::FinalitySignatureGossiper(_) => MessageKind::FinalitySignatureGossip,
+            Message::EvmTransactionBatchGossiper(_) => MessageKind::TransactionGossip,
         }
     }
 
@@ -110,6 +116,7 @@ impl Payload for Message {
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,
+            Message::EvmTransactionBatchGossiper(_) => false,
         }
     }
 
@@ -123,7 +130,7 @@ impl Payload for Message {
             Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
             Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Transaction => weights.transaction_requests,
+                Tag::Transaction | Tag::BatchedTransaction => weights.transaction_requests,
                 Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
                 Tag::BlockHeader => weights.block_header_requests,
@@ -134,7 +141,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Transaction => weights.transaction_responses,
+                Tag::Transaction | Tag::BatchedTransaction => weights.transaction_responses,
                 Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
                 Tag::BlockHeader => weights.block_header_responses,
@@ -145,6 +152,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => weights.execution_results_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signature_broadcasts,
+            Message::EvmTransactionBatchGossiper(_) => weights.transaction_gossip,
         }
     }
 
@@ -161,6 +169,7 @@ impl Payload for Message {
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,
+            Message::EvmTransactionBatchGossiper(_) => false,
         }
     }
 }
@@ -222,6 +231,10 @@ impl Debug for Message {
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()
             }
+            Message::EvmTransactionBatchGossiper(batch) => f
+                .debug_tuple("EvmTransactionBatchGossiper")
+                .field(&batch)
+                .finish(),
         }
     }
 }
@@ -263,6 +276,11 @@ mod specimen_support {
                     MessageDiscriminants::FinalitySignature => Message::FinalitySignature(
                         LargestSpecimen::largest_specimen(estimator, cache),
                     ),
+                    MessageDiscriminants::EvmTransactionBatchGossiper => {
+                        Message::EvmTransactionBatchGossiper(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
                 },
             )
         }
@@ -292,6 +310,9 @@ impl Display for Message {
             Message::FinalitySignature(fs) => {
                 write!(f, "FinalitySignature::({})", fs)
             }
+            Message::EvmTransactionBatchGossiper(batch) => {
+                write!(f, "EvmTransactionBatchGossiper::{}", batch)
+            }
         }
     }
 }
@@ -302,6 +323,7 @@ where
         + From<ConsensusDemand>
         + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Transaction>>
+        + From<GossiperIncoming<EvmTransactionBatchId>>
         + From<GossiperIncoming<FinalitySignatureV2>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
@@ -338,6 +360,11 @@ where
             }
             .into(),
             Message::AddressGossiper(message) => GossiperIncoming {
+                sender,
+                message: Box::new(message),
+            }
+            .into(),
+            Message::EvmTransactionBatchGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
             }
@@ -388,6 +415,11 @@ where
                     message: Box::new(NetRequest::BlockExecutionResults(serialized_id)),
                 }
                 .into(),
+                Tag::BatchedTransaction => NetRequestIncoming {
+                    sender,
+                    message: Box::new(NetRequest::BatchedTransaction(serialized_id)),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -436,6 +468,11 @@ where
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::BlockExecutionResults(serialized_item)),
+                }
+                .into(),
+                Tag::BatchedTransaction => NetResponseIncoming {
+                    sender,
+                    message: Box::new(NetResponse::BatchedTransaction(serialized_item)),
                 }
                 .into(),
             },

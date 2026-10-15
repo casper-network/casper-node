@@ -7,9 +7,9 @@ use casper_types::Chainspec;
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BinaryPortConfig, BlockAccumulatorConfig,
     BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig,
-    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig,
-    RestServerConfig, StorageConfig, TransactionAcceptorConfig, TransactionBufferConfig,
-    UpgradeWatcherConfig,
+    DiagnosticsPortConfig, EventStreamServerConfig, EvmTransactionBatcherConfig, FetcherConfig,
+    GossipConfig, NetworkConfig, RestServerConfig, StorageConfig, TransactionAcceptorConfig,
+    TransactionBufferConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -41,6 +41,8 @@ pub struct Config {
     pub transaction_acceptor: TransactionAcceptorConfig,
     /// Config values for the transaction buffer.
     pub transaction_buffer: TransactionBufferConfig,
+    /// Config values for the EVM transaction batcher.
+    pub evm_transaction_batcher: EvmTransactionBatcherConfig,
     /// Config values for the diagnostics port.
     pub diagnostics_port: DiagnosticsPortConfig,
     /// Config values for the block accumulator.
@@ -70,6 +72,16 @@ impl Config {
             );
             self.transaction_acceptor.timestamp_leeway =
                 chainspec.transaction_config.max_timestamp_leeway;
+        }
+        let configured_max_batch_size = self.evm_transaction_batcher.max_batch_size;
+        if let Some((min, max)) = self.evm_transaction_batcher.clamp_max_batch_size() {
+            error!(
+                configured_max_batch_size,
+                min,
+                max,
+                "setting value for 'evm_transaction_batcher.max_batch_size' to the nearest value \
+                in the supported range",
+            );
         }
     }
 
