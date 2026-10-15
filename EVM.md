@@ -218,32 +218,59 @@ predeploys. No deployment transaction is required.
 
 Installation is idempotent: matching code is retained, missing code records are
 restored, and conflicting code is rejected. Existing account metadata,
-balances, nonces, and storage are preserved. The contracts are supplied by the
-network distribution in the chainspec, with one address and runtime bytecode
-pair per line:
+balances, nonces, and storage are preserved. The chainspec supplies a list of
+installation address and runtime Keccak-256 checksum pairs; runtime bytes are
+separate protocol assets:
 
 ```toml
-[evm.preinstalls]
-# Address and bytecode are 0x-prefixed base16; this example installs STOP.
-"0x1111111111111111111111111111111111111111" = "0x00"
+[evm]
+preinstalls = [
+    # Multicall3; the second value is a 32-byte runtime checksum.
+    ["0xcA11bde05977b3631167028862bE2a173976CA11", "0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891"],
+]
 ```
 
-An omitted or empty table installs no utility contracts. The node has no
-compiled preinstall registry. Addresses must contain exactly 20 bytes, bytecode
-must be non-empty, and duplicate addresses, including differences in hex case,
-are rejected. The map is serialized in address order and included in the
-chainspec hash. All validators must receive the same finalized table before
-activation. Only runtime code is installed; constructors are not executed.
+An omitted or empty list installs no utility contracts. The node has no
+compiled preinstall registry. Addresses must contain exactly 20 bytes and
+checksums exactly 32 bytes; when EVM is enabled, duplicate addresses, including
+differences in hex case, are rejected during chainspec validation and upgrade
+discovery. The list is serialized in the configured order and included in the
+chainspec hash. All validators must receive the same finalized list and assets
+before activation. Only runtime code is installed; constructors are not executed.
 Removing an entry in a later chainspec does not delete existing on-chain code.
 
+The selected protocol directory is the directory containing `config.toml` and
+`chainspec.toml`. Runtime lookup is always `preinstalls/<hash>.bin` in that
+directory, using lowercase hash digits without `0x`. Each file contains raw
+runtime bytes, not hexadecimal text or creation bytecode. There is no additional
+node config setting, network download, or search through other protocol versions.
+
+When EVM is enabled, node startup validates every listed file. The upgrade
+watcher validates the nearest staged package's assets when that version enables
+EVM; missing, unreadable, empty or mismatched files are reported and withhold
+that upgrade. The current node continues running and retries validation on
+subsequent scans.
+Genesis and upgrade commit reread and verify the files when EVM is enabled;
+upgrade loading is covered by the existing commit timeout. The storage installer
+also verifies separately supplied bytecode against the configured checksums.
+With EVM disabled, preinstall key validation and file loading are skipped.
+
+`ChainspecRawBytes` contains the manifest and its existing companion files, not
+these runtimes. A recipient needs the matching protocol assets to perform
+activation. Protocol config archives and external launcher/staging tooling must
+copy the complete `preinstalls/` directory beside the selected chainspec. The
+canonical repository assets live in `resources/evm/preinstalls`; local chainspec
+generation copies them into `resources/local/preinstalls`.
+
 For the initial EVM rollout, the protocol upgrade that first enables EVM
-should contain a non-empty `[evm.preinstalls]` table with the expected contracts
+should contain a non-empty `[evm].preinstalls` list with the expected contracts
 below. EntryPoint and SenderCreator must be included together. This is a
-rollout requirement: the generic installer accepts an empty table and does
+rollout requirement: the generic installer accepts an empty list and does
 not populate the expected list automatically.
 
-The [local chainspec template](resources/local/chainspec.toml.in) contains this
-initial rollout list, each contract under its upstream license:
+The [local chainspec template](resources/local/chainspec.toml.in) configures no
+utility preinstalls. The [integration tests](executor/evm/tests/preinstalls.rs)
+pin the initial rollout list below, each contract under its upstream license:
 
 | Preinstall | License | Canonical address | Ethereum mainnet reference |
 | --- | --- | --- | --- |
@@ -297,15 +324,15 @@ Bundlers, account factories, and wallet integrations require configuration for
 the network, and bundled transactions pay the configured fees.
 
 Preinstallation leaves the base fee and transaction admission rules unchanged.
-Runtime bytecode is supplied as configuration data. The chainspec retains
-source attribution, pinned references, runtime hashes, and complete upstream
-license notices beside the configured runtimes.
+Runtime bytecode and attribution are retained in
+[`resources/evm/preinstalls`](resources/evm/preinstalls/README.md). The README
+records pinned sources, addresses, runtime hashes, lengths, and constructor
+immutables; complete upstream license notices accompany the binaries.
 
-Attribution and license notices also accompany generated chainspecs as TOML
-comments. Distributors must preserve the notices and provide the exact
-corresponding source for GPL runtimes while distributing them. Later network
-releases can extend the table with additional canonical tools; existing
-matching contracts are retained by the idempotent upsert.
+Distributors must preserve the notices and provide the exact corresponding
+source for GPL runtimes while distributing them. Later network releases can
+extend the table with additional canonical tools; existing matching contracts
+are retained by the idempotent upsert.
 
 ## Transaction Shape
 

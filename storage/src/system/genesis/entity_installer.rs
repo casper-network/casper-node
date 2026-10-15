@@ -880,6 +880,7 @@ where
             upsert_preinstalls(
                 &mut self.tracking_copy.borrow_mut(),
                 &self.config.evm_config().preinstalls,
+                self.config.evm_preinstall_bytecodes(),
             )
             .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
         }

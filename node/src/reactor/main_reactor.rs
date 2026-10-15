@@ -1143,6 +1143,7 @@ impl reactor::Reactor for MainReactor {
 
         let contract_runtime = ContractRuntime::new(
             &storage_root,
+            &root_dir,
             block_store.clone(),
             &config.contract_runtime,
             chainspec.clone(),
