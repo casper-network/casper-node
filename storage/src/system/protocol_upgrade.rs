@@ -1722,6 +1722,7 @@ where
             upsert_preinstalls(
                 &mut self.tracking_copy,
                 &self.config.evm_config().preinstalls,
+                self.config.evm_preinstall_bytecodes(),
             )
             .map_err(|error| ProtocolUpgradeError::EvmPreinstall(error.to_string()))?;
         }

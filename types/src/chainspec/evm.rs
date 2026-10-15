@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::TransactionLaneDefinition;
 use crate::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     EvmFeeConfig, U256, U512,
 };
 
@@ -97,16 +97,12 @@ pub struct EvmConfig {
         deserialize_with = "vec_to_transaction_lane_definitions"
     )]
     pub transaction_lanes: Vec<TransactionLaneDefinition>,
-    /// Runtime bytecode installed at the configured addresses at genesis and upgrades.
+    /// Keccak-256 hashes of runtime bytecode installed at genesis and upgrades.
     ///
-    /// TOML uses an `[evm.preinstalls]` address-to-bytecode table. Both keys and
-    /// values are 0x-prefixed hexadecimal strings. An omitted table is empty.
-    #[serde(default, with = "super::evm_preinstalls")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(with = "BTreeMap<crate::evm::Address, alloc::string::String>")
-    )]
-    pub preinstalls: BTreeMap<crate::evm::Address, Bytes>,
+    /// Each entry is an address and code hash, both 0x-prefixed hexadecimal
+    /// strings in TOML. Addresses must be unique. An omitted list is empty.
+    #[serde(default)]
+    pub preinstalls: Vec<(crate::evm::Address, crate::evm::Hash)>,
 }
 
 impl Default for EvmConfig {
@@ -119,7 +115,7 @@ impl Default for EvmConfig {
             base_fee: 0,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
             transaction_lanes: Vec::new(),
-            preinstalls: BTreeMap::new(),
+            preinstalls: Vec::new(),
         }
     }
 }
@@ -361,10 +357,7 @@ impl FromBytes for EvmConfig {
             .map(TransactionLaneDefinition::try_from)
             .collect();
         let (preinstalls, remainder) =
-            BTreeMap::<crate::evm::Address, Bytes>::from_bytes(remainder)?;
-        if preinstalls.values().any(|code| code.is_empty()) {
-            return Err(bytesrepr::Error::Formatting);
-        }
+            Vec::<(crate::evm::Address, crate::evm::Hash)>::from_bytes(remainder)?;
         Ok((
             EvmConfig {
                 enabled,
@@ -389,17 +382,10 @@ mod tests {
 
     use super::*;
 
-    fn config_json(preinstalls: BTreeMap<String, String>) -> Value {
-        json!({
-            "enabled": true,
-            "chain_id": 7,
-            "spec": "prague",
-            "block_gas_limit": 30_000_000,
-            "base_fee": 5_000,
-            "wei_per_mote": 1_000_000_000,
-            "preinstalls": preinstalls,
-            "transaction_lanes": [],
-        })
+    fn config_json(preinstalls: Vec<(String, String)>) -> Value {
+        let mut value = serde_json::to_value(EvmConfig::default()).unwrap();
+        value["preinstalls"] = json!(preinstalls);
+        value
     }
 
     #[test]
@@ -412,17 +398,20 @@ mod tests {
 
     #[test]
     fn preinstalls_roundtrip_as_prefixed_base16_and_binary() {
-        let value = config_json(BTreeMap::from([(
+        let value = config_json(vec![(
             "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
-            "0x60AB00".into(),
-        )]));
+            format!("0x{}", "AB".repeat(32)),
+        )]);
         let config: EvmConfig = serde_json::from_value(value).unwrap();
         let address = crate::evm::Address::new([0xaa; 20]);
-        assert_eq!(config.preinstalls[&address].as_slice(), &[0x60, 0xab, 0]);
+        assert_eq!(
+            config.preinstalls,
+            vec![(address, crate::evm::Hash::new([0xab; 32]))]
+        );
         let value = serde_json::to_value(&config).unwrap();
         assert_eq!(
-            value["preinstalls"]["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
-            "0x60ab00"
+            value["preinstalls"][0],
+            json!([address.to_string(), format!("0x{}", "ab".repeat(32))])
         );
         assert_eq!(serde_json::from_value::<EvmConfig>(value).unwrap(), config);
         let serialized = config.to_bytes().unwrap();
@@ -433,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn preinstalls_reject_invalid_hex_and_empty_code() {
+    fn preinstalls_reject_invalid_addresses_and_hashes() {
         for (address, code) in [
             ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0x00"),
             ("0x01", "0x00"),
@@ -442,29 +431,21 @@ mod tests {
             ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0xgg"),
             ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0x"),
         ] {
-            let value = config_json(BTreeMap::from([(address.into(), code.into())]));
+            let value = config_json(vec![(address.into(), code.into())]);
             assert!(serde_json::from_value::<EvmConfig>(value).is_err());
         }
 
-        let mut value = config_json(BTreeMap::new());
-        value["preinstalls"]["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] = json!([0]);
-        assert!(serde_json::from_value::<EvmConfig>(value).is_err());
-    }
-
-    #[test]
-    fn preinstalls_reject_duplicate_addresses_with_different_casing() {
-        let value = config_json(BTreeMap::from([
-            (
+        for length in [31, 33] {
+            let value = config_json(vec![(
                 "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-                "0x00".into(),
-            ),
-            (
-                "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
-                "0x01".into(),
-            ),
-        ]));
-        let error = serde_json::from_value::<EvmConfig>(value).unwrap_err();
-        assert!(error.to_string().contains("duplicate preinstall address"));
+                format!("0x{}", "ab".repeat(length)),
+            )]);
+            assert!(serde_json::from_value::<EvmConfig>(value).is_err());
+        }
+
+        let mut value = config_json(Vec::new());
+        value["preinstalls"] = json!([["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [0]]]);
+        assert!(serde_json::from_value::<EvmConfig>(value).is_err());
     }
 
     #[test]
@@ -475,56 +456,51 @@ mod tests {
         chainspec
             .evm_config
             .preinstalls
-            .insert(address, vec![0x00].into());
+            .push((address, crate::evm::Hash::new([0; 32])));
         let installed_hash = chainspec.hash();
         assert_ne!(empty_hash, installed_hash);
-        chainspec
-            .evm_config
-            .preinstalls
-            .insert(address, vec![0x01].into());
+        chainspec.evm_config.preinstalls[0].1 = crate::evm::Hash::new([1; 32]);
         assert_ne!(installed_hash, chainspec.hash());
-        chainspec.evm_config.preinstalls.remove(&address);
-        chainspec
-            .evm_config
-            .preinstalls
-            .insert(crate::evm::Address::new([2; 20]), vec![0x00].into());
+        chainspec.evm_config.preinstalls[0] = (
+            crate::evm::Address::new([2; 20]),
+            crate::evm::Hash::new([0; 32]),
+        );
         assert_ne!(installed_hash, chainspec.hash());
     }
 
     #[test]
-    fn preinstall_serialization_is_independent_of_input_order() {
-        let first = config_json(BTreeMap::from([
+    fn preinstall_serialization_preserves_input_order() {
+        let mut chainspec = crate::Chainspec::default();
+        chainspec.evm_config.preinstalls = vec![
             (
-                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-                "0x00".into(),
+                crate::evm::Address::new([1; 20]),
+                crate::evm::Hash::new([0; 32]),
             ),
             (
-                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
-                "0x01".into(),
+                crate::evm::Address::new([2; 20]),
+                crate::evm::Hash::new([1; 32]),
             ),
-        ]));
-        let second = config_json(BTreeMap::from([
-            (
-                "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".into(),
-                "0x01".into(),
-            ),
-            (
-                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-                "0x00".into(),
-            ),
-        ]));
-        let first: EvmConfig = serde_json::from_value(first).unwrap();
-        let second: EvmConfig = serde_json::from_value(second).unwrap();
-        assert_eq!(first.to_bytes().unwrap(), second.to_bytes().unwrap());
+        ];
+        let first = chainspec.evm_config.to_bytes().unwrap();
+        let hash = chainspec.hash();
+        chainspec.evm_config.preinstalls.reverse();
+        let value = serde_json::to_value(&chainspec.evm_config).unwrap();
+        let decoded: EvmConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, chainspec.evm_config);
+        assert_ne!(first, decoded.to_bytes().unwrap());
+        assert_ne!(hash, chainspec.hash());
     }
 
     #[test]
-    fn binary_preinstalls_reject_empty_runtime_bytecode() {
+    fn binary_preinstalls_reject_truncated_hash() {
         let mut config = EvmConfig::default();
-        config
-            .preinstalls
-            .insert(crate::evm::Address::new([1; 20]), Bytes::new());
-        assert!(EvmConfig::from_bytes(&config.to_bytes().unwrap()).is_err());
+        config.preinstalls.push((
+            crate::evm::Address::new([1; 20]),
+            crate::evm::Hash::new([2; 32]),
+        ));
+        let mut bytes = config.to_bytes().unwrap();
+        bytes.pop();
+        assert!(EvmConfig::from_bytes(&bytes).is_err());
     }
 
     #[test]

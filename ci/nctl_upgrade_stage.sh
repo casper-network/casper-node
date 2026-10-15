@@ -70,6 +70,9 @@ for i in "${BIN_ARRAY[@]}"; do
     echo ""
 done
 
+# Protocol runtime assets and their attribution must travel with the configs.
+cp -R "$ROOT_DIR/resources/evm/preinstalls" "$TEMP_STAGE_DIR/"
+
 # Copy wasm to staging dir
 for i in "${WASM_ARRAY[@]}"; do
     if [ -f "$WASM_BUILD_DIR/$i" ]; then

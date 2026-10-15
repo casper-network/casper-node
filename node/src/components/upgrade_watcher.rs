@@ -21,10 +21,7 @@ use thiserror::Error;
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{
-    file_utils::{self, ReadFileError},
-    Chainspec, EraId, NextUpgrade, ProtocolConfig, ProtocolVersion, TimeDiff,
-};
+use casper_types::{evm, Chainspec, EraId, NextUpgrade, ProtocolConfig, ProtocolVersion, TimeDiff};
 
 use crate::{
     components::{Component, ComponentState, InitializedComponent},
@@ -33,7 +30,10 @@ use crate::{
         EffectExt, Effects,
     },
     reactor::main_reactor::MainEvent,
-    utils::chain_specification::parse_toml::CHAINSPEC_FILENAME,
+    utils::{
+        chain_specification::{parse_toml::CHAINSPEC_FILENAME, validate_evm_preinstalls},
+        evm_preinstalls::load_preinstall_bytecodes,
+    },
     NodeRng,
 };
 
@@ -101,7 +101,7 @@ pub(crate) enum Error {
 
     /// Error loading the upgrade point.
     #[error("could not load upgrade point: {0}")]
-    LoadUpgradePoint(ReadFileError),
+    LoadUpgradePoint(io::Error),
 
     /// Failed to read the given directory.
     #[error("failed to read dir {}: {error}", dir.display())]
@@ -325,14 +325,24 @@ where
 struct UpgradePoint {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
+    #[serde(default)]
+    evm: UpgradeEvmConfig,
+}
+
+/// Reads the activation flag and asset manifest, allowing unrelated future EVM fields.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct UpgradeEvmConfig {
+    enabled: bool,
+    preinstalls: Vec<(evm::Address, evm::Hash)>,
 }
 
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path> + fmt::Debug>(path: P) -> Result<Self, Error> {
-        let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
+        let contents = fs::read_to_string(path.as_ref().join(CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
-        Ok(toml::from_str(std::str::from_utf8(&bytes).unwrap())?)
+        Ok(toml::from_str(&contents)?)
     }
 }
 
@@ -418,7 +428,7 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     let upgrade_point = match UpgradePoint::from_chainspec_path(&subdir) {
         Ok(upgrade_point) => upgrade_point,
         Err(error) => {
-            debug!(subdir=%subdir.display(), %error, "failed to load upgrade point");
+            warn!(subdir=%subdir.display(), %error, "failed to load upgrade point");
             return None;
         }
     };
@@ -429,6 +439,22 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
             subdir_version=%next_version,
             "next chainspec installed to wrong subdir"
         );
+        return None;
+    }
+
+    if upgrade_point.evm.enabled && !validate_evm_preinstalls(&upgrade_point.evm.preinstalls) {
+        error!(protocol_version=%next_version, path=%subdir.display(),
+            "withholding upgrade with duplicate EVM preinstall addresses");
+        return None;
+    }
+
+    if let Err(error) = load_preinstall_bytecodes(
+        &subdir,
+        upgrade_point.evm.enabled,
+        &upgrade_point.evm.preinstalls,
+    ) {
+        error!(protocol_version=%next_version, path=%subdir.display(), %error,
+            "withholding upgrade with invalid EVM preinstall assets");
         return None;
     }
 
@@ -448,6 +474,91 @@ mod tests {
     const V1_0_3: ProtocolVersion = ProtocolVersion::from_parts(1, 0, 3);
     const V1_2_3: ProtocolVersion = ProtocolVersion::from_parts(1, 2, 3);
     const V2_2_2: ProtocolVersion = ProtocolVersion::from_parts(2, 2, 2);
+
+    fn stage_preinstall(root: &Path, enabled: bool) -> PathBuf {
+        let dir = root.join("1_0_0");
+        fs::create_dir_all(dir.join("preinstalls")).unwrap();
+        let address = evm::Address::new([0xaa; 20]);
+        let hash = evm::Hash::new(alloy_primitives::keccak256([0x00]).0);
+        // Intentionally use a future spec and unknown fields: only protocol and hashes matter.
+        let text = format!(
+            r#"
+[protocol]
+version = "1.0.0"
+hard_reset = false
+activation_point = 10
+[evm]
+enabled = {enabled}
+spec = "future_fork"
+future_feature = true
+preinstalls = [["{address}", "{hash}"]]
+[future_subsystem]
+setting = "unknown"
+"#
+        );
+        fs::write(dir.join(CHAINSPEC_FILENAME), text).unwrap();
+        dir.join("preinstalls")
+            .join(format!("{}.bin", hash.to_hex_string()))
+    }
+
+    #[test]
+    fn preinstall_assets_are_validated_only_when_evm_is_enabled() {
+        let mut rng = crate::new_rng();
+        for enabled in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = stage_preinstall(dir.path(), enabled);
+            // An invalid nearest package must not cause the watcher to skip to a later version.
+            install_chainspec(&mut rng, dir.path(), V1_0_3);
+            let mut current = Chainspec::default();
+            current.protocol_config.version = V0_9_9;
+            let mut watcher =
+                UpgradeWatcher::new(&current, Config::default(), dir.path().join("0_9_9")).unwrap();
+            let expected = Some(NextUpgrade::new(
+                ActivationPoint::EraId(EraId::new(10)),
+                V1_0_0,
+            ));
+            if !enabled {
+                assert_eq!(watcher.next_upgrade, expected);
+                continue;
+            }
+            assert!(watcher.next_upgrade.is_none());
+            let mut scan = || {
+                let _ =
+                    watcher.handle_got_next_upgrade(next_upgrade(dir.path().to_path_buf(), V0_9_9));
+                watcher.next_upgrade
+            };
+            fs::write(&path, [0x00]).unwrap();
+            assert_eq!(scan(), expected);
+            for invalid in [vec![], vec![0x01]] {
+                fs::write(&path, invalid).unwrap();
+                assert!(scan().is_none());
+                fs::write(&path, [0x00]).unwrap();
+                assert_eq!(scan(), expected);
+            }
+            fs::remove_file(&path).unwrap();
+            assert!(scan().is_none());
+        }
+    }
+
+    #[test]
+    fn staged_preinstall_manifest_rejects_duplicate_addresses_and_invalid_hashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytecode_path = stage_preinstall(dir.path(), true);
+        fs::write(bytecode_path, [0x00]).unwrap();
+        let path = dir.path().join("1_0_0").join(CHAINSPEC_FILENAME);
+        let text = fs::read_to_string(&path).unwrap();
+        let hash = evm::Hash::new(alloy_primitives::keccak256([0x00]).0);
+        assert!(next_upgrade(dir.path().to_path_buf(), V0_9_9).is_some());
+        for address in ["aa".repeat(20), "AA".repeat(20)] {
+            let duplicate = text.replace("\"]]", &format!("\"], [\"0x{address}\", \"{hash}\"]]"));
+            fs::write(&path, duplicate).unwrap();
+            assert!(next_upgrade(dir.path().to_path_buf(), V0_9_9).is_none());
+        }
+        fs::write(&path, text.replace(&hash.to_string(), "0x00")).unwrap();
+        assert!(UpgradePoint::from_chainspec_path(dir.path().join("1_0_0")).is_err());
+        fs::write(path, [0xff]).unwrap();
+        assert!(next_upgrade(dir.path().to_path_buf(), V0_9_9).is_none());
+    }
 
     #[test]
     fn should_get_next_installed_version() {

@@ -19,98 +19,119 @@ use casper_storage::{
     system::protocol_upgrade::ProtocolUpgradeError,
 };
 use casper_types::{
-    evm, execution::TransformKindV2, ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest,
-    EraId, EvmAddr, EvmConfig, FeeHandling, GenesisAccount, GenesisConfig, HoldBalanceHandling,
-    Key, Motes, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, SecretKey,
-    StorageCosts, StoredValue, SystemConfig, WasmConfig, U256, U512,
+    bytesrepr::Bytes, evm, execution::TransformKindV2, ByteCode, ByteCodeKind, CLValue,
+    ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, FeeHandling, GenesisAccount,
+    GenesisConfig, HoldBalanceHandling, Key, Motes, ProtocolUpgradeConfig, ProtocolVersion,
+    PublicKey, RewardsHandling, SecretKey, StorageCosts, StoredValue, SystemConfig, WasmConfig,
+    U256, U512,
 };
-use once_cell::sync::Lazy;
-
-static FIXTURE_CONFIG: Lazy<EvmConfig> = Lazy::new(|| {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../resources/local/chainspec.toml.in");
-    let table: toml::Table = toml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    table["evm"].clone().try_into().unwrap()
-});
 
 #[derive(Clone, Copy)]
 struct TestPreinstall {
     name: &'static str,
     address: evm::Address,
+    code_hash: evm::Hash,
 }
 
 impl TestPreinstall {
-    fn code(self) -> &'static [u8] {
-        &FIXTURE_CONFIG.preinstalls[&self.address]
-    }
-
-    fn code_hash(self) -> evm::Hash {
-        evm::Hash::new(keccak256(self.code()).0)
+    fn load(self) -> (evm::Address, Vec<u8>) {
+        let code = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../resources/evm/preinstalls")
+                .join(format!("{}.bin", self.code_hash.to_hex_string())),
+        )
+        .unwrap();
+        (self.address, code)
     }
 }
 
 const MULTICALL3: TestPreinstall = TestPreinstall {
     name: "Multicall3",
     address: evm::Address::new(hex!("0xcA11bde05977b3631167028862bE2a173976CA11")),
+    code_hash: evm::Hash::new(hex!(
+        "d5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891"
+    )),
 };
 
 const CREATE2_DEPLOYER: TestPreinstall = TestPreinstall {
     name: "Arachnid CREATE2 deployer",
     address: evm::Address::new(hex!("0x4e59b44847b379578588920cA78FbF26c0B4956C")),
+    code_hash: evm::Hash::new(hex!(
+        "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+    )),
 };
 
 const SAFE_SINGLETON_FACTORY: TestPreinstall = TestPreinstall {
     name: "Safe Singleton Factory",
     address: evm::Address::new(hex!("0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7")),
+    code_hash: CREATE2_DEPLOYER.code_hash,
 };
 
 const ERC2470_SINGLETON_FACTORY: TestPreinstall = TestPreinstall {
     name: "ERC-2470 Singleton Factory",
     address: evm::Address::new(hex!("0xce0042B868300000d44A59004Da54A005ffdcf9f")),
+    code_hash: evm::Hash::new(hex!(
+        "c4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807"
+    )),
 };
 
 const PERMIT2: TestPreinstall = TestPreinstall {
     name: "Permit2",
     address: evm::Address::new(hex!("0x000000000022D473030F116dDEE9F6B43aC78BA3")),
+    code_hash: evm::Hash::new(hex!(
+        "c67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131"
+    )),
 };
 
 const SENDER_CREATOR_V08: TestPreinstall = TestPreinstall {
     name: "SenderCreator v0.8",
     address: evm::Address::new(hex!("0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33")),
+    code_hash: evm::Hash::new(hex!(
+        "c69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf"
+    )),
 };
 
 const ENTRYPOINT_V08: TestPreinstall = TestPreinstall {
     name: "EntryPoint v0.8",
     address: evm::Address::new(hex!("0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108")),
+    code_hash: evm::Hash::new(hex!(
+        "44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86"
+    )),
 };
 
-const PREINSTALLS: &[TestPreinstall] = &[
-    MULTICALL3,
-    CREATE2_DEPLOYER,
-    SAFE_SINGLETON_FACTORY,
-    ERC2470_SINGLETON_FACTORY,
-    PERMIT2,
-    // These runtimes contain immutable references to each other.
-    SENDER_CREATOR_V08,
-    ENTRYPOINT_V08,
-];
+const TEST_PREINSTALL: evm::Address = evm::Address::new([0x11; 20]);
+const OTHER_PREINSTALL: evm::Address = evm::Address::new([0x22; 20]);
+// Calls return the word 42.
+const TEST_RUNTIME: &[u8] = &hex!("602a60005260206000f3");
 
-fn evm_config(enabled: bool) -> EvmConfig {
+fn test_preinstalls() -> [(evm::Address, Vec<u8>); 2] {
+    [TEST_PREINSTALL, OTHER_PREINSTALL].map(|address| (address, TEST_RUNTIME.to_vec()))
+}
+
+fn evm_config(enabled: bool, preinstalls: &[(evm::Address, Vec<u8>)]) -> EvmConfig {
     EvmConfig {
         enabled,
         chain_id: 7,
         base_fee: 5_000,
-        ..FIXTURE_CONFIG.clone()
+        preinstalls: preinstalls
+            .iter()
+            .map(|(address, code)| (*address, evm::Hash::new(keccak256(code).0)))
+            .collect(),
+        ..Default::default()
     }
 }
 
-fn genesis(enabled: bool, enable_entity: bool) -> (LmdbGlobalState, Digest, impl Send) {
-    genesis_with_config(evm_config(enabled), enable_entity)
+fn preinstall_bytecodes(preinstalls: &[(evm::Address, Vec<u8>)]) -> Vec<(evm::Hash, Bytes)> {
+    preinstalls
+        .iter()
+        .map(|(_, code)| (evm::Hash::new(keccak256(code).0), code.clone().into()))
+        .collect()
 }
 
-fn genesis_with_config(
-    evm: EvmConfig,
+fn genesis(
+    enabled: bool,
     enable_entity: bool,
+    preinstalls: &[(evm::Address, Vec<u8>)],
 ) -> (LmdbGlobalState, Digest, impl Send) {
     let (state, _, tempdir) = make_temporary_global_state([]);
     let secret = SecretKey::ed25519_from_bytes([1; 32]).unwrap();
@@ -120,7 +141,7 @@ fn genesis_with_config(
             balance: Motes::new(U512::from(1_000_000_000_000u64)),
             validator: None,
         }],
-        evm,
+        evm_config(enabled, preinstalls),
         WasmConfig::default(),
         SystemConfig::default(),
         10,
@@ -135,7 +156,8 @@ fn genesis_with_config(
         None,
         StorageCosts::default(),
         0,
-    );
+    )
+    .with_evm_preinstall_bytecodes(preinstall_bytecodes(preinstalls));
     let result = state.genesis(GenesisRequest::new(
         Digest::hash("preinstall-test-genesis"),
         ProtocolVersion::V2_0_0,
@@ -157,24 +179,9 @@ fn upgrade_request(
     enabled: bool,
     enable_entity: bool,
     updates: BTreeMap<Key, StoredValue>,
+    preinstalls: &[(evm::Address, Vec<u8>)],
 ) -> ProtocolUpgradeRequest {
-    upgrade_request_with_config(
-        root,
-        current_patch,
-        evm_config(enabled),
-        enable_entity,
-        updates,
-    )
-}
-
-fn upgrade_request_with_config(
-    root: Digest,
-    current_patch: u32,
-    evm: EvmConfig,
-    enable_entity: bool,
-    updates: BTreeMap<Key, StoredValue>,
-) -> ProtocolUpgradeRequest {
-    ProtocolUpgradeRequest::new(ProtocolUpgradeConfig::new(
+    let config = ProtocolUpgradeConfig::new(
         root,
         ProtocolVersion::from_parts(2, 0, current_patch),
         ProtocolVersion::from_parts(2, 0, current_patch + 1),
@@ -188,7 +195,7 @@ fn upgrade_request_with_config(
         None,
         updates,
         ChainspecRegistry::new_with_optional_global_state(b"upgrade", None),
-        evm,
+        evm_config(enabled, preinstalls),
         FeeHandling::NoFee,
         0,
         u64::MAX,
@@ -196,15 +203,17 @@ fn upgrade_request_with_config(
         enable_entity,
         RewardsHandling::Standard,
         None,
-    ))
+    )
+    .with_evm_preinstall_bytecodes(preinstall_bytecodes(preinstalls));
+    ProtocolUpgradeRequest::new(config)
 }
 
 fn code_hash_key(address: evm::Address) -> Key {
     Key::Evm(EvmAddr::CodeHash(address))
 }
 
-fn bytecode_key() -> Key {
-    Key::Evm(EvmAddr::ByteCode(MULTICALL3.code_hash()))
+fn bytecode_key(code: &[u8]) -> Key {
+    Key::Evm(EvmAddr::ByteCode(evm::Hash::new(keccak256(code).0)))
 }
 
 fn read(state: &LmdbGlobalState, root: Digest, key: Key) -> Option<StoredValue> {
@@ -216,34 +225,28 @@ fn read(state: &LmdbGlobalState, root: Digest, key: Key) -> Option<StoredValue> 
         .unwrap()
 }
 
-fn assert_preinstalls(state: &LmdbGlobalState, root: Digest) {
-    for preinstall in PREINSTALLS {
+fn assert_preinstalls(
+    state: &LmdbGlobalState,
+    root: Digest,
+    preinstalls: &[(evm::Address, Vec<u8>)],
+) {
+    for (address, code) in preinstalls {
         assert_eq!(
-            read(state, root, code_hash_key(preinstall.address)),
+            read(state, root, code_hash_key(*address)),
             Some(StoredValue::CLValue(
-                CLValue::from_t(preinstall.code_hash()).unwrap(),
+                CLValue::from_t(evm::Hash::new(keccak256(code).0)).unwrap(),
             )),
-            "{} code hash",
-            preinstall.name,
+            "{address} code hash",
         );
         assert_eq!(
-            read(
-                state,
-                root,
-                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
-            ),
+            read(state, root, bytecode_key(code)),
             Some(StoredValue::ByteCode(ByteCode::new(
                 ByteCodeKind::EvmPrague,
-                preinstall.code().to_vec(),
+                code.clone(),
             ))),
-            "{} runtime",
-            preinstall.name,
+            "{address} runtime",
         );
     }
-}
-
-fn call(state: LmdbGlobalState, root: Digest, input: Vec<u8>) -> ExecutionOutcome {
-    call_contract(state, root, MULTICALL3.address, input)
 }
 
 fn call_contract(
@@ -260,7 +263,7 @@ fn call_sequence(
     root: Digest,
     calls: &[(evm::Address, Vec<u8>)],
 ) -> Vec<ExecutionOutcome> {
-    call_sequence_with_config(state, root, calls, evm_config(true))
+    call_sequence_with_config(state, root, calls, evm_config(true, &[]))
 }
 
 fn call_sequence_with_config(
@@ -366,7 +369,7 @@ fn assert_raw_create2_deployment(factory: TestPreinstall) {
     let address = create2_address(factory.address, salt);
     let mut input = salt.to_vec();
     input.extend_from_slice(TEST_INIT_CODE);
-    let (state, root, _tempdir) = genesis(true, false);
+    let (state, root, _tempdir) = genesis(true, false, &[factory.load()]);
     let outcomes = call_sequence(
         state,
         root,
@@ -405,49 +408,21 @@ fn aggregate3_input(calls: &[(&str, bool)]) -> Vec<u8> {
 }
 
 #[test]
-fn local_chainspec_pins_the_configured_runtimes() {
-    assert_eq!(FIXTURE_CONFIG.preinstalls.len(), PREINSTALLS.len());
-    for (contract, length, hash) in [
-        (
-            MULTICALL3,
-            3_808,
-            "d5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891",
-        ),
-        (
-            CREATE2_DEPLOYER,
-            69,
-            "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
-        ),
-        (
-            SAFE_SINGLETON_FACTORY,
-            69,
-            "2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
-        ),
-        (
-            ERC2470_SINGLETON_FACTORY,
-            308,
-            "c4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807",
-        ),
-        (
-            PERMIT2,
-            9_152,
-            "c67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131",
-        ),
-        (
-            SENDER_CREATOR_V08,
-            1_217,
-            "c69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf",
-        ),
-        (
-            ENTRYPOINT_V08,
-            21_738,
-            "44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86",
-        ),
+fn canonical_runtimes_have_the_expected_lengths_and_hashes() {
+    for (contract, length) in [
+        (MULTICALL3, 3_808),
+        (CREATE2_DEPLOYER, 69),
+        (SAFE_SINGLETON_FACTORY, 69),
+        (ERC2470_SINGLETON_FACTORY, 308),
+        (PERMIT2, 9_152),
+        (SENDER_CREATOR_V08, 1_217),
+        (ENTRYPOINT_V08, 21_738),
     ] {
-        assert_eq!(contract.code().len(), length, "{} length", contract.name);
+        let (_, code) = contract.load();
+        assert_eq!(code.len(), length, "{} length", contract.name);
         assert_eq!(
-            contract.code_hash().to_hex_string(),
-            hash,
+            evm::Hash::new(keccak256(&code).0),
+            contract.code_hash,
             "{} hash",
             contract.name
         );
@@ -457,26 +432,23 @@ fn local_chainspec_pins_the_configured_runtimes() {
 #[test]
 fn enabled_evm_with_empty_preinstalls_installs_only_predeploys() {
     for enable_entity in [false, true] {
-        let config = EvmConfig {
-            enabled: true,
-            ..Default::default()
-        };
-        let (state, root, _tempdir) = genesis_with_config(config.clone(), enable_entity);
+        let (state, root, _tempdir) = genesis(true, enable_entity, &[]);
         for address in [
             eip4788::BEACON_ROOTS_ADDRESS,
             eip2935::BLOCK_HASH_HISTORY_ADDRESS,
         ] {
             assert!(read(&state, root, code_hash_key(address)).is_some());
         }
-        for contract in PREINSTALLS {
-            assert!(read(&state, root, code_hash_key(contract.address)).is_none());
+        for address in [TEST_PREINSTALL, OTHER_PREINSTALL] {
+            assert!(read(&state, root, code_hash_key(address)).is_none());
         }
-        let result = state.protocol_upgrade(upgrade_request_with_config(
+        let result = state.protocol_upgrade(upgrade_request(
             root,
             0,
-            config,
+            true,
             enable_entity,
             BTreeMap::new(),
+            &[],
         ));
         let ProtocolUpgradeResult::Success {
             post_state_hash, ..
@@ -484,42 +456,26 @@ fn enabled_evm_with_empty_preinstalls_installs_only_predeploys() {
         else {
             panic!("empty-map upgrade failed: {result:?}");
         };
-        for contract in PREINSTALLS {
-            assert!(read(&state, post_state_hash, code_hash_key(contract.address)).is_none());
+        for address in [TEST_PREINSTALL, OTHER_PREINSTALL] {
+            assert!(read(&state, post_state_hash, code_hash_key(address)).is_none());
         }
     }
 }
 
 #[test]
 fn chainspec_can_install_arbitrary_runtime_and_extend_it_on_upgrade() {
-    let first = evm::Address::new([0x11; 20]);
-    let second = evm::Address::new([0x22; 20]);
-    let code = hex!("602a60005260206000f3");
-    let code_hash = evm::Hash::new(keccak256(code).0);
+    let preinstalls = test_preinstalls();
     for enable_entity in [false, true] {
-        let config = EvmConfig {
-            enabled: true,
-            chain_id: 7,
-            preinstalls: BTreeMap::from([(first, code.to_vec().into())]),
-            ..Default::default()
-        };
-        let (state, root, _tempdir) = genesis_with_config(config.clone(), enable_entity);
-        assert_eq!(
-            read(&state, root, code_hash_key(first)),
-            Some(StoredValue::CLValue(CLValue::from_t(code_hash).unwrap()))
-        );
-        assert!(read(&state, root, code_hash_key(second)).is_none());
-        assert!(read(&state, root, code_hash_key(MULTICALL3.address)).is_none());
-        let config = EvmConfig {
-            preinstalls: BTreeMap::from([(second, code.to_vec().into())]),
-            ..config
-        };
-        let result = state.protocol_upgrade(upgrade_request_with_config(
+        let (state, root, _tempdir) = genesis(true, enable_entity, &preinstalls[..1]);
+        assert_preinstalls(&state, root, &preinstalls[..1]);
+        assert!(read(&state, root, code_hash_key(OTHER_PREINSTALL)).is_none());
+        let result = state.protocol_upgrade(upgrade_request(
             root,
             0,
-            config,
+            true,
             enable_entity,
             BTreeMap::new(),
+            &preinstalls[1..],
         ));
         let ProtocolUpgradeResult::Success {
             post_state_hash, ..
@@ -527,17 +483,14 @@ fn chainspec_can_install_arbitrary_runtime_and_extend_it_on_upgrade() {
         else {
             panic!("custom-map upgrade failed: {result:?}");
         };
-        for address in [first, second] {
-            assert_eq!(
-                read(&state, post_state_hash, code_hash_key(address)),
-                Some(StoredValue::CLValue(CLValue::from_t(code_hash).unwrap()))
-            );
-        }
-        assert!(read(&state, post_state_hash, code_hash_key(MULTICALL3.address)).is_none());
+        assert_preinstalls(&state, post_state_hash, &preinstalls);
         let outcomes = call_sequence(
             state,
             post_state_hash,
-            &[(first, Vec::new()), (second, Vec::new())],
+            &[
+                (TEST_PREINSTALL, Vec::new()),
+                (OTHER_PREINSTALL, Vec::new()),
+            ],
         );
         for outcome in outcomes {
             assert_eq!(outcome.status, ExecutionStatus::Success);
@@ -547,124 +500,81 @@ fn chainspec_can_install_arbitrary_runtime_and_extend_it_on_upgrade() {
 }
 
 #[test]
-fn upgrade_installs_preinstalls_and_repeated_upgrade_preserves_them() {
-    for enable_entity in [false, true] {
-        let (state, before, _tempdir) = genesis(false, enable_entity);
-        assert!(read(&state, before, code_hash_key(MULTICALL3.address)).is_none());
-
-        let result = state.protocol_upgrade(upgrade_request(
-            before,
-            0,
-            true,
-            enable_entity,
-            BTreeMap::new(),
-        ));
-        let ProtocolUpgradeResult::Success {
-            post_state_hash: after,
-            ..
-        } = result
-        else {
-            panic!("upgrade failed: {result:?}");
-        };
-        assert_preinstalls(&state, after);
-        for address in [
-            eip4788::BEACON_ROOTS_ADDRESS,
-            eip2935::BLOCK_HASH_HISTORY_ADDRESS,
-        ] {
-            assert!(read(&state, after, code_hash_key(address)).is_some());
-        }
-        assert!(read(&state, before, code_hash_key(MULTICALL3.address)).is_none());
-        assert!(read(&state, after, Key::Evm(EvmAddr::Nonce(MULTICALL3.address))).is_none());
-        assert!(read(
-            &state,
-            after,
-            Key::Evm(EvmAddr::Account(MULTICALL3.address))
-        )
-        .is_none());
-
-        let repeated = state.protocol_upgrade(upgrade_request(
-            after,
-            1,
-            true,
-            enable_entity,
-            BTreeMap::new(),
-        ));
-        let ProtocolUpgradeResult::Success {
-            post_state_hash,
-            effects,
-        } = repeated
-        else {
-            panic!("repeated upgrade failed: {repeated:?}");
-        };
-        assert_preinstalls(&state, post_state_hash);
-        for transform in effects.transforms() {
-            if PREINSTALLS.iter().any(|preinstall| {
-                *transform.key() == code_hash_key(preinstall.address)
-                    || *transform.key() == Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
-            }) {
-                assert_eq!(*transform.kind(), TransformKindV2::Identity);
+fn genesis_and_upgrade_install_preinstalls_idempotently() {
+    let preinstalls = test_preinstalls();
+    for at_genesis in [false, true] {
+        for enable_entity in [false, true] {
+            let (state, before, _tempdir) = genesis(at_genesis, enable_entity, &preinstalls);
+            let (root, current_patch) = if at_genesis {
+                (before, 0)
+            } else {
+                let result = state.protocol_upgrade(upgrade_request(
+                    before,
+                    0,
+                    true,
+                    enable_entity,
+                    BTreeMap::new(),
+                    &preinstalls,
+                ));
+                let ProtocolUpgradeResult::Success {
+                    post_state_hash, ..
+                } = result
+                else {
+                    panic!("upgrade failed: {result:?}");
+                };
+                assert!(read(&state, before, code_hash_key(TEST_PREINSTALL)).is_none());
+                (post_state_hash, 1)
+            };
+            assert_preinstalls(&state, root, &preinstalls);
+            for address in [
+                eip4788::BEACON_ROOTS_ADDRESS,
+                eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+            ] {
+                assert!(read(&state, root, code_hash_key(address)).is_some());
             }
-        }
+            assert!(read(&state, root, Key::Evm(EvmAddr::Nonce(TEST_PREINSTALL))).is_none());
+            assert!(read(&state, root, Key::Evm(EvmAddr::Account(TEST_PREINSTALL))).is_none());
 
-        let outcome = call(state, post_state_hash, selector("getBasefee()"));
-        assert_eq!(outcome.status, ExecutionStatus::Success);
-        assert_eq!(outcome.output, word(5_000_000_000_000));
-    }
-}
-
-#[test]
-fn genesis_installs_preinstalls_and_upgrade_preserves_them() {
-    for enable_entity in [false, true] {
-        let (state, root, _tempdir) = genesis(true, enable_entity);
-        assert_preinstalls(&state, root);
-        for address in [
-            eip4788::BEACON_ROOTS_ADDRESS,
-            eip2935::BLOCK_HASH_HISTORY_ADDRESS,
-        ] {
-            assert!(read(&state, root, code_hash_key(address)).is_some());
-        }
-        let result = state.protocol_upgrade(upgrade_request(
-            root,
-            0,
-            true,
-            enable_entity,
-            BTreeMap::new(),
-        ));
-        let ProtocolUpgradeResult::Success {
-            post_state_hash,
-            effects,
-        } = result
-        else {
-            panic!("upgrade after genesis failed: {result:?}");
-        };
-        assert_preinstalls(&state, post_state_hash);
-        for transform in effects.transforms() {
-            if PREINSTALLS.iter().any(|preinstall| {
-                *transform.key() == code_hash_key(preinstall.address)
-                    || *transform.key() == Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
-            }) {
-                assert_eq!(*transform.kind(), TransformKindV2::Identity);
+            let result = state.protocol_upgrade(upgrade_request(
+                root,
+                current_patch,
+                true,
+                enable_entity,
+                BTreeMap::new(),
+                &preinstalls,
+            ));
+            let ProtocolUpgradeResult::Success {
+                post_state_hash,
+                effects,
+            } = result
+            else {
+                panic!("repeated upgrade failed: {result:?}");
+            };
+            assert_preinstalls(&state, post_state_hash, &preinstalls);
+            for transform in effects.transforms() {
+                if preinstalls.iter().any(|(address, code)| {
+                    *transform.key() == code_hash_key(*address)
+                        || *transform.key() == bytecode_key(code)
+                }) {
+                    assert_eq!(*transform.kind(), TransformKindV2::Identity);
+                }
             }
-        }
 
-        let outcome = call(state, root, selector("getChainId()"));
-        assert_eq!(outcome.status, ExecutionStatus::Success);
-        assert_eq!(outcome.output, word(7));
+            let outcome = call_contract(state, post_state_hash, TEST_PREINSTALL, Vec::new());
+            assert_eq!(outcome.status, ExecutionStatus::Success);
+            assert_eq!(outcome.output, word(42));
+        }
     }
 }
 
 #[test]
 fn disabled_genesis_and_upgrade_skip_preinstalls() {
+    let preinstalls = test_preinstalls();
     for enable_entity in [false, true] {
-        let (state, root, _tempdir) = genesis(false, enable_entity);
-        for preinstall in PREINSTALLS {
-            assert!(read(&state, root, code_hash_key(preinstall.address)).is_none());
-            assert!(read(
-                &state,
-                root,
-                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
-            )
-            .is_none());
+        let (state, root, _tempdir) = genesis(false, enable_entity, &preinstalls);
+        for (address, code) in &preinstalls {
+            assert!(read(&state, root, code_hash_key(*address)).is_none());
+            assert!(read(&state, root, bytecode_key(code)).is_none());
         }
         for address in [
             eip4788::BEACON_ROOTS_ADDRESS,
@@ -679,6 +589,7 @@ fn disabled_genesis_and_upgrade_skip_preinstalls() {
             false,
             enable_entity,
             BTreeMap::new(),
+            &preinstalls,
         ));
         let ProtocolUpgradeResult::Success {
             post_state_hash, ..
@@ -686,32 +597,35 @@ fn disabled_genesis_and_upgrade_skip_preinstalls() {
         else {
             panic!("disabled EVM upgrade failed: {result:?}");
         };
-        for preinstall in PREINSTALLS {
-            assert!(read(&state, post_state_hash, code_hash_key(preinstall.address)).is_none());
-            assert!(read(
-                &state,
-                post_state_hash,
-                Key::Evm(EvmAddr::ByteCode(preinstall.code_hash()))
-            )
-            .is_none());
+        for (address, code) in &preinstalls {
+            assert!(read(&state, post_state_hash, code_hash_key(*address)).is_none());
+            assert!(read(&state, post_state_hash, bytecode_key(code)).is_none());
         }
     }
 }
 
 #[test]
 fn upgrade_rejects_preinstall_conflicts_after_predeploys() {
-    let (state, root, _tempdir) = genesis(false, false);
+    let preinstalls = test_preinstalls();
+    let (state, root, _tempdir) = genesis(false, false, &preinstalls);
     let conflicting_code = StoredValue::CLValue(CLValue::from_t(evm::Hash::new([1; 32])).unwrap());
     let mut updates = BTreeMap::new();
-    updates.insert(code_hash_key(MULTICALL3.address), conflicting_code.clone());
+    updates.insert(code_hash_key(TEST_PREINSTALL), conflicting_code.clone());
 
-    let result = state.protocol_upgrade(upgrade_request(root, 0, true, false, updates.clone()));
+    let result = state.protocol_upgrade(upgrade_request(
+        root,
+        0,
+        true,
+        false,
+        updates.clone(),
+        &preinstalls,
+    ));
     assert!(matches!(
         result,
         ProtocolUpgradeResult::Failure(ProtocolUpgradeError::EvmPreinstall(_))
     ));
-    assert!(read(&state, root, code_hash_key(MULTICALL3.address)).is_none());
-    assert!(read(&state, root, bytecode_key()).is_none());
+    assert!(read(&state, root, code_hash_key(TEST_PREINSTALL)).is_none());
+    assert!(read(&state, root, bytecode_key(TEST_RUNTIME)).is_none());
     assert!(read(
         &state,
         root,
@@ -723,7 +637,8 @@ fn upgrade_rejects_preinstall_conflicts_after_predeploys() {
         code_hash_key(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
         conflicting_code,
     );
-    let result = state.protocol_upgrade(upgrade_request(root, 0, true, false, updates));
+    let result =
+        state.protocol_upgrade(upgrade_request(root, 0, true, false, updates, &preinstalls));
     assert!(matches!(
         result,
         ProtocolUpgradeResult::Failure(ProtocolUpgradeError::EvmPredeploy(_))
@@ -732,41 +647,60 @@ fn upgrade_rejects_preinstall_conflicts_after_predeploys() {
 
 #[test]
 fn upgrade_repairs_missing_preinstall_bytecode() {
-    let (state, root, _tempdir) = genesis(false, false);
+    let preinstalls = test_preinstalls();
+    let (state, root, _tempdir) = genesis(false, false, &preinstalls);
     let root = state
         .commit_values(
             root,
             vec![(
-                code_hash_key(MULTICALL3.address),
-                StoredValue::CLValue(CLValue::from_t(MULTICALL3.code_hash()).unwrap()),
+                code_hash_key(TEST_PREINSTALL),
+                StoredValue::CLValue(
+                    CLValue::from_t(evm::Hash::new(keccak256(TEST_RUNTIME).0)).unwrap(),
+                ),
             )],
             Default::default(),
         )
         .unwrap();
-    let result = state.protocol_upgrade(upgrade_request(root, 0, true, false, BTreeMap::new()));
+    let result = state.protocol_upgrade(upgrade_request(
+        root,
+        0,
+        true,
+        false,
+        BTreeMap::new(),
+        &preinstalls,
+    ));
     let ProtocolUpgradeResult::Success {
         post_state_hash, ..
     } = result
     else {
         panic!("repair upgrade failed: {result:?}");
     };
-    assert_preinstalls(&state, post_state_hash);
+    assert_preinstalls(&state, post_state_hash, &preinstalls);
 }
 
 #[test]
 fn preinstalled_multicall3_aggregates_calls_and_honors_allow_failure() {
+    let preinstalls = [MULTICALL3.load()];
     for allow_failure in [true, false] {
-        let (state, root, _tempdir) = genesis(false, false);
-        let result = state.protocol_upgrade(upgrade_request(root, 0, true, false, BTreeMap::new()));
+        let (state, root, _tempdir) = genesis(false, false, &[]);
+        let result = state.protocol_upgrade(upgrade_request(
+            root,
+            0,
+            true,
+            false,
+            BTreeMap::new(),
+            &preinstalls,
+        ));
         let ProtocolUpgradeResult::Success {
             post_state_hash, ..
         } = result
         else {
             panic!("upgrade failed: {result:?}");
         };
-        let outcome = call(
+        let outcome = call_contract(
             state,
             post_state_hash,
+            MULTICALL3.address,
             aggregate3_input(&[
                 ("getBlockNumber()", false),
                 ("getChainId()", false),
@@ -811,7 +745,7 @@ fn preinstalled_erc2470_factory_deploys_and_returns_zero_on_collision() {
     let salt = [0x42; 32];
     let address = create2_address(ERC2470_SINGLETON_FACTORY.address, salt);
     let input = singleton_factory_input(salt);
-    let (state, root, _tempdir) = genesis(true, false);
+    let (state, root, _tempdir) = genesis(true, false, &[ERC2470_SINGLETON_FACTORY.load()]);
     let outcomes = call_sequence(
         state,
         root,
@@ -843,10 +777,10 @@ fn permit2_domain_separator(chain_id: u64) -> [u8; 32] {
 #[test]
 fn preinstalled_permit2_domain_separator_uses_the_current_chain_id() {
     for chain_id in [1, 7, 31_337] {
-        let (state, root, _tempdir) = genesis(true, false);
+        let (state, root, _tempdir) = genesis(true, false, &[PERMIT2.load()]);
         let config = EvmConfig {
             chain_id,
-            ..evm_config(true)
+            ..evm_config(true, &[])
         };
         let outcomes = call_sequence_with_config(
             state,
@@ -886,7 +820,7 @@ fn preinstalled_permit2_accepts_a_signed_allowance_and_rejects_replay() {
     allowance.extend_from_slice(&address_word(owner));
     allowance.extend_from_slice(&address_word(token));
     allowance.extend_from_slice(&address_word(spender));
-    let (state, root, _tempdir) = genesis(true, false);
+    let (state, root, _tempdir) = genesis(true, false, &[PERMIT2.load()]);
     let outcomes = call_sequence(
         state,
         root,
@@ -908,7 +842,7 @@ fn preinstalled_permit2_accepts_a_signed_allowance_and_rejects_replay() {
 
 #[test]
 fn preinstalled_sender_creator_is_linked_and_rejects_unauthorized_creation() {
-    let (state, root, _tempdir) = genesis(true, false);
+    let (state, root, _tempdir) = genesis(true, false, &[SENDER_CREATOR_V08.load()]);
     let outcomes = call_sequence(
         state,
         root,
@@ -931,13 +865,24 @@ fn preinstalled_sender_creator_is_linked_and_rejects_unauthorized_creation() {
 
 #[test]
 fn preinstalled_entrypoint_uses_its_matching_helper_for_sender_creation() {
+    let preinstalls = [
+        ENTRYPOINT_V08.load(),
+        SENDER_CREATOR_V08.load(),
+        ERC2470_SINGLETON_FACTORY.load(),
+    ];
     for at_genesis in [false, true] {
-        let (state, root, _tempdir) = genesis(at_genesis, false);
+        let (state, root, _tempdir) = genesis(at_genesis, false, &preinstalls);
         let root = if at_genesis {
             root
         } else {
-            let result =
-                state.protocol_upgrade(upgrade_request(root, 0, true, false, BTreeMap::new()));
+            let result = state.protocol_upgrade(upgrade_request(
+                root,
+                0,
+                true,
+                false,
+                BTreeMap::new(),
+                &preinstalls,
+            ));
             let ProtocolUpgradeResult::Success {
                 post_state_hash, ..
             } = result
@@ -975,10 +920,10 @@ fn preinstalled_entrypoint_uses_its_matching_helper_for_sender_creation() {
 #[test]
 fn preinstalled_entrypoint_domain_separator_uses_the_current_chain_id() {
     for chain_id in [1, 7, 31_337] {
-        let (state, root, _tempdir) = genesis(true, false);
+        let (state, root, _tempdir) = genesis(true, false, &[ENTRYPOINT_V08.load()]);
         let config = EvmConfig {
             chain_id,
-            ..evm_config(true)
+            ..evm_config(true, &[])
         };
         let outcomes = call_sequence_with_config(
             state,
@@ -1013,7 +958,7 @@ fn preinstalled_entrypoint_starts_empty_and_executes_bundles_with_transient_guar
     bundle.extend_from_slice(&word(64));
     bundle.extend_from_slice(&address_word(evm::Address::new([2; 20])));
     bundle.extend_from_slice(&word(0));
-    let (state, root, _tempdir) = genesis(true, false);
+    let (state, root, _tempdir) = genesis(true, false, &[ENTRYPOINT_V08.load()]);
     let outcomes = call_sequence(
         state,
         root,

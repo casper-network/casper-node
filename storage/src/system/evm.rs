@@ -1,7 +1,5 @@
 //! EVM system contract support.
 
-use std::collections::BTreeMap;
-
 use alloy_primitives::keccak256;
 use casper_types::{
     bytesrepr::Bytes, evm, ByteCode, ByteCodeKind, CLValue, CLValueError, EvmAddr, EvmConfig,
@@ -23,6 +21,24 @@ pub(crate) enum EvmContractError {
     EmptyPreinstall {
         /// Configured address.
         address: evm::Address,
+    },
+    /// Runtime bytecode was not supplied for a configured checksum.
+    #[error("EVM preinstall at {address} is missing runtime bytecode for {expected}")]
+    MissingPreinstall {
+        /// Configured address.
+        address: evm::Address,
+        /// Configured checksum.
+        expected: evm::Hash,
+    },
+    /// Supplied runtime bytecode does not match the configured checksum.
+    #[error("EVM preinstall at {address} has runtime hash {actual}, expected {expected}")]
+    PreinstallHashMismatch {
+        /// Configured address.
+        address: evm::Address,
+        /// Configured checksum.
+        expected: evm::Hash,
+        /// Computed checksum.
+        actual: evm::Hash,
     },
     /// Failed to read from the tracking copy.
     #[error(transparent)]
@@ -145,19 +161,40 @@ where
     Ok(())
 }
 
-/// Idempotently installs EVM runtime bytecode supplied by the chainspec.
+/// Verifies separately supplied runtime bytecode and idempotently installs preinstalls.
 pub(crate) fn upsert_preinstalls<R>(
     tracking_copy: &mut TrackingCopy<R>,
-    preinstalls: &BTreeMap<evm::Address, Bytes>,
+    preinstalls: &[(evm::Address, evm::Hash)],
+    bytecodes: &[(evm::Hash, Bytes)],
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    for (address, code) in preinstalls {
+    // Validate the entire payload before writing any preinstall state.
+    let mut contracts = Vec::with_capacity(preinstalls.len());
+    for (address, expected) in preinstalls {
+        let code = bytecodes
+            .iter()
+            .find_map(|(hash, code)| (hash == expected).then_some(code))
+            .ok_or(EvmContractError::MissingPreinstall {
+                address: *address,
+                expected: *expected,
+            })?;
         if code.is_empty() {
             return Err(EvmContractError::EmptyPreinstall { address: *address });
         }
-        upsert_contract(tracking_copy, EvmContract::preinstall(*address, code))?;
+        let contract = EvmContract::preinstall(*address, code);
+        if contract.code_hash != *expected {
+            return Err(EvmContractError::PreinstallHashMismatch {
+                address: *address,
+                expected: *expected,
+                actual: contract.code_hash,
+            });
+        }
+        contracts.push(contract);
+    }
+    for contract in contracts {
+        upsert_contract(tracking_copy, contract)?;
     }
     Ok(())
 }
@@ -286,10 +323,17 @@ mod tests {
         ]
     }
 
-    fn test_preinstalls() -> BTreeMap<evm::Address, Bytes> {
+    fn test_preinstalls() -> Vec<(evm::Address, evm::Hash)> {
         test_contracts()
             .iter()
-            .map(|contract| (contract.address, Bytes::from(contract.code)))
+            .map(|contract| (contract.address, contract.code_hash))
+            .collect()
+    }
+
+    fn test_bytecodes() -> Vec<(evm::Hash, Bytes)> {
+        test_contracts()
+            .iter()
+            .map(|contract| (contract.code_hash, Bytes::from(contract.code)))
             .collect()
     }
 
@@ -452,9 +496,9 @@ mod tests {
     }
 
     #[test]
-    fn empty_preinstall_map_does_not_write_state() {
+    fn empty_preinstall_list_does_not_write_state() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
-        upsert_preinstalls(&mut tracking_copy, &BTreeMap::new()).unwrap();
+        upsert_preinstalls(&mut tracking_copy, &[], &[]).unwrap();
         let (writes, prunes, _) = tracking_copy.destructure();
         assert!(writes.is_empty());
         assert!(prunes.is_empty());
@@ -463,9 +507,11 @@ mod tests {
     #[test]
     fn empty_runtime_bytecode_is_rejected() {
         let address = evm::Address::new([1; 20]);
-        let preinstalls = BTreeMap::from([(address, Bytes::new())]);
+        let expected = evm::Hash::new(keccak256([]).0);
+        let preinstalls = vec![(address, expected)];
+        let bytecodes = vec![(expected, Bytes::new())];
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
-        let error = upsert_preinstalls(&mut tracking_copy, &preinstalls).unwrap_err();
+        let error = upsert_preinstalls(&mut tracking_copy, &preinstalls, &bytecodes).unwrap_err();
         assert!(
             matches!(error, EvmContractError::EmptyPreinstall { address: actual } if actual == address)
         );
@@ -475,10 +521,37 @@ mod tests {
     }
 
     #[test]
+    fn invalid_preinstall_payload_is_rejected_before_writing_state() {
+        let contracts = test_contracts();
+        let missing = evm::Hash::new([9; 32]);
+        let preinstalls = vec![
+            (contracts[0].address, contracts[0].code_hash),
+            (contracts[1].address, missing),
+        ];
+        for bytecodes in [test_bytecodes(), {
+            let mut bytecodes = test_bytecodes();
+            bytecodes.push((missing, vec![0x00].into()));
+            bytecodes
+        }] {
+            let (mut tracking_copy, _tempdir) = tracking_copy([]);
+            let error =
+                upsert_preinstalls(&mut tracking_copy, &preinstalls, &bytecodes).unwrap_err();
+            assert!(matches!(error,
+                EvmContractError::MissingPreinstall { address, expected }
+                | EvmContractError::PreinstallHashMismatch { address, expected, .. }
+                if address == contracts[1].address && expected == missing
+            ));
+            let (writes, prunes, _) = tracking_copy.destructure();
+            assert!(writes.is_empty());
+            assert!(prunes.is_empty());
+        }
+    }
+
+    #[test]
     fn upsert_creates_missing_preinstalls_without_predeploys() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
 
-        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
             .expect("preinstall upsert should succeed");
 
         for preinstall in test_contracts() {
@@ -505,7 +578,7 @@ mod tests {
                 StoredValue::CLValue(CLValue::from_t(hash).unwrap()),
             )]);
 
-            upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
                 .expect("preinstall repair should succeed");
 
             assert_predeploy_present(&mut tracking_copy, contract);
@@ -520,7 +593,7 @@ mod tests {
             .collect::<std::collections::BTreeMap<_, _>>();
         let (mut tracking_copy, _tempdir) = tracking_copy(entries);
 
-        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
             .expect("preinstall upsert should succeed");
 
         let (writes, prunes, _) = tracking_copy.destructure();
@@ -564,7 +637,7 @@ mod tests {
             .collect::<Vec<_>>();
         let (mut tracking_copy, _tempdir) = tracking_copy(preserved.clone());
 
-        upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+        upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
             .expect("preinstall upsert should succeed");
 
         for preinstall in test_contracts() {
@@ -595,7 +668,7 @@ mod tests {
             StoredValue::CLValue(CLValue::from_t(evm::Hash::new([1; 32])).unwrap()),
         )]);
 
-        let error = upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+        let error = upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
             .expect_err("conflict should fail");
 
         assert!(
@@ -622,8 +695,9 @@ mod tests {
                 (contract.byte_code_key(), StoredValue::ByteCode(bytecode)),
             ]);
 
-            let error = upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
-                .expect_err("conflict should fail");
+            let error =
+                upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
+                    .expect_err("conflict should fail");
 
             assert!(matches!(
                 error,
@@ -642,7 +716,7 @@ mod tests {
             let (mut tracking_copy, _tempdir) =
                 tracking_copy([(key, StoredValue::CLValue(CLValue::from_t(42u64).unwrap()))]);
 
-            upsert_preinstalls(&mut tracking_copy, &test_preinstalls())
+            upsert_preinstalls(&mut tracking_copy, &test_preinstalls(), &test_bytecodes())
                 .expect_err("malformed record should fail");
         }
     }
