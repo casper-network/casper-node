@@ -8,9 +8,9 @@ use once_cell::sync::Lazy;
 use tracing::{error, info, warn};
 
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
-    EvmConfig, ProtocolConfig, TimeDiff, TransactionConfig, TransactionV1Config, AUCTION_LANE_ID,
-    INSTALL_UPGRADE_LANE_ID, MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
+    evm, system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName,
+    CoreConfig, EvmConfig, ProtocolConfig, TimeDiff, TransactionConfig, TransactionV1Config,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
 };
 
 use crate::components::network;
@@ -22,6 +22,11 @@ static RESERVED_LANE_IDS: Lazy<Vec<u8>> =
 #[tracing::instrument(ret, level = "info", skip(chainspec), fields(hash = % chainspec.hash()))]
 pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
     info!("begin chainspec validation");
+
+    if chainspec.evm_config.enabled && !validate_evm_preinstalls(&chainspec.evm_config.preinstalls)
+    {
+        return false;
+    }
 
     if chainspec.core_config.unbonding_delay <= chainspec.core_config.auction_delay {
         warn!(
@@ -97,6 +102,18 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             &chainspec.evm_config,
             &chainspec.transaction_config.transaction_v1_config,
         )
+}
+
+/// Checks that every preinstall address occurs once.
+pub(crate) fn validate_evm_preinstalls(preinstalls: &[(evm::Address, evm::Hash)]) -> bool {
+    let mut addresses = HashSet::new();
+    for (address, _) in preinstalls {
+        if !addresses.insert(address) {
+            error!(%address, "duplicate EVM preinstall address");
+            return false;
+        }
+    }
+    true
 }
 
 /// Checks whether the values set in the config make sense and returns `false` if they don't.
@@ -890,6 +907,27 @@ mod tests {
         chainspec.evm_config.base_fee = u64::MAX;
 
         assert!(!validate_chainspec(&chainspec));
+    }
+
+    #[test]
+    fn should_validate_evm_preinstall_addresses_only_when_enabled() {
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        let address = evm::Address::new([0xaa; 20]);
+        let hash = evm::Hash::new([1; 32]);
+        for enabled in [false, true] {
+            chainspec.evm_config.enabled = enabled;
+            chainspec.evm_config.preinstalls =
+                vec![(address, hash), (evm::Address::new([0xbb; 20]), hash)];
+            assert!(validate_chainspec(&chainspec));
+            for duplicate_hash in [hash, evm::Hash::new([2; 32])] {
+                chainspec
+                    .evm_config
+                    .preinstalls
+                    .push((address, duplicate_hash));
+                assert_eq!(validate_chainspec(&chainspec), !enabled);
+                chainspec.evm_config.preinstalls.pop();
+            }
+        }
     }
 
     fn fail_validation_with_lane_id(lane_id: u8) {

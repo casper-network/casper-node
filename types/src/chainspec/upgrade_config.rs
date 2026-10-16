@@ -3,8 +3,9 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
-    system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, EvmConfig, FeeHandling,
-    HoldBalanceHandling, Key, ProtocolVersion, RewardsHandling, StoredValue,
+    bytesrepr::Bytes, evm, system::auction::DelegationRate, ChainspecRegistry, Digest, EraId,
+    EvmConfig, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion, RewardsHandling,
+    StoredValue,
 };
 
 /// Represents the configuration of a protocol upgrade.
@@ -24,6 +25,7 @@ pub struct ProtocolUpgradeConfig {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     evm_config: EvmConfig,
+    evm_preinstall_bytecodes: Vec<(evm::Hash, Bytes)>,
     fee_handling: FeeHandling,
     validator_minimum_bid_amount: u64,
     maximum_delegation_amount: u64,
@@ -74,6 +76,7 @@ impl ProtocolUpgradeConfig {
             global_state_update,
             chainspec_registry,
             evm_config,
+            evm_preinstall_bytecodes: Vec::new(),
             fee_handling,
             validator_minimum_bid_amount,
             maximum_delegation_amount,
@@ -152,6 +155,17 @@ impl ProtocolUpgradeConfig {
     /// Returns the EVM config for the target protocol version.
     pub fn evm_config(&self) -> &EvmConfig {
         &self.evm_config
+    }
+
+    /// Returns runtime bytecode supplied separately from the chainspec.
+    pub fn evm_preinstall_bytecodes(&self) -> &[(evm::Hash, Bytes)] {
+        &self.evm_preinstall_bytecodes
+    }
+
+    /// Supplies runtime bytecode for the configured preinstall hashes.
+    pub fn with_evm_preinstall_bytecodes(mut self, bytecodes: Vec<(evm::Hash, Bytes)>) -> Self {
+        self.evm_preinstall_bytecodes = bytecodes;
+        self
     }
 
     /// Sets new pre state hash.

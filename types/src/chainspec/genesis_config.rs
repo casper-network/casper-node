@@ -12,9 +12,9 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    system::auction::DelegationRate, AdministratorAccount, Chainspec, EvmConfig, GenesisAccount,
-    GenesisValidator, HoldBalanceHandling, Motes, PublicKey, RewardsHandling, SystemConfig,
-    WasmConfig,
+    bytesrepr::Bytes, evm, system::auction::DelegationRate, AdministratorAccount, Chainspec,
+    EvmConfig, GenesisAccount, GenesisValidator, HoldBalanceHandling, Motes, PublicKey,
+    RewardsHandling, SystemConfig, WasmConfig,
 };
 
 use super::StorageCosts;
@@ -24,6 +24,8 @@ use super::StorageCosts;
 pub struct GenesisConfig {
     accounts: Vec<GenesisAccount>,
     evm_config: EvmConfig,
+    #[serde(default)]
+    evm_preinstall_bytecodes: Vec<(evm::Hash, Bytes)>,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     validator_slots: u32,
@@ -64,6 +66,7 @@ impl GenesisConfig {
         GenesisConfig {
             accounts,
             evm_config,
+            evm_preinstall_bytecodes: Vec::new(),
             wasm_config,
             system_config,
             validator_slots,
@@ -84,6 +87,17 @@ impl GenesisConfig {
     /// Returns EVM config.
     pub fn evm_config(&self) -> &EvmConfig {
         &self.evm_config
+    }
+
+    /// Returns runtime bytecode supplied separately from the chainspec.
+    pub fn evm_preinstall_bytecodes(&self) -> &[(evm::Hash, Bytes)] {
+        &self.evm_preinstall_bytecodes
+    }
+
+    /// Supplies runtime bytecode for the configured preinstall hashes.
+    pub fn with_evm_preinstall_bytecodes(mut self, bytecodes: Vec<(evm::Hash, Bytes)>) -> Self {
+        self.evm_preinstall_bytecodes = bytecodes;
+        self
     }
 
     /// Returns WASM config.
@@ -245,6 +259,7 @@ impl Distribution<GenesisConfig> for Standard {
         GenesisConfig {
             accounts,
             evm_config,
+            evm_preinstall_bytecodes: Vec::new(),
             wasm_config,
             system_config,
             validator_slots,
@@ -280,6 +295,7 @@ impl From<&Chainspec> for GenesisConfig {
         GenesisConfig {
             accounts: chainspec.network_config.accounts_config.clone().into(),
             evm_config: chainspec.evm_config.clone(),
+            evm_preinstall_bytecodes: Vec::new(),
             wasm_config: chainspec.wasm_config,
             system_config: chainspec.system_costs_config,
             validator_slots: chainspec.core_config.validator_slots,
