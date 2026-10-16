@@ -474,6 +474,9 @@ async fn node_should_rejoin_after_ejection() {
     };
     let mut fixture = TestFixture::new(initial_stakes, Some(configs_override)).await;
 
+    // Crossing several four-block eras at this block time can take over a minute.
+    let era_timeout = ONE_MIN * 2;
+
     // Run through the first era.
     fixture
         .run_until_block_height(minimum_era_height, ONE_MIN)
@@ -487,7 +490,7 @@ async fn node_should_rejoin_after_ejection() {
     fixture
         .run_until_consensus_in_era(
             (fixture.chainspec.core_config.auction_delay + 3).into(),
-            ONE_MIN,
+            era_timeout,
         )
         .await;
 
@@ -534,10 +537,20 @@ async fn node_should_rejoin_after_ejection() {
         .expect("should have a write record for bid");
 
     // Wait until the auction delay passes, plus one era for a margin of error.
+    // Accept later eras too, since the restarted node can lag behind its peers.
+    let era_after_reactivation = 2 * fixture.chainspec.core_config.auction_delay + 6;
     fixture
-        .run_until_consensus_in_era(
-            (2 * fixture.chainspec.core_config.auction_delay + 6).into(),
-            ONE_MIN,
+        .run_until(
+            |nodes| {
+                nodes.values().all(|runner| {
+                    runner
+                        .main_reactor()
+                        .consensus()
+                        .current_era()
+                        .is_some_and(|era| era.value() >= era_after_reactivation)
+                })
+            },
+            era_timeout,
         )
         .await;
 }

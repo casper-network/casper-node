@@ -423,13 +423,10 @@ async fn run_rewards_network_scenario(
     let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
     // Get total supply history
-    let total_supply: Vec<U512> = (0..highest_completed_height + 1)
-        .map(|height: u64| {
-            let state_hash = *representative_storage
-                .read_block_header_by_height(height, true)
-                .expect("failure to read block header")
-                .unwrap()
-                .state_root_hash();
+    let total_supply: Vec<U512> = blocks
+        .iter()
+        .map(|block| {
+            let state_hash = *block.state_root_hash();
             let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
             let result = representative_runtime
                 .data_access_layer()
