@@ -164,6 +164,9 @@ lint-smart-contracts:
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
 
 .PHONY: audit-rs
+# RUSTSEC-2026-0344: Wasmer 6.1 uses object::write; object's default
+# features pull in ruzstd, but no zstd decompression APIs are called.
+# Remove this exception when Wasmer drops the affected ruzstd dependency.
 audit-rs:
 	$(CARGO) audit \
 		--ignore RUSTSEC-2025-0055 \
