@@ -1095,13 +1095,19 @@ impl Display for ChainspecRawBytesRequest {
     }
 }
 
-/// UpgradeWatcher component request to get the next scheduled upgrade, if any.
+/// Upgrade watcher requests for upgrade selection and complete chainspec source documents.
 #[derive(Debug, Serialize)]
-pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>>);
+pub(crate) enum UpgradeWatcherRequest {
+    NextUpgrade(Responder<Option<NextUpgrade>>),
+    FutureChainspecs(Responder<Result<Arc<casper_binary_port::FutureChainspecs>, String>>),
+}
 
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "get next upgrade")
+        match self {
+            Self::NextUpgrade(_) => write!(f, "get next upgrade"),
+            Self::FutureChainspecs(_) => write!(f, "get future chainspec source documents"),
+        }
     }
 }
 

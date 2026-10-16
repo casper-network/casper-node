@@ -11,7 +11,7 @@ use std::{
 use crate::{
     global_state::state::StateProvider,
     system::{
-        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys, upsert_preinstalls},
+        evm::{should_upsert_osaka_predeploys, upsert_osaka_predeploys, upsert_preinstalls},
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
     },
     AddressGenerator, TrackingCopy,
@@ -868,8 +868,8 @@ where
     }
 
     fn create_evm_predeploys(&self) -> Result<(), Box<GenesisError>> {
-        if should_upsert_prague_predeploys(self.config.evm_config()) {
-            upsert_prague_predeploys(&mut self.tracking_copy.borrow_mut())
+        if should_upsert_osaka_predeploys(self.config.evm_config()) {
+            upsert_osaka_predeploys(&mut self.tracking_copy.borrow_mut())
                 .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
         }
         Ok(())

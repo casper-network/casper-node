@@ -1158,7 +1158,7 @@ fn seed_evm_account_with_nonce_and_code(
     if let Some(code) = code {
         values_to_write.push((
             Key::Evm(EvmAddr::ByteCode(code_hash)),
-            StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmPrague, code)),
+            StoredValue::ByteCode(ByteCode::new(ByteCodeKind::EvmOsaka, code)),
         ));
     }
     for runner in fixture.network.runners_mut() {
@@ -1333,7 +1333,7 @@ fn evm_test_config(chain_id: u64) -> EvmConfig {
     EvmConfig {
         enabled: true,
         chain_id,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         preinstalls: Default::default(),
         block_gas_limit: 30_000_000,
         base_fee: 1,
@@ -1851,7 +1851,7 @@ async fn should_execute_evm_transaction_and_store_receipt() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -1977,7 +1977,7 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2051,7 +2051,7 @@ async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2173,7 +2173,7 @@ async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2272,7 +2272,7 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2342,7 +2342,7 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2408,7 +2408,7 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2492,7 +2492,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2609,7 +2609,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2688,7 +2688,7 @@ async fn should_not_seed_evm_accounts_at_genesis() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2748,7 +2748,7 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2829,7 +2829,7 @@ async fn should_reject_native_transfer_to_evm_contract_address() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,

@@ -1098,6 +1098,22 @@ where
         InformationRequest::ChainspecRawBytes => {
             BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
         }
+        InformationRequest::FutureChainspecs => {
+            // NOTE: Production chainspec TOML is about 24 KiB: ten staged protocols total
+            // roughly 240 KiB, plus less than 1 KiB of map/envelope overhead. Even ten
+            // copies of the larger local chainspec (~147 KiB) total only ~1.4 MiB,
+            // below the default 4 MiB frame limit. Optional companion files can be much
+            // larger, so handle_client_loop still checks the complete response envelope.
+            match effect_builder.get_future_chainspecs().await {
+                Ok(chainspecs) => match chainspecs.to_bytes() {
+                    Ok(payload) => {
+                        BinaryResponse::from_raw_bytes(ResponseType::FutureChainspecs, payload)
+                    }
+                    Err(_) => BinaryResponse::new_error(ErrorCode::InternalError),
+                },
+                Err(_) => BinaryResponse::new_error(ErrorCode::InternalError),
+            }
+        }
         InformationRequest::LatestSwitchBlockHeader => BinaryResponse::from_option(
             effect_builder
                 .get_latest_switch_block_header_from_storage()
@@ -1453,9 +1469,14 @@ where
                 let response =
                     handle_payload(effect_builder, payload, limiter_response, &monitor, &life_extensions_config).await;
                 codec.clone().encode(binary_message, &mut bytes_buf)?;
+                let response = response_with_size_limit(
+                    response,
+                    Bytes::from(bytes_buf.freeze().to_vec()),
+                    config.max_message_size_bytes,
+                );
                 framed
                     .send(BinaryMessage::new(
-                        BinaryResponseAndRequest::new(response, Bytes::from(bytes_buf.freeze().to_vec())).to_bytes()?,
+                        response.to_bytes()?,
                     ))
                     .await?
             }
@@ -1465,6 +1486,23 @@ where
             }
         }
     }
+}
+
+fn response_with_size_limit(
+    mut response: BinaryResponse,
+    request: Bytes,
+    max_message_size_bytes: u32,
+) -> BinaryResponseAndRequest {
+    let response_size = request.serialized_length() + response.serialized_length();
+    if response_size > max_message_size_bytes as usize {
+        trace!(
+            response_size,
+            max_message_size_bytes,
+            "binary response exceeds frame limit"
+        );
+        response = BinaryResponse::new_error(ErrorCode::ResponseTooLarge);
+    }
+    BinaryResponseAndRequest::new(response, request)
 }
 
 fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
