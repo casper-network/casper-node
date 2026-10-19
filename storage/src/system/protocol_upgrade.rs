@@ -40,10 +40,10 @@ use casper_types::{
     },
     AccessRights, Account, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, ByteCode,
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
-    EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
-    FeeHandling, Groups, HashAddr, Key, KeyTag, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling, StoredValue,
-    SystemHashRegistry, URef, URefAddr, REWARDS_HANDLING_RATIO_TAG, U512,
+    EntityMigrationMode, EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue,
+    EntryPoints, EraId, FeeHandling, Groups, HashAddr, Key, KeyTag, Motes, Package, PackageHash,
+    PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RewardsHandling,
+    StoredValue, SystemHashRegistry, URef, URefAddr, REWARDS_HANDLING_RATIO_TAG, U512,
 };
 
 const NO_CARRY_FORWARD: bool = false;
@@ -200,8 +200,19 @@ where
             )?;
             self.migrate_system_account(system_entity_addresses.mint())?;
             self.migrate_or_refresh_system_entities(&system_entity_addresses)?;
-            self.handle_accounts_migration()?;
-            self.handle_contracts_migration()?;
+            match self.config.entity_migration_mode() {
+                EntityMigrationMode::NoMigration => {}
+                EntityMigrationMode::Accounts => {
+                    self.handle_accounts_migration()?;
+                }
+                EntityMigrationMode::Contracts => {
+                    self.handle_contracts_migration()?;
+                }
+                EntityMigrationMode::AccountsAndContracts => {
+                    self.handle_accounts_migration()?;
+                    self.handle_contracts_migration()?;
+                }
+            }
         } else {
             self.create_accumulation_purse_if_required_by_contract(
                 &system_entity_addresses.handle_payment(),

@@ -9,13 +9,7 @@ use casper_execution_engine::{
     engine_state::{Error as StateError, SessionDataV1, SessionInputData},
     execution::ExecError,
 };
-use casper_types::{
-    bytesrepr::{Bytes, ToBytes},
-    ApiError, BlockTime, Digest, EraId, InitiatorAddr, Key, PricingMode, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling, TransactionTarget,
-    TransactionV1, TransactionV1Payload,
-};
+use casper_types::{bytesrepr::{Bytes, ToBytes}, ApiError, BlockTime, Digest, EntityMigrationMode, EraId, InitiatorAddr, Key, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1, TransactionV1Payload};
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
 const CHAIN_NAME: &str = "a";
@@ -238,6 +232,7 @@ fn should_allow_1x_user_to_add_contract_version_via_transaction_v1_installer_upg
         .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
         .with_activation_point(EraId::new(1))
         .with_enable_addressable_entity(true)
+        .with_entity_migration_mode(EntityMigrationMode::AccountsAndContracts)
         .build();
 
     builder

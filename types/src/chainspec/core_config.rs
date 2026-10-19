@@ -23,7 +23,8 @@ use crate::{
 
 use super::{
     fee_handling::FeeHandling, hold_balance_handling::HoldBalanceHandling,
-    pricing_handling::PricingHandling, refund_handling::RefundHandling,
+    migration_mode::EntityMigrationMode, pricing_handling::PricingHandling,
+    refund_handling::RefundHandling,
 };
 
 /// Default value for maximum associated keys configuration option.
@@ -196,6 +197,10 @@ pub struct CoreConfig {
     /// Minimum delegation rate a validator can specify.
     /// Also applies to delegation reservations.
     pub minimum_delegation_rate: u8,
+    /// The migration mode determining if accounts and/or contracts are migrated
+    /// into addressable entities at the point of protocol upgrade.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
+    pub entity_migration_mode: EntityMigrationMode,
 }
 
 impl CoreConfig {
@@ -229,6 +234,10 @@ impl CoreConfig {
     /// The baseline motes amount as a U512.
     pub fn baseline_motes_amount_u512(&self) -> U512 {
         U512::from(self.baseline_motes_amount)
+    }
+
+    pub fn entity_migration_mode(&self) -> EntityMigrationMode {
+        self.entity_migration_mode
     }
 }
 
@@ -343,6 +352,7 @@ impl CoreConfig {
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
             minimum_delegation_rate: 0,
+            entity_migration_mode: EntityMigrationMode::NoMigration,
         }
     }
 }
@@ -392,6 +402,7 @@ impl Default for CoreConfig {
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
             minimum_delegation_rate: 0,
+            entity_migration_mode: EntityMigrationMode::NoMigration,
         }
     }
 }
@@ -443,6 +454,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.trap_on_ambiguous_entity_version.to_bytes()?);
         buffer.extend(self.rewards_handling.to_bytes()?);
         buffer.extend(self.minimum_delegation_rate.to_bytes()?);
+        buffer.extend(self.entity_migration_mode.to_bytes()?);
         Ok(buffer)
     }
 
@@ -490,6 +502,7 @@ impl ToBytes for CoreConfig {
             + self.trap_on_ambiguous_entity_version.serialized_length()
             + self.rewards_handling.serialized_length()
             + self.minimum_delegation_rate.serialized_length()
+            + self.entity_migration_mode.serialized_length()
     }
 }
 
@@ -537,6 +550,7 @@ impl FromBytes for CoreConfig {
         let (trap_on_ambiguous_entity_version, remainder) = bool::from_bytes(remainder)?;
         let (rewards_handling, remainder) = RewardsHandling::from_bytes(remainder)?;
         let (minimum_delegation_rate, remainder) = u8::from_bytes(remainder)?;
+        let (entity_migration_mode, remainder) = EntityMigrationMode::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -579,6 +593,7 @@ impl FromBytes for CoreConfig {
             trap_on_ambiguous_entity_version,
             rewards_handling,
             minimum_delegation_rate,
+            entity_migration_mode,
         };
         Ok((config, remainder))
     }

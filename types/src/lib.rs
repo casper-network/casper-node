@@ -131,7 +131,7 @@ pub use chainspec::{
     GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig, HoldBalanceHandling, HostFunction,
     HostFunctionCost, HostFunctionCostsV1, HostFunctionCostsV2, HostFunctionV2,
     LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts,
-    PricingHandling, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, RewardsHandling,
+    PricingHandling, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, RewardsHandling, EntityMigrationMode,
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionLaneDefinition,
     TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig, WasmV1Config, WasmV2Config,
     DEFAULT_BASELINE_MOTES_AMOUNT, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,

@@ -18,8 +18,8 @@ use casper_types::{
     contracts::{ContractHash, ContractPackageHash},
     runtime_args,
     system::{auction::MINIMUM_DELEGATION_RATE_KEY, mint::MINT_SUSTAIN_PURSE_KEY},
-    AccessRights, AddressableEntityHash, CLValue, EntityAddr, EntityVersion, EraId,
-    HoldBalanceHandling, Key, PackageHash, ProtocolVersion, RewardsHandling, RuntimeArgs,
+    AccessRights, AddressableEntityHash, CLValue, EntityAddr, EntityMigrationMode, EntityVersion,
+    EraId, HoldBalanceHandling, Key, PackageHash, ProtocolVersion, RewardsHandling, RuntimeArgs,
     StoredValue, Timestamp, URef, ENTITY_INITIAL_VERSION, REWARDS_HANDLING_RATIO_TAG,
 };
 
@@ -997,6 +997,7 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
     let (mut builder, _) = setup_upgrade_threshold_state();
 
     if !builder.chainspec().core_config.enable_addressable_entity {
+        println!("being returned");
         return;
     }
 
@@ -1674,6 +1675,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
         .with_enable_addressable_entity(true)
+        .with_entity_migration_mode(EntityMigrationMode::AccountsAndContracts)
         .with_rewards_handling(rewards_handling)
         .build();
 

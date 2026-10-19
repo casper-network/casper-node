@@ -11,6 +11,7 @@ pub mod genesis_config;
 mod global_state_update;
 mod highway_config;
 mod hold_balance_handling;
+mod migration_mode;
 mod network_config;
 mod next_upgrade;
 mod pricing_handling;
@@ -60,6 +61,7 @@ pub use genesis_config::GenesisConfig;
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use hold_balance_handling::HoldBalanceHandling;
+pub use migration_mode::EntityMigrationMode;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
@@ -205,6 +207,7 @@ impl Chainspec {
         let enable_addressable_entity = self.core_config.enable_addressable_entity;
         let rewards_handling = self.core_config.rewards_handling.clone();
         let minimum_delegation_rate = Some(self.core_config.minimum_delegation_rate);
+        let entity_migration_mode = self.core_config.entity_migration_mode;
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -228,6 +231,7 @@ impl Chainspec {
             enable_addressable_entity,
             rewards_handling,
             minimum_delegation_rate,
+            entity_migration_mode
         ))
     }
 
