@@ -34,9 +34,9 @@ use crate::{
 use casper_types::{
     addressable_entity::NamedKeyAddr, bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm,
     runtime_args, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, Digest,
-    EntityVersion, EraId, EvmTransaction, ExecutableDeployItem, PackageHash, PricingMode,
-    PublicKey, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
+    EntityVersion, EraId, EvmConfig, EvmTransaction, ExecutableDeployItem, PackageHash,
+    PricingMode, PublicKey, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Timestamp,
+    Transaction, TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
 };
 
 const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
