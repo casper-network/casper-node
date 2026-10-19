@@ -12,8 +12,8 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, FinalitySignatureV2, Transaction,
-    TransactionConfig, TransactionHash, TransactionId,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EvmConfig, FinalitySignatureV2,
+    Transaction, TransactionConfig, TransactionHash, TransactionId,
 };
 
 use super::*;
@@ -304,6 +304,7 @@ impl ReactorTrait for Reactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();

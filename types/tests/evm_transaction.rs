@@ -15,9 +15,9 @@ use alloy_primitives::{Address as AlloyAddress, Signature, TxKind, B256, U256 as
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     evm::{Address, Hash, EIP4844_TRANSACTION_TYPE_ID},
-    Approval, ApprovalsHash, Digest, EvmApproval, EvmTransaction, EvmTransactionError,
-    EvmTransactionHash, EvmTransactionKind, InitiatorAddr, PublicKey, SecretKey, TimeDiff,
-    Timestamp, Transaction as CasperTransaction, TransactionHash, U256,
+    Approval, ApprovalsHash, Digest, EvmAccessListItem, EvmApproval, EvmTransaction,
+    EvmTransactionError, EvmTransactionHash, EvmTransactionKind, InitiatorAddr, PublicKey,
+    SecretKey, TimeDiff, Timestamp, Transaction as CasperTransaction, TransactionHash, U256,
 };
 
 const SIGNING_SECRET: [u8; 32] = [7; 32];
@@ -147,18 +147,132 @@ fn unsupported_typed_transactions_are_clear_errors() {
 }
 
 #[test]
-fn non_empty_access_lists_are_rejected() {
-    let timestamp = Timestamp::zero();
-    let ttl = TimeDiff::from_seconds(60);
+fn non_empty_access_lists_are_preserved() {
+    let eip2930 = signed_eip2930_with_access_list();
+    let transaction = decode(eip2930.raw_rlp.clone());
 
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip2930);
     assert_eq!(
-        EvmTransaction::from_signed_rlp(signed_eip2930_with_access_list(), timestamp, ttl),
-        Err(EvmTransactionError::UnsupportedAccessList)
+        transaction.access_list(),
+        &[EvmAccessListItem {
+            address: address(8),
+            storage_keys: vec![Hash::new([9u8; 32])],
+        }]
     );
+    assert_eq!(transaction.from(), eip2930.sender);
+    transaction
+        .verify()
+        .expect("EIP-2930 transaction with access list should verify");
     assert_eq!(
-        EvmTransaction::from_signed_rlp(signed_eip7702_with_access_list(), timestamp, ttl),
-        Err(EvmTransactionError::UnsupportedAccessList)
+        transaction.signed_rlp().unwrap(),
+        eip2930.raw_rlp,
+        "reconstructed signed RLP should match the original bytes"
     );
+    bytesrepr_roundtrip(&transaction);
+
+    let eip7702 = signed_eip7702_with_access_list();
+    let transaction = decode(eip7702.raw_rlp.clone());
+
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip7702);
+    assert_eq!(
+        transaction.access_list(),
+        &[EvmAccessListItem {
+            address: address(8),
+            storage_keys: vec![Hash::new([9u8; 32])],
+        }]
+    );
+    assert_eq!(transaction.authorization_list().len(), 1);
+    transaction
+        .verify()
+        .expect("EIP-7702 transaction with access list should verify");
+    assert_eq!(
+        transaction.signed_rlp().unwrap(),
+        eip7702.raw_rlp,
+        "reconstructed signed RLP should match the original bytes"
+    );
+    bytesrepr_roundtrip(&transaction);
+}
+
+#[test]
+fn decodes_eip1559_signed_rlp_with_access_list() {
+    let tx = TxEip1559 {
+        chain_id: 7,
+        nonce: 2,
+        gas_limit: 60_000,
+        max_fee_per_gas: 2_000_000_000,
+        max_priority_fee_per_gas: 0,
+        to: TxKind::Call(alloy_address(3)),
+        value: AlloyU256::from(789u64),
+        access_list: AccessList(vec![AccessListItem {
+            address: alloy_address(5),
+            storage_keys: vec![B256::from([6u8; 32]), B256::from([7u8; 32])],
+        }]),
+        input: vec![0xab, 0xcd].into(),
+    };
+    let raw_rlp = {
+        let signature = sign_transaction(&tx);
+        let envelope: TxEnvelope = tx.into_signed(signature).into();
+        envelope.encoded_2718()
+    };
+    let transaction = decode(raw_rlp.clone());
+
+    assert_eq!(transaction.kind(), EvmTransactionKind::Eip1559);
+    assert_eq!(
+        transaction.access_list(),
+        &[EvmAccessListItem {
+            address: address(5),
+            storage_keys: vec![Hash::new([6u8; 32]), Hash::new([7u8; 32])],
+        }]
+    );
+    transaction
+        .verify()
+        .expect("EIP-1559 transaction with access list should verify");
+    assert_eq!(transaction.signed_rlp().unwrap(), raw_rlp);
+    bytesrepr_roundtrip(&transaction);
+}
+
+#[test]
+fn intrinsic_gas_matches_prague_rules() {
+    // A plain legacy transfer has the 21,000 base-gas charge.
+    let transaction = decode(signed_legacy_transaction().raw_rlp);
+    assert_eq!(transaction.intrinsic_gas(), 21_000);
+
+    // Two non-zero calldata bytes cost 16 gas each.
+    let transaction = decode(signed_eip1559_transaction().raw_rlp);
+    assert_eq!(transaction.intrinsic_gas(), 21_000 + 32);
+}
+
+#[test]
+fn intrinsic_gas_includes_access_list_and_authorization_costs() {
+    // One access-list address (2,400), one storage key (1,900), and two
+    // non-zero calldata bytes (32).
+    let transaction = decode(signed_eip2930_with_access_list().raw_rlp);
+    assert_eq!(transaction.intrinsic_gas(), 21_000 + 2_400 + 1_900 + 32);
+
+    // One authorization (25,000) on top of the base stipend and calldata.
+    let transaction = decode(signed_eip7702_transaction().raw_rlp);
+    assert_eq!(transaction.intrinsic_gas(), 21_000 + 25_000 + 32);
+}
+
+#[test]
+fn intrinsic_gas_includes_creation_and_initcode_costs() {
+    // A contract creation with 40 zero bytes of initcode: 40 calldata tokens
+    // (160 gas), the 32,000 create cost, and two EIP-3860 initcode words
+    // (4 gas).
+    let tx = TxLegacy {
+        chain_id: Some(7),
+        nonce: 0,
+        gas_price: 1_000_000_000,
+        gas_limit: 100_000,
+        to: TxKind::Create,
+        value: AlloyU256::ZERO,
+        input: vec![0u8; 40].into(),
+    };
+    let signature = sign_transaction(&tx);
+    let envelope: TxEnvelope = tx.into_signed(signature).into();
+    let transaction = decode(envelope.encoded_2718());
+
+    assert_eq!(transaction.intrinsic_gas(), 21_000 + 160 + 32_000 + 4);
 }
 
 #[test]
@@ -424,14 +538,14 @@ fn signed_eip7702_with_authorization_list(
     signed_eip7702_envelope(authorization_list, access_list).encoded_2718()
 }
 
-fn signed_eip7702_with_access_list() -> Vec<u8> {
-    signed_eip7702_with_authorization_list(
+fn signed_eip7702_with_access_list() -> SignedTransaction {
+    signed_transaction(signed_eip7702_envelope(
         vec![signed_authorization(alloy_address(9), 4)],
         AccessList(vec![AccessListItem {
             address: alloy_address(8),
             storage_keys: vec![B256::from([9u8; 32])],
         }]),
-    )
+    ))
 }
 
 fn signed_eip7702_envelope(
@@ -517,7 +631,7 @@ fn alloy_u256_to_casper(value: AlloyU256) -> U256 {
     U256::from_big_endian(&value.to_be_bytes::<32>())
 }
 
-fn signed_eip2930_with_access_list() -> Vec<u8> {
+fn signed_eip2930_with_access_list() -> SignedTransaction {
     let tx = TxEip2930 {
         chain_id: 7,
         nonce: 0,
@@ -531,7 +645,6 @@ fn signed_eip2930_with_access_list() -> Vec<u8> {
             storage_keys: vec![B256::from([9u8; 32])],
         }]),
     };
-    let tx = tx.into_signed(Signature::test_signature());
-    let envelope: TxEnvelope = tx.into();
-    envelope.encoded_2718()
+    let signature = sign_transaction(&tx);
+    signed_transaction(tx.into_signed(signature).into())
 }

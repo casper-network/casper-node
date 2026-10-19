@@ -74,7 +74,7 @@ static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
 static RUST_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH
         .join("target")
-        .join("wasm32-unknown-unknown")
+        .join("wasm32v1-none")
         .join("release");
     assert!(
         path.exists() || RUST_TOOL_WASM_PATH.exists(),

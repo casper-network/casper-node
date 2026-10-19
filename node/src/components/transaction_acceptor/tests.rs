@@ -44,11 +44,11 @@ use casper_types::{
     evm,
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, EvmTransaction,
-    EvmTransactionError, Groups, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
-    Key, PackageAddr, PricingHandling, PricingMode, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, EvmConfig,
+    EvmTransaction, EvmTransactionError, Groups, HashAddr, InvalidDeploy, InvalidTransaction,
+    InvalidTransactionV1, Key, PackageAddr, PricingHandling, PricingMode, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
     DEFAULT_BASELINE_MOTES_AMOUNT,
 };
 
@@ -1443,6 +1443,7 @@ impl reactor::Reactor for Reactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();
@@ -1530,6 +1531,7 @@ fn inject_balance_check_for_peer(
         &txn,
         chainspec.core_config.pricing_handling,
         &chainspec.transaction_config,
+        &chainspec.evm_config,
     )
     .unwrap();
     |effect_builder: EffectBuilder<Event>| {
@@ -1556,7 +1558,7 @@ fn inject_balance_check_for_peer(
 
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
-) -> Result<(), super::Error> {
+) -> Result<(), Box<super::Error>> {
     let _ = logging::init();
     let rng = &mut TestRng::new();
 
@@ -1918,9 +1920,10 @@ async fn run_transaction_acceptor_without_timeout(
         }
     }
 
-    txn_receiver.await.unwrap()
+    txn_receiver.await.unwrap().map_err(Box::new)
 }
 
+#[allow(clippy::result_large_err)]
 async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), super::Error> {
     time::timeout(
         TIMEOUT,
@@ -1928,6 +1931,7 @@ async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), sup
     )
     .await
     .unwrap()
+    .map_err(|b_e| *b_e)
 }
 
 #[tokio::test]

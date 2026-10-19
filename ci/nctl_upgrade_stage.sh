@@ -27,7 +27,7 @@ function clean_up() {
 # DIRECTORIES
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 BIN_BUILD_DIR="$ROOT_DIR/target/release"
-WASM_BUILD_DIR="$ROOT_DIR/target/wasm32-unknown-unknown/release"
+WASM_BUILD_DIR="$ROOT_DIR/target/wasm32v1-none/release"
 CONFIG_DIR="$ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
 

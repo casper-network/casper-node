@@ -506,7 +506,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     let account_1_closing_balance = builder.get_purse_balance(account_1_purse);
 
     assert_eq!(
-        format!("{}", &expected_error),
+        format!("{}", expected_error),
         format!("{}", error),
         "expected_error: {} actual error: {}",
         expected_error,

@@ -176,6 +176,7 @@ impl ToBytes for PointerBlock {
     }
 }
 
+#[allow(dropping_copy_types)]
 impl FromBytes for PointerBlock {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let pointer_block_array = {

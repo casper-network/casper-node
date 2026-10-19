@@ -60,7 +60,7 @@ fn run_wasm(
             "Not enough arguments supplied"
         );
         let mut vec = Vec::new();
-        for (input_arg, func_arg) in cli_args.args.iter().zip(params.into_iter()) {
+        for (input_arg, func_arg) in cli_args.args.iter().zip(params) {
             let value = match func_arg {
                 casper_wasmi::ValueType::I32 => {
                     casper_wasmi::RuntimeValue::I32(input_arg.parse().unwrap())

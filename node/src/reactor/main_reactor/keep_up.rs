@@ -437,11 +437,9 @@ impl MainReactor {
                 "KeepUp: historical sync back is awaiting response".to_string(),
                 self.control_logic_default_delay.into(),
             ),
-            LeapState::Received {
-                best_available,
-                from_peers: _,
-                ..
-            } => self.sync_back_leap_received(effect_builder, *best_available),
+            LeapState::Received { best_available, .. } => {
+                self.sync_back_leap_received(effect_builder, *best_available)
+            }
             LeapState::Failed { error, .. } => {
                 self.sync_back_leap_failed(effect_builder, rng, parent_hash, error)
             }

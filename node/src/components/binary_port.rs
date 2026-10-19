@@ -1357,7 +1357,7 @@ where
         .try_accept_transaction(transaction)
         .await
         .map_or_else(
-            |err| BinaryResponse::new_error(err.into()),
+            |err| BinaryResponse::new_error((*err).into()),
             |()| BinaryResponse::new_empty(),
         )
 }

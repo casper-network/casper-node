@@ -66,6 +66,7 @@ impl FakeTransactionAcceptor {
             &transaction,
             self.chainspec.core_config.pricing_handling,
             &self.chainspec.transaction_config,
+            &self.chainspec.evm_config,
         )
         .unwrap();
         let event_metadata = Box::new(EventMetadata::new(

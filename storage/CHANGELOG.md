@@ -9,6 +9,13 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## Unreleased 
+
+### Changed 
+
+* Disk-Based Block Store Caching. `LmdbBlockStore` (`storage/src/block_store/lmdb/lmdb_block_store.rs`) persists its `block_height_index`, `switch_block_era_id_index`, and `transaction_hash_index` lookups as dedicated LMDB tables -- `block_height_index_db`, `switch_block_era_id_index_db`, and `transaction_hash_index_db` -- directly on `LmdbBlockStore`, instead of rebuilding them as in-memory `BTreeMap`s
+* `MAX_DB_COUNT` was raised from `17` to `20` to accommodate the three new named databases
+
 ## 5.0.0
 
 ### Added

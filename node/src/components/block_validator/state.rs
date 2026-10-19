@@ -8,8 +8,8 @@ use datasize::DataSize;
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    Approval, ApprovalsHash, Chainspec, FinalitySignatureId, Timestamp, TransactionConfig,
-    TransactionHash,
+    Approval, ApprovalsHash, Chainspec, EvmConfig, FinalitySignatureId, Timestamp,
+    TransactionConfig, TransactionHash,
 };
 
 use crate::{
@@ -136,9 +136,11 @@ impl BlockValidationState {
 
         // this is an optimization, rejects proposal that exceeds lane limits OR
         // proposes a transaction in an unsupported lane
-        if let Err(err) =
-            Self::validate_transaction_lane_counts(proposed_block, &chainspec.transaction_config)
-        {
+        if let Err(err) = Self::validate_transaction_lane_counts(
+            proposed_block,
+            &chainspec.transaction_config,
+            &chainspec.evm_config,
+        ) {
             let state = BlockValidationState::Invalid {
                 timestamp: proposed_block.timestamp(),
                 error: err,
@@ -196,6 +198,7 @@ impl BlockValidationState {
         let state = BlockValidationState::InProgress {
             appendable_block: AppendableBlock::new(
                 chainspec.transaction_config.clone(),
+                chainspec.evm_config.clone(),
                 current_gas_price,
                 proposed_block.timestamp(),
             ),
@@ -211,16 +214,22 @@ impl BlockValidationState {
     fn validate_transaction_lane_counts(
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
+        evm_config: &EvmConfig,
     ) -> Result<(), Box<InvalidProposalError>> {
-        let lanes = config.transaction_v1_config.get_supported_lanes();
+        let mut lanes = config.transaction_v1_config.get_supported_lanes();
+        lanes.extend(evm_config.get_supported_lanes());
         if block.value().has_transaction_in_unsupported_lane(&lanes) {
             return Err(Box::new(InvalidProposalError::UnsupportedLane));
         }
         for supported_lane in lanes {
             let transactions = block.value().count(Some(supported_lane));
-            let lane_count_limit = config
-                .transaction_v1_config
-                .get_max_transaction_count(supported_lane);
+            let lane_count_limit = if evm_config.is_supported(supported_lane) {
+                evm_config.get_max_transaction_count(supported_lane)
+            } else {
+                config
+                    .transaction_v1_config
+                    .get_max_transaction_count(supported_lane)
+            };
             if lane_count_limit < transactions as u64 {
                 warn!(
                     supported_lane,

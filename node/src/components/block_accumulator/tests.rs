@@ -16,8 +16,8 @@ use tokio::time;
 
 use casper_types::{
     generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, ChainNameDigest,
-    Chainspec, ChainspecRawBytes, FinalitySignature, FinalitySignatureV2, ProtocolVersion,
-    PublicKey, SecretKey, Signature, TestBlockBuilder, TransactionConfig, U512,
+    Chainspec, ChainspecRawBytes, EvmConfig, FinalitySignature, FinalitySignatureV2,
+    ProtocolVersion, PublicKey, SecretKey, Signature, TestBlockBuilder, TransactionConfig, U512,
 };
 use reactor::ReactorEvent;
 
@@ -208,6 +208,7 @@ impl Reactor for MockReactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();
@@ -1416,10 +1417,10 @@ fn accumulator_purge() {
         // Change the timestamps to old ones so that all blocks would normally
         // get purged.
         let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
-        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+        for acceptor in block_accumulator.block_acceptors.values_mut() {
             acceptor.set_last_progress(last_progress);
         }
-        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+        for timestamps in block_accumulator.peer_block_timestamps.values_mut() {
             for (_, timestamp) in timestamps.iter_mut() {
                 *timestamp = last_progress;
             }
@@ -1544,10 +1545,10 @@ fn accumulator_purge() {
         // Change the timestamps to old ones so that all blocks would normally
         // get purged.
         let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
-        for (_, acceptor) in block_accumulator.block_acceptors.iter_mut() {
+        for acceptor in block_accumulator.block_acceptors.values_mut() {
             acceptor.set_last_progress(last_progress);
         }
-        for (_, timestamps) in block_accumulator.peer_block_timestamps.iter_mut() {
+        for timestamps in block_accumulator.peer_block_timestamps.values_mut() {
             for (_, timestamp) in timestamps.iter_mut() {
                 *timestamp = last_progress;
             }

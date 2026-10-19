@@ -5,7 +5,7 @@ use revm::context_interface::result::{
     ExecutionResult, HaltReason as RevmHaltReason, OutOfGasError as RevmOutOfGasError, Output,
 };
 
-use crate::tx;
+use crate::{state::BalanceLosses, tx, Error, Result};
 
 /// Result returned by [`crate::EvmExecutor::execute`].
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,12 +20,20 @@ pub struct ExecutionOutcome {
     pub logs: Vec<evm::Log>,
     /// Address created by a successful create transaction.
     pub created_contract_address: Option<evm::Address>,
-    /// Whole motes discarded when final EVM balances are rounded down for persistence.
-    pub dust_motes: U512,
+    /// Wei lost through EVM burns, including deletion of selfdestructed purses.
+    evm_burn_wei: U512,
+    /// Wei discarded when final purse balances are rounded down for persistence.
+    rounding_loss_wei: U512,
+    /// Configured conversion rate for the combined balance loss.
+    wei_per_mote: u64,
 }
 
 impl ExecutionOutcome {
-    pub(crate) fn from_revm_result(result: &ExecutionResult, dust_motes: U512) -> Self {
+    pub(crate) fn from_revm_result(
+        result: &ExecutionResult,
+        balance_losses: BalanceLosses,
+        wei_per_mote: u64,
+    ) -> Self {
         match result {
             ExecutionResult::Success {
                 gas, logs, output, ..
@@ -42,7 +50,9 @@ impl ExecutionOutcome {
                     output: output_bytes,
                     logs: logs.iter().map(from_revm_log).collect(),
                     created_contract_address,
-                    dust_motes,
+                    evm_burn_wei: balance_losses.evm_burn_wei,
+                    rounding_loss_wei: balance_losses.rounding_loss_wei,
+                    wei_per_mote,
                 }
             }
             ExecutionResult::Revert { gas, output, .. } => Self {
@@ -51,7 +61,9 @@ impl ExecutionOutcome {
                 output: output.to_vec(),
                 logs: Vec::new(),
                 created_contract_address: None,
-                dust_motes,
+                evm_burn_wei: balance_losses.evm_burn_wei,
+                rounding_loss_wei: balance_losses.rounding_loss_wei,
+                wei_per_mote,
             },
             ExecutionResult::Halt { gas, reason, .. } => Self {
                 status: ExecutionStatus::Halt(from_revm_halt_reason(reason)),
@@ -59,9 +71,39 @@ impl ExecutionOutcome {
                 output: Vec::new(),
                 logs: Vec::new(),
                 created_contract_address: None,
-                dust_motes,
+                evm_burn_wei: balance_losses.evm_burn_wei,
+                rounding_loss_wei: balance_losses.rounding_loss_wei,
+                wei_per_mote,
             },
         }
+    }
+
+    /// Whole motes lost through EVM burns and balance rounding.
+    ///
+    /// The components are combined in wei before conversion because either
+    /// component may contain a fraction of a mote. Returns an error if their
+    /// sum overflows, the configured rate is zero, or the total is not a whole
+    /// number of motes.
+    pub fn supply_reduction_motes(&self) -> Result<U512> {
+        let total_loss_wei = self
+            .evm_burn_wei
+            .checked_add(self.rounding_loss_wei)
+            .ok_or_else(|| {
+                Error::State("aggregate EVM balance loss overflowed U512 wei".to_string())
+            })?;
+        let wei_per_mote = U512::from(self.wei_per_mote);
+        let remainder = total_loss_wei
+            .checked_rem(wei_per_mote)
+            .ok_or(Error::InvalidWeiPerMote)?;
+        if !remainder.is_zero() {
+            return Err(Error::State(format!(
+                "aggregate EVM balance loss {total_loss_wei} wei is not divisible by \
+                 {wei_per_mote} wei per mote"
+            )));
+        }
+        total_loss_wei
+            .checked_div(wei_per_mote)
+            .ok_or(Error::InvalidWeiPerMote)
     }
 
     /// Converts this execution outcome into EVM receipt data.
@@ -144,5 +186,72 @@ fn from_revm_log(log: &revm::primitives::Log) -> evm::Log {
             .map(tx::from_revm_topic)
             .collect(),
         data: log.data.data.to_vec().into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn outcome_with_losses(
+        evm_burn_wei: U512,
+        rounding_loss_wei: U512,
+        wei_per_mote: u64,
+    ) -> ExecutionOutcome {
+        ExecutionOutcome {
+            status: ExecutionStatus::Success,
+            gas_used: 0,
+            output: Vec::new(),
+            logs: Vec::new(),
+            created_contract_address: None,
+            evm_burn_wei,
+            rounding_loss_wei,
+            wei_per_mote,
+        }
+    }
+
+    #[test]
+    fn supply_reduction_combines_fractional_losses_before_converting_at_configured_rate() {
+        let outcome = outcome_with_losses(U512::from(9u64), U512::one(), 10);
+
+        assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::one());
+    }
+
+    #[test]
+    fn supply_reduction_accepts_maximum_whole_mote_loss() {
+        let outcome = outcome_with_losses(U512::MAX, U512::zero(), 1);
+
+        assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::MAX);
+    }
+
+    #[test]
+    fn supply_reduction_rejects_loss_overflow() {
+        let outcome = outcome_with_losses(U512::MAX, U512::one(), 1);
+
+        assert!(matches!(
+            outcome.supply_reduction_motes(),
+            Err(Error::State(message)) if message.contains("balance loss overflowed U512 wei")
+        ));
+    }
+
+    #[test]
+    fn supply_reduction_rejects_zero_conversion_rate() {
+        let outcome = outcome_with_losses(U512::zero(), U512::zero(), 0);
+
+        assert!(matches!(
+            outcome.supply_reduction_motes(),
+            Err(Error::InvalidWeiPerMote)
+        ));
+    }
+
+    #[test]
+    fn supply_reduction_rejects_fractional_mote_loss() {
+        let outcome = outcome_with_losses(U512::from(9u64), U512::zero(), 10);
+
+        assert!(matches!(
+            outcome.supply_reduction_motes(),
+            Err(Error::State(message))
+                if message.contains("balance loss 9 wei is not divisible by 10 wei per mote")
+        ));
     }
 }

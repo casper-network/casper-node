@@ -413,6 +413,13 @@ impl ExecutionArtifactBuilder {
         self
     }
 
+    pub fn with_invalid_evm_request(&mut self, invalid_request: &EvmTransactionError) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{}", invalid_request));
+        }
+        self
+    }
+
     pub fn with_auction_method_error(
         &mut self,
         auction_method_error: &AuctionMethodError,
@@ -494,6 +501,7 @@ impl ExecutionArtifactBuilder {
                     .initiator
                     .evm_address()
                     .expect("EVM execution result requires an EVM initiator"),
+                error_message: self.error_message,
                 current_price: self.current_price,
                 limit: self.limit,
                 cost: actual_cost,

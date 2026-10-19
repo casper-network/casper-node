@@ -7,7 +7,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The category of a [`Transaction`].
+/// The category of a [`Deploy`].
 #[deprecated(
     note = "DeployCategory is scheduled for removal in the next casper-types major version"
 )]

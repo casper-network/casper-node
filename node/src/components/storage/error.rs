@@ -2,7 +2,6 @@ use std::{fmt::Debug, io, path::PathBuf};
 
 use casper_binary_port::RecordId;
 use thiserror::Error;
-use tracing::error;
 
 use casper_types::{
     bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,

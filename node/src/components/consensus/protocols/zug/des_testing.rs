@@ -1112,7 +1112,6 @@ mod test_harness {
                     v.finalized_values().cloned().collect::<Vec<_>>(),
                     v.messages_produced()
                         .filter(|&zm| zm.is_signed_gossip_message() || zm.is_proposal())
-                        .cloned()
                         .count(),
                 )
             })

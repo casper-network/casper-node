@@ -18,7 +18,7 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, EvmConfig, FinalitySignatureV2,
     ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
 };
 
@@ -180,6 +180,7 @@ impl reactor::Reactor for Reactor {
             Some(registry),
             false,
             TransactionConfig::default(),
+            EvmConfig::default(),
         )
         .unwrap();
         storage.initialize_for_test();

@@ -1,5 +1,6 @@
 //! Translation from Casper-owned EVM requests into revm transaction environments.
 
+use alloy_eips::eip2930::AccessList as RevmAccessList;
 use alloy_eips::eip7702::{
     Authorization as RevmAuthorization, SignedAuthorization as RevmSignedAuthorization,
 };
@@ -21,7 +22,8 @@ pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxE
                 .value(to_revm_u256(transaction.value()))
                 .data(Bytes::from(transaction.input().to_vec()))
                 .nonce(transaction.nonce())
-                .chain_id(transaction.chain_id().or(Some(config.chain_id)));
+                .chain_id(transaction.chain_id().or(Some(config.chain_id)))
+                .access_list(to_revm_access_list(transaction.access_list()));
 
             builder = match transaction.kind() {
                 EvmTransactionKind::Legacy | EvmTransactionKind::Eip2930 => builder.gas_price(
@@ -107,6 +109,22 @@ fn validate_transaction_value(config: &EvmConfig, value_wei: CasperU256) -> Resu
 
 pub(crate) fn to_revm_address(address: evm::Address) -> Address {
     Address::from(address.value())
+}
+
+pub(crate) fn to_revm_access_list(access_list: &[evm::EvmAccessListItem]) -> RevmAccessList {
+    RevmAccessList(
+        access_list
+            .iter()
+            .map(|item| alloy_eips::eip2930::AccessListItem {
+                address: to_revm_address(item.address),
+                storage_keys: item
+                    .storage_keys
+                    .iter()
+                    .map(|key| B256::from(key.value()))
+                    .collect(),
+            })
+            .collect(),
+    )
 }
 
 fn to_revm_authorization(authorization: &evm::SetCodeAuthorization) -> RevmSignedAuthorization {

@@ -147,7 +147,7 @@ impl Command {
     pub(super) fn from_line(line: &str) -> Result<Self, Error> {
         let mut parts = vec!["casper-diagnostics-port".to_owned()];
         parts.extend(shlex::split(line).ok_or(Error::ShlexFailure)?);
-        Ok(Self::from_iter_safe(parts.into_iter())?)
+        Ok(Self::from_iter_safe(parts)?)
     }
 }
 

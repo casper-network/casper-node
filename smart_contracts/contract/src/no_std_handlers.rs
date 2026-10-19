@@ -5,15 +5,17 @@
 pub fn panic(_info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "test-support")]
     crate::contract_api::runtime::print(&alloc::format!("{_info}"));
-    core::intrinsics::abort();
+    abort()
 }
 
-/// An out-of-memory allocation error handler for use in a `no_std` environment which simply aborts
-/// the process.
-#[alloc_error_handler]
-pub fn oom(_: core::alloc::Layout) -> ! {
-    core::intrinsics::abort();
+#[cfg(target_arch = "wasm32")]
+fn abort() -> ! {
+    core::arch::wasm32::unreachable()
 }
 
-#[lang = "eh_personality"]
-extern "C" fn eh_personality() {}
+#[cfg(not(target_arch = "wasm32"))]
+fn abort() -> ! {
+    loop {
+        core::hint::spin_loop()
+    }
+}

@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 use thiserror::Error;
-use tracing::error;
 
 use casper_types::{
     account::AccountHash,

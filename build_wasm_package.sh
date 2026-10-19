@@ -21,7 +21,7 @@ export RUN_DIR=$(dirname $(abspath $0))
 NODE_CONFIG_FILE="$RUN_DIR/node/Cargo.toml"
 # have to be sed instead of grep -oP to work in alpine docker image
 export WASM_PACKAGE_VERSION="$(grep ^version $NODE_CONFIG_FILE | sed -e s'/.*= "//' | sed -e s'/".*//')"
-export CL_WASM_DIR="$RUN_DIR/target/wasm32-unknown-unknown/release"
+export CL_WASM_DIR="$RUN_DIR/target/wasm32v1-none/release"
 export CL_OUTPUT_S3_DIR="$RUN_DIR/s3_artifacts/${WASM_PACKAGE_VERSION}"
 export CL_WASM_PACKAGE="$CL_OUTPUT_S3_DIR/casper-contracts.tar.gz"
 export CL_S3_BUCKET='casperlabs-cicd-artifacts'

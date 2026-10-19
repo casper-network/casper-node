@@ -38,7 +38,7 @@ use num_rational::Ratio;
 use schemars::JsonSchema;
 
 #[cfg(feature = "std")]
-use crate::TransactionConfig;
+use crate::{EvmConfig, TransactionConfig};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -421,8 +421,10 @@ impl Block {
     pub fn block_utilization(
         &self,
         transaction_config_input: impl Borrow<TransactionConfig>,
+        evm_config_input: impl Borrow<EvmConfig>,
     ) -> u64 {
         let transaction_config = transaction_config_input.borrow();
+        let evm_config = evm_config_input.borrow();
         match self {
             Block::V1(_) => {
                 // We shouldnt be tracking this for legacy blocks
@@ -431,8 +433,9 @@ impl Block {
             Block::V2(block_v2) => {
                 let per_block_capacity = transaction_config
                     .transaction_v1_config
-                    .get_max_block_count();
-                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config);
+                    .get_max_block_count()
+                    + evm_config.get_max_evm_transaction_count().unwrap_or(0);
+                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config, evm_config);
                 if has_hit_slot_limt {
                     100u64
                 } else {
@@ -448,8 +451,10 @@ impl Block {
     pub fn has_hit_slot_capacity(
         &self,
         transaction_config_input: impl Borrow<TransactionConfig>,
+        evm_config_input: impl Borrow<EvmConfig>,
     ) -> bool {
         let transaction_config = transaction_config_input.borrow();
+        let evm_config = evm_config_input.borrow();
         match self {
             Block::V1(_) => false,
             Block::V2(block_v2) => {
@@ -488,9 +493,13 @@ impl Block {
                     if *lane_id < 2 {
                         continue;
                     };
-                    let max_transaction_count = transaction_config
-                        .transaction_v1_config
-                        .get_max_transaction_count(*lane_id);
+                    let max_transaction_count = if evm_config.is_supported(*lane_id) {
+                        evm_config.get_max_transaction_count(*lane_id)
+                    } else {
+                        transaction_config
+                            .transaction_v1_config
+                            .get_max_transaction_count(*lane_id)
+                    };
 
                     if transaction_count as u64 >= max_transaction_count {
                         return true;

@@ -36,7 +36,9 @@ use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, warn};
+#[cfg(test)]
+use tracing::error;
+use tracing::warn;
 
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};

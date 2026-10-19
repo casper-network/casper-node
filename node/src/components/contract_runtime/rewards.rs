@@ -450,10 +450,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
                 actual_total_seigniorage.low_u128(),
                 expected_total_seigniorage.low_u128(),
             );
-            let gauge_value = match Ratio::to_f64(&seigniorage_target_fraction) {
-                Some(v) => v,
-                None => f64::NAN,
-            };
+            let gauge_value = Ratio::to_f64(&seigniorage_target_fraction).unwrap_or(f64::NAN);
             metrics.seigniorage_target_fraction.set(gauge_value)
         }
 

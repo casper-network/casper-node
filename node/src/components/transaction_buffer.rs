@@ -412,7 +412,7 @@ impl TransactionBuffer {
         let mut buckets: HashMap<_, Vec<_>> = HashMap::new();
         for (transaction_hash, footprint) in proposable {
             buckets
-                .entry(&footprint.payload_hash)
+                .entry(footprint.payload_hash())
                 .and_modify(|vec| vec.push((*transaction_hash, footprint)))
                 .or_insert(vec![(*transaction_hash, footprint)]);
         }
@@ -431,6 +431,7 @@ impl TransactionBuffer {
             None => {
                 return AppendableBlock::new(
                     self.chainspec.transaction_config.clone(),
+                    self.chainspec.evm_config.clone(),
                     self.chainspec.vacancy_config.min_gas_price,
                     timestamp,
                 );
@@ -438,6 +439,7 @@ impl TransactionBuffer {
         };
         let mut ret = AppendableBlock::new(
             self.chainspec.transaction_config.clone(),
+            self.chainspec.evm_config.clone(),
             current_era_gas_price,
             timestamp,
         );
@@ -498,7 +500,7 @@ impl TransactionBuffer {
                 continue;
             }
 
-            let has_multiple_approvals = footprint.approvals.len() > 1;
+            let has_multiple_approvals = footprint.approvals_count() > 1;
             match ret.add_transaction(footprint) {
                 Ok(_) => {
                     debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
@@ -576,7 +578,7 @@ impl TransactionBuffer {
                         AddError::FutureDatedDeploy => {
                             error!(
                                 ?transaction_hash,
-                                %footprint.timestamp,
+                                timestamp = %footprint.timestamp(),
                                 "TransactionBuffer: skipping transaction with future dated deploy"
                             );
                             // keep iterating
@@ -757,6 +759,7 @@ where
                     None => responder
                         .respond(AppendableBlock::new(
                             self.chainspec.transaction_config.clone(),
+                            self.chainspec.evm_config.clone(),
                             self.chainspec.vacancy_config.min_gas_price,
                             timestamp,
                         ))

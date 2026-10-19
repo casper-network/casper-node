@@ -9,8 +9,8 @@ use tracing::{error, info, warn};
 
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
-    ProtocolConfig, TimeDiff, TransactionConfig, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
-    MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
+    EvmConfig, ProtocolConfig, TimeDiff, TransactionConfig, TransactionV1Config, AUCTION_LANE_ID,
+    INSTALL_UPGRADE_LANE_ID, MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
 };
 
 use crate::components::network;
@@ -92,7 +92,11 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
     network::within_message_size_limit_tolerance(chainspec)
         && validate_protocol_config(&chainspec.protocol_config)
         && validate_core_config(&chainspec.core_config)
-        && validate_transaction_config(&chainspec.transaction_config)
+        && validate_transaction_config(&chainspec.transaction_config, &chainspec.evm_config)
+        && validate_evm_transaction_lanes(
+            &chainspec.evm_config,
+            &chainspec.transaction_config.transaction_v1_config,
+        )
 }
 
 /// Checks whether the values set in the config make sense and returns `false` if they don't.
@@ -161,12 +165,16 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
 }
 
 /// Validates `TransactionConfig` parameters
-pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig) -> bool {
+pub(crate) fn validate_transaction_config(
+    transaction_config: &TransactionConfig,
+    evm_config: &EvmConfig,
+) -> bool {
     // The total number of transactions should not exceed the number of approvals because each
     // transaction needs at least one approval to be valid.
     let total_txn_slots = transaction_config
         .transaction_v1_config
-        .get_max_block_count();
+        .get_max_block_count()
+        + evm_config.get_max_evm_transaction_count().unwrap_or(0);
     if transaction_config.block_max_approval_count < total_txn_slots as u32 {
         return false;
     }
@@ -201,6 +209,52 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
             return false;
         }
         seen_max_gas_prices.insert(max_transaction_gas_limit);
+    }
+    true
+}
+
+/// Validates `evm.transaction_lanes` parameters.
+///
+/// EVM lane ids must be unique among themselves, and must not collide with any of the
+/// reserved native lane ids or any configured wasm lane id. There is no numeric convention
+/// enforced on EVM lane ids beyond that; chainspec authors are free to pick any ids that
+/// don't collide with the native/wasm lanes.
+pub(crate) fn validate_evm_transaction_lanes(
+    evm_config: &EvmConfig,
+    transaction_v1_config: &TransactionV1Config,
+) -> bool {
+    if evm_config.enabled && evm_config.transaction_lanes().is_empty() {
+        error!("EVM is enabled but evm.transaction_lanes chainspec config is empty.");
+        return false;
+    }
+
+    let mut other_lane_ids: HashSet<u8> = RESERVED_LANE_IDS.iter().copied().collect();
+    other_lane_ids.extend(
+        transaction_v1_config
+            .wasm_lanes()
+            .iter()
+            .map(|lane| lane.id()),
+    );
+
+    let mut seen_evm_lane_ids = HashSet::new();
+    for evm_lane_config in evm_config.transaction_lanes().iter() {
+        let lane_id = evm_lane_config.id();
+        if seen_evm_lane_ids.contains(&lane_id) {
+            error!(
+                "Found evm transaction lane configuration that has non-unique id. Duplicate value: {}",
+                lane_id
+            );
+            return false;
+        }
+        seen_evm_lane_ids.insert(lane_id);
+        if other_lane_ids.contains(&lane_id) {
+            error!(
+                "One of the defined evm transaction lanes has declared an id that collides with \
+                 a native or wasm lane id. Offending lane id: {}",
+                lane_id
+            );
+            return false;
+        }
     }
     true
 }
@@ -491,7 +545,7 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            !validate_transaction_config(&transaction_config),
+            !validate_transaction_config(&transaction_config, &EvmConfig::default()),
             "max approval count that is not at least equal to sum of `block_max_[txn type]_count`s \
             should be invalid"
         );
@@ -507,7 +561,7 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            validate_transaction_config(&transaction_config),
+            validate_transaction_config(&transaction_config, &EvmConfig::default()),
             "max approval count equal to sum of `block_max_[txn type]_count`s should be valid"
         );
 
@@ -521,7 +575,7 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            validate_transaction_config(&transaction_config),
+            validate_transaction_config(&transaction_config, &EvmConfig::default()),
             "max approval count greater than sum of `block_max_[txn type]_count`s should be valid"
         );
     }
@@ -758,7 +812,10 @@ mod tests {
             transaction_v1_config: v1_config.clone(),
             ..Default::default()
         };
-        assert!(validate_transaction_config(&transaction_config));
+        assert!(validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
         let mut definition_2 = definition_2.clone();
         definition_2.set_max_transaction_length(definition_1.max_transaction_length());
         v1_config.set_wasm_lanes(vec![
@@ -770,7 +827,10 @@ mod tests {
             transaction_v1_config: v1_config,
             ..Default::default()
         };
-        assert!(!validate_transaction_config(&transaction_config));
+        assert!(!validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
     }
 
     #[test]
@@ -788,7 +848,10 @@ mod tests {
             transaction_v1_config: v1_config.clone(),
             ..Default::default()
         };
-        assert!(validate_transaction_config(&transaction_config));
+        assert!(validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
         let mut definition_2 = definition_2.clone();
         definition_2.set_max_transaction_gas_limit(definition_1.max_transaction_gas_limit());
         v1_config.set_wasm_lanes(vec![
@@ -800,7 +863,10 @@ mod tests {
             transaction_v1_config: v1_config,
             ..Default::default()
         };
-        assert!(!validate_transaction_config(&transaction_config));
+        assert!(!validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
     }
 
     #[test]
@@ -834,7 +900,10 @@ mod tests {
             transaction_v1_config: v1_config.clone(),
             ..Default::default()
         };
-        assert!(!validate_transaction_config(&transaction_config));
+        assert!(!validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
     }
 
     #[test]
@@ -845,6 +914,139 @@ mod tests {
             transaction_v1_config: v1_config.clone(),
             ..Default::default()
         };
-        assert!(!validate_transaction_config(&transaction_config));
+        assert!(!validate_transaction_config(
+            &transaction_config,
+            &EvmConfig::default()
+        ));
+    }
+
+    fn evm_config_with_lanes(enabled: bool, lanes: Vec<TransactionLaneDefinition>) -> EvmConfig {
+        let mut evm_config = EvmConfig {
+            enabled,
+            ..Default::default()
+        };
+        evm_config.set_transaction_lanes(lanes);
+        evm_config
+    }
+
+    #[test]
+    fn should_pass_when_evm_disabled_and_lanes_empty() {
+        let evm_config = evm_config_with_lanes(false, vec![]);
+        assert!(validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_fail_when_evm_enabled_and_lanes_empty() {
+        let evm_config = evm_config_with_lanes(true, vec![]);
+        assert!(!validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_pass_with_valid_evm_lanes() {
+        let evm_config = evm_config_with_lanes(
+            true,
+            vec![
+                TransactionLaneDefinition::new(100, 1000, 1000, 1_000_000, 10),
+                TransactionLaneDefinition::new(101, 2000, 2000, 2_000_000, 5),
+            ],
+        );
+        assert!(validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_pass_with_evm_lane_id_below_100() {
+        // There is no numeric convention enforced on EVM lane ids: any id that doesn't
+        // collide with a reserved or wasm lane id is valid, including ids below 100.
+        let evm_config = evm_config_with_lanes(
+            true,
+            vec![TransactionLaneDefinition::new(
+                10, 1000, 1000, 1_000_000, 10,
+            )],
+        );
+        assert!(validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_fail_when_evm_lanes_have_duplicate_ids() {
+        let evm_config = evm_config_with_lanes(
+            true,
+            vec![
+                TransactionLaneDefinition::new(100, 1000, 1000, 1_000_000, 10),
+                TransactionLaneDefinition::new(100, 2000, 2000, 2_000_000, 5),
+            ],
+        );
+        assert!(!validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_fail_when_evm_lane_ids_collide_with_reserved() {
+        let evm_config = evm_config_with_lanes(
+            true,
+            vec![TransactionLaneDefinition::new(
+                MINT_LANE_ID,
+                1000,
+                1000,
+                1_000_000,
+                10,
+            )],
+        );
+        assert!(!validate_evm_transaction_lanes(
+            &evm_config,
+            &TransactionV1Config::default()
+        ));
+    }
+
+    #[test]
+    fn should_fail_when_evm_lane_ids_collide_with_wasm_lanes() {
+        let colliding_id = 150;
+        let mut v1_config = TransactionV1Config::default();
+        v1_config.set_wasm_lanes(vec![TransactionLaneDefinition::new(
+            colliding_id,
+            100,
+            100,
+            100,
+            10,
+        )]);
+
+        let non_colliding_evm_config = evm_config_with_lanes(
+            true,
+            vec![TransactionLaneDefinition::new(
+                100, 1000, 1000, 1_000_000, 10,
+            )],
+        );
+        assert!(validate_evm_transaction_lanes(
+            &non_colliding_evm_config,
+            &v1_config
+        ));
+
+        let colliding_evm_config = evm_config_with_lanes(
+            true,
+            vec![TransactionLaneDefinition::new(
+                colliding_id,
+                1000,
+                1000,
+                1_000_000,
+                10,
+            )],
+        );
+        assert!(!validate_evm_transaction_lanes(
+            &colliding_evm_config,
+            &v1_config
+        ));
     }
 }

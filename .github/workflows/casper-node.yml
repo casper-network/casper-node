@@ -46,7 +46,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -97,7 +97,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -140,7 +140,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -174,7 +174,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -187,7 +187,7 @@ jobs:
         run: make build-test-artifacts CARGO_FLAGS=--release
 
       - name: archive smart contracts
-        run: tar -czf smart-contracts.tar.gz resources/local/chainspec.toml target/wasm32-unknown-unknown/release/*.wasm
+        run: tar -czf smart-contracts.tar.gz resources/local/chainspec.toml target/wasm32v1-none/release/*.wasm
 
       - name: upload smart contracts
         uses: actions/upload-artifact@v4
@@ -219,7 +219,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 
@@ -264,7 +264,7 @@ jobs:
             ~/.rustup/update-hashes
             ~/.rustup/settings.toml
             ~/.cargo/bin/cargo-audit
-          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'smart_contracts/rust-toolchain', 'Makefile') }}
+          key: setup-tools-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Makefile') }}
           restore-keys: |
             setup-tools-${{ runner.os }}-
 

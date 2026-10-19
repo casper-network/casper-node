@@ -279,7 +279,7 @@ impl From<&Chainspec> for GenesisConfig {
         let storage_costs = chainspec.storage_costs;
         GenesisConfig {
             accounts: chainspec.network_config.accounts_config.clone().into(),
-            evm_config: chainspec.evm_config,
+            evm_config: chainspec.evm_config.clone(),
             wasm_config: chainspec.wasm_config,
             system_config: chainspec.system_costs_config,
             validator_slots: chainspec.core_config.validator_slots,

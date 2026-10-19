@@ -145,7 +145,7 @@ pub struct CalltableFieldsIterator<'a> {
     parent: &'a CalltableSerializationEnvelope,
 }
 
-impl CalltableFieldsIterator<'_> {
+impl<'a> CalltableFieldsIterator<'a> {
     pub fn verify_index(&self, expected_index: u16) -> Result<(), Error> {
         let field = self.field;
         if field.index != expected_index {
@@ -154,14 +154,25 @@ impl CalltableFieldsIterator<'_> {
         Ok(())
     }
 
+    /// Returns the calltable field index this iterator is currently positioned at.
+    ///
+    /// Used to detect optional trailing fields written by newer encoders.
+    pub fn field_index(&self) -> u16 {
+        self.field.index
+    }
+
     pub fn deserialize_and_maybe_next<T: FromBytes>(
         &self,
-    ) -> Result<(T, Option<CalltableFieldsIterator<'_>>), Error> {
+    ) -> Result<(T, Option<CalltableFieldsIterator<'a>>), Error> {
         let (t, maybe_window) = self.step()?;
         Ok((t, maybe_window))
     }
 
-    fn step<T: FromBytes>(&self) -> Result<(T, Option<CalltableFieldsIterator<'_>>), Error> {
+    // The next window only borrows from the parent envelope, so the returned
+    // iterator is tied to the envelope's data lifetime rather than to the
+    // borrow of `self`. This lets callers keep iterating after the window
+    // they inspected is dropped.
+    fn step<T: FromBytes>(&self) -> Result<(T, Option<CalltableFieldsIterator<'a>>), Error> {
         let (t, remainder) = T::from_bytes(self.bytes)?;
         let parent_fields = &self.parent.fields;
         let parent_fields_len = parent_fields.len();

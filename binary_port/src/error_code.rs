@@ -385,6 +385,9 @@ pub enum ErrorCode {
     /// EVM transaction maximum priority fee per gas exceeds its maximum total fee per gas.
     #[error("the EVM transaction maximum priority fee per gas exceeds its maximum fee per gas")]
     InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas = 122,
+    /// EVM transaction gas limit is lower than its intrinsic gas.
+    #[error("the EVM transaction intrinsic gas exceeds its gas limit")]
+    InvalidTransactionEvmIntrinsicGasExceedsGasLimit = 123,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -421,6 +424,9 @@ impl From<InvalidTransaction> for ErrorCode {
             InvalidTransaction::Evm(
                 EvmTransactionError::MaxPriorityFeePerGasExceedsMaxFeePerGas { .. },
             ) => ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas,
+            InvalidTransaction::Evm(EvmTransactionError::IntrinsicGasExceedsGasLimit {
+                ..
+            }) => ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit,
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
         }
     }
@@ -690,6 +696,21 @@ mod tests {
             ErrorCode::InvalidTransactionEvmMaxPriorityFeePerGasExceedsMaxFeePerGas
         );
         assert_eq!(code as u16, 122);
+    }
+
+    #[test]
+    fn evm_intrinsic_gas_above_gas_limit_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::IntrinsicGasExceedsGasLimit {
+            intrinsic_gas: 25_300,
+            gas_limit: 21_000,
+        });
+        let code = ErrorCode::from(error);
+
+        assert_eq!(
+            code,
+            ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
+        );
+        assert_eq!(code as u16, 123);
     }
 
     #[test]

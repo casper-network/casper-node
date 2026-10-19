@@ -90,7 +90,10 @@ impl ExecutionResult {
                 ExecutionResultV1::Success { .. } => None,
             },
             ExecutionResult::V2(v2) => v2.error_message.clone(),
-            ExecutionResult::Evm(evm) => evm.receipt.status.message().map(str::to_string),
+            ExecutionResult::Evm(evm) => evm
+                .error_message
+                .clone()
+                .or_else(|| evm.receipt.status.message().map(str::to_string)),
         }
     }
 

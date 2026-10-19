@@ -167,7 +167,7 @@ impl Caller {
         Caller::Initiator { account_hash }
     }
 
-    /// Creates a [`'Caller::Entity`]. This represents a call into a contract with
+    /// Creates a [`Caller::Entity`]. This represents a call into a contract with
     /// `EntryPointType::Called`.
     pub fn entity(package_hash: PackageHash, entity_addr: EntityAddr) -> Self {
         Caller::Entity {
