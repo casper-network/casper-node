@@ -207,7 +207,7 @@ mod tests {
         let (state, root, _tempdir) =
             make_temporary_global_state(stored_value.map(|value| (key, value)));
         let reader = state.checkout(root).unwrap().unwrap();
-        let mut tracking_copy = TrackingCopy::new(reader, 5, false);
+        let mut tracking_copy = TrackingCopy::new(reader, 5);
         let data_access_layer = DataAccessLayer {
             block_store: LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap(),
             state,
