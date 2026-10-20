@@ -175,6 +175,7 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Set the entity migration mode to either on use or at protocol upgrade.
     pub fn with_entity_migration_mode(
         mut self,
         entity_migration_mode: EntityMigrationMode,

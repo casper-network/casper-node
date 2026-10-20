@@ -231,7 +231,7 @@ impl Chainspec {
             enable_addressable_entity,
             rewards_handling,
             minimum_delegation_rate,
-            entity_migration_mode
+            entity_migration_mode,
         ))
     }
 

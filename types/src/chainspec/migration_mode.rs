@@ -9,12 +9,7 @@ use rand::{
 };
 
 const NO_MIGRATION_TAG: u8 = 0;
-
-const ACCOUNTS_TAG: u8 = 1;
-
-const CONTRACTS_TAG: u8 = 2;
-
-const ACCOUNTS_AND_CONTRACTS_TAG: u8 = 3;
+const ACCOUNTS_AND_CONTRACTS_TAG: u8 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]

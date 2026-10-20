@@ -2,11 +2,11 @@ use num_rational::Ratio;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+use crate::chainspec::migration_mode::EntityMigrationMode;
 use crate::{
     system::auction::DelegationRate, ChainspecRegistry, Digest, EraId, EvmConfig, FeeHandling,
     HoldBalanceHandling, Key, ProtocolVersion, RewardsHandling, StoredValue,
 };
-use crate::chainspec::migration_mode::EntityMigrationMode;
 
 /// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -32,7 +32,7 @@ pub struct ProtocolUpgradeConfig {
     enable_addressable_entity: bool,
     rewards_handling: RewardsHandling,
     minimum_delegation_rate: Option<DelegationRate>,
-    entity_migration_mode: EntityMigrationMode
+    entity_migration_mode: EntityMigrationMode,
 }
 
 impl ProtocolUpgradeConfig {
@@ -84,7 +84,7 @@ impl ProtocolUpgradeConfig {
             enable_addressable_entity,
             rewards_handling,
             minimum_delegation_rate,
-            entity_migration_mode
+            entity_migration_mode,
         }
     }
 
@@ -195,7 +195,7 @@ impl ProtocolUpgradeConfig {
     pub fn new_minimum_delegation_rate(&self) -> Option<DelegationRate> {
         self.minimum_delegation_rate
     }
-    
+
     /// Returns the migration mode for the protocol upgrade.
     pub fn entity_migration_mode(&self) -> EntityMigrationMode {
         self.entity_migration_mode
