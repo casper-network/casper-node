@@ -20,10 +20,8 @@ const ACCOUNTS_AND_CONTRACTS_TAG: u8 = 3;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntityMigrationMode {
     #[default]
-    NoMigration,
-    Accounts,
-    Contracts,
-    AccountsAndContracts,
+    OnUse,
+    AtProtocolUpgrade,
 }
 
 impl ToBytes for EntityMigrationMode {
@@ -31,10 +29,8 @@ impl ToBytes for EntityMigrationMode {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
 
         match self {
-            Self::NoMigration => buffer.push(NO_MIGRATION_TAG),
-            Self::Accounts => buffer.push(ACCOUNTS_TAG),
-            Self::Contracts => buffer.push(CONTRACTS_TAG),
-            Self::AccountsAndContracts => buffer.push(ACCOUNTS_AND_CONTRACTS_TAG),
+            Self::OnUse => buffer.push(NO_MIGRATION_TAG),
+            Self::AtProtocolUpgrade => buffer.push(ACCOUNTS_AND_CONTRACTS_TAG),
         }
 
         Ok(buffer)
@@ -50,10 +46,8 @@ impl FromBytes for EntityMigrationMode {
         let (tag, rem) = u8::from_bytes(bytes)?;
 
         match tag {
-            NO_MIGRATION_TAG => Ok((EntityMigrationMode::NoMigration, rem)),
-            ACCOUNTS_TAG => Ok((EntityMigrationMode::Accounts, rem)),
-            CONTRACTS_TAG => Ok((EntityMigrationMode::Contracts, rem)),
-            ACCOUNTS_AND_CONTRACTS_TAG => Ok((EntityMigrationMode::AccountsAndContracts, rem)),
+            NO_MIGRATION_TAG => Ok((EntityMigrationMode::OnUse, rem)),
+            ACCOUNTS_AND_CONTRACTS_TAG => Ok((EntityMigrationMode::AtProtocolUpgrade, rem)),
             _ => Err(Error::Formatting),
         }
     }
@@ -63,10 +57,8 @@ impl FromBytes for EntityMigrationMode {
 impl Distribution<EntityMigrationMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityMigrationMode {
         match rng.gen_range(NO_MIGRATION_TAG..=ACCOUNTS_AND_CONTRACTS_TAG) {
-            NO_MIGRATION_TAG => EntityMigrationMode::NoMigration,
-            ACCOUNTS_TAG => EntityMigrationMode::Accounts,
-            CONTRACTS_TAG => EntityMigrationMode::Contracts,
-            ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AccountsAndContracts,
+            NO_MIGRATION_TAG => EntityMigrationMode::OnUse,
+            ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AtProtocolUpgrade,
             _ => unreachable!(),
         }
     }
@@ -80,10 +72,8 @@ mod tests {
     fn bytesrepr_roundtrip_for_entity_mode_migration() {
         for tag in NO_MIGRATION_TAG..=ACCOUNTS_AND_CONTRACTS_TAG {
             let entity_mode_migration = match tag {
-                NO_MIGRATION_TAG => EntityMigrationMode::NoMigration,
-                ACCOUNTS_TAG => EntityMigrationMode::Accounts,
-                CONTRACTS_TAG => EntityMigrationMode::Contracts,
-                ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AccountsAndContracts,
+                NO_MIGRATION_TAG => EntityMigrationMode::OnUse,
+                ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AtProtocolUpgrade,
                 _ => unreachable!(),
             };
 

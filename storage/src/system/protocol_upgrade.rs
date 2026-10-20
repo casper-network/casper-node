@@ -200,18 +200,9 @@ where
             )?;
             self.migrate_system_account(system_entity_addresses.mint())?;
             self.migrate_or_refresh_system_entities(&system_entity_addresses)?;
-            match self.config.entity_migration_mode() {
-                EntityMigrationMode::NoMigration => {}
-                EntityMigrationMode::Accounts => {
-                    self.handle_accounts_migration()?;
-                }
-                EntityMigrationMode::Contracts => {
-                    self.handle_contracts_migration()?;
-                }
-                EntityMigrationMode::AccountsAndContracts => {
-                    self.handle_accounts_migration()?;
-                    self.handle_contracts_migration()?;
-                }
+            if let EntityMigrationMode::AtProtocolUpgrade = self.config.entity_migration_mode() {
+                self.handle_accounts_migration()?;
+                self.handle_contracts_migration()?;
             }
         } else {
             self.create_accumulation_purse_if_required_by_contract(

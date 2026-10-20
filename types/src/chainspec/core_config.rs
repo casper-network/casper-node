@@ -352,7 +352,7 @@ impl CoreConfig {
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
             minimum_delegation_rate: 0,
-            entity_migration_mode: EntityMigrationMode::NoMigration,
+            entity_migration_mode: EntityMigrationMode::OnUse,
         }
     }
 }
@@ -402,7 +402,7 @@ impl Default for CoreConfig {
             trap_on_ambiguous_entity_version: false,
             rewards_handling: RewardsHandling::Standard,
             minimum_delegation_rate: 0,
-            entity_migration_mode: EntityMigrationMode::NoMigration,
+            entity_migration_mode: EntityMigrationMode::OnUse,
         }
     }
 }

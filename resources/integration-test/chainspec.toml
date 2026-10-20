@@ -180,8 +180,15 @@ baseline_motes_amount = 2_500_000_000
 # Flag on whether ambiguous entity versions returns an execution error.
 trap_on_ambiguous_entity_version = false
 # Controls how rewards are handled by the network
-rewards_handling = { type = 'sustain', ratio = [2,8], purse_address = "uref-b306a4cf02c7725847a1b16035754dd89a6386ba29a774f0a7d8e920ad6d4a77-007" }
-
+rewards_handling = { type = 'sustain', ratio = [2, 8], purse_address = "uref-b306a4cf02c7725847a1b16035754dd89a6386ba29a774f0a7d8e920ad6d4a77-007" }
+# Defines the migration mode if the enable_addressable_entity setting is enabled (set to true). The setting determines, if all
+# userland accounts are migrated at once during a protocol upgrade or lazily/progressively on use of
+# userland contracts and accounts.
+# Valid options are:
+#       'on_use': Accounts and Contracts are migrated into AddressableEntity on use of either the account or contract
+#                 as part of execution of a transaction within a block.
+#       'at_protocol_upgrade': All userland accounts and contracts are migrated into AddressableEntity during the protocol upgrade.
+entity_migration_mode = { type = 'on_use' }
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

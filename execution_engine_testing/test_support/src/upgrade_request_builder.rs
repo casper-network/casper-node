@@ -2,7 +2,11 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_types::{system::auction::DelegationRate, ChainspecRegistry, Digest, EntityMigrationMode, EraId, EvmConfig, FeeHandling, HoldBalanceHandling, Key, ProtocolUpgradeConfig, ProtocolVersion, RewardsHandling, StoredValue};
+use casper_types::{
+    system::auction::DelegationRate, ChainspecRegistry, Digest, EntityMigrationMode, EraId,
+    EvmConfig, FeeHandling, HoldBalanceHandling, Key, ProtocolUpgradeConfig, ProtocolVersion,
+    RewardsHandling, StoredValue,
+};
 
 /// Builds an `UpgradeConfig`.
 pub struct UpgradeRequestBuilder {
@@ -173,13 +177,12 @@ impl UpgradeRequestBuilder {
 
     pub fn with_entity_migration_mode(
         mut self,
-        entity_migration_mode: EntityMigrationMode
+        entity_migration_mode: EntityMigrationMode,
     ) -> Self {
         self.entity_migration_mode = entity_migration_mode;
         self
     }
-    
-    
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
@@ -204,7 +207,7 @@ impl UpgradeRequestBuilder {
             self.enable_addressable_entity,
             self.rewards_handling,
             self.new_minimum_delegation_rate,
-            self.entity_migration_mode
+            self.entity_migration_mode,
         )
     }
 }
@@ -233,7 +236,7 @@ impl Default for UpgradeRequestBuilder {
             enable_addressable_entity: true,
             rewards_handling: RewardsHandling::Standard,
             new_minimum_delegation_rate: None,
-            entity_migration_mode: EntityMigrationMode::NoMigration,
+            entity_migration_mode: EntityMigrationMode::OnUse,
         }
     }
 }

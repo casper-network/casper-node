@@ -1675,7 +1675,7 @@ fn should_not_require_subsequent_cases(trap: bool) {
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
         .with_enable_addressable_entity(true)
-        .with_entity_migration_mode(EntityMigrationMode::AccountsAndContracts)
+        .with_entity_migration_mode(EntityMigrationMode::AtProtocolUpgrade)
         .with_rewards_handling(rewards_handling)
         .build();
 
