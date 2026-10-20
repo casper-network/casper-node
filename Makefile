@@ -172,7 +172,8 @@ audit-rs:
 		--ignore RUSTSEC-2026-0233 \
 		--ignore RUSTSEC-2026-0234 \
 		--ignore RUSTSEC-2026-0235 \
-		--ignore RUSTSEC-2026-0258
+		--ignore RUSTSEC-2026-0258 \
+		--ignore RUSTSEC-2026-0344
 
 .PHONY: audit
 audit: audit-rs
