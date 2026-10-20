@@ -8,8 +8,8 @@ use rand::{
     Rng,
 };
 
-const NO_MIGRATION_TAG: u8 = 0;
-const ACCOUNTS_AND_CONTRACTS_TAG: u8 = 1;
+const ON_USE_TAG: u8 = 0;
+const AT_PROTOCOL_UPGRADE_TAG: u8 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -24,8 +24,8 @@ impl ToBytes for EntityMigrationMode {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
 
         match self {
-            Self::OnUse => buffer.push(NO_MIGRATION_TAG),
-            Self::AtProtocolUpgrade => buffer.push(ACCOUNTS_AND_CONTRACTS_TAG),
+            Self::OnUse => buffer.push(ON_USE_TAG),
+            Self::AtProtocolUpgrade => buffer.push(AT_PROTOCOL_UPGRADE_TAG),
         }
 
         Ok(buffer)
@@ -41,8 +41,8 @@ impl FromBytes for EntityMigrationMode {
         let (tag, rem) = u8::from_bytes(bytes)?;
 
         match tag {
-            NO_MIGRATION_TAG => Ok((EntityMigrationMode::OnUse, rem)),
-            ACCOUNTS_AND_CONTRACTS_TAG => Ok((EntityMigrationMode::AtProtocolUpgrade, rem)),
+            ON_USE_TAG => Ok((EntityMigrationMode::OnUse, rem)),
+            AT_PROTOCOL_UPGRADE_TAG => Ok((EntityMigrationMode::AtProtocolUpgrade, rem)),
             _ => Err(Error::Formatting),
         }
     }
@@ -51,9 +51,9 @@ impl FromBytes for EntityMigrationMode {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<EntityMigrationMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityMigrationMode {
-        match rng.gen_range(NO_MIGRATION_TAG..=ACCOUNTS_AND_CONTRACTS_TAG) {
-            NO_MIGRATION_TAG => EntityMigrationMode::OnUse,
-            ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AtProtocolUpgrade,
+        match rng.gen_range(ON_USE_TAG..=AT_PROTOCOL_UPGRADE_TAG) {
+            ON_USE_TAG => EntityMigrationMode::OnUse,
+            AT_PROTOCOL_UPGRADE_TAG => EntityMigrationMode::AtProtocolUpgrade,
             _ => unreachable!(),
         }
     }
@@ -65,10 +65,10 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip_for_entity_mode_migration() {
-        for tag in NO_MIGRATION_TAG..=ACCOUNTS_AND_CONTRACTS_TAG {
+        for tag in ON_USE_TAG..=AT_PROTOCOL_UPGRADE_TAG {
             let entity_mode_migration = match tag {
-                NO_MIGRATION_TAG => EntityMigrationMode::OnUse,
-                ACCOUNTS_AND_CONTRACTS_TAG => EntityMigrationMode::AtProtocolUpgrade,
+                ON_USE_TAG => EntityMigrationMode::OnUse,
+                AT_PROTOCOL_UPGRADE_TAG => EntityMigrationMode::AtProtocolUpgrade,
                 _ => unreachable!(),
             };
 
