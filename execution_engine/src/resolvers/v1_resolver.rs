@@ -277,12 +277,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 11][..], Some(ValueType::I32)),
                 FunctionIndex::CallPackageVersion.into(),
             ),
-            "casper_read_associated_keys" => {
-                FuncInstance::alloc_host(
-                    Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
-                    FunctionIndex::ReadAssociatedKeys.into(),
-                )
-            }
+            "casper_read_associated_keys" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::ReadAssociatedKeys.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

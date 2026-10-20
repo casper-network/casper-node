@@ -517,7 +517,7 @@ pub fn read_associated_keys(account_hash: AccountHash) -> AssociatedKeys {
                 account_hash_ptr,
                 account_hash_size,
                 total_keys.as_mut_ptr(),
-                &mut result_size as *mut usize
+                &mut result_size as *mut usize,
             )
         };
         api_error::result_from(ret).unwrap_or_revert();
@@ -525,7 +525,6 @@ pub fn read_associated_keys(account_hash: AccountHash) -> AssociatedKeys {
         (total_keys, result_size)
     };
 
-    
     if total_keys == 0 {
         return AssociatedKeys::default();
     }
