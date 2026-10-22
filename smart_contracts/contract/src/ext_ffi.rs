@@ -979,4 +979,21 @@ extern "C" {
         runtime_args_size: usize,
         result_size: *mut usize,
     ) -> i32;
+
+    /// Read the associated keys of a given account as specified by the account hash.
+    /// Returns a standard error code in case of failure, otherwise a successful execution returns the associated keys Bytes returned
+    /// from contract execution are set to `result_size` pointer
+    ///
+    /// # Arguments
+    ///
+    /// * `account_hash_ptr` - pointer to the serialized account hash
+    /// * `account_hash_size` - size of the account in serialized form
+    /// * `total_keys` - pointer to the number of the associated keys present.
+    /// * `result_size` - pointer to the location where argument bytes will be copied to the host side
+    pub fn casper_read_associated_keys(
+        account_hash_ptr: *const u8,
+        account_hash_size: usize,
+        total_keys: *mut usize,
+        result_size: *mut usize,
+    ) -> i32;
 }

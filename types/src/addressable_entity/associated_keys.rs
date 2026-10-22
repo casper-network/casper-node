@@ -1,6 +1,7 @@
 //! This module contains types and functions for working with keys associated with an account.
 
 use alloc::{
+    boxed::Box,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     vec::Vec,
 };
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
+use crate::account::ACCOUNT_HASH_LENGTH;
 use crate::{
     account::{
         AccountHash, AddKeyFailure, AssociatedKeys as AccountAssociatedKeys, RemoveKeyFailure,
@@ -21,6 +23,7 @@ use crate::{
     },
     addressable_entity::Weight,
     bytesrepr::{self, FromBytes, ToBytes},
+    CLType, CLTyped,
 };
 
 /// A collection of weighted public keys (represented as account hashes) associated with an account.
@@ -176,6 +179,15 @@ impl From<AccountAssociatedKeys> for AssociatedKeys {
                 .insert(*account_hash, Weight::new(weight.value()));
         }
         associated_keys
+    }
+}
+
+impl CLTyped for AssociatedKeys {
+    fn cl_type() -> CLType {
+        CLType::Map {
+            key: Box::new(CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)),
+            value: Box::new(CLType::U8),
+        }
     }
 }
 
