@@ -143,7 +143,7 @@ const ARG_KNOWN_ADDRESSABLE_ENTITY: &str = "known_addressable_entity";
 #[ignore]
 #[test]
 fn should_run_get_addressable_entity() {
-    let addressable_entity: bool = false;
+    let addressable_entity: bool = true;
     let addressable_entity_bytes = addressable_entity.to_bytes().expect("should_serialize");
     let bytes = casper_types::bytesrepr::Bytes::from(addressable_entity_bytes);
 

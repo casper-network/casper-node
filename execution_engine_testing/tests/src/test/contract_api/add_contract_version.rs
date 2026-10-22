@@ -11,10 +11,10 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    ApiError, BlockTime, Digest, EraId, InitiatorAddr, Key, PricingMode, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction, TransactionArgs,
-    TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling, TransactionTarget,
-    TransactionV1, TransactionV1Payload,
+    ApiError, BlockTime, Digest, EntityMigrationMode, EraId, InitiatorAddr, Key, PricingMode,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling,
+    TransactionTarget, TransactionV1, TransactionV1Payload,
 };
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
@@ -238,18 +238,20 @@ fn should_allow_1x_user_to_add_contract_version_via_transaction_v1_installer_upg
         .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
         .with_activation_point(EraId::new(1))
         .with_enable_addressable_entity(true)
+        .with_entity_migration_mode(EntityMigrationMode::AtProtocolUpgrade)
         .build();
 
     builder
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let account_as_1x = builder
+    let account_as_entity = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("must have stored value")
-        .as_account()
+        .as_cl_value()
         .is_some();
 
-    assert!(account_as_1x);
+    // With the one time upgrade, this is no longer a valid assertion
+    assert!(account_as_entity);
     try_add_contract_version(true, true, builder)
 }

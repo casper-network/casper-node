@@ -361,7 +361,7 @@ mod tests {
     fn tracking_copy(balances: &[u64]) -> (TrackingCopy<LmdbGlobalStateView>, impl Send) {
         let (global_state, state_root_hash, tempdir) = make_temporary_global_state([]);
         let reader = global_state.checkout(state_root_hash).unwrap().unwrap();
-        let mut tracking_copy = TrackingCopy::new(reader, 5, false);
+        let mut tracking_copy = TrackingCopy::new(reader, 5);
         for (index, balance) in balances.iter().enumerate() {
             let mut address = [0u8; 20];
             address[19] = u8::try_from(index).unwrap();

@@ -1179,7 +1179,7 @@ impl NamedKeyValue {
 
     /// Returns the concrete `Key` value
     pub fn get_key(&self) -> Result<Key, CLValueError> {
-        self.named_key.clone().into_t::<Key>()
+        self.named_key.clone().to_t::<Key>()
     }
 
     /// Returns the concrete `String` value

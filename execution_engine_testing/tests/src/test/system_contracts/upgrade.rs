@@ -271,6 +271,7 @@ fn should_upgrade_only_validator_slots() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_new_validator_slots(new_validator_slots)
+            .with_enable_addressable_entity(true)
             .build()
     };
 
@@ -612,7 +613,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
             .build()
     };
 
-    let enable_entity = false;
+    let enable_entity = true;
     let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS + 1;
     let core_config = CoreConfig {
         max_associated_keys,

@@ -6,6 +6,7 @@ use casper_types::{
 
 /// Used to specify is the requestor wants the registry itself or a named entry within it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Requests all system entity entries.
 pub enum SystemEntityRegistrySelector {
     /// Requests all system entity entries.
     All,

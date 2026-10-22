@@ -30,34 +30,14 @@ where
         target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, Error> {
-        let target_key = Key::Account(target);
-        let target_uref = match self.tracking_copy().borrow_mut().read(&target_key) {
-            Ok(Some(StoredValue::CLValue(cl_value))) => {
-                let entity_key = CLValue::into_t::<Key>(cl_value)
-                    .map_err(|_| Error::FailedTransferToAccountPurse)?;
-                // get entity
-                let target_uref = {
-                    if let Ok(Some(StoredValue::AddressableEntity(entity))) =
-                        self.tracking_copy().borrow_mut().read(&entity_key)
-                    {
-                        entity.main_purse_add_only()
-                    } else {
-                        return Err(Error::Transfer);
-                    }
-                };
-                target_uref
-            } // entity exists
-            Ok(Some(StoredValue::Account(account))) => {
-                if self.config().enable_addressable_entity() {
-                    self.tracking_copy()
-                        .borrow_mut()
-                        .migrate_account(target, self.protocol_version())
-                        .map_err(|_| Error::Transfer)?;
-                }
-
-                account.main_purse_add_only()
-            }
-            Ok(_) | Err(_) => return Err(Error::Transfer),
+        let protocol_version = self.protocol_version();
+        let target_uref = match self
+            .tracking_copy()
+            .borrow_mut()
+            .runtime_footprint_by_account_hash(protocol_version, target)
+        {
+            Ok((_, footprint)) => footprint.main_purse().ok_or(Error::Transfer)?,
+            Err(_) => return Err(Error::Transfer),
         };
 
         // source and target are the same, noop

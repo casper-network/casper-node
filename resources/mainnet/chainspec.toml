@@ -174,14 +174,22 @@ administrators = []
 # level records
 # Note: Enabling of the AddressableEntity feature is one-way; i.e once enabled as part of a protocol upgrade
 # the flag cannot be disabled in a future protocol upgrade.
-enable_addressable_entity = false
+enable_addressable_entity = true
 # This value is used as the penalty payment amount, the lowest cost, and the minimum balance amount.
 baseline_motes_amount = 2_500_000_000
 # Flag on whether ambiguous entity versions returns an execution error.
 trap_on_ambiguous_entity_version = false
 # purse uref-5bd5c35f2897844b307b9efbb2d7f01f4d51a2ecea8d8b88abd4e3c3a4594693-007 belongs to
 # CA Ecosystem Sustainability account 020245b32289d807f3fcd5f9dbec94ff51ee57857f4b39a3b9d6fb99305317d18a32
-rewards_handling =  { type = 'sustain', ratio = [2,8], purse_address = "uref-5bd5c35f2897844b307b9efbb2d7f01f4d51a2ecea8d8b88abd4e3c3a4594693-007" }
+rewards_handling = { type = 'sustain', ratio = [2, 8], purse_address = "uref-5bd5c35f2897844b307b9efbb2d7f01f4d51a2ecea8d8b88abd4e3c3a4594693-007" }
+# Defines the migration mode if the enable_addressable_entity setting is enabled (set to true). The setting determines, if all
+# userland accounts are migrated at once during a protocol upgrade or lazily/progressively on use of
+# userland contracts and accounts.
+# Valid options are:
+#       'on_use': Accounts and Contracts are migrated into AddressableEntity on use of either the account or contract
+#                 as part of execution of a transaction within a block.
+#       'at_protocol_upgrade': All userland accounts and contracts are migrated into AddressableEntity during the protocol upgrade.
+entity_migration_mode = { type = 'on_use' }
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

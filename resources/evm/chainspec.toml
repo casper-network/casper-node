@@ -182,8 +182,15 @@ trap_on_ambiguous_entity_version = false
 # Controls how rewards are handled by the network
 # purse uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007 belongs to
 # account 018afa98ca4be12d613617f7339a2d576950a2f9a92102ca4d6508ee31b54d2c02 (faucet account for testnet)
-rewards_handling = { type = 'sustain', ratio = [2,8], purse_address = "uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007" }
-
+rewards_handling = { type = 'sustain', ratio = [2, 8], purse_address = "uref-b06a1ab0cfb52b5d4f9a08b68a5dbe78e999de0b0484c03e64f5c03897cf637b-007" }
+# Defines the migration mode if the enable_addressable_entity setting is enabled (set to true). The setting determines, if all
+# userland accounts are migrated at once during a protocol upgrade or lazily/progressively on use of
+# userland contracts and accounts.
+# Valid options are:
+#       'on_use': Accounts and Contracts are migrated into AddressableEntity on use of either the account or contract
+#                 as part of execution of a transaction within a block.
+#       'at_protocol_upgrade': All userland accounts and contracts are migrated into AddressableEntity during the protocol upgrade.
+entity_migration_mode = { type = 'on_use' }
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

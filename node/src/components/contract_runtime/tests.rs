@@ -11,14 +11,6 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_types::{
-    bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm, runtime_args, BlockHash, BlockHeader,
-    Chainspec, ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, EvmConfig, EvmTransaction,
-    ExecutableDeployItem, PackageHash, PricingMode, PublicKey, RuntimeArgs, SecretKey,
-    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionConfig,
-    TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
-};
-
 use super::*;
 use crate::{
     components::{
@@ -38,6 +30,13 @@ use crate::{
     },
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
+};
+use casper_types::{
+    addressable_entity::NamedKeyAddr, bytesrepr::Bytes, contracts::ProtocolVersionMajor, evm,
+    runtime_args, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, Digest,
+    EntityVersion, EraId, EvmConfig, EvmTransaction, ExecutableDeployItem, PackageHash,
+    PricingMode, PublicKey, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Timestamp,
+    Transaction, TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U256, U512,
 };
 
 const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
@@ -858,7 +857,14 @@ async fn should_correctly_manage_entity_version_calls() {
         prestate.pre_state_root_hash()
     };
 
-    let key = Key::Account(node_1_public_key.to_account_hash());
+    let named_key_addr = NamedKeyAddr::new_from_string(
+        EntityAddr::Account(node_1_public_key.to_account_hash().value()),
+        "purse_holder".to_string(),
+    )
+    .expect("must get named_key addr");
+
+    let key = Key::NamedKey(named_key_addr);
+
     let query_request = QueryRequest::new(pre_state_hash, key, vec![]);
 
     let package_key = if let QueryResult::Success { value, .. } = runner
@@ -868,16 +874,14 @@ async fn should_correctly_manage_entity_version_calls() {
         .data_access_layer
         .query(query_request)
     {
-        *value
-            .as_account()
-            .expect("must get account")
-            .named_keys()
-            .get("purse_holder")
+        value
+            .as_named_key_value()
+            .expect("must get named key")
+            .get_key()
             .expect("must get package key")
     } else {
         panic!("query failed");
     };
-
     let package_hash = package_key
         .into_hash_addr()
         .map(PackageHash::new)
@@ -938,18 +942,19 @@ async fn should_correctly_manage_entity_version_calls() {
         prestate.pre_state_root_hash()
     };
 
-    let query_request = QueryRequest::new(pre_state_hash, package_key, vec![]);
-    if let QueryResult::Success { value, .. } = runner
+    let query_request = QueryRequest::new(
+        pre_state_hash,
+        Key::SmartContract(package_hash.value()),
+        vec![],
+    );
+    let query_result = runner
         .reactor()
         .inner()
         .contract_runtime
         .data_access_layer
-        .query(query_request)
-    {
-        let versions = value
-            .as_contract_package()
-            .expect("must get account")
-            .versions();
+        .query(query_request);
+    if let QueryResult::Success { value, .. } = query_result {
+        let versions = value.as_package().expect("must get account").versions();
 
         assert_eq!(2, versions.len())
     } else {
@@ -1066,10 +1071,7 @@ async fn should_correctly_manage_entity_version_calls() {
 mod test_mod {
     use std::sync::Arc;
 
-    use prometheus::Registry;
-    use rand::Rng;
-    use tempfile::tempdir;
-
+    use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
     use casper_storage::{
         block_store::lmdb::LmdbBlockStore,
         data_access_layer::{EntryPointExistsRequest, EntryPointExistsResult},
@@ -1085,12 +1087,15 @@ mod test_mod {
         execution::{TransformKindV2, TransformV2},
         global_state::Pointer,
         testing::TestRng,
-        ActivationPoint, CLType, CLValue, Chainspec, ChunkWithProof, Contract, ContractWasmHash,
-        CoreConfig, Digest, EntityAddr, EntryPointAccess, EntryPointAddr, EntryPointPayment,
-        EntryPointType, EntryPointValue, EraId, HashAddr, Key, NamedKeys, ProtocolConfig,
-        ProtocolVersion, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_INTERVAL,
-        DEFAULT_REFUND_HANDLING,
+        ActivationPoint, AddressableEntity, CLType, CLValue, Chainspec, ChunkWithProof, Contract,
+        ContractWasmHash, CoreConfig, Digest, EntityAddr, EntryPointAccess, EntryPointAddr,
+        EntryPointPayment, EntryPointType, EntryPointValue, EraId, HashAddr, Key, NamedKeys,
+        ProtocolConfig, ProtocolVersion, StoredValue, SystemHashRegistry, TimeDiff,
+        DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_REFUND_HANDLING,
     };
+    use prometheus::Registry;
+    use rand::Rng;
+    use tempfile::tempdir;
 
     use super::{Config as ContractRuntimeConfig, ContractRuntime};
     use crate::{
@@ -1152,8 +1157,24 @@ mod test_mod {
             EntryPointType::Caller,
             EntryPointPayment::Caller,
         );
+
+        let hash_addr = entity_addr.into_smart_contract().unwrap();
+        let entity_key = Key::AddressableEntity(entity_addr);
+        let indirection_value = CLValue::from_t(entity_key).expect("must get key");
+        let indirection_pair = TestPair(
+            Key::Hash(hash_addr),
+            StoredValue::CLValue(indirection_value),
+        );
+
+        let entity = AddressableEntity::default();
+        let entity_pair = TestPair(entity_key, StoredValue::AddressableEntity(entity));
+
         let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
-        vec![TestPair(key, StoredValue::EntryPoint(entry_point_value))]
+        vec![
+            indirection_pair,
+            entity_pair,
+            TestPair(key, StoredValue::EntryPoint(entry_point_value)),
+        ]
     }
 
     // Creates the test pairs that contain data of size
@@ -1200,7 +1221,11 @@ mod test_mod {
 
     // Creates a test ContractRuntime and feeds the underlying GlobalState with `test_pair`.
     // Returns [`ContractRuntime`] instance and the new Merkle root after applying the `test_pair`.
-    fn create_test_state(rng: &mut TestRng, test_pair: Vec<TestPair>) -> (ContractRuntime, Digest) {
+    fn create_test_state(
+        rng: &mut TestRng,
+        enable_addressable_entity: Option<bool>,
+        test_pair: Vec<TestPair>,
+    ) -> (ContractRuntime, Digest) {
         let temp_dir = tempdir().unwrap();
         let chainspec = Chainspec {
             protocol_config: ProtocolConfig {
@@ -1220,6 +1245,8 @@ mod test_mod {
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
                 gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
+                enable_addressable_entity: enable_addressable_entity
+                    .unwrap_or(DEFAULT_ENABLE_ENTITY),
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),
@@ -1240,6 +1267,10 @@ mod test_mod {
         for TestPair(key, value) in test_pair {
             effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         }
+        let key = Key::SystemEntityRegistry;
+        let value =
+            StoredValue::CLValue(CLValue::from_t(SystemHashRegistry::new()).expect("must convert"));
+        effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         let post_state_hash = &contract_runtime
             .data_access_layer()
             .as_ref()
@@ -1273,7 +1304,7 @@ mod test_mod {
             entry_point_name,
             ProtocolVersion::V2_0_0,
         );
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, Some(true), initial_state);
         let request =
             EntryPointExistsRequest::new(state_hash, entry_point_name.to_string(), hash_addr);
         let res = contract_runtime
@@ -1289,7 +1320,7 @@ mod test_mod {
         let entity_addr = EntityAddr::new_smart_contract(hash_addr);
         let entry_point_name = "ep1";
         let initial_state = create_entry_point(entity_addr, entry_point_name);
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, None, initial_state);
         let request =
             EntryPointExistsRequest::new(state_hash, entry_point_name.to_string(), hash_addr);
         let res = contract_runtime
@@ -1304,7 +1335,7 @@ mod test_mod {
         let hash_addr: HashAddr = rng.gen();
         let entity_addr = EntityAddr::new_smart_contract(hash_addr);
         let initial_state = create_entry_point(entity_addr, "ep1");
-        let (contract_runtime, state_hash) = create_test_state(rng, initial_state);
+        let (contract_runtime, state_hash) = create_test_state(rng, None, initial_state);
         let request = EntryPointExistsRequest::new(state_hash, "ep2".to_string(), hash_addr);
         let res = contract_runtime
             .data_access_layer()
@@ -1316,7 +1347,7 @@ mod test_mod {
     fn returns_trie_or_chunk() {
         let rng = &mut TestRng::new();
         let (contract_runtime, root_hash) =
-            create_test_state(rng, create_test_pairs_with_large_data());
+            create_test_state(rng, None, create_test_pairs_with_large_data());
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = read_trie(&contract_runtime, TrieOrChunkId(0, root_hash));

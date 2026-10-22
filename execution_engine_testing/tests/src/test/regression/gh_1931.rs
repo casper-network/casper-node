@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{RuntimeArgs, StoredValue};
+use casper_types::{Key, RuntimeArgs, StoredValue};
 
 const CONTRACT_NAME: &str = "do_nothing_stored.wasm";
 const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
@@ -25,11 +25,13 @@ fn should_query_contract_package() {
         .clone()
         .get(CONTRACT_PACKAGE_NAMED_KEY)
         .expect("failed to get contract package named key.")
-        .to_owned();
+        .to_owned()
+        .into_hash_addr()
+        .expect("must get hash addr");
 
     let contract_package = builder
-        .query(None, contract_package_hash, &[])
+        .query(None, Key::SmartContract(contract_package_hash), &[])
         .expect("failed to find contract package");
 
-    assert!(matches!(contract_package, StoredValue::ContractPackage(_)));
+    assert!(matches!(contract_package, StoredValue::SmartContract(_)));
 }

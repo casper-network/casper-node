@@ -539,7 +539,9 @@ fn builder_for_calling_entrypoint(
 }
 
 fn get_package_hash(builder: &mut LmdbWasmTestBuilder) -> [u8; 32] {
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
     let get = account.named_keys().get("package_name");
     let package_key = get.unwrap();
     let package_hash = match package_key {
@@ -556,7 +558,7 @@ fn get_contract_hash_for_specific_version(
     protocol_version_major: ProtocolVersionMajor,
     version: EntityVersion,
 ) -> Option<HashAddr> {
-    let maybe_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR);
+    let maybe_account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
     let account = maybe_account.unwrap();
     let get = account.named_keys().get("package_name");
     let package_key = get.unwrap();
@@ -634,7 +636,7 @@ fn upgrade_version(
         .with_activation_point(activation_point)
         .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
         .with_new_gas_hold_interval(24 * 60 * 60 * 60)
-        .with_enable_addressable_entity(false)
+        .with_enable_addressable_entity(true)
         .build();
     let config = EngineConfigBuilder::new()
         .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
