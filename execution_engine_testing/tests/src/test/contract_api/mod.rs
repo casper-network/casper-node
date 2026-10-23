@@ -1,5 +1,6 @@
 mod account;
 mod add_contract_version;
+mod alt_bn128;
 mod auction;
 mod create_purse;
 mod dictionary;

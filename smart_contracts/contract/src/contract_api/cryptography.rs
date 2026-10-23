@@ -8,6 +8,78 @@ use casper_types::{
 
 use crate::{ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 
+/// An alt_bn128 field coordinate encoded as a 32-byte little-endian integer.
+pub type AltBn128Coordinate = [u8; 32];
+/// An alt_bn128 scalar encoded as a 32-byte little-endian integer.
+/// Multiplication reduces this integer modulo the group order.
+pub type AltBn128Scalar = [u8; 32];
+/// An alt_bn128 G1 point containing little-endian `[x, y]` coordinates.
+/// Two zero coordinates represent the point at infinity.
+pub type AltBn128Point = [AltBn128Coordinate; 2];
+/// An alt_bn128 pairing entry containing `[ax, ay, bax, bay, bbx, bby]`.
+/// All six coordinates are 32-byte little-endian integers. The G1 point is
+/// `(ax, ay)` and the G2 point is `(Fq2(bax, bay), Fq2(bbx, bby))`, with each
+/// Fq2 element ordered as `(real, imaginary)`. All-zero points represent infinity.
+pub type AltBn128Pair = [AltBn128Coordinate; 6];
+
+/// Adds two alt_bn128 G1 points, returning little-endian `[x, y]` coordinates.
+/// Returns [`ApiError::InvalidArgument`] for an invalid coordinate or point.
+pub fn alt_bn128_add(
+    x1: &AltBn128Coordinate,
+    y1: &AltBn128Coordinate,
+    x2: &AltBn128Coordinate,
+    y2: &AltBn128Coordinate,
+) -> Result<AltBn128Point, ApiError> {
+    let input = [*x1, *y1, *x2, *y2];
+    let mut output = [[0; 32]; 2];
+    let result = unsafe {
+        ext_ffi::casper_alt_bn128_add(
+            input.as_ptr().cast(),
+            core::mem::size_of_val(&input),
+            output.as_mut_ptr().cast(),
+        )
+    };
+    api_error::result_from(result)?;
+    Ok(output)
+}
+
+/// Multiplies an alt_bn128 G1 point by a little-endian scalar, returning
+/// little-endian `[x, y]` coordinates. The scalar is reduced modulo the group order.
+/// Returns [`ApiError::InvalidArgument`] for an invalid coordinate or point.
+pub fn alt_bn128_mul(
+    x: &AltBn128Coordinate,
+    y: &AltBn128Coordinate,
+    scalar: &AltBn128Scalar,
+) -> Result<AltBn128Point, ApiError> {
+    let input = [*x, *y, *scalar];
+    let mut output = [[0; 32]; 2];
+    let result = unsafe {
+        ext_ffi::casper_alt_bn128_mul(
+            input.as_ptr().cast(),
+            core::mem::size_of_val(&input),
+            output.as_mut_ptr().cast(),
+        )
+    };
+    api_error::result_from(result)?;
+    Ok(output)
+}
+
+/// Checks whether the product of alt_bn128 pairings is the identity.
+/// An empty list returns `true`. Returns [`ApiError::InvalidArgument`] for an
+/// invalid coordinate or point, including a G2 point outside the prime-order subgroup.
+pub fn alt_bn128_pairing(pairs: &[AltBn128Pair]) -> Result<bool, ApiError> {
+    let mut output = 0;
+    let result = unsafe {
+        ext_ffi::casper_alt_bn128_pairing(
+            pairs.as_ptr().cast(),
+            core::mem::size_of_val(pairs),
+            &mut output,
+        )
+    };
+    api_error::result_from(result)?;
+    Ok(output != 0)
+}
+
 /// Computes digest hash, using provided algorithm type.
 pub fn generic_hash<T: AsRef<[u8]>>(input: T, algo: HashAlgorithm) -> [u8; 32] {
     let mut ret = [0; 32];
