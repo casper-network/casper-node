@@ -72,6 +72,10 @@ test-support = []
 name = "trie_bench"
 harness = false
 
+[[bench]]
+name = "alt_bn128"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
