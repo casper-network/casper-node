@@ -110,6 +110,13 @@ const DEFAULT_RECOVER_SECP256K1_SIZE_WEIGHT: u32 = 120_000;
 const DEFAULT_VERIFY_SIGNATURE_COST: u32 = 1_300_000;
 const DEFAULT_VERIFY_SIGNATURE_SIZE_WEIGHT: u32 = 120_000;
 
+const DEFAULT_ALT_BN128_ADD_COST: u32 = 1_200_000;
+const DEFAULT_ALT_BN128_MUL_COST: u32 = 3_000_000;
+const DEFAULT_ALT_BN128_PAIRING_COST: u32 = 2_000_000;
+const DEFAULT_ALT_BN128_INPUT_WEIGHT: u32 = 1_000;
+// Conservative weight from nonzero-batch benchmarks, including G2 subgroup validation.
+const DEFAULT_ALT_BN128_PAIRING_INPUT_WEIGHT: u32 = 800_000;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -369,6 +376,12 @@ pub struct HostFunctionCostsV1 {
     pub verify_signature: HostFunction<[Cost; 6]>,
     /// Cost of calling the 'call_package_version' host function.
     pub call_package_version: HostFunction<[Cost; 11]>,
+    /// Cost of calling the `alt_bn128_add` host function.
+    pub alt_bn128_add: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `alt_bn128_mul` host function.
+    pub alt_bn128_mul: HostFunction<[Cost; 3]>,
+    /// Cost of calling the `alt_bn128_pairing` host function.
+    pub alt_bn128_pairing: HostFunction<[Cost; 3]>,
 }
 
 impl Zero for HostFunctionCostsV1 {
@@ -428,6 +441,9 @@ impl Zero for HostFunctionCostsV1 {
             recover_secp256k1: HostFunction::zero(),
             verify_signature: HostFunction::zero(),
             call_package_version: HostFunction::zero(),
+            alt_bn128_add: HostFunction::zero(),
+            alt_bn128_mul: HostFunction::zero(),
+            alt_bn128_pairing: HostFunction::zero(),
         }
     }
 
@@ -487,6 +503,9 @@ impl Zero for HostFunctionCostsV1 {
             recover_secp256k1,
             verify_signature,
             call_package_version,
+            alt_bn128_add,
+            alt_bn128_mul,
+            alt_bn128_pairing,
         } = self;
         read_value.is_zero()
             && dictionary_get.is_zero()
@@ -542,6 +561,9 @@ impl Zero for HostFunctionCostsV1 {
             && recover_secp256k1.is_zero()
             && verify_signature.is_zero()
             && call_package_version.is_zero()
+            && alt_bn128_add.is_zero()
+            && alt_bn128_mul.is_zero()
+            && alt_bn128_pairing.is_zero()
     }
 }
 
@@ -808,6 +830,18 @@ impl Default for HostFunctionCostsV1 {
                     NOT_USED,
                 ],
             ),
+            alt_bn128_add: HostFunction::new(
+                DEFAULT_ALT_BN128_ADD_COST,
+                [NOT_USED, DEFAULT_ALT_BN128_INPUT_WEIGHT, NOT_USED],
+            ),
+            alt_bn128_mul: HostFunction::new(
+                DEFAULT_ALT_BN128_MUL_COST,
+                [NOT_USED, DEFAULT_ALT_BN128_INPUT_WEIGHT, NOT_USED],
+            ),
+            alt_bn128_pairing: HostFunction::new(
+                DEFAULT_ALT_BN128_PAIRING_COST,
+                [NOT_USED, DEFAULT_ALT_BN128_PAIRING_INPUT_WEIGHT, NOT_USED],
+            ),
         }
     }
 }
@@ -869,6 +903,9 @@ impl ToBytes for HostFunctionCostsV1 {
         ret.append(&mut self.recover_secp256k1.to_bytes()?);
         ret.append(&mut self.verify_signature.to_bytes()?);
         ret.append(&mut self.call_package_version.to_bytes()?);
+        ret.append(&mut self.alt_bn128_add.to_bytes()?);
+        ret.append(&mut self.alt_bn128_mul.to_bytes()?);
+        ret.append(&mut self.alt_bn128_pairing.to_bytes()?);
         Ok(ret)
     }
 
@@ -931,6 +968,9 @@ impl ToBytes for HostFunctionCostsV1 {
             + self.recover_secp256k1.serialized_length()
             + self.verify_signature.serialized_length()
             + self.call_package_version.serialized_length()
+            + self.alt_bn128_add.serialized_length()
+            + self.alt_bn128_mul.serialized_length()
+            + self.alt_bn128_pairing.serialized_length()
     }
 }
 
@@ -990,6 +1030,9 @@ impl FromBytes for HostFunctionCostsV1 {
         let (recover_secp256k1, rem) = FromBytes::from_bytes(rem)?;
         let (verify_signature, rem) = FromBytes::from_bytes(rem)?;
         let (call_package_version, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_add, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_mul, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_pairing, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCostsV1 {
                 read_value,
@@ -1046,6 +1089,9 @@ impl FromBytes for HostFunctionCostsV1 {
                 recover_secp256k1,
                 verify_signature,
                 call_package_version,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing,
             },
             rem,
         ))
@@ -1110,6 +1156,9 @@ impl Distribution<HostFunctionCostsV1> for Standard {
             recover_secp256k1: rng.gen(),
             verify_signature: rng.gen(),
             call_package_version: rng.gen(),
+            alt_bn128_add: rng.gen(),
+            alt_bn128_mul: rng.gen(),
+            alt_bn128_pairing: rng.gen(),
         }
     }
 }
@@ -1183,6 +1232,9 @@ pub mod gens {
             recover_secp256k1 in host_function_cost_arb(),
             verify_signature in host_function_cost_arb(),
             call_package_version in host_function_cost_arb(),
+            alt_bn128_add in host_function_cost_arb(),
+            alt_bn128_mul in host_function_cost_arb(),
+            alt_bn128_pairing in host_function_cost_arb(),
         ) -> HostFunctionCostsV1 {
             HostFunctionCostsV1 {
                 read_value,
@@ -1239,6 +1291,9 @@ pub mod gens {
                 recover_secp256k1,
                 verify_signature,
                 call_package_version,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing,
             }
         }
     }

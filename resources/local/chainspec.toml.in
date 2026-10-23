@@ -352,6 +352,12 @@ cost_increase_per_message = 50
 get_block_info = { cost = 330, arguments = [0, 0] }
 recover_secp256k1 = { cost = 1_300_000, arguments = [0, 120_000, 0, 0, 0, 0] }
 verify_signature = { cost = 1_300_000, arguments = [0, 120_000, 0, 0, 0, 0] }
+
+# alt_bn128 operations use fixed-width little-endian input bytes.
+alt_bn128_add = { cost = 1_200_000, arguments = [0, 1_000, 0] }
+alt_bn128_mul = { cost = 3_000_000, arguments = [0, 1_000, 0] }
+# Pairing charges 153_600_000 gas per 192-byte entry, including G2 subgroup validation.
+alt_bn128_pairing = { cost = 2_000_000, arguments = [0, 800_000, 0] }
 call_package_version = { cost = 300_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 120_000, 0, 120_000, 0] }
 
 [wasm.v2]
