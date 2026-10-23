@@ -281,6 +281,18 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::ReadAssociatedKeys.into(),
             ),
+            "casper_alt_bn128_add" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Add.into(),
+            ),
+            "casper_alt_bn128_mul" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Mul.into(),
+            ),
+            "casper_alt_bn128_pairing" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Pairing.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",
@@ -330,6 +342,76 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             Err(InterpreterError::Instantiation(
                 "Memory imported under unknown name".to_owned(),
             ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_wasmi::{
+        Externals, ImportsBuilder, Module, ModuleInstance, RuntimeArgs, RuntimeValue, Trap,
+    };
+
+    use super::*;
+
+    const ALT_BN128_FUNCTIONS: [(&str, FunctionIndex); 3] = [
+        ("casper_alt_bn128_add", FunctionIndex::AltBn128Add),
+        ("casper_alt_bn128_mul", FunctionIndex::AltBn128Mul),
+        ("casper_alt_bn128_pairing", FunctionIndex::AltBn128Pairing),
+    ];
+
+    struct CaptureIndex(usize);
+
+    impl Externals for CaptureIndex {
+        fn invoke_index(
+            &mut self,
+            index: usize,
+            args: RuntimeArgs,
+        ) -> Result<Option<RuntimeValue>, Trap> {
+            self.0 = index;
+            assert_eq!(args.as_ref().len(), 3);
+            Ok(Some(RuntimeValue::I32(0)))
+        }
+    }
+
+    #[test]
+    fn alt_bn128_signatures_and_indices() {
+        let resolver = RuntimeModuleImportResolver::new(64);
+        let signature = Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32));
+        let mut indices = std::collections::BTreeSet::new();
+        for (name, index) in ALT_BN128_FUNCTIONS {
+            let func = resolver.resolve_func(name, &signature).unwrap();
+            assert_eq!(func.signature(), &signature);
+            let mut capture = CaptureIndex(usize::MAX);
+            FuncInstance::invoke(&func, &[RuntimeValue::I32(0); 3], &mut capture).unwrap();
+            assert_eq!(capture.0, usize::from(index));
+            assert_eq!(FunctionIndex::try_from(capture.0), Ok(index));
+            assert!(indices.insert(capture.0));
+            assert!(capture.0 > usize::from(FunctionIndex::ReadAssociatedKeys));
+        }
+    }
+
+    #[test]
+    fn alt_bn128_rejects_incompatible_imports() {
+        for (name, _) in ALT_BN128_FUNCTIONS {
+            for signature in [
+                "(param i32 i32) (result i32)",
+                "(param i64 i32 i32) (result i32)",
+                "(param i32 i32 i32) (result i64)",
+                "(param i32 i32 i32)",
+            ] {
+                let wasm = wat::parse_str(format!(
+                    "(module (import \"env\" \"{name}\" (func {signature})))"
+                ))
+                .unwrap();
+                let module = Module::from_buffer(wasm).unwrap();
+                let resolver = RuntimeModuleImportResolver::new(64);
+                let imports = ImportsBuilder::new().with_resolver("env", &resolver);
+                assert!(
+                    ModuleInstance::new(&module, &imports).is_err(),
+                    "{name}: {signature}"
+                );
+            }
         }
     }
 }

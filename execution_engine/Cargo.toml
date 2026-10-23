@@ -52,6 +52,7 @@ uint = "0.9.0"
 clap = { version = "4.5.21", features = ["derive"] }
 toml = "0.8.19"
 wat = "1.220.0"
+bn = { version = "0.5.11", package = "zeropool-bn", default-features = false }
 
 [dev-dependencies]
 assert_matches = "1.3.0"

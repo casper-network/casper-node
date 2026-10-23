@@ -379,6 +379,9 @@ mod tests {
             recover_secp256k1: HostFunction::new(331, [0, 1, 2, 3, 4, 5]),
             verify_signature: HostFunction::new(332, [0, 1, 2, 3, 4, 5]),
             call_package_version: HostFunction::new(105, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            alt_bn128_add: HostFunction::new(333, [0, 1, 2]),
+            alt_bn128_mul: HostFunction::new(334, [0, 1, 2]),
+            alt_bn128_pairing: HostFunction::new(335, [0, 1, 2]),
         });
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS_V2: Lazy<HostFunctionCostsV2> =
         Lazy::new(|| HostFunctionCostsV2 {
@@ -697,6 +700,40 @@ mod tests {
             Loadable::from_resources("production");
 
         assert!(validate_chainspec(&chainspec));
+    }
+
+    #[test]
+    fn alt_bn128_chainspec_costs_match_defaults() {
+        let defaults = HostFunctionCostsV1::default();
+        for network in [
+            "evm",
+            "production",
+            "mainnet",
+            "testnet",
+            "integration-test",
+            "local",
+        ] {
+            let filename = if network == "local" {
+                "chainspec.toml.in"
+            } else {
+                "chainspec.toml"
+            };
+            let source = fs::read_to_string(RESOURCES_PATH.join(network).join(filename)).unwrap();
+            let value: toml::Value = toml::from_str(&source).unwrap();
+            let table = value["wasm"]["v1"]["host_function_costs"].clone();
+            let costs: HostFunctionCostsV1 = table.clone().try_into().unwrap();
+            assert_eq!(costs.alt_bn128_add, defaults.alt_bn128_add, "{network}");
+            assert_eq!(costs.alt_bn128_mul, defaults.alt_bn128_mul, "{network}");
+            assert_eq!(
+                costs.alt_bn128_pairing, defaults.alt_bn128_pairing,
+                "{network}"
+            );
+            for field in ["alt_bn128_add", "alt_bn128_mul", "alt_bn128_pairing"] {
+                let mut incomplete = table.clone();
+                incomplete.as_table_mut().unwrap().remove(field);
+                assert!(incomplete.try_into::<HostFunctionCostsV1>().is_err());
+            }
+        }
     }
 
     fn check_spec(spec: Chainspec, is_first_version: bool) {

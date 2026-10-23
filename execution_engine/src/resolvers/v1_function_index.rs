@@ -67,6 +67,9 @@ pub(crate) enum FunctionIndex {
     VerifySignature,
     CallPackageVersion,
     ReadAssociatedKeys,
+    AltBn128Add,
+    AltBn128Mul,
+    AltBn128Pairing,
 }
 
 impl From<FunctionIndex> for usize {
