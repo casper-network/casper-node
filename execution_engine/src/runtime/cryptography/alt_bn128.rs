@@ -7,6 +7,9 @@ const COORDINATE_SIZE: usize = 32;
 const POINT_SIZE: usize = 2 * COORDINATE_SIZE;
 const PAIR_SIZE: usize = 6 * COORDINATE_SIZE;
 
+#[cfg(test)]
+mod benchmarks;
+
 fn big_endian(bytes: &[u8]) -> Result<[u8; COORDINATE_SIZE], ApiError> {
     let mut bytes: [u8; COORDINATE_SIZE] =
         bytes.try_into().map_err(|_| ApiError::InvalidArgument)?;
