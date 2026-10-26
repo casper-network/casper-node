@@ -139,23 +139,23 @@ impl<'a> EvmContract<'a> {
     }
 }
 
-fn osaka_predeploys() -> [EvmContract<'static>; 2] {
+fn system_predeploys() -> [EvmContract<'static>; 2] {
     [EvmContract::eip4788(), EvmContract::eip2935()]
 }
 
-/// Returns whether Osaka EVM predeploys should be installed for the supplied EVM config.
-pub(crate) fn should_upsert_osaka_predeploys(config: &EvmConfig) -> bool {
+/// Returns whether EVM system predeploys should be installed for the supplied EVM config.
+pub(crate) fn should_upsert_system_predeploys(config: &EvmConfig) -> bool {
     config.enabled && config.spec >= EvmSpec::Osaka
 }
 
-/// Idempotently installs the Osaka EVM predeploys.
-pub(crate) fn upsert_osaka_predeploys<R>(
+/// Idempotently installs the EVM system predeploys.
+pub(crate) fn upsert_system_predeploys<R>(
     tracking_copy: &mut TrackingCopy<R>,
 ) -> Result<(), EvmContractError>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    for predeploy in osaka_predeploys() {
+    for predeploy in system_predeploys() {
         upsert_contract(tracking_copy, predeploy)?;
     }
     Ok(())
@@ -221,8 +221,8 @@ fn predeploy_entries(
 }
 
 #[cfg(test)]
-fn osaka_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
-    osaka_predeploys()
+fn system_predeploy_entries() -> Result<Vec<(Key, StoredValue)>, EvmContractError> {
+    system_predeploys()
         .iter()
         .copied()
         .map(predeploy_entries)
@@ -373,17 +373,17 @@ mod tests {
     }
 
     #[test]
-    fn should_upsert_osaka_predeploys_for_enabled_osaka_or_later_evm() {
-        assert!(!should_upsert_osaka_predeploys(&EvmConfig::default()));
+    fn should_upsert_system_predeploys_for_enabled_osaka_or_later_evm() {
+        assert!(!should_upsert_system_predeploys(&EvmConfig::default()));
         assert!(EvmConfig::default().active_system_contracts().is_empty());
 
         let config = EvmConfig {
             enabled: true,
             ..Default::default()
         };
-        assert!(should_upsert_osaka_predeploys(&config));
+        assert!(should_upsert_system_predeploys(&config));
         let advertised = config.active_system_contracts();
-        assert_eq!(advertised.len(), osaka_predeploys().len());
+        assert_eq!(advertised.len(), system_predeploys().len());
         assert_eq!(
             advertised["BEACON_ROOTS_ADDRESS"],
             EvmContract::eip4788().address
@@ -395,10 +395,10 @@ mod tests {
     }
 
     #[test]
-    fn upsert_creates_missing_osaka_predeploys() {
+    fn upsert_creates_missing_system_predeploys() {
         let (mut tracking_copy, _tempdir) = tracking_copy([]);
 
-        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_system_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, EvmContract::eip4788());
         assert_predeploy_present(&mut tracking_copy, EvmContract::eip2935());
@@ -414,17 +414,17 @@ mod tests {
                 .expect("code hash value should build"),
         )]);
 
-        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_system_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, predeploy);
     }
 
     #[test]
-    fn upsert_noops_when_osaka_predeploys_are_present() {
+    fn upsert_noops_when_system_predeploys_are_present() {
         let (mut tracking_copy, _tempdir) =
-            tracking_copy(osaka_predeploy_entries().expect("entries should build"));
+            tracking_copy(system_predeploy_entries().expect("entries should build"));
 
-        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_system_predeploys(&mut tracking_copy).expect("upsert should succeed");
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod tests {
             StoredValue::CLValue(CLValue::from_t(conflicting_hash).expect("hash should encode")),
         )]);
 
-        let error = upsert_osaka_predeploys(&mut tracking_copy)
+        let error = upsert_system_predeploys(&mut tracking_copy)
             .expect_err("conflicting code hash should fail");
 
         assert!(matches!(
@@ -463,7 +463,7 @@ mod tests {
             ),
         ]);
 
-        let error = upsert_osaka_predeploys(&mut tracking_copy)
+        let error = upsert_system_predeploys(&mut tracking_copy)
             .expect_err("conflicting bytecode should fail");
 
         assert!(matches!(
@@ -482,7 +482,7 @@ mod tests {
             ),
         )]);
 
-        upsert_osaka_predeploys(&mut tracking_copy).expect("upsert should succeed");
+        upsert_system_predeploys(&mut tracking_copy).expect("upsert should succeed");
 
         assert_predeploy_present(&mut tracking_copy, predeploy);
     }
@@ -500,7 +500,7 @@ mod tests {
             ),
         )]);
 
-        let error = upsert_osaka_predeploys(&mut tracking_copy)
+        let error = upsert_system_predeploys(&mut tracking_copy)
             .expect_err("invalid code hash value should fail");
 
         assert!(matches!(error, EvmContractError::CLValue(_)));
@@ -568,7 +568,7 @@ mod tests {
         for preinstall in test_contracts() {
             assert_predeploy_present(&mut tracking_copy, preinstall);
         }
-        for predeploy in osaka_predeploys() {
+        for predeploy in system_predeploys() {
             assert!(tracking_copy
                 .read(&predeploy.code_hash_key())
                 .unwrap()
