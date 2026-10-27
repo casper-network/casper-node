@@ -1099,6 +1099,7 @@ impl Display for ChainspecRawBytesRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum UpgradeWatcherRequest {
     NextUpgrade(Responder<Option<NextUpgrade>>),
+    StagedProtocolVersions(Responder<Result<Vec<ProtocolVersion>, String>>),
     FutureChainspec {
         protocol_version: ProtocolVersion,
         responder: Responder<Result<Option<Arc<ChainspecRawBytes>>, String>>,
@@ -1109,6 +1110,7 @@ impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NextUpgrade(_) => write!(f, "get next upgrade"),
+            Self::StagedProtocolVersions(_) => write!(f, "get staged protocol versions"),
             Self::FutureChainspec {
                 protocol_version, ..
             } => {

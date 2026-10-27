@@ -53,6 +53,66 @@ const ENABLED: bool = true;
 const DISABLED: bool = false;
 
 #[tokio::test]
+async fn staged_protocol_versions_returns_a_snapshot_or_binary_error() {
+    use crate::{
+        reactor::{main_reactor::MainEvent, Scheduler},
+        utils,
+    };
+    use casper_binary_port::{InformationRequest, ResponseType};
+    use casper_types::bytesrepr::FromBytes;
+
+    for versions in [
+        Ok(Vec::new()),
+        Ok(vec![
+            ProtocolVersion::from_parts(2, 2, 0),
+            ProtocolVersion::from_parts(2, 3, 0),
+        ]),
+        Err("unreadable installed chainspec".to_string()),
+    ] {
+        let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+        let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+        let expected = versions.clone();
+        let request = super::handle_info_request(
+            InformationRequest::StagedProtocolVersions,
+            effect_builder,
+            ProtocolVersion::from_parts(2, 1, 0),
+        );
+        let respond = async {
+            let ((_, event), _) = scheduler.pop().await;
+            let MainEvent::UpgradeWatcherRequest(UpgradeWatcherRequest::StagedProtocolVersions(
+                responder,
+            )) = event
+            else {
+                panic!("unexpected staged protocol versions request: {event:?}");
+            };
+            responder.respond(versions).await;
+        };
+        let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            futures::join!(request, respond)
+        })
+        .await
+        .expect("staged protocol versions request should complete");
+        match expected {
+            Ok(expected) => {
+                assert!(response.is_success());
+                assert_eq!(
+                    response.returned_data_type_tag(),
+                    Some(ResponseType::StagedProtocolVersions as u8)
+                );
+                let (actual, remainder) =
+                    Vec::<ProtocolVersion>::from_bytes(response.payload()).unwrap();
+                assert!(remainder.is_empty());
+                assert_eq!(actual, expected);
+            }
+            Err(_) => {
+                assert_eq!(response.error_code(), ErrorCode::InternalError as u16);
+                assert!(response.payload().is_empty());
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn future_chainspec_returns_the_requested_documents_or_binary_error() {
     use crate::{
         reactor::{main_reactor::MainEvent, Scheduler},

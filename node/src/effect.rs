@@ -1955,6 +1955,18 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Gets all currently staged protocol versions, in ascending order.
+    pub(crate) async fn get_staged_protocol_versions(self) -> Result<Vec<ProtocolVersion>, String>
+    where
+        REv: From<UpgradeWatcherRequest> + Send,
+    {
+        self.make_request(
+            UpgradeWatcherRequest::StagedProtocolVersions,
+            QueueKind::Control,
+        )
+        .await
+    }
+
     /// Gets source documents for one installed future protocol version.
     pub(crate) async fn get_future_chainspec(
         self,

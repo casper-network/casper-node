@@ -245,6 +245,15 @@ the existing `ChainspecRawBytes` response type: `chainspec.toml` plus optional
 `accounts.toml` and `global_state.toml` bytes. A version that is not currently
 staged returns an empty response.
 
+`StagedProtocolVersions` takes no arguments and returns a sorted
+`Vec<ProtocolVersion>` containing all currently staged versions, including an
+empty vector when none are staged. The list comes from the same cached scan
+as `FutureChainspec`; discovery failures return `InternalError`. This lightweight
+snapshot allows sidecar to recover the staged-version set after a restart or
+reconnect without depending on SSE replay. Consumers can subscribe to SSE,
+buffer staging events, fetch the snapshot and required documents, and then
+process buffered events while deduplicating versions.
+
 The upgrade watcher publishes `StagedProtocol(protocol_version)` over SSE
 when it detects a newly staged version, including versions installed before
 node startup. Unchanged scans, edits, and removals do not emit staging events;

@@ -376,6 +376,14 @@ where
                 Event::Request(UpgradeWatcherRequest::NextUpgrade(responder)) => {
                     responder.respond(self.next_upgrade).ignore()
                 }
+                Event::Request(UpgradeWatcherRequest::StagedProtocolVersions(responder)) => {
+                    let versions = self
+                        .chainspecs
+                        .as_ref()
+                        .map(|chainspecs| chainspecs.keys().copied().collect())
+                        .map_err(Clone::clone);
+                    responder.respond(versions).ignore()
+                }
                 Event::Request(UpgradeWatcherRequest::FutureChainspec {
                     protocol_version,
                     responder,
@@ -986,9 +994,28 @@ setting = "unknown"
     }
 
     #[tokio::test]
-    async fn future_chainspec_requests_select_and_share_one_cached_source_across_refreshes() {
+    async fn staged_chainspec_requests_reflect_cached_versions_across_refreshes() {
         use crate::effect::Responder;
         use futures::channel::oneshot;
+
+        async fn request_versions(
+            watcher: &mut UpgradeWatcher,
+            effect_builder: EffectBuilder<MainEvent>,
+            rng: &mut NodeRng,
+        ) -> Result<Vec<ProtocolVersion>, String> {
+            let (sender, receiver) = oneshot::channel();
+            let effects = watcher.handle_event(
+                effect_builder,
+                rng,
+                Event::Request(UpgradeWatcherRequest::StagedProtocolVersions(
+                    Responder::without_shutdown(sender),
+                )),
+            );
+            for effect in effects {
+                effect.await;
+            }
+            receiver.await.unwrap()
+        }
 
         let root = tempfile::tempdir().unwrap();
         let (mut current, future_source) =
@@ -1011,6 +1038,12 @@ setting = "unknown"
         staged_announcements(effects, scheduler).await;
         let mut received = Vec::new();
         let mut rng = TestRng::new();
+        assert_eq!(
+            request_versions(&mut watcher, effect_builder, &mut rng)
+                .await
+                .unwrap(),
+            vec![future_version, V1_2_3],
+        );
         for version in [future_version, future_version, V1_0_0, V2_2_2] {
             let (sender, receiver) = oneshot::channel();
             let effects = watcher.handle_event(
@@ -1036,7 +1069,17 @@ setting = "unknown"
         watcher.metadata_scan_id = 1;
         let effects = watcher.handle_got_chainspecs(effect_builder, 1, Ok(BTreeMap::new()));
         assert!(staged_announcements(effects, scheduler).await.is_empty());
-        assert!(watcher.chainspecs.as_ref().unwrap().is_empty());
+        assert!(request_versions(&mut watcher, effect_builder, &mut rng)
+            .await
+            .unwrap()
+            .is_empty());
+        let error = "unreadable installed chainspec".to_string();
+        let effects = watcher.handle_got_chainspecs(effect_builder, 1, Err(error.clone()));
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+        assert_eq!(
+            request_versions(&mut watcher, effect_builder, &mut rng).await,
+            Err(error)
+        );
         for source in received {
             assert!(Arc::ptr_eq(&cached, &source));
         }

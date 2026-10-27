@@ -1098,6 +1098,12 @@ where
         InformationRequest::ChainspecRawBytes => {
             BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
         }
+        InformationRequest::StagedProtocolVersions => {
+            match effect_builder.get_staged_protocol_versions().await {
+                Ok(versions) => BinaryResponse::from_value(versions),
+                Err(_) => BinaryResponse::new_error(ErrorCode::InternalError),
+            }
+        }
         InformationRequest::FutureChainspec { protocol_version } => {
             match effect_builder.get_future_chainspec(protocol_version).await {
                 Ok(Some(chainspec)) => match chainspec.to_bytes() {
