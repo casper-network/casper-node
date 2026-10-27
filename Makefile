@@ -167,6 +167,9 @@ lint-smart-contracts:
 # RUSTSEC-2026-0344: Wasmer 6.1 uses object::write; object's default
 # features pull in ruzstd, but no zstd decompression APIs are called.
 # Remove this exception when Wasmer drops the affected ruzstd dependency.
+# RUSTSEC-2026-0387: elliptic-curve 0.13 requires crypto-bigint 0.5.
+# Fixing this requires a RustCrypto migration to crypto-bigint >=0.7.6.
+# Remove this exception once that migration is complete.
 audit-rs:
 	$(CARGO) audit \
 		--ignore RUSTSEC-2025-0055 \
@@ -176,7 +179,8 @@ audit-rs:
 		--ignore RUSTSEC-2026-0234 \
 		--ignore RUSTSEC-2026-0235 \
 		--ignore RUSTSEC-2026-0258 \
-		--ignore RUSTSEC-2026-0344
+		--ignore RUSTSEC-2026-0344 \
+		--ignore RUSTSEC-2026-0387
 
 .PHONY: audit
 audit: audit-rs
