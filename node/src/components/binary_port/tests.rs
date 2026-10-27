@@ -53,89 +53,91 @@ const ENABLED: bool = true;
 const DISABLED: bool = false;
 
 #[tokio::test]
-async fn future_chainspecs_returns_a_complete_snapshot_or_binary_error() {
+async fn future_chainspec_returns_the_requested_documents_or_binary_error() {
     use crate::{
         reactor::{main_reactor::MainEvent, Scheduler},
         utils,
     };
-    use casper_binary_port::{FutureChainspecs, InformationRequest, ResponseType};
+    use casper_binary_port::{InformationRequest, ResponseType};
     use casper_types::bytesrepr::FromBytes;
-    use std::collections::BTreeMap;
 
-    let source = |version: ProtocolVersion| {
-        let mut chainspec: toml::Value =
-            toml::from_str(include_str!("../../../../resources/evm/chainspec.toml")).unwrap();
-        chainspec["protocol"]["version"] = toml::Value::String(version.to_string());
-        ChainspecRawBytes::new(
-            toml::to_string(&chainspec).unwrap().into_bytes().into(),
-            None,
-            None,
-        )
-    };
-    let future = [
+    for version in [
         ProtocolVersion::from_parts(2, 2, 0),
         ProtocolVersion::from_parts(2, 3, 0),
-    ]
-    .into_iter()
-    .map(|version| (version, source(version)))
-    .collect();
-    for metadata in [
-        Ok(FutureChainspecs::new(BTreeMap::new())),
-        Ok(FutureChainspecs::new(future)),
-        Err("unreadable installed chainspec".to_string()),
     ] {
-        let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
-        let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
-        let expected = metadata.clone();
-        let metadata = metadata.map(Arc::new);
-        let request = super::handle_info_request(
-            InformationRequest::FutureChainspecs,
-            effect_builder,
-            ProtocolVersion::from_parts(2, 1, 0),
+        let source = ChainspecRawBytes::new(
+            format!("# source documents for {version}")
+                .into_bytes()
+                .into(),
+            Some(b"# accounts".to_vec().into()),
+            Some(b"# global state".to_vec().into()),
         );
-        let respond = async {
-            let ((_, event), _) = scheduler.pop().await;
-            match event {
-                MainEvent::UpgradeWatcherRequest(UpgradeWatcherRequest::FutureChainspecs(
-                    responder,
-                )) => {
-                    responder.respond(metadata).await;
+        for metadata in [
+            Ok(None),
+            Ok(Some(source)),
+            Err("unreadable installed chainspec".to_string()),
+        ] {
+            let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+            let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+            let expected = metadata.clone();
+            let metadata = metadata.map(|source| source.map(Arc::new));
+            let request = super::handle_info_request(
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+                effect_builder,
+                ProtocolVersion::from_parts(2, 1, 0),
+            );
+            let respond = async {
+                let ((_, event), _) = scheduler.pop().await;
+                match event {
+                    MainEvent::UpgradeWatcherRequest(UpgradeWatcherRequest::FutureChainspec {
+                        protocol_version,
+                        responder,
+                    }) => {
+                        assert_eq!(protocol_version, version);
+                        responder.respond(metadata).await;
+                    }
+                    other => panic!("unexpected future chainspec request: {other:?}"),
                 }
-                other => panic!("unexpected future chainspecs request: {other:?}"),
-            }
-        };
-        let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
-            futures::join!(request, respond)
-        })
-        .await
-        .expect("future chainspecs request should complete");
-        match expected {
-            Ok(expected) => {
-                assert!(response.is_success());
-                assert_eq!(
-                    response.returned_data_type_tag(),
-                    Some(ResponseType::FutureChainspecs as u8)
-                );
-                let (actual, remainder) = FutureChainspecs::from_bytes(response.payload()).unwrap();
-                assert!(remainder.is_empty());
-                assert_eq!(actual, expected);
-            }
-            Err(_) => {
-                assert!(!response.is_success());
-                assert_eq!(response.error_code(), ErrorCode::InternalError as u16);
-                assert!(response.payload().is_empty());
+            };
+            let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+                futures::join!(request, respond)
+            })
+            .await
+            .expect("future chainspec request should complete");
+            match expected {
+                Ok(Some(expected)) => {
+                    assert!(response.is_success());
+                    assert_eq!(
+                        response.returned_data_type_tag(),
+                        Some(ResponseType::ChainspecRawBytes as u8)
+                    );
+                    let (actual, remainder) =
+                        ChainspecRawBytes::from_bytes(response.payload()).unwrap();
+                    assert!(remainder.is_empty());
+                    assert_eq!(actual, expected);
+                }
+                Ok(None) => {
+                    assert!(response.is_success());
+                    assert_eq!(response.returned_data_type_tag(), None);
+                    assert!(response.payload().is_empty());
+                }
+                Err(_) => {
+                    assert!(!response.is_success());
+                    assert_eq!(response.error_code(), ErrorCode::InternalError as u16);
+                    assert!(response.payload().is_empty());
+                }
             }
         }
     }
 }
 
 #[tokio::test]
-async fn oversized_future_chainspecs_returns_an_error_and_keeps_connection_open() {
-    use std::collections::BTreeMap;
-
+async fn oversized_future_chainspec_returns_an_error_and_keeps_connection_open() {
     use casper_binary_port::{
         BinaryMessage, BinaryMessageCodec, BinaryResponseAndRequest, CommandHeader,
-        FutureChainspecs, InformationRequest,
+        InformationRequest,
     };
     use casper_types::bytesrepr::{self, Bytes, ToBytes};
     use futures::{SinkExt, StreamExt};
@@ -152,12 +154,7 @@ async fn oversized_future_chainspecs_returns_an_error_and_keeps_connection_open(
 
     let version = ProtocolVersion::from_parts(2, 2, 2);
     let source = include_bytes!("../../../../resources/evm/chainspec.toml").to_vec();
-    let snapshot = |source: Vec<u8>| {
-        FutureChainspecs::new(BTreeMap::from([(
-            version,
-            ChainspecRawBytes::new(source.into(), None, None),
-        )]))
-    };
+    let snapshot = |source: Vec<u8>| ChainspecRawBytes::new(source.into(), None, None);
     let request_bytes = |info: InformationRequest, id| {
         let command = Command::Get(info.try_into().unwrap());
         let mut payload = CommandHeader::new(command.tag(), id).to_bytes().unwrap();
@@ -167,7 +164,12 @@ async fn oversized_future_chainspecs_returns_an_error_and_keeps_connection_open(
     let mut echoed_request = bytes::BytesMut::new();
     BinaryMessageCodec::new(u32::MAX)
         .encode(
-            BinaryMessage::new(request_bytes(InformationRequest::FutureChainspecs, 1)),
+            BinaryMessage::new(request_bytes(
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+                1,
+            )),
             &mut echoed_request,
         )
         .unwrap();
@@ -223,8 +225,18 @@ async fn oversized_future_chainspecs_returns_an_error_and_keeps_connection_open(
             BinaryMessageCodec::new(max_message_size_bytes),
         );
         for (id, info) in [
-            (1, InformationRequest::FutureChainspecs),
-            (2, InformationRequest::FutureChainspecs),
+            (
+                1,
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+            ),
+            (
+                2,
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+            ),
             (3, InformationRequest::ProtocolVersion),
         ] {
             let payload = request_bytes(info, id);

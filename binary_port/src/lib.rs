@@ -50,7 +50,6 @@ pub use speculative_execution_result::{EvmSpeculativeExecutionResult, Speculativ
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
     AccountInformation, AddressableEntityInformation, ConsensusStatus, ConsensusValidatorChanges,
-    ContractInformation, DictionaryQueryResult, FutureChainspecs, GetTrieFullResult, LastProgress,
-    NetworkName, ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime,
-    ValueWithProof,
+    ContractInformation, DictionaryQueryResult, GetTrieFullResult, LastProgress, NetworkName,
+    ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };

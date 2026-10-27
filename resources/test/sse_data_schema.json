@@ -204,6 +204,19 @@
       "additionalProperties": false
     },
     {
+      "description": "A protocol version was newly detected in the node's staged upgrades. Source documents can be fetched with the binary-port FutureChainspec request.",
+      "type": "object",
+      "required": [
+        "StagedProtocol"
+      ],
+      "properties": {
+        "StagedProtocol": {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "The node is about to shut down.",
       "type": "string",
       "enum": [

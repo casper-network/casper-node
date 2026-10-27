@@ -11,7 +11,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractHash, ContractPackageHash},
     system::auction::DelegatorKind,
-    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, PublicKey, TransactionHash,
+    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, ProtocolVersion, PublicKey,
+    TransactionHash,
 };
 
 /// Request for information from the node.
@@ -84,8 +85,11 @@ pub enum InformationRequest {
         /// Whether to return the bytecode with the entity.
         include_bytecode: bool,
     },
-    /// Returns complete source documents for all installed future protocol versions.
-    FutureChainspecs,
+    /// Returns complete source documents for the requested staged protocol version.
+    FutureChainspec {
+        /// Protocol version of the staged chainspec to retrieve.
+        protocol_version: ProtocolVersion,
+    },
 }
 
 impl InformationRequest {
@@ -120,7 +124,7 @@ impl InformationRequest {
             InformationRequest::ProtocolVersion => InformationRequestTag::ProtocolVersion,
             InformationRequest::Package { .. } => InformationRequestTag::Package,
             InformationRequest::Entity { .. } => InformationRequestTag::Entity,
-            InformationRequest::FutureChainspecs => InformationRequestTag::FutureChainspecs,
+            InformationRequest::FutureChainspec { .. } => InformationRequestTag::FutureChainspec,
         }
     }
 
@@ -152,7 +156,9 @@ impl InformationRequest {
             InformationRequestTag::NextUpgrade => InformationRequest::NextUpgrade,
             InformationRequestTag::ConsensusStatus => InformationRequest::ConsensusStatus,
             InformationRequestTag::ChainspecRawBytes => InformationRequest::ChainspecRawBytes,
-            InformationRequestTag::FutureChainspecs => InformationRequest::FutureChainspecs,
+            InformationRequestTag::FutureChainspec => InformationRequest::FutureChainspec {
+                protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+            },
             InformationRequestTag::NodeStatus => InformationRequest::NodeStatus,
             InformationRequestTag::LatestSwitchBlockHeader => {
                 InformationRequest::LatestSwitchBlockHeader
@@ -215,10 +221,12 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
-            | InformationRequest::FutureChainspecs
             | InformationRequest::NodeStatus
             | InformationRequest::LatestSwitchBlockHeader
             | InformationRequest::ProtocolVersion => Ok(()),
+            InformationRequest::FutureChainspec { protocol_version } => {
+                protocol_version.write_bytes(writer)
+            }
             InformationRequest::Reward {
                 era_identifier,
                 validator,
@@ -271,10 +279,12 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
-            | InformationRequest::FutureChainspecs
             | InformationRequest::NodeStatus
             | InformationRequest::LatestSwitchBlockHeader
             | InformationRequest::ProtocolVersion => 0,
+            InformationRequest::FutureChainspec { protocol_version } => {
+                protocol_version.serialized_length()
+            }
             InformationRequest::Reward {
                 era_identifier,
                 validator,
@@ -349,8 +359,12 @@ impl TryFrom<(InformationRequestTag, &[u8])> for InformationRequest {
             InformationRequestTag::ChainspecRawBytes => {
                 (InformationRequest::ChainspecRawBytes, key_bytes)
             }
-            InformationRequestTag::FutureChainspecs => {
-                (InformationRequest::FutureChainspecs, key_bytes)
+            InformationRequestTag::FutureChainspec => {
+                let (protocol_version, remainder) = ProtocolVersion::from_bytes(key_bytes)?;
+                (
+                    InformationRequest::FutureChainspec { protocol_version },
+                    remainder,
+                )
             }
             InformationRequestTag::NodeStatus => (InformationRequest::NodeStatus, key_bytes),
             InformationRequestTag::LatestSwitchBlockHeader => {
@@ -459,8 +473,8 @@ pub enum InformationRequestTag {
     Package = 18,
     /// Addressable entity request.
     Entity = 19,
-    /// Complete source documents for installed future protocol versions.
-    FutureChainspecs = 20,
+    /// Complete source documents for a staged protocol version.
+    FutureChainspec = 20,
 }
 
 impl InformationRequestTag {
@@ -487,7 +501,7 @@ impl InformationRequestTag {
             17 => InformationRequestTag::ProtocolVersion,
             18 => InformationRequestTag::Package,
             19 => InformationRequestTag::Entity,
-            20 => InformationRequestTag::FutureChainspecs,
+            20 => InformationRequestTag::FutureChainspec,
             _ => unreachable!(),
         }
     }
@@ -518,7 +532,7 @@ impl TryFrom<u16> for InformationRequestTag {
             17 => Ok(InformationRequestTag::ProtocolVersion),
             18 => Ok(InformationRequestTag::Package),
             19 => Ok(InformationRequestTag::Entity),
-            20 => Ok(InformationRequestTag::FutureChainspecs),
+            20 => Ok(InformationRequestTag::FutureChainspec),
             _ => Err(UnknownInformationRequestTag(value)),
         }
     }
@@ -720,29 +734,5 @@ mod tests {
         let val = PackageIdentifier::random(rng);
         let bytes = val.to_bytes().expect("should serialize");
         assert_eq!(bytesrepr::deserialize_from_slice(bytes), Ok(val));
-    }
-}
-
-#[cfg(test)]
-mod future_chainspecs_tests {
-    use super::*;
-
-    #[test]
-    fn future_chainspecs_request_has_no_arguments_and_preserves_existing_tags() {
-        assert_eq!(u16::from(InformationRequestTag::ChainspecRawBytes), 13);
-        assert_eq!(u16::from(InformationRequestTag::Entity), 19);
-        assert_eq!(u16::from(InformationRequestTag::FutureChainspecs), 20);
-        let request = GetRequest::try_from(InformationRequest::FutureChainspecs).unwrap();
-        let GetRequest::Information { info_type_tag, key } = request else {
-            panic!("expected an information request");
-        };
-        let tag = InformationRequestTag::try_from(info_type_tag).unwrap();
-        assert_eq!(tag, InformationRequestTag::FutureChainspecs);
-        assert!(key.is_empty());
-        assert_eq!(
-            InformationRequest::try_from((tag, key.as_slice())).unwrap(),
-            InformationRequest::FutureChainspecs
-        );
-        assert!(InformationRequest::try_from((tag, [0].as_slice())).is_err());
     }
 }

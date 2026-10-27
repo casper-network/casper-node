@@ -24,8 +24,7 @@ use crate::{
         ReactorStateName, RewardResponse,
     },
     AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
-    DictionaryQueryResult, FutureChainspecs, RecordId, TransactionWithExecutionInfo, Uptime,
-    ValueWithProof,
+    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -122,8 +121,6 @@ pub enum ResponseType {
     AddressableEntityInformation,
     /// Result of the EVM speculative execution.
     EvmSpeculativeExecutionResult,
-    /// Complete source documents for installed future protocol versions.
-    FutureChainspecs,
 }
 
 impl ResponseType {
@@ -150,7 +147,8 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..46)).unwrap()
+        Self::try_from(rng.gen_range(0..=ResponseType::EvmSpeculativeExecutionResult as u8))
+            .unwrap()
     }
 }
 
@@ -236,7 +234,6 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::EvmSpeculativeExecutionResult as u8 => {
                 Ok(ResponseType::EvmSpeculativeExecutionResult)
             }
-            x if x == ResponseType::FutureChainspecs as u8 => Ok(ResponseType::FutureChainspecs),
             _ => Err(()),
         }
     }
@@ -302,7 +299,6 @@ impl fmt::Display for ResponseType {
             ResponseType::EvmSpeculativeExecutionResult => {
                 write!(f, "EvmSpeculativeExecutionResult")
             }
-            ResponseType::FutureChainspecs => write!(f, "FutureChainspecs"),
         }
     }
 }
@@ -375,10 +371,6 @@ impl PayloadEntity for AvailableBlockRange {
 
 impl PayloadEntity for ChainspecRawBytes {
     const RESPONSE_TYPE: ResponseType = ResponseType::ChainspecRawBytes;
-}
-
-impl PayloadEntity for FutureChainspecs {
-    const RESPONSE_TYPE: ResponseType = ResponseType::FutureChainspecs;
 }
 
 impl PayloadEntity for ConsensusValidatorChanges {
@@ -491,15 +483,5 @@ mod tests {
 
         let val = ResponseType::random(rng);
         assert_eq!(ResponseType::try_from(val as u8), Ok(val));
-    }
-
-    #[test]
-    fn future_chainspecs_response_tag_is_appended() {
-        assert_eq!(ResponseType::EvmSpeculativeExecutionResult as u8, 44);
-        assert_eq!(ResponseType::FutureChainspecs as u8, 45);
-        assert_eq!(
-            ResponseType::try_from(45),
-            Ok(ResponseType::FutureChainspecs)
-        );
     }
 }

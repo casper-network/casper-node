@@ -34,8 +34,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId,
-    HashAddr, NextUpgrade, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, Transfer,
+    HashAddr, NextUpgrade, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -1099,14 +1099,24 @@ impl Display for ChainspecRawBytesRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum UpgradeWatcherRequest {
     NextUpgrade(Responder<Option<NextUpgrade>>),
-    FutureChainspecs(Responder<Result<Arc<casper_binary_port::FutureChainspecs>, String>>),
+    FutureChainspec {
+        protocol_version: ProtocolVersion,
+        responder: Responder<Result<Option<Arc<ChainspecRawBytes>>, String>>,
+    },
 }
 
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NextUpgrade(_) => write!(f, "get next upgrade"),
-            Self::FutureChainspecs(_) => write!(f, "get future chainspec source documents"),
+            Self::FutureChainspec {
+                protocol_version, ..
+            } => {
+                write!(
+                    f,
+                    "get future chainspec source documents for {protocol_version}"
+                )
+            }
         }
     }
 }

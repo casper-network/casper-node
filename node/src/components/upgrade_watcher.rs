@@ -8,6 +8,7 @@
 //! for full details.
 
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display, Formatter},
     fs, io,
     path::{Path, PathBuf},
@@ -22,7 +23,6 @@ use thiserror::Error;
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_binary_port::FutureChainspecs;
 use casper_types::{
     bytesrepr::Bytes, evm, Chainspec, ChainspecRawBytes, EraId, NextUpgrade, ProtocolConfig,
     ProtocolVersion, TimeDiff,
@@ -51,6 +51,8 @@ const COMPONENT_NAME: &str = "upgrade_watcher";
 
 const DEFAULT_UPGRADE_CHECK_INTERVAL: &str = "30sec";
 
+type StagedChainspecs = BTreeMap<ProtocolVersion, Arc<ChainspecRawBytes>>;
+
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     /// How often to scan file system for available upgrades.
@@ -77,9 +79,9 @@ pub(crate) enum Event {
     /// If the result of checking for an upgrade is successful, it is passed here.
     GotNextUpgrade(Option<NextUpgrade>),
     /// Atomically refresh complete chainspec documents, even when activation points are unchanged.
-    GotFutureChainspecs {
+    GotStagedChainspecs {
         scan_id: u64,
-        metadata: Box<Result<FutureChainspecs, String>>,
+        metadata: Box<Result<StagedChainspecs, String>>,
     },
 }
 
@@ -98,7 +100,7 @@ impl Display for Event {
             Event::GotNextUpgrade(Some(next_upgrade)) => {
                 write!(formatter, "got {}", next_upgrade)
             }
-            Event::GotFutureChainspecs { .. } => {
+            Event::GotStagedChainspecs { .. } => {
                 write!(formatter, "refresh chainspec source documents")
             }
             Event::GotNextUpgrade(None) => {
@@ -150,7 +152,8 @@ pub(crate) struct UpgradeWatcher {
     network_name: String,
     metadata_scan_id: u64,
     #[data_size(skip)]
-    chainspecs: Result<Arc<FutureChainspecs>, String>,
+    chainspecs: Result<StagedChainspecs, String>,
+    announced_protocols: BTreeSet<ProtocolVersion>,
 }
 
 impl UpgradeWatcher {
@@ -169,8 +172,7 @@ impl UpgradeWatcher {
         let next_upgrade = next_upgrade(root_dir.clone(), current_version);
 
         let network_name = chainspec.network_config.name.clone();
-        let chainspecs =
-            installed_chainspecs(&root_dir, &network_name, current_version).map(Arc::new);
+        let chainspecs = installed_chainspecs(&root_dir, &network_name, current_version);
         if let Err(error) = &chainspecs {
             warn!(%error, "invalid installed chainspec metadata");
         }
@@ -184,6 +186,7 @@ impl UpgradeWatcher {
             network_name,
             metadata_scan_id: 0,
             chainspecs,
+            announced_protocols: BTreeSet::new(),
         };
 
         Ok(upgrade_watcher)
@@ -243,7 +246,7 @@ impl UpgradeWatcher {
                 .await;
             metadata
         }
-        .event(move |metadata| Event::GotFutureChainspecs {
+        .event(move |metadata| Event::GotStagedChainspecs {
             scan_id,
             metadata: Box::new(metadata),
         });
@@ -257,19 +260,38 @@ impl UpgradeWatcher {
         effects
     }
 
-    fn handle_got_chainspecs(
+    fn handle_got_chainspecs<REv>(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         scan_id: u64,
-        metadata: Result<FutureChainspecs, String>,
-    ) -> Effects<Event> {
+        metadata: Result<StagedChainspecs, String>,
+    ) -> Effects<Event>
+    where
+        REv: From<UpgradeWatcherAnnouncement> + Send,
+    {
         // A slow earlier scan must not overwrite metadata from a later rescan.
-        if scan_id == self.metadata_scan_id {
-            if let Err(error) = &metadata {
-                warn!(%error, "invalid installed chainspec metadata");
-            }
-            self.chainspecs = metadata.map(Arc::new);
+        if scan_id != self.metadata_scan_id {
+            return Effects::new();
         }
-        Effects::new()
+        let mut effects = Effects::new();
+        match &metadata {
+            Ok(chainspecs) => {
+                let staged_protocols = chainspecs.keys().copied().collect::<BTreeSet<_>>();
+                for version in staged_protocols
+                    .difference(&self.announced_protocols)
+                    .copied()
+                {
+                    effects.extend(effect_builder.announce_staged_protocol(version).ignore());
+                }
+                // Edits and removals refresh source documents but do not announce staging.
+                self.announced_protocols = staged_protocols;
+            }
+            Err(error) => warn!(%error, "invalid installed chainspec metadata"),
+        }
+        // Publish effects only after installing the snapshot, so announced versions can
+        // immediately be fetched without copying source documents on the reactor thread.
+        self.chainspecs = metadata;
+        effects
     }
 
     fn handle_got_next_upgrade(
@@ -333,7 +355,7 @@ where
                 Event::Request(_)
                 | Event::CheckForNextUpgrade
                 | Event::GotNextUpgrade(_)
-                | Event::GotFutureChainspecs { .. } => {
+                | Event::GotStagedChainspecs { .. } => {
                     warn!(
                         ?event,
                         name = <Self as Component<MainEvent>>::name(self),
@@ -354,13 +376,19 @@ where
                 Event::Request(UpgradeWatcherRequest::NextUpgrade(responder)) => {
                     responder.respond(self.next_upgrade).ignore()
                 }
-                Event::Request(UpgradeWatcherRequest::FutureChainspecs(responder)) => {
-                    // Share the immutable snapshot; copying source documents here would block
-                    // the reactor. The binary-port effect serializes it after receiving it.
-                    responder.respond(self.chainspecs.clone()).ignore()
+                Event::Request(UpgradeWatcherRequest::FutureChainspec {
+                    protocol_version,
+                    responder,
+                }) => {
+                    let source = self
+                        .chainspecs
+                        .as_ref()
+                        .map(|chainspecs| chainspecs.get(&protocol_version).cloned())
+                        .map_err(Clone::clone);
+                    responder.respond(source).ignore()
                 }
-                Event::GotFutureChainspecs { scan_id, metadata } => {
-                    self.handle_got_chainspecs(scan_id, *metadata)
+                Event::GotStagedChainspecs { scan_id, metadata } => {
+                    self.handle_got_chainspecs(effect_builder, scan_id, *metadata)
                 }
                 Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
                 Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
@@ -449,8 +477,8 @@ fn installed_chainspecs(
     root: &Path,
     network_name: &str,
     current_version: ProtocolVersion,
-) -> Result<FutureChainspecs, String> {
-    let mut future = std::collections::BTreeMap::new();
+) -> Result<StagedChainspecs, String> {
+    let mut future = BTreeMap::new();
     for entry in fs::read_dir(root).map_err(|error| format!("{}: {error}", root.display()))? {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry.file_name().to_string_lossy().replace('_', ".");
@@ -493,11 +521,11 @@ fn installed_chainspecs(
             ))
         };
         let source = read().map_err(|error| format!("{}: {error}", path.display()))?;
-        if future.insert(version, source).is_some() {
+        if future.insert(version, Arc::new(source)).is_some() {
             return Err(format!("duplicate installed protocol version {version}"));
         }
     }
-    Ok(FutureChainspecs::new(future))
+    Ok(future)
 }
 
 fn dir_name_from_version(version: ProtocolVersion) -> PathBuf {
@@ -741,7 +769,7 @@ setting = "unknown"
         current.network_config.name = "snapshot-test-network".to_string();
         let scan =
             || installed_chainspecs(root.path(), &current.network_config.name, V1_0_0).unwrap();
-        assert!(scan().as_inner().is_empty());
+        assert!(scan().is_empty());
 
         let mut future = current.clone();
         future.protocol_config.version = V1_0_3;
@@ -760,7 +788,7 @@ setting = "unknown"
         )
         .unwrap();
         let one = scan();
-        let found = &one.as_inner()[&V1_0_3];
+        let found = &one[&V1_0_3];
         assert_eq!(found.chainspec_bytes(), fs::read(&path).unwrap());
         assert_eq!(
             found.maybe_genesis_accounts_bytes(),
@@ -773,32 +801,27 @@ setting = "unknown"
         let mut edited = toml::to_string_pretty(&future).unwrap();
         edited.push_str("\n[future_engine]\nunknown_setting = 'preserved verbatim'\n");
         fs::write(&path, &edited).unwrap();
-        assert_eq!(
-            scan().as_inner()[&V1_0_3].chainspec_bytes(),
-            edited.as_bytes()
-        );
+        assert_eq!(scan()[&V1_0_3].chainspec_bytes(), edited.as_bytes());
         assert_eq!(
             next_upgrade(root.path().to_path_buf(), V1_0_0),
             Some(NextUpgrade::from(future.protocol_config.clone()))
         );
         fs::remove_file(path.parent().unwrap().join(CHAINSPEC_GLOBAL_STATE_FILENAME)).unwrap();
-        assert!(scan().as_inner()[&V1_0_3]
-            .maybe_global_state_bytes()
-            .is_none());
+        assert!(scan()[&V1_0_3].maybe_global_state_bytes().is_none());
 
         for version in [V2_2_2, V1_2_3] {
             future.protocol_config.version = version;
             write_chainspec(root.path(), &future);
         }
         assert_eq!(
-            scan().as_inner().keys().copied().collect::<Vec<_>>(),
+            scan().keys().copied().collect::<Vec<_>>(),
             vec![V1_0_3, V1_2_3, V2_2_2]
         );
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
-        assert_eq!(scan().as_inner().len(), 2);
+        assert_eq!(scan().len(), 2);
         fs::remove_dir_all(root.path().join(dir_name_from_version(V1_2_3))).unwrap();
         fs::remove_dir_all(root.path().join(dir_name_from_version(V2_2_2))).unwrap();
-        assert!(scan().as_inner().is_empty());
+        assert!(scan().is_empty());
     }
 
     #[test]
@@ -846,84 +869,176 @@ setting = "unknown"
         );
     }
 
-    #[test]
-    fn chainspec_refresh_is_atomic_and_ignores_out_of_order_scans() {
+    fn test_effect_builder() -> (
+        EffectBuilder<MainEvent>,
+        &'static crate::reactor::Scheduler<MainEvent>,
+    ) {
+        use crate::reactor::{EventQueueHandle, QueueKind, Scheduler};
+        let scheduler = crate::utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+        (
+            EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler)),
+            scheduler,
+        )
+    }
+
+    async fn staged_announcements(
+        effects: Effects<Event>,
+        scheduler: &crate::reactor::Scheduler<MainEvent>,
+    ) -> Vec<ProtocolVersion> {
+        for effect in effects {
+            effect.await;
+        }
+        let mut versions = Vec::new();
+        while scheduler.item_count() > 0 {
+            let ((_, event), _) = scheduler.pop().await;
+            let MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement::StagedProtocol(
+                version,
+            )) = event
+            else {
+                panic!("unexpected staging announcement: {event:?}");
+            };
+            versions.push(version);
+        }
+        versions.sort();
+        versions
+    }
+
+    #[tokio::test]
+    async fn chainspec_refresh_is_atomic_and_ignores_out_of_order_scans() {
         let root = tempfile::tempdir().unwrap();
         let current = Chainspec::random(&mut TestRng::new());
         let mut watcher =
             UpgradeWatcher::new(&current, Config::default(), root.path().join("current")).unwrap();
         let original = watcher.chainspecs.clone().unwrap();
-        let mut updated = original.as_inner().clone();
-        updated.insert(
-            ProtocolVersion::from_parts(u32::MAX, 0, 0),
-            source(&current),
-        );
-        let updated = FutureChainspecs::new(updated);
+        let mut updated = original.clone();
+        let version = ProtocolVersion::from_parts(u32::MAX, 0, 0);
+        updated.insert(version, Arc::new(source(&current)));
+        let (effect_builder, scheduler) = test_effect_builder();
         watcher.metadata_scan_id = 2;
-        watcher.handle_got_chainspecs(2, Ok(updated.clone()));
-        watcher.handle_got_chainspecs(1, Ok(original.as_ref().clone()));
-        assert_eq!(watcher.chainspecs.as_deref(), Ok(&updated));
-        watcher.handle_got_chainspecs(2, Err("unreadable installed chainspec".to_string()));
+        let effects = watcher.handle_got_chainspecs(effect_builder, 2, Ok(updated.clone()));
+        assert_eq!(
+            staged_announcements(effects, scheduler).await,
+            vec![version]
+        );
+        let effects = watcher.handle_got_chainspecs(effect_builder, 1, Ok(original));
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+        assert_eq!(watcher.chainspecs, Ok(updated));
+        let effects = watcher.handle_got_chainspecs(
+            effect_builder,
+            2,
+            Err("unreadable installed chainspec".to_string()),
+        );
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
         assert!(watcher.chainspecs.is_err());
     }
 
     #[tokio::test]
-    async fn future_chainspec_requests_share_the_cached_snapshot_across_refreshes() {
-        use std::collections::BTreeMap;
+    async fn announces_only_newly_staged_versions_after_caching_documents() {
+        let root = tempfile::tempdir().unwrap();
+        let mut current = Chainspec::random(&mut TestRng::new());
+        current.protocol_config.version = V1_0_0;
+        current.network_config.name = "staging-test-network".to_string();
+        let mut future = current.clone();
+        future.protocol_config.version = V1_0_3;
+        let path = write_chainspec(root.path(), &future);
+        let mut watcher =
+            UpgradeWatcher::new(&current, Config::default(), root.path().join("current")).unwrap();
+        let (effect_builder, scheduler) = test_effect_builder();
+        let scan = || installed_chainspecs(root.path(), &current.network_config.name, V1_0_0);
 
+        // Include versions already installed when the node started, then suppress repeated scans.
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert!(watcher.chainspecs.as_ref().unwrap().contains_key(&V1_0_3));
+        assert_eq!(staged_announcements(effects, scheduler).await, vec![V1_0_3]);
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+
+        // Announce every newly staged version, including ones after the nearest upgrade.
+        future.protocol_config.version = V2_2_2;
+        write_chainspec(root.path(), &future);
+        future.protocol_config.version = V1_2_3;
+        write_chainspec(root.path(), &future);
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert_eq!(
+            staged_announcements(effects, scheduler).await,
+            vec![V1_2_3, V2_2_2]
+        );
+
+        // Edits refresh data and removals forget versions without emitting staging events.
+        let edited = format!("{}\n# edited", fs::read_to_string(&path).unwrap());
+        fs::write(&path, &edited).unwrap();
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+        assert_eq!(
+            watcher.chainspecs.as_ref().unwrap()[&V1_0_3].chainspec_bytes(),
+            edited.as_bytes()
+        );
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+        assert!(!watcher.chainspecs.as_ref().unwrap().contains_key(&V1_0_3));
+
+        // Staging a previously removed version is a new staging operation.
+        future.protocol_config.version = V1_0_3;
+        write_chainspec(root.path(), &future);
+        let effects = watcher.handle_got_chainspecs(effect_builder, 0, scan());
+        assert_eq!(staged_announcements(effects, scheduler).await, vec![V1_0_3]);
+    }
+
+    #[tokio::test]
+    async fn future_chainspec_requests_select_and_share_one_cached_source_across_refreshes() {
+        use crate::effect::Responder;
         use futures::channel::oneshot;
-
-        use crate::{
-            effect::Responder,
-            reactor::{EventQueueHandle, QueueKind, Scheduler},
-            utils,
-        };
 
         let root = tempfile::tempdir().unwrap();
         let (mut current, future_source) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let future_version = current.protocol_config.version;
         current.protocol_config.version = V1_0_0;
+        let future_version = V1_0_3;
         let mut watcher =
             UpgradeWatcher::new(&current, Config::default(), root.path().join("current")).unwrap();
         watcher.state = ComponentState::Initialized;
-        watcher.handle_got_chainspecs(
+        let cached = Arc::new(future_source);
+        let (effect_builder, scheduler) = test_effect_builder();
+        let effects = watcher.handle_got_chainspecs(
+            effect_builder,
             0,
-            Ok(FutureChainspecs::new(BTreeMap::from([(
-                future_version,
-                future_source,
-            )]))),
+            Ok(BTreeMap::from([
+                (future_version, cached.clone()),
+                (V1_2_3, Arc::new(source(&current))),
+            ])),
         );
-        let cached = watcher.chainspecs.as_ref().unwrap().clone();
-        let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
-        let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
-        let mut rng = TestRng::new();
+        staged_announcements(effects, scheduler).await;
         let mut received = Vec::new();
-        for _ in 0..2 {
+        let mut rng = TestRng::new();
+        for version in [future_version, future_version, V1_0_0, V2_2_2] {
             let (sender, receiver) = oneshot::channel();
             let effects = watcher.handle_event(
                 effect_builder,
                 &mut rng,
-                Event::Request(UpgradeWatcherRequest::FutureChainspecs(
-                    Responder::without_shutdown(sender),
-                )),
+                Event::Request(UpgradeWatcherRequest::FutureChainspec {
+                    protocol_version: version,
+                    responder: Responder::without_shutdown(sender),
+                }),
             );
             for effect in effects {
                 effect.await;
             }
-            let snapshot = receiver.await.unwrap().unwrap();
-            assert!(Arc::ptr_eq(&cached, &snapshot));
-            received.push(snapshot);
+            let source = receiver.await.unwrap().unwrap();
+            if version == future_version {
+                let source = source.unwrap();
+                assert!(Arc::ptr_eq(&cached, &source));
+                received.push(source);
+            } else {
+                assert!(source.is_none());
+            }
         }
-
         watcher.metadata_scan_id = 1;
-        watcher.handle_got_chainspecs(1, Ok(FutureChainspecs::new(BTreeMap::new())));
-        let refreshed = watcher.chainspecs.as_ref().unwrap();
-        assert!(!Arc::ptr_eq(&cached, refreshed));
-        assert!(refreshed.as_inner().is_empty());
-        for snapshot in received {
-            assert!(Arc::ptr_eq(&cached, &snapshot));
-            assert!(snapshot.as_inner().contains_key(&future_version));
+        let effects = watcher.handle_got_chainspecs(effect_builder, 1, Ok(BTreeMap::new()));
+        assert!(staged_announcements(effects, scheduler).await.is_empty());
+        assert!(watcher.chainspecs.as_ref().unwrap().is_empty());
+        for source in received {
+            assert!(Arc::ptr_eq(&cached, &source));
         }
     }
 

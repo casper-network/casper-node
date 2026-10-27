@@ -16,7 +16,7 @@ use serde::Serialize;
 
 use casper_types::{
     execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
-    PublicKey, Timestamp, Transaction, TransactionHash, U512,
+    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 
 use crate::{
@@ -361,13 +361,19 @@ impl<T: GossipItem> Display for GossiperAnnouncement<T> {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct UpgradeWatcherAnnouncement(pub(crate) Option<NextUpgrade>);
+pub(crate) enum UpgradeWatcherAnnouncement {
+    /// The next scheduled upgrade, if any.
+    NextUpgrade(Option<NextUpgrade>),
+    /// A newly detected staged protocol version.
+    StagedProtocol(ProtocolVersion),
+}
 
 impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            Some(next_upgrade) => write!(f, "read {}", next_upgrade),
-            None => write!(f, "no upgrade staged"),
+        match self {
+            Self::NextUpgrade(Some(next_upgrade)) => write!(f, "read {}", next_upgrade),
+            Self::NextUpgrade(None) => write!(f, "no upgrade staged"),
+            Self::StagedProtocol(version) => write!(f, "protocol {version} staged"),
         }
     }
 }
