@@ -261,7 +261,7 @@ pub(crate) fn validate_evm_transaction_lanes(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{collections::BTreeMap, fs};
 
     use num_rational::Ratio;
     use once_cell::sync::Lazy;
@@ -690,13 +690,37 @@ mod tests {
     }
 
     #[test]
-    fn should_have_valid_production_chainspec() {
+    fn should_have_valid_bundled_chainspecs() {
         init_logging();
 
-        let (chainspec, _raw_bytes): (Chainspec, ChainspecRawBytes) =
-            Loadable::from_resources("production");
+        let validation_results: BTreeMap<_, _> = [
+            "evm",
+            "integration-test",
+            "local",
+            "mainnet",
+            "production",
+            "testnet",
+        ]
+        .into_iter()
+        .map(|network| {
+            let path = RESOURCES_PATH.join(network);
+            let (chainspec, _raw_bytes) = <(Chainspec, ChainspecRawBytes)>::from_path(&path)
+                .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()));
+            (network, validate_chainspec(&chainspec))
+        })
+        .collect();
 
-        assert!(validate_chainspec(&chainspec));
+        assert_eq!(
+            validation_results,
+            BTreeMap::from([
+                ("evm", true),
+                ("integration-test", true),
+                ("local", true),
+                ("mainnet", true),
+                ("production", true),
+                ("testnet", true),
+            ])
+        );
     }
 
     fn check_spec(spec: Chainspec, is_first_version: bool) {
