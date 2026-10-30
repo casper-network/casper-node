@@ -9,12 +9,14 @@ use itertools::Itertools;
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
-    Block, BlockHash, EraId, FinalitySignature, PublicKey, Timestamp, Transaction, TransactionHash,
+    Block, BlockHash, EraId, FinalitySignature, ProtocolVersion, PublicKey, Timestamp, Transaction,
+    TransactionHash,
 };
 
 #[derive(Debug)]
 pub enum Event {
     Initialize,
+    StagedProtocol(ProtocolVersion),
     BlockAdded(Arc<Block>),
     TransactionAccepted(Arc<Transaction>),
     TransactionProcessed {
@@ -41,6 +43,7 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
             Event::Initialize => write!(formatter, "initialize"),
+            Event::StagedProtocol(version) => write!(formatter, "protocol {version} staged"),
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
             Event::TransactionAccepted(transaction_hash) => {
                 write!(formatter, "transaction accepted {}", transaction_hash)

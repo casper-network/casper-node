@@ -12,11 +12,13 @@
 //! reactor, and an external facing http server that exposes various uri routes and converts
 //! HTTP requests into the appropriate component events.
 //!
-//! Currently this component supports two endpoints, each of which takes no arguments:
+//! This component supports the following endpoints, each of which takes no arguments:
 //! /status : a human readable JSON equivalent of the info-get-status rpc method.
 //!     example: curl -X GET 'http://IP:8888/status'
 //! /metrics : time series data collected from the internals of the node being queried.
 //!     example: curl -X GET 'http://IP:8888/metrics'
+//! /validator-changes : changes to validators' status by public key.
+//! /chainspec : source documents loaded by the running node.
 
 mod config;
 mod event;

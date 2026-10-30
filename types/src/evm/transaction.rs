@@ -48,8 +48,11 @@ use crate::{
 const TRANSACTION_KIND_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const EVM_TRANSACTION_MAX_CURRENT_FIELDS: u32 = 16;
 
-// Prague initial-transaction-gas parameters, matching the values revm uses
-// for the configured `EvmSpec::Prague` execution rules.
+/// Osaka's maximum gas limit for an individual transaction (EIP-7825).
+pub const EVM_TRANSACTION_GAS_LIMIT: u64 = 16_777_216;
+
+// Inherited Prague initial-transaction-gas parameters, matching the values revm uses
+// for the configured `EvmSpec::Osaka` execution rules.
 const TX_BASE_GAS: u128 = 21_000;
 const TX_CALLDATA_TOKEN_COST: u128 = 4;
 const TX_CALLDATA_NON_ZERO_BYTE_MULTIPLIER: u128 = 4;
@@ -574,6 +577,13 @@ pub enum EvmTransactionError {
         /// Effective proposer priority fee per gas.
         priority_fee_per_gas: u128,
     },
+    /// The transaction gas limit exceeds the Osaka per-transaction cap.
+    GasLimitExceedsTransactionGasLimit {
+        /// EvmTransaction gas limit.
+        gas_limit: u64,
+        /// Protocol transaction gas limit.
+        transaction_gas_limit: u64,
+    },
     /// The transaction gas limit exceeds the configured EVM block gas limit.
     GasLimitExceedsBlockGasLimit {
         /// EvmTransaction gas limit.
@@ -699,6 +709,13 @@ impl Display for EvmTransactionError {
                     "EVM effective priority fee per gas {priority_fee_per_gas} is unsupported"
                 )
             }
+            EvmTransactionError::GasLimitExceedsTransactionGasLimit {
+                gas_limit,
+                transaction_gas_limit,
+            } => write!(
+                formatter,
+                "EVM gas limit {gas_limit} exceeds transaction gas limit {transaction_gas_limit}"
+            ),
             EvmTransactionError::GasLimitExceedsBlockGasLimit {
                 gas_limit,
                 block_gas_limit,
@@ -1403,7 +1420,7 @@ impl EvmTransaction {
 
     /// Returns the intrinsic gas that must be available before execution can start.
     ///
-    /// The returned `intrinsic_gas` follows the Prague initial-transaction-gas
+    /// The returned `intrinsic_gas` follows the inherited Prague initial-transaction-gas
     /// rules: the 21,000 gas base stipend, calldata token costs,
     /// contract-creation and EIP-3860 initcode costs, EIP-2930 access-list
     /// prepayments of 2,400 gas per address and 1,900 gas per storage key,

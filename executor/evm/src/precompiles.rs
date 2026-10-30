@@ -1,5 +1,7 @@
 //! Casper EVM precompile provider.
 
+use std::collections::BTreeMap;
+
 use casper_storage::{
     eip2935::BLOCK_HASH_HISTORY_ADDRESS,
     eip4788::BEACON_ROOTS_ADDRESS,
@@ -11,7 +13,7 @@ use revm::{
     database_interface::Database,
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{CallInputs, CallScheme, Gas, InstructionResult, InterpreterResult},
-    primitives::{hardfork::SpecId, Address, Bytes, B256},
+    primitives::{hardfork::SpecId, Address, AddressSet, Bytes, B256},
 };
 
 use crate::{db::CasperDb, tx, DbError};
@@ -21,6 +23,20 @@ use crate::{db::CasperDb, tx, DbError};
 pub(crate) struct CasperEvmPrecompiles(EthPrecompiles);
 
 impl CasperEvmPrecompiles {
+    pub(crate) fn addresses(&self) -> BTreeMap<String, casper_types::evm::Address> {
+        self.0
+            .precompiles
+            .inner()
+            .iter()
+            .map(|(address, precompile)| {
+                (
+                    precompile.id().name().to_string(),
+                    tx::from_revm_address(*address),
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn new(spec: SpecId) -> Self {
         Self(EthPrecompiles::new(spec))
     }
@@ -112,7 +128,7 @@ where
     }
 
     #[inline(always)]
-    fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
+    fn warm_addresses(&self) -> &AddressSet {
         self.0.warm_addresses()
     }
 

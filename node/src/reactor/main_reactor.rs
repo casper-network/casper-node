@@ -343,7 +343,7 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement(
+            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement::NextUpgrade(
                 maybe_next_upgrade,
             )) => {
                 // register activation point of upgrade w/ block accumulator
@@ -361,6 +361,16 @@ impl reactor::Reactor for MainReactor {
                     ),
                 )
             }
+            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement::StagedProtocol(
+                protocol_version,
+            )) => reactor::wrap_effects(
+                MainEvent::EventStreamServer,
+                self.event_stream_server.handle_event(
+                    effect_builder,
+                    rng,
+                    event_stream_server::Event::StagedProtocol(protocol_version),
+                ),
+            ),
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),

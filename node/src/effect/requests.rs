@@ -34,8 +34,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId,
-    HashAddr, NextUpgrade, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, Transfer,
+    HashAddr, NextUpgrade, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -1095,13 +1095,31 @@ impl Display for ChainspecRawBytesRequest {
     }
 }
 
-/// UpgradeWatcher component request to get the next scheduled upgrade, if any.
+/// Upgrade watcher requests for upgrade selection and complete chainspec source documents.
 #[derive(Debug, Serialize)]
-pub(crate) struct UpgradeWatcherRequest(pub(crate) Responder<Option<NextUpgrade>>);
+pub(crate) enum UpgradeWatcherRequest {
+    NextUpgrade(Responder<Option<NextUpgrade>>),
+    StagedProtocolVersions(Responder<Result<Vec<ProtocolVersion>, String>>),
+    FutureChainspec {
+        protocol_version: ProtocolVersion,
+        responder: Responder<Result<Option<Arc<ChainspecRawBytes>>, String>>,
+    },
+}
 
 impl Display for UpgradeWatcherRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "get next upgrade")
+        match self {
+            Self::NextUpgrade(_) => write!(f, "get next upgrade"),
+            Self::StagedProtocolVersions(_) => write!(f, "get staged protocol versions"),
+            Self::FutureChainspec {
+                protocol_version, ..
+            } => {
+                write!(
+                    f,
+                    "get future chainspec source documents for {protocol_version}"
+                )
+            }
+        }
     }
 }
 

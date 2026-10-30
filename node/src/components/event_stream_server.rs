@@ -261,7 +261,8 @@ where
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
-                Event::BlockAdded(_)
+                Event::StagedProtocol(_)
+                | Event::BlockAdded(_)
                 | Event::TransactionAccepted(_)
                 | Event::TransactionProcessed { .. }
                 | Event::TransactionsExpired(_)
@@ -285,6 +286,7 @@ where
                     );
                     Effects::new()
                 }
+                Event::StagedProtocol(version) => self.broadcast(SseData::StagedProtocol(version)),
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
                     block: Box::new((*block).clone()),

@@ -52,6 +52,293 @@ use super::{BinaryPort, Metrics as BinaryPortMetrics};
 const ENABLED: bool = true;
 const DISABLED: bool = false;
 
+#[tokio::test]
+async fn staged_protocol_versions_returns_a_snapshot_or_binary_error() {
+    use crate::{
+        reactor::{main_reactor::MainEvent, Scheduler},
+        utils,
+    };
+    use casper_binary_port::{InformationRequest, ResponseType};
+    use casper_types::bytesrepr::FromBytes;
+
+    for versions in [
+        Ok(Vec::new()),
+        Ok(vec![
+            ProtocolVersion::from_parts(2, 2, 0),
+            ProtocolVersion::from_parts(2, 3, 0),
+        ]),
+        Err("unreadable installed chainspec".to_string()),
+    ] {
+        let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+        let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+        let expected = versions.clone();
+        let request = super::handle_info_request(
+            InformationRequest::StagedProtocolVersions,
+            effect_builder,
+            ProtocolVersion::from_parts(2, 1, 0),
+        );
+        let respond = async {
+            let ((_, event), _) = scheduler.pop().await;
+            let MainEvent::UpgradeWatcherRequest(UpgradeWatcherRequest::StagedProtocolVersions(
+                responder,
+            )) = event
+            else {
+                panic!("unexpected staged protocol versions request: {event:?}");
+            };
+            responder.respond(versions).await;
+        };
+        let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            futures::join!(request, respond)
+        })
+        .await
+        .expect("staged protocol versions request should complete");
+        match expected {
+            Ok(expected) => {
+                assert!(response.is_success());
+                assert_eq!(
+                    response.returned_data_type_tag(),
+                    Some(ResponseType::StagedProtocolVersions as u8)
+                );
+                let (actual, remainder) =
+                    Vec::<ProtocolVersion>::from_bytes(response.payload()).unwrap();
+                assert!(remainder.is_empty());
+                assert_eq!(actual, expected);
+            }
+            Err(_) => {
+                assert_eq!(response.error_code(), ErrorCode::InternalError as u16);
+                assert!(response.payload().is_empty());
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn future_chainspec_returns_the_requested_documents_or_binary_error() {
+    use crate::{
+        reactor::{main_reactor::MainEvent, Scheduler},
+        utils,
+    };
+    use casper_binary_port::{InformationRequest, ResponseType};
+    use casper_types::bytesrepr::FromBytes;
+
+    for version in [
+        ProtocolVersion::from_parts(2, 2, 0),
+        ProtocolVersion::from_parts(2, 3, 0),
+    ] {
+        let source = ChainspecRawBytes::new(
+            format!("# source documents for {version}")
+                .into_bytes()
+                .into(),
+            Some(b"# accounts".to_vec().into()),
+            Some(b"# global state".to_vec().into()),
+        );
+        for metadata in [
+            Ok(None),
+            Ok(Some(source)),
+            Err("unreadable installed chainspec".to_string()),
+        ] {
+            let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+            let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+            let expected = metadata.clone();
+            let metadata = metadata.map(|source| source.map(Arc::new));
+            let request = super::handle_info_request(
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+                effect_builder,
+                ProtocolVersion::from_parts(2, 1, 0),
+            );
+            let respond = async {
+                let ((_, event), _) = scheduler.pop().await;
+                match event {
+                    MainEvent::UpgradeWatcherRequest(UpgradeWatcherRequest::FutureChainspec {
+                        protocol_version,
+                        responder,
+                    }) => {
+                        assert_eq!(protocol_version, version);
+                        responder.respond(metadata).await;
+                    }
+                    other => panic!("unexpected future chainspec request: {other:?}"),
+                }
+            };
+            let (response, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+                futures::join!(request, respond)
+            })
+            .await
+            .expect("future chainspec request should complete");
+            match expected {
+                Ok(Some(expected)) => {
+                    assert!(response.is_success());
+                    assert_eq!(
+                        response.returned_data_type_tag(),
+                        Some(ResponseType::ChainspecRawBytes as u8)
+                    );
+                    let (actual, remainder) =
+                        ChainspecRawBytes::from_bytes(response.payload()).unwrap();
+                    assert!(remainder.is_empty());
+                    assert_eq!(actual, expected);
+                }
+                Ok(None) => {
+                    assert!(response.is_success());
+                    assert_eq!(response.returned_data_type_tag(), None);
+                    assert!(response.payload().is_empty());
+                }
+                Err(_) => {
+                    assert!(!response.is_success());
+                    assert_eq!(response.error_code(), ErrorCode::InternalError as u16);
+                    assert!(response.payload().is_empty());
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn oversized_future_chainspec_returns_an_error_and_keeps_connection_open() {
+    use casper_binary_port::{
+        BinaryMessage, BinaryMessageCodec, BinaryResponseAndRequest, CommandHeader,
+        InformationRequest,
+    };
+    use casper_types::bytesrepr::{self, Bytes, ToBytes};
+    use futures::{SinkExt, StreamExt};
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        sync::Mutex,
+    };
+    use tokio_util::codec::{Encoder, Framed};
+
+    use crate::{
+        reactor::{main_reactor::MainEvent, Scheduler},
+        utils,
+    };
+
+    let version = ProtocolVersion::from_parts(2, 2, 2);
+    let source = include_bytes!("../../../../resources/evm/chainspec.toml").to_vec();
+    let snapshot = |source: Vec<u8>| ChainspecRawBytes::new(source.into(), None, None);
+    let request_bytes = |info: InformationRequest, id| {
+        let command = Command::Get(info.try_into().unwrap());
+        let mut payload = CommandHeader::new(command.tag(), id).to_bytes().unwrap();
+        command.write_bytes(&mut payload).unwrap();
+        payload
+    };
+    let mut echoed_request = bytes::BytesMut::new();
+    BinaryMessageCodec::new(u32::MAX)
+        .encode(
+            BinaryMessage::new(request_bytes(
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+                1,
+            )),
+            &mut echoed_request,
+        )
+        .unwrap();
+    let response = BinaryResponse::from_value(snapshot(source.clone()));
+    let max_message_size_bytes =
+        BinaryResponseAndRequest::new(response, Bytes::from(echoed_request.to_vec()))
+            .serialized_length() as u32;
+
+    // The second response exceeds the limit by one byte, although its payload alone fits.
+    let mut larger_source = source.clone();
+    larger_source.push(b' ');
+    let replies = [
+        BinaryResponse::from_value(snapshot(source)),
+        BinaryResponse::from_value(snapshot(larger_source)),
+        BinaryResponse::from_value(version),
+    ];
+    assert!(replies[1].payload().len() < max_message_size_bytes as usize);
+    let config = Arc::new(BinaryPortConfig {
+        max_message_size_bytes,
+        ..Default::default()
+    });
+    let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+    let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (client, server) = futures::join!(
+        TcpStream::connect(listener.local_addr().unwrap()),
+        listener.accept(),
+    );
+    let server = super::handle_client_loop(
+        server.unwrap().0,
+        effect_builder,
+        config.clone(),
+        Arc::new(Mutex::new(
+            super::RateLimiter::new(config.qps_limit, casper_types::TimeDiff::from_seconds(1))
+                .unwrap(),
+        )),
+        super::ConnectionTerminator::new(),
+        super::BinaryRequestTerminationDelayValues::from_config(&config),
+    );
+    let respond = async {
+        for reply in replies {
+            let ((_, event), _) = scheduler.pop().await;
+            let MainEvent::BinaryPort(BinaryPortEvent::HandleRequest { responder, .. }) = event
+            else {
+                panic!("unexpected binary port event: {event:?}");
+            };
+            responder.respond(reply).await;
+        }
+    };
+    let client = async {
+        let mut framed = Framed::new(
+            client.unwrap(),
+            BinaryMessageCodec::new(max_message_size_bytes),
+        );
+        for (id, info) in [
+            (
+                1,
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+            ),
+            (
+                2,
+                InformationRequest::FutureChainspec {
+                    protocol_version: version,
+                },
+            ),
+            (3, InformationRequest::ProtocolVersion),
+        ] {
+            let payload = request_bytes(info, id);
+            let mut expected_request = bytes::BytesMut::new();
+            BinaryMessageCodec::new(max_message_size_bytes)
+                .encode(BinaryMessage::new(payload.clone()), &mut expected_request)
+                .unwrap();
+            framed.send(BinaryMessage::new(payload)).await.unwrap();
+            let message = framed
+                .next()
+                .await
+                .expect("connection must stay open")
+                .unwrap();
+            let response: BinaryResponseAndRequest =
+                bytesrepr::deserialize_from_slice(message.payload()).unwrap();
+            assert_eq!(response.request(), &expected_request[..]);
+            if id == 2 {
+                assert_eq!(response.error_code(), ErrorCode::ResponseTooLarge as u16);
+                assert!(!response.is_success());
+                assert!(response.response().payload().is_empty());
+            } else {
+                assert!(response.is_success());
+                if id == 3 {
+                    assert_eq!(
+                        bytesrepr::deserialize_from_slice::<_, ProtocolVersion>(
+                            response.response().payload()
+                        )
+                        .unwrap(),
+                        version
+                    );
+                }
+            }
+        }
+    };
+    let (server_result, (), ()) = tokio::time::timeout(Duration::from_secs(5), async {
+        futures::join!(server, respond, client)
+    })
+    .await
+    .expect("binary requests should complete");
+    server_result.unwrap();
+}
+
 struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,

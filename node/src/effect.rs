@@ -134,8 +134,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
-    NextUpgrade, Package, PackageAddr, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, U512,
+    NextUpgrade, Package, PackageAddr, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -942,7 +942,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(
-                UpgradeWatcherAnnouncement(maybe_next_upgrade),
+                UpgradeWatcherAnnouncement::NextUpgrade(maybe_next_upgrade),
+                QueueKind::Control,
+            )
+            .await;
+    }
+
+    /// Announces a newly detected staged protocol version.
+    pub(crate) async fn announce_staged_protocol(self, protocol_version: ProtocolVersion)
+    where
+        REv: From<UpgradeWatcherAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                UpgradeWatcherAnnouncement::StagedProtocol(protocol_version),
                 QueueKind::Control,
             )
             .await;
@@ -1938,8 +1951,38 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<UpgradeWatcherRequest> + Send,
     {
-        self.make_request(UpgradeWatcherRequest, QueueKind::Control)
+        self.make_request(UpgradeWatcherRequest::NextUpgrade, QueueKind::Control)
             .await
+    }
+
+    /// Gets all currently staged protocol versions, in ascending order.
+    pub(crate) async fn get_staged_protocol_versions(self) -> Result<Vec<ProtocolVersion>, String>
+    where
+        REv: From<UpgradeWatcherRequest> + Send,
+    {
+        self.make_request(
+            UpgradeWatcherRequest::StagedProtocolVersions,
+            QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Gets source documents for one installed future protocol version.
+    pub(crate) async fn get_future_chainspec(
+        self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<Arc<ChainspecRawBytes>>, String>
+    where
+        REv: From<UpgradeWatcherRequest> + Send,
+    {
+        self.make_request(
+            |responder| UpgradeWatcherRequest::FutureChainspec {
+                protocol_version,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 
     /// Requests a query be executed on the Contract Runtime component.

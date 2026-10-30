@@ -241,7 +241,7 @@ fn assert_preinstalls(
         assert_eq!(
             read(state, root, bytecode_key(code)),
             Some(StoredValue::ByteCode(ByteCode::new(
-                ByteCodeKind::EvmPrague,
+                ByteCodeKind::EvmOsaka,
                 code.clone(),
             ))),
             "{address} runtime",
