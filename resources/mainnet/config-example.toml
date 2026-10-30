@@ -631,6 +631,24 @@ timestamp_leeway = '2 seconds'
 expiry_check_interval = '1 minute'
 
 
+# =================================================
+# Configuration options for the EVM transaction batcher
+# =================================================
+[evm_transaction_batcher]
+
+# The maximum number of transactions in an EVM transaction batch: a client's consecutive EVM
+# transactions are batched in runs of up to this many, and a batch announced by a peer with more
+# transactions than this is ignored. Nodes with a lower value than their peers will not fetch the
+# larger batches those peers gossip. Must be between 2 and 100.
+max_batch_size = 10
+
+# The maximum number of EVM transaction batches announced by peers whose transactions are being
+# fetched at the same time. Partially fetched batches are held in memory, so this bounds how much
+# memory peers can make the node use for them. A batch announced while this many are being fetched
+# is ignored; its transactions can still arrive by ordinary transaction gossip. 0 means unlimited.
+max_in_flight_batch_fetches = 10
+
+
 # ==============================================
 # Configuration options for the diagnostics port
 # ==============================================

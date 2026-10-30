@@ -3,6 +3,7 @@
 pub(crate) mod appendable_block;
 mod block;
 mod chunkable;
+mod evm_transaction_batch;
 mod exit_code;
 mod max_ttl;
 mod node_config;
@@ -30,6 +31,13 @@ pub(crate) use block::{
 pub use block::{BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
+#[cfg(test)]
+pub(crate) use evm_transaction_batch::EvmTransactionBatchError;
+pub(crate) use evm_transaction_batch::{
+    check_follows as check_evm_transaction_batch_follows,
+    order_key as evm_transaction_batch_order_key, BatchedTransaction, EvmTransactionBatch,
+    EvmTransactionBatchId, EVM_TRANSACTION_BATCH_SIZE_CEILING, MIN_EVM_TRANSACTION_BATCH_SIZE,
+};
 pub use exit_code::ExitCode;
 pub(crate) use max_ttl::MaxTtl;
 pub use node_config::{NodeConfig, SyncHandling};

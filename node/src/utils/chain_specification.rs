@@ -9,8 +9,9 @@ use tracing::{error, info, warn};
 
 use casper_types::{
     evm, system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName,
-    CoreConfig, EvmConfig, ProtocolConfig, TimeDiff, TransactionConfig, TransactionV1Config,
-    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINIMUM_WEI_PER_MOTE, MINT_LANE_ID,
+    CoreConfig, EvmConfig, ProtocolConfig, TimeDiff, TransactionConfig, TransactionLaneDefinition,
+    TransactionV1Config, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINIMUM_WEI_PER_MOTE,
+    MINT_LANE_ID,
 };
 
 use crate::components::network;
@@ -232,16 +233,24 @@ pub(crate) fn validate_transaction_config(
 
 /// Validates `evm.transaction_lanes` parameters.
 ///
-/// EVM lane ids must be unique among themselves, and must not collide with any of the
-/// reserved native lane ids or any configured wasm lane id. There is no numeric convention
-/// enforced on EVM lane ids beyond that; chainspec authors are free to pick any ids that
-/// don't collide with the native/wasm lanes.
+/// At most one EVM lane may be defined. Blocks execute lane by lane, so with several EVM lanes a
+/// sender's transactions could execute out of nonce order. The EVM lane id must not collide with
+/// any of the reserved native lane ids or any configured wasm lane id. There is no numeric
+/// convention enforced on the EVM lane id beyond that.
 pub(crate) fn validate_evm_transaction_lanes(
     evm_config: &EvmConfig,
     transaction_v1_config: &TransactionV1Config,
 ) -> bool {
-    if evm_config.enabled && evm_config.transaction_lanes().is_empty() {
+    let evm_lanes = evm_config.transaction_lanes();
+    if evm_config.enabled && evm_lanes.is_empty() {
         error!("EVM is enabled but evm.transaction_lanes chainspec config is empty.");
+        return false;
+    }
+    if evm_lanes.len() > 1 {
+        error!(
+            "evm.transaction_lanes chainspec config must define a single lane, found {}.",
+            evm_lanes.len()
+        );
         return false;
     }
 
@@ -252,26 +261,17 @@ pub(crate) fn validate_evm_transaction_lanes(
             .iter()
             .map(|lane| lane.id()),
     );
-
-    let mut seen_evm_lane_ids = HashSet::new();
-    for evm_lane_config in evm_config.transaction_lanes().iter() {
-        let lane_id = evm_lane_config.id();
-        if seen_evm_lane_ids.contains(&lane_id) {
-            error!(
-                "Found evm transaction lane configuration that has non-unique id. Duplicate value: {}",
-                lane_id
-            );
-            return false;
-        }
-        seen_evm_lane_ids.insert(lane_id);
-        if other_lane_ids.contains(&lane_id) {
-            error!(
-                "One of the defined evm transaction lanes has declared an id that collides with \
-                 a native or wasm lane id. Offending lane id: {}",
-                lane_id
-            );
-            return false;
-        }
+    if let Some(lane_id) = evm_lanes
+        .iter()
+        .map(TransactionLaneDefinition::id)
+        .find(|lane_id| other_lane_ids.contains(lane_id))
+    {
+        error!(
+            "The evm transaction lane has declared an id that collides with a native or wasm \
+             lane id. Offending lane id: {}",
+            lane_id
+        );
+        return false;
     }
     true
 }
@@ -986,18 +986,32 @@ mod tests {
     }
 
     #[test]
-    fn should_pass_with_valid_evm_lanes() {
+    fn should_pass_with_valid_evm_lane() {
         let evm_config = evm_config_with_lanes(
             true,
-            vec![
-                TransactionLaneDefinition::new(100, 1000, 1000, 1_000_000, 10),
-                TransactionLaneDefinition::new(101, 2000, 2000, 2_000_000, 5),
-            ],
+            vec![TransactionLaneDefinition::new(
+                100, 1000, 1000, 1_000_000, 10,
+            )],
         );
         assert!(validate_evm_transaction_lanes(
             &evm_config,
             &TransactionV1Config::default()
         ));
+    }
+
+    #[test]
+    fn should_fail_with_more_than_one_evm_lane() {
+        let lanes = vec![
+            TransactionLaneDefinition::new(100, 1000, 1000, 1_000_000, 10),
+            TransactionLaneDefinition::new(101, 2000, 2000, 2_000_000, 5),
+        ];
+        for enabled in [true, false] {
+            let evm_config = evm_config_with_lanes(enabled, lanes.clone());
+            assert!(!validate_evm_transaction_lanes(
+                &evm_config,
+                &TransactionV1Config::default()
+            ));
+        }
     }
 
     #[test]
@@ -1011,21 +1025,6 @@ mod tests {
             )],
         );
         assert!(validate_evm_transaction_lanes(
-            &evm_config,
-            &TransactionV1Config::default()
-        ));
-    }
-
-    #[test]
-    fn should_fail_when_evm_lanes_have_duplicate_ids() {
-        let evm_config = evm_config_with_lanes(
-            true,
-            vec![
-                TransactionLaneDefinition::new(100, 1000, 1000, 1_000_000, 10),
-                TransactionLaneDefinition::new(100, 2000, 2000, 2_000_000, 5),
-            ],
-        );
-        assert!(!validate_evm_transaction_lanes(
             &evm_config,
             &TransactionV1Config::default()
         ));

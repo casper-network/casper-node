@@ -21,6 +21,10 @@ pub(crate) enum Event {
     Request(TransactionBufferRequest),
     ReceiveTransactionGossiped(TransactionId),
     StoredTransaction(TransactionId, Option<Box<Transaction>>),
+    /// A gossiped EVM transaction batch, in nonce order.
+    ReceiveTransactionBatchGossiped(Vec<TransactionId>),
+    /// The transactions of a gossiped EVM transaction batch, in nonce order.
+    StoredTransactionBatch(Vec<(TransactionId, Option<Box<Transaction>>)>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Arc<BlockV2>),
     VersionedBlock(Arc<Block>),
@@ -54,6 +58,20 @@ impl Display for Event {
                     "{} stored: {:?}",
                     transaction_id,
                     maybe_transaction.is_some()
+                )
+            }
+            Event::ReceiveTransactionBatchGossiped(transaction_ids) => {
+                write!(
+                    formatter,
+                    "receive transaction batch gossiped, {} transactions",
+                    transaction_ids.len()
+                )
+            }
+            Event::StoredTransactionBatch(transactions) => {
+                write!(
+                    formatter,
+                    "transaction batch stored, {} transactions",
+                    transactions.len()
                 )
             }
             Event::BlockProposed(_) => {
