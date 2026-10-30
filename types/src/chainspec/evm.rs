@@ -91,6 +91,12 @@ pub struct EvmConfig {
     pub base_fee: u64,
     /// Number of wei represented by one mote.
     pub wei_per_mote: u64,
+    /// How far ahead of a sender's current nonce an incoming EVM transaction's nonce may be.
+    ///
+    /// The transaction acceptor admits nonces in `current..=current + max_nonce_gap`, so a
+    /// sender can queue several consecutive transactions before the earlier ones execute. `0`
+    /// only admits the sender's next nonce.
+    pub max_nonce_gap: u64,
     /// Lane configurations for EVM transactions.
     #[serde(
         serialize_with = "transaction_lane_definitions_to_vec",
@@ -114,6 +120,7 @@ impl Default for EvmConfig {
             block_gas_limit: 30_000_000,
             base_fee: 0,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
+            max_nonce_gap: 0,
             transaction_lanes: Vec::new(),
             preinstalls: Vec::new(),
         }
@@ -335,7 +342,8 @@ impl ToBytes for EvmConfig {
             + self.spec.serialized_length()
             + self.block_gas_limit.serialized_length()
             + self.base_fee.serialized_length()
-            + self.wei_per_mote.serialized_length();
+            + self.wei_per_mote.serialized_length()
+            + self.max_nonce_gap.serialized_length();
         let base = {
             let transaction_lanes_as_vecs: Vec<Vec<u64>> = self
                 .transaction_lanes
@@ -354,6 +362,7 @@ impl ToBytes for EvmConfig {
         self.block_gas_limit.write_bytes(writer)?;
         self.base_fee.write_bytes(writer)?;
         self.wei_per_mote.write_bytes(writer)?;
+        self.max_nonce_gap.write_bytes(writer)?;
         let transaction_lanes_as_vecs: Vec<Vec<u64>> = self
             .transaction_lanes
             .iter()
@@ -372,6 +381,7 @@ impl FromBytes for EvmConfig {
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
         let (base_fee, remainder) = u64::from_bytes(remainder)?;
         let (wei_per_mote, remainder) = u64::from_bytes(remainder)?;
+        let (max_nonce_gap, remainder) = u64::from_bytes(remainder)?;
         let (raw_transaction_lanes, remainder): (Vec<Vec<u64>>, &[u8]) =
             FromBytes::from_bytes(remainder)?;
         let transaction_lanes: Result<Vec<TransactionLaneDefinition>, _> = raw_transaction_lanes
@@ -388,6 +398,7 @@ impl FromBytes for EvmConfig {
                 block_gas_limit,
                 base_fee,
                 wei_per_mote,
+                max_nonce_gap,
                 transaction_lanes: transaction_lanes.map_err(|_| bytesrepr::Error::Formatting)?,
                 preinstalls,
             },
@@ -603,8 +614,10 @@ mod tests {
     }
 
     fn config_with_lanes() -> EvmConfig {
-        let mut config = EvmConfig::default();
-        config.enabled = true;
+        let mut config = EvmConfig {
+            enabled: true,
+            ..Default::default()
+        };
         config.set_transaction_lanes(vec![
             TransactionLaneDefinition::new(100, 1_000, 100, 1_000_000, 5),
             TransactionLaneDefinition::new(101, 10_000, 1_000, 10_000_000, 2),

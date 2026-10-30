@@ -8,7 +8,9 @@ use crate::{
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        BatchedTransaction, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk,
+    },
     utils::Source,
     FetcherConfig, NodeRng,
 };
@@ -23,6 +25,7 @@ pub(super) struct Fetchers {
     finality_signature_fetcher: Fetcher<FinalitySignature>,
     legacy_deploy_fetcher: Fetcher<LegacyDeploy>,
     transaction_fetcher: Fetcher<Transaction>,
+    batched_transaction_fetcher: Fetcher<BatchedTransaction>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
 }
@@ -44,6 +47,11 @@ impl Fetchers {
             legacy_deploy_fetcher: Fetcher::new("legacy_deploy", config, metrics_registry)?,
             block_fetcher: Fetcher::new("block", config, metrics_registry)?,
             transaction_fetcher: Fetcher::new("transaction", config, metrics_registry)?,
+            batched_transaction_fetcher: Fetcher::new(
+                "batched_transaction",
+                config,
+                metrics_registry,
+            )?,
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
             block_execution_results_or_chunk_fetcher: Fetcher::new(
                 "block_execution_results_or_chunk_fetcher",
@@ -127,6 +135,16 @@ impl Fetchers {
             MainEvent::TransactionFetcherRequest(request) => reactor::wrap_effects(
                 MainEvent::TransactionFetcher,
                 self.transaction_fetcher
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
+            MainEvent::BatchedTransactionFetcher(event) => reactor::wrap_effects(
+                MainEvent::BatchedTransactionFetcher,
+                self.batched_transaction_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::BatchedTransactionFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::BatchedTransactionFetcher,
+                self.batched_transaction_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(

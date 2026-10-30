@@ -86,7 +86,10 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     failpoints::FailpointActivation,
-    types::{BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk},
+    types::{
+        BatchedTransaction, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap,
+        TrieOrChunk,
+    },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
@@ -1035,6 +1038,7 @@ where
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
         + From<fetcher::Event<Transaction>>
+        + From<fetcher::Event<BatchedTransaction>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
         + From<fetcher::Event<ApprovalsHashes>>
@@ -1093,6 +1097,15 @@ where
         }
         NetResponse::BlockExecutionResults(ref serialized_item) => {
             handle_fetch_response::<R, BlockExecutionResultsOrChunk>(
+                reactor,
+                effect_builder,
+                rng,
+                sender,
+                serialized_item,
+            )
+        }
+        NetResponse::BatchedTransaction(ref serialized_item) => {
+            handle_fetch_response::<R, BatchedTransaction>(
                 reactor,
                 effect_builder,
                 rng,

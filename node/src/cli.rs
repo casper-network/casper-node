@@ -258,6 +258,10 @@ impl Cli {
             Cli::ValidateConfig { config } => {
                 info!(build_version = %crate::VERSION_STRING.as_str(), config_file = ?config, "validating config file");
                 match Self::init(&config, vec![]) {
+                    Ok(reactor_config) if !validate_config(reactor_config.value()) => {
+                        error!(build_version = %crate::VERSION_STRING.as_str(), config_file = ?config, "config file is not valid");
+                        bail!("invalid config")
+                    }
                     Ok(_config) => {
                         info!(build_version = %crate::VERSION_STRING.as_str(), config_file = ?config, "config file is valid");
                         Ok(ExitCode::Success as i32)

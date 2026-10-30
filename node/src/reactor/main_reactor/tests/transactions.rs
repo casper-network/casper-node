@@ -1,4 +1,5 @@
 use super::{fixture::TestFixture, *};
+use crate::effect::EffectExt;
 use crate::{
     components::contract_runtime::ExecutionPreState,
     testing::LARGE_WASM_LANE_ID,
@@ -39,8 +40,7 @@ use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     evm,
     execution::ExecutionResultV1,
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError, TransactionLaneDefinition,
-    DEFAULT_WEI_PER_MOTE,
+    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -1338,6 +1338,7 @@ fn evm_test_config(chain_id: u64) -> EvmConfig {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -1717,11 +1718,8 @@ async fn should_not_fatally_exit_for_competing_evm_transactions_with_the_same_no
         .execution_result
         .expect("second competing EVM transaction should have an execution result");
 
-    let expected_error = EvmTransactionError::InvalidNonce {
-        expected: NONCE + 1,
-        actual: NONCE,
-    }
-    .to_string();
+    // Execution fails the out of sequence transaction before it reaches revm, with no cost.
+    let expected_error = evm::HaltReason::Unknown.message().to_string();
     let first_error = first_execution_result.error_message();
     let second_error = second_execution_result.error_message();
     assert!(
@@ -1855,6 +1853,7 @@ async fn should_execute_evm_transaction_and_store_receipt() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -1981,6 +1980,7 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![
             TransactionLaneDefinition::new(
                 SMALL_LANE_ID,
@@ -2046,6 +2046,251 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
         .await;
 }
 
+/// Proves that a proposer packs a sender's consecutive EVM transactions into one block in nonce
+/// order regardless of the order in which it received them, and that a transaction leaving a
+/// nonce gap fails without being charged or advancing the sender's nonce.
+#[tokio::test]
+async fn should_propose_evm_transactions_in_nonce_order_and_fail_nonce_gaps() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Osaka,
+        block_gas_limit: 30_000_000,
+        base_fee: 1,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 16,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
+        preinstalls: Vec::new(),
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config.clone())
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let recipient = evm::Address::new([0x22; evm::ADDRESS_LENGTH]);
+    let transaction_with_nonce = |nonce| {
+        Transaction::from(signed_evm_value_transfer_transaction_with_nonce(
+            evm_config.chain_id,
+            nonce,
+            recipient,
+            21_000,
+            0,
+        ))
+    };
+    let consecutive: Vec<_> = (0..3).map(transaction_with_nonce).collect();
+    let gapped = transaction_with_nonce(4);
+    let sender = consecutive[0]
+        .as_evm()
+        .expect("should be an EVM transaction")
+        .from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+
+    let submitted = [
+        consecutive[2].clone(),
+        gapped.clone(),
+        consecutive[1].clone(),
+        consecutive[0].clone(),
+    ];
+    for transaction in &submitted {
+        test.fixture.inject_transaction(transaction.clone()).await;
+    }
+    for transaction in &submitted {
+        test.fixture
+            .run_until_executed_transaction(&transaction.hash(), Duration::from_secs(30))
+            .await;
+    }
+
+    let evm_result = |test: &SingleTransactionTestCase, transaction: &Transaction| {
+        let ExecutionResult::Evm(result) = test
+            .fixture
+            .transaction_execution_result(&transaction.hash())
+        else {
+            panic!("expected EVM execution result");
+        };
+        result
+    };
+    for transaction in &consecutive {
+        assert_eq!(
+            evm_result(&test, transaction).receipt.status,
+            evm::ReceiptStatus::Success
+        );
+    }
+    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+    let consecutive_block_heights: BTreeSet<u64> = consecutive
+        .iter()
+        .map(|transaction| {
+            runner
+                .main_reactor()
+                .storage()
+                .read_execution_info(transaction.hash())
+                .expect("transaction should have been executed")
+                .block_height
+        })
+        .collect();
+    assert_eq!(
+        consecutive_block_heights.len(),
+        1,
+        "consecutive transactions held by the proposer should share a block"
+    );
+    let gapped_result = evm_result(&test, &gapped);
+    assert_eq!(
+        gapped_result.receipt.status,
+        evm::ReceiptStatus::Halt(evm::HaltReason::Unknown)
+    );
+    assert_eq!(gapped_result.receipt.gas_used, 0);
+    assert_eq!(gapped_result.cost, U512::zero());
+
+    let highest_block_height = test.fixture.highest_complete_block().height();
+    let account = evm_account_at(&mut test.fixture, highest_block_height, sender);
+    assert_eq!(account.nonce(), 3);
+}
+
+/// Proves that a sender's consecutive EVM transactions submitted by a client to one node reach
+/// the other node as one EVM transaction batch, whose transactions it fetches one at a time, and
+/// are proposed in one block.
+#[tokio::test]
+async fn should_gossip_client_evm_transactions_as_a_batch() {
+    let evm_config = EvmConfig {
+        enabled: true,
+        chain_id: 0x4353_50FF,
+        spec: EvmSpec::Osaka,
+        block_gas_limit: 30_000_000,
+        base_fee: 1,
+        wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 16,
+        transaction_lanes: vec![TransactionLaneDefinition::new(
+            100,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            100,
+        )],
+        preinstalls: Vec::new(),
+    };
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config.clone())
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let recipient = evm::Address::new([0x22; evm::ADDRESS_LENGTH]);
+    let transactions: Vec<_> = (0..3)
+        .map(|nonce| {
+            Transaction::from(signed_evm_value_transfer_transaction_with_nonce(
+                evm_config.chain_id,
+                nonce,
+                recipient,
+                21_000,
+                0,
+            ))
+        })
+        .collect();
+    let sender = transactions[0]
+        .as_evm()
+        .expect("should be an EVM transaction")
+        .from();
+    seed_evm_account(&mut test.fixture, sender, U512::from(EVM_INITIAL_BALANCE));
+    // The acceptor reads the latest block's state, so let the seeded account land in a block.
+    let next_height = test.fixture.highest_complete_block().height() + 1;
+    test.fixture
+        .run_until_block_height(next_height, ONE_MIN)
+        .await;
+
+    // Submit the whole run, in nonce order, to one node only.
+    let origin = *test
+        .fixture
+        .network
+        .nodes()
+        .keys()
+        .next()
+        .expect("should have a node");
+    for transaction in &transactions {
+        let transaction = transaction.clone();
+        test.fixture
+            .network
+            .nodes_mut()
+            .get_mut(&origin)
+            .expect("origin node should exist")
+            .process_injected_effects(|effect_builder| {
+                effect_builder.try_accept_transaction(transaction).ignore()
+            })
+            .await;
+    }
+    for transaction in &transactions {
+        test.fixture
+            .run_until_executed_transaction(&transaction.hash(), Duration::from_secs(60))
+            .await;
+    }
+
+    for (node_id, runner) in test.fixture.network.nodes() {
+        let storage = runner.main_reactor().storage();
+        let block_heights: BTreeSet<u64> = transactions
+            .iter()
+            .map(|transaction| {
+                let execution_info = storage
+                    .read_execution_info(transaction.hash())
+                    .expect("transaction should have been executed");
+                let ExecutionResult::Evm(result) = execution_info
+                    .execution_result
+                    .expect("execution result should be stored")
+                else {
+                    panic!("expected EVM execution result");
+                };
+                assert_eq!(result.receipt.status, evm::ReceiptStatus::Success);
+                execution_info.block_height
+            })
+            .collect();
+        assert_eq!(
+            block_heights.len(),
+            1,
+            "the run should be proposed in one block"
+        );
+        if *node_id != origin {
+            assert!(
+                runner
+                    .main_reactor()
+                    .evm_transaction_batch_gossiper
+                    .items_received()
+                    > 0,
+                "the other node should have received the run as a batch"
+            );
+            assert_eq!(
+                runner
+                    .main_reactor()
+                    .evm_transaction_batcher
+                    .fetched_batches(),
+                1,
+                "the other node should have fetched all of the batch's transactions"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_sender_again() {
     let evm_config = EvmConfig {
@@ -2055,6 +2300,7 @@ async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2183,6 +2429,7 @@ async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2282,6 +2529,7 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2352,6 +2600,7 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2418,6 +2667,7 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2502,6 +2752,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2619,6 +2870,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2698,6 +2950,7 @@ async fn should_not_seed_evm_accounts_at_genesis() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2758,6 +3011,7 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
@@ -2839,6 +3093,7 @@ async fn should_reject_native_transfer_to_evm_contract_address() {
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: vec![TransactionLaneDefinition::new(
             100,
             u64::MAX,
