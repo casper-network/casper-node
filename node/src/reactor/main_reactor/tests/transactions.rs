@@ -1334,6 +1334,7 @@ fn evm_test_config(chain_id: u64) -> EvmConfig {
         enabled: true,
         chain_id,
         spec: EvmSpec::Prague,
+        preinstalls: Default::default(),
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -1861,6 +1862,7 @@ async fn should_execute_evm_transaction_and_store_receipt() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -1989,6 +1991,7 @@ async fn should_assign_evm_transactions_to_correctly_sized_lanes() {
             ),
             TransactionLaneDefinition::new(LARGE_LANE_ID, u64::MAX, u64::MAX, u64::MAX, 50),
         ],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2059,6 +2062,7 @@ async fn should_reduce_total_supply_for_evm_burns_and_rounding_without_debiting_
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2180,6 +2184,7 @@ async fn should_prelink_ed25519_proposer_coinbase_for_evm_execution() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2278,6 +2283,7 @@ async fn should_apply_casper_fee_and_refund_handling_to_evm_transaction() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2347,6 +2353,7 @@ async fn should_apply_no_refund_to_eip1559_max_fee_headroom() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2412,6 +2419,7 @@ async fn should_require_balance_for_eip1559_signed_maximum() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2495,6 +2503,7 @@ async fn should_apply_refund_policy_to_evm_revert_and_halt() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2611,6 +2620,7 @@ async fn should_reject_evm_transaction_when_value_and_fee_exceed_balance() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2689,6 +2699,7 @@ async fn should_not_seed_evm_accounts_at_genesis() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config =
         SingleTransactionTestCase::default_test_config().with_evm_config(evm_config.clone());
@@ -2748,6 +2759,7 @@ async fn should_transfer_to_evm_address_with_native_transfer() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2828,6 +2840,7 @@ async fn should_reject_native_transfer_to_evm_contract_address() {
             u64::MAX,
             100,
         )],
+        preinstalls: Default::default(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
