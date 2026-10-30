@@ -614,8 +614,10 @@ mod tests {
     }
 
     fn config_with_lanes() -> EvmConfig {
-        let mut config = EvmConfig::default();
-        config.enabled = true;
+        let mut config = EvmConfig {
+            enabled: true,
+            ..Default::default()
+        };
         config.set_transaction_lanes(vec![
             TransactionLaneDefinition::new(100, 1_000, 100, 1_000_000, 5),
             TransactionLaneDefinition::new(101, 10_000, 1_000, 10_000_000, 2),

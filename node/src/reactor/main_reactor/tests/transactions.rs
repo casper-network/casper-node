@@ -2054,7 +2054,7 @@ async fn should_propose_evm_transactions_in_nonce_order_and_fail_nonce_gaps() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2066,6 +2066,7 @@ async fn should_propose_evm_transactions_in_nonce_order_and_fail_nonce_gaps() {
             u64::MAX,
             100,
         )],
+        preinstalls: Vec::new(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
@@ -2168,7 +2169,7 @@ async fn should_gossip_client_evm_transactions_as_a_batch() {
     let evm_config = EvmConfig {
         enabled: true,
         chain_id: 0x4353_50FF,
-        spec: EvmSpec::Prague,
+        spec: EvmSpec::Osaka,
         block_gas_limit: 30_000_000,
         base_fee: 1,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
@@ -2180,6 +2181,7 @@ async fn should_gossip_client_evm_transactions_as_a_batch() {
             u64::MAX,
             100,
         )],
+        preinstalls: Vec::new(),
     };
     let config = SingleTransactionTestCase::default_test_config()
         .with_evm_config(evm_config.clone())
