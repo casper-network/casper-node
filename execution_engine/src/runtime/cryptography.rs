@@ -1,11 +1,12 @@
-//! Cryptography module containing hashing functions used internally
-//! by the execution engine
+//! Hashing and curve operations used internally by the execution engine.
 
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
 use sha2::{Digest, Sha256};
+
+pub mod alt_bn128;
 
 /// The number of bytes in a hash.
 /// All hash functions in this module have a digest length of 32.
