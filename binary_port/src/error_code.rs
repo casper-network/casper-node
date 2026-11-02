@@ -714,7 +714,7 @@ mod tests {
         let code = ErrorCode::from(error);
 
         assert_eq!(code, ErrorCode::InvalidTransactionEvmNonceTooFarAhead);
-        assert_eq!(code as u16, 124);
+        assert_eq!(code as u16, 126);
     }
 
     #[test]
