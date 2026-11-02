@@ -61,9 +61,10 @@ pub struct CallRequest {
 /// Validation mode for unsigned EVM calls.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CallValidation {
-    /// Enforce EVM balance, nonce, chain-id, base-fee, and block-gas-limit checks.
+    /// Enforce EVM balance, nonce, chain-id, base-fee, transaction-cap, and block-gas-limit checks.
     Checked,
-    /// Disable EVM transaction validation checks for local simulations or controlled tests.
+    /// Bypass balance, nonce, base-fee, and transaction-cap checks for local simulations.
+    /// The block gas limit and Osaka interpreter/precompile rules still apply.
     UncheckedSimulation,
 }
 

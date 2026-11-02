@@ -94,6 +94,9 @@ pub enum SseData {
         era_id: EraId,
         execution_effects: Effects,
     },
+    /// A protocol version was newly detected in the node's staged upgrades.
+    /// Source documents can be fetched with the binary-port FutureChainspec request.
+    StagedProtocol(ProtocolVersion),
     /// The node is about to shut down.
     Shutdown,
 }
@@ -267,6 +270,7 @@ fn map_server_sent_event(
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_)
+        | &SseData::StagedProtocol(_)
         | &SseData::Shutdown => Some(Ok(WarpServerSentEvent::default()
             .json_data(&event.data)
             .unwrap_or_else(|error| {

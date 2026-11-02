@@ -193,3 +193,34 @@ impl GetStatusResult {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_preserves_upgrade_information_without_source_documents() {
+        let next_upgrade = NextUpgrade::new(
+            casper_types::ActivationPoint::EraId(EraId::new(100)),
+            ProtocolVersion::from_parts(2, 2, 0),
+        );
+        let feed = StatusFeed::new(
+            None,
+            BTreeMap::new(),
+            ChainspecInfo::new("casper-test".to_string(), Some(next_upgrade)),
+            None,
+            Duration::ZERO,
+            ReactorState::KeepUp,
+            Timestamp::zero(),
+            AvailableBlockRange::new(0, 0),
+            BlockSynchronizerStatus::new(None, None),
+            Digest::default(),
+            None,
+        );
+        let status = GetStatusResult::new(feed, ProtocolVersion::from_parts(2, 1, 0));
+        assert_eq!(status.next_upgrade, Some(next_upgrade));
+        let json = serde_json::to_value(status).unwrap();
+        assert!(json.get("chainspecs").is_none());
+        assert_eq!(json["chainspec_name"], "casper-test");
+    }
+}

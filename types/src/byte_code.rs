@@ -135,7 +135,7 @@ impl ByteCodeAddr {
                 ByteCodeKind::V1CasperWasm => Ok(ByteCodeAddr::V1CasperWasm(byte_code_addr)),
                 ByteCodeKind::V2CasperWasm => Ok(ByteCodeAddr::V2CasperWasm(byte_code_addr)),
                 ByteCodeKind::Empty => Ok(ByteCodeAddr::Empty),
-                ByteCodeKind::EvmPrague => Err(FromStrError::InvalidPrefix),
+                ByteCodeKind::EvmOsaka => Err(FromStrError::InvalidPrefix),
             };
         }
 
@@ -188,7 +188,7 @@ impl FromBytes for ByteCodeAddr {
                 let (addr, remainder) = HashAddr::from_bytes(remainder)?;
                 Ok((ByteCodeAddr::V2CasperWasm(addr), remainder))
             }
-            ByteCodeKind::EvmPrague => Err(Error::Formatting),
+            ByteCodeKind::EvmOsaka => Err(Error::Formatting),
         }
     }
 }
@@ -422,19 +422,19 @@ pub enum ByteCodeKind {
     V1CasperWasm = 1,
     /// Byte code to be executed with the version 2 Casper execution engine.
     V2CasperWasm = 2,
-    /// Prague-compatible EVM bytecode.
+    /// Osaka-compatible EVM bytecode.
     ///
-    /// This variant records bytecode that is valid for the Prague EVM rules.
+    /// This variant records bytecode that is valid for the Osaka EVM rules.
     /// When support for a future bytecode-affecting EVM spec is added,
     /// introduce a new `Evm<Spec>` variant instead of changing the meaning
     /// of this one.
-    EvmPrague = 3,
+    EvmOsaka = 3,
 }
 
 impl ByteCodeKind {
     /// Returns whether this bytecode kind is executable by the EVM executor.
     pub fn is_evm(self) -> bool {
-        matches!(self, ByteCodeKind::EvmPrague)
+        matches!(self, ByteCodeKind::EvmOsaka)
     }
 }
 
@@ -465,8 +465,8 @@ impl FromBytes for ByteCodeKind {
             byte_code_kind if byte_code_kind == ByteCodeKind::V2CasperWasm as u8 => {
                 Ok((ByteCodeKind::V2CasperWasm, remainder))
             }
-            byte_code_kind if byte_code_kind == ByteCodeKind::EvmPrague as u8 => {
-                Ok((ByteCodeKind::EvmPrague, remainder))
+            byte_code_kind if byte_code_kind == ByteCodeKind::EvmOsaka as u8 => {
+                Ok((ByteCodeKind::EvmOsaka, remainder))
             }
             _ => Err(Error::Formatting),
         }
@@ -485,8 +485,8 @@ impl Display for ByteCodeKind {
             ByteCodeKind::V2CasperWasm => {
                 write!(f, "v2-casper-wasm")
             }
-            ByteCodeKind::EvmPrague => {
-                write!(f, "evm-prague")
+            ByteCodeKind::EvmOsaka => {
+                write!(f, "evm-osaka")
             }
         }
     }
@@ -499,7 +499,7 @@ impl Distribution<ByteCodeKind> for Standard {
             0 => ByteCodeKind::Empty,
             1 => ByteCodeKind::V1CasperWasm,
             2 => ByteCodeKind::V2CasperWasm,
-            3 => ByteCodeKind::EvmPrague,
+            3 => ByteCodeKind::EvmOsaka,
             _ => unreachable!(),
         }
     }
@@ -585,6 +585,18 @@ mod tests {
 
     use super::*;
     use crate::testing::TestRng;
+
+    #[test]
+    fn osaka_kind_keeps_tag_three_and_updates_public_names() {
+        assert_eq!(ByteCodeKind::EvmOsaka.to_bytes().unwrap(), vec![3]);
+        assert!(ByteCodeKind::from_bytes(&[3]).unwrap().0 == ByteCodeKind::EvmOsaka);
+        assert_eq!(ByteCodeKind::EvmOsaka.to_string(), "evm-osaka");
+        assert_eq!(
+            serde_json::to_string(&ByteCodeKind::EvmOsaka).unwrap(),
+            "\"EvmOsaka\""
+        );
+        assert!(serde_json::from_str::<ByteCodeKind>("\"EvmPrague\"").is_err());
+    }
 
     #[test]
     fn debug_repr_of_short_wasm() {

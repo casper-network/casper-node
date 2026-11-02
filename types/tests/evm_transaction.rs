@@ -232,7 +232,7 @@ fn decodes_eip1559_signed_rlp_with_access_list() {
 }
 
 #[test]
-fn intrinsic_gas_matches_prague_rules() {
+fn intrinsic_gas_matches_osaka_rules() {
     // A plain legacy transfer has the 21,000 base-gas charge.
     let transaction = decode(signed_legacy_transaction().raw_rlp);
     assert_eq!(transaction.intrinsic_gas(), 21_000);

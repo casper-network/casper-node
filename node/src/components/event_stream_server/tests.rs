@@ -198,7 +198,7 @@ struct TestFixture {
 impl TestFixture {
     /// Constructs a new `TestFixture` including `EVENT_COUNT` random events ready to be served.
     fn new(rng: &mut TestRng) -> Self {
-        const DISTINCT_EVENTS_COUNT: u32 = 7;
+        const DISTINCT_EVENTS_COUNT: u32 = 8;
 
         let _ = logging::init();
         let storage_dir = tempfile::tempdir().unwrap();
@@ -219,6 +219,7 @@ impl TestFixture {
                 4 => SseData::random_fault(rng),
                 5 => SseData::random_step(rng),
                 6 => SseData::random_finality_signature(rng),
+                7 => SseData::StagedProtocol(ProtocolVersion::from_parts(2, 0, i)),
                 _ => unreachable!(),
             })
             .collect();
@@ -1074,4 +1075,41 @@ fn json_schema_check() {
     );
     let pretty = serde_json::to_string_pretty(&schema_for!(SseData)).unwrap();
     assert_schema(schema_path, pretty);
+}
+
+#[tokio::test]
+async fn staged_protocol_event_broadcasts_only_the_protocol_version() {
+    use crate::{
+        effect::EffectBuilder,
+        reactor::{EventQueueHandle, QueueKind, Scheduler},
+    };
+
+    let storage_dir = tempfile::tempdir().unwrap();
+    let version = ProtocolVersion::from_parts(2, 3, 4);
+    let mut server =
+        EventStreamServer::new(Config::default(), storage_dir.path().to_path_buf(), version);
+    let (sender, mut receiver) = mpsc::unbounded_channel();
+    server.state = ComponentState::Initialized;
+    server.sse_server = Some(InnerServer {
+        sse_data_sender: sender,
+        event_indexer: EventIndexer::new(storage_dir.path().to_path_buf()),
+        listening_address: "127.0.0.1:0".parse().unwrap(),
+    });
+    let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+    let effects = server.handle_event(
+        EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler)),
+        &mut TestRng::new(),
+        Event::StagedProtocol(version),
+    );
+    assert!(effects.is_empty());
+    let (_, data) = receiver.try_recv().unwrap();
+    assert_eq!(data, SseData::StagedProtocol(version));
+    assert_eq!(
+        serde_json::to_value(&data).unwrap(),
+        serde_json::json!({"StagedProtocol": "2.3.4"})
+    );
+    assert_eq!(
+        serde_json::from_value::<SseData>(serde_json::to_value(data).unwrap()).unwrap(),
+        SseData::StagedProtocol(version)
+    );
 }

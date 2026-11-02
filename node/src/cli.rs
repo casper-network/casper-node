@@ -29,8 +29,8 @@ use crate::{
     setup_signal_hooks,
     types::ExitCode,
     utils::{
-        chain_specification::validate_chainspec, config_specification::validate_config, Loadable,
-        WithDir,
+        chain_specification::validate_chainspec, config_specification::validate_config,
+        evm_preinstalls::load_preinstall_bytecodes, Loadable, WithDir,
     },
 };
 
@@ -181,6 +181,12 @@ impl Cli {
                 if !validate_chainspec(&chainspec) {
                     bail!("invalid chainspec");
                 }
+
+                load_preinstall_bytecodes(
+                    reactor_config.dir(),
+                    chainspec.evm_config.enabled,
+                    &chainspec.evm_config.preinstalls,
+                )?;
 
                 if !validate_config(reactor_config.value()) {
                     bail!("invalid config");

@@ -70,6 +70,7 @@ mkdir -p "$CONFIG_DIR"
 cp "$GENESIS_FILES_DIR/chainspec.toml" "$CONFIG_DIR"
 cp "$GENESIS_FILES_DIR/config-example.toml" "$CONFIG_DIR"
 cp "$GENESIS_FILES_DIR/accounts.toml" "$CONFIG_DIR"
+cp -R "$ROOT_DIR/resources/evm/preinstalls" "$CONFIG_DIR/"
 # To get no path in tar, need to cd in.
 cd "$CONFIG_DIR" || exit
 tar -czvf "../config.tar.gz" .

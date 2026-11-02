@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::TransactionLaneDefinition;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EvmFeeConfig, U256, U512,
+    EvmFeeConfig, EvmTransactionError, EVM_TRANSACTION_GAS_LIMIT, U256, U512,
 };
 
 /// The default number of wei represented by one mote.
@@ -34,15 +34,15 @@ pub const MINIMUM_WEI_PER_MOTE: u64 = DEFAULT_WEI_PER_MOTE;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EvmSpec {
-    /// Prague.
+    /// Osaka.
     #[default]
-    Prague,
+    Osaka,
 }
 
 impl EvmSpec {
     fn tag(self) -> u8 {
         match self {
-            EvmSpec::Prague => 0,
+            EvmSpec::Osaka => 0,
         }
     }
 }
@@ -66,7 +66,7 @@ impl FromBytes for EvmSpec {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let spec = match tag {
-            0 => EvmSpec::Prague,
+            0 => EvmSpec::Osaka,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((spec, remainder))
@@ -97,6 +97,12 @@ pub struct EvmConfig {
         deserialize_with = "vec_to_transaction_lane_definitions"
     )]
     pub transaction_lanes: Vec<TransactionLaneDefinition>,
+    /// Keccak-256 hashes of runtime bytecode installed at genesis and upgrades.
+    ///
+    /// Each entry is an address and code hash, both 0x-prefixed hexadecimal
+    /// strings in TOML. Addresses must be unique. An omitted list is empty.
+    #[serde(default)]
+    pub preinstalls: Vec<(crate::evm::Address, crate::evm::Hash)>,
 }
 
 impl Default for EvmConfig {
@@ -104,11 +110,12 @@ impl Default for EvmConfig {
         EvmConfig {
             enabled: false,
             chain_id: 0,
-            spec: EvmSpec::Prague,
+            spec: EvmSpec::Osaka,
             block_gas_limit: 30_000_000,
             base_fee: 0,
             wei_per_mote: DEFAULT_WEI_PER_MOTE,
             transaction_lanes: Vec::new(),
+            preinstalls: Vec::new(),
         }
     }
 }
@@ -164,6 +171,28 @@ impl EvmConfig {
     /// Returns the subset of this configuration needed to price EVM transactions.
     pub fn fee_config(&self) -> EvmFeeConfig {
         EvmFeeConfig::new(self.base_fee, self.wei_per_mote)
+    }
+
+    /// Validates transaction gas against the protocol cap, then the block limit.
+    ///
+    /// Unchecked, unsigned simulations use the block limit directly instead.
+    pub fn validate_transaction_gas_limit(
+        &self,
+        gas_limit: u64,
+    ) -> Result<(), EvmTransactionError> {
+        if gas_limit > EVM_TRANSACTION_GAS_LIMIT {
+            return Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit {
+                gas_limit,
+                transaction_gas_limit: EVM_TRANSACTION_GAS_LIMIT,
+            });
+        }
+        if gas_limit > self.block_gas_limit {
+            return Err(EvmTransactionError::GasLimitExceedsBlockGasLimit {
+                gas_limit,
+                block_gas_limit: self.block_gas_limit,
+            });
+        }
+        Ok(())
     }
 
     /// Returns the EVM base fee denominated in wei.
@@ -315,7 +344,7 @@ impl ToBytes for EvmConfig {
                 .collect();
             base + transaction_lanes_as_vecs.serialized_length()
         };
-        base
+        base + self.preinstalls.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -331,7 +360,7 @@ impl ToBytes for EvmConfig {
             .map(transaction_lane_definition_to_vec)
             .collect();
         transaction_lanes_as_vecs.write_bytes(writer)?;
-        Ok(())
+        self.preinstalls.write_bytes(writer)
     }
 }
 
@@ -349,6 +378,8 @@ impl FromBytes for EvmConfig {
             .into_iter()
             .map(TransactionLaneDefinition::try_from)
             .collect();
+        let (preinstalls, remainder) =
+            Vec::<(crate::evm::Address, crate::evm::Hash)>::from_bytes(remainder)?;
         Ok((
             EvmConfig {
                 enabled,
@@ -358,6 +389,7 @@ impl FromBytes for EvmConfig {
                 base_fee,
                 wei_per_mote,
                 transaction_lanes: transaction_lanes.map_err(|_| bytesrepr::Error::Formatting)?,
+                preinstalls,
             },
             remainder,
         ))
@@ -366,7 +398,165 @@ impl FromBytes for EvmConfig {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
+
+    use serde_json::{json, Value};
+
     use super::*;
+
+    fn config_json(preinstalls: Vec<(String, String)>) -> Value {
+        let mut value = serde_json::to_value(EvmConfig::default()).unwrap();
+        value["preinstalls"] = json!(preinstalls);
+        value
+    }
+
+    #[test]
+    fn omitted_preinstalls_default_to_empty() {
+        let mut value = serde_json::to_value(EvmConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("preinstalls");
+        let config: EvmConfig = serde_json::from_value(value).unwrap();
+        assert!(config.preinstalls.is_empty());
+    }
+
+    #[test]
+    fn preinstalls_roundtrip_as_prefixed_base16_and_binary() {
+        let value = config_json(vec![(
+            "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+            format!("0x{}", "AB".repeat(32)),
+        )]);
+        let config: EvmConfig = serde_json::from_value(value).unwrap();
+        let address = crate::evm::Address::new([0xaa; 20]);
+        assert_eq!(
+            config.preinstalls,
+            vec![(address, crate::evm::Hash::new([0xab; 32]))]
+        );
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(
+            value["preinstalls"][0],
+            json!([address.to_string(), format!("0x{}", "ab".repeat(32))])
+        );
+        assert_eq!(serde_json::from_value::<EvmConfig>(value).unwrap(), config);
+        let serialized = config.to_bytes().unwrap();
+        assert_eq!(serialized.len(), config.serialized_length());
+        let (decoded, remainder) = EvmConfig::from_bytes(&serialized).unwrap();
+        assert_eq!(decoded, config);
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn preinstalls_reject_invalid_addresses_and_hashes() {
+        for (address, code) in [
+            ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0x00"),
+            ("0x01", "0x00"),
+            ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "00"),
+            ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0x0"),
+            ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0xgg"),
+            ("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0x"),
+        ] {
+            let value = config_json(vec![(address.into(), code.into())]);
+            assert!(serde_json::from_value::<EvmConfig>(value).is_err());
+        }
+
+        for length in [31, 33] {
+            let value = config_json(vec![(
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+                format!("0x{}", "ab".repeat(length)),
+            )]);
+            assert!(serde_json::from_value::<EvmConfig>(value).is_err());
+        }
+
+        let mut value = config_json(Vec::new());
+        value["preinstalls"] = json!([["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [0]]]);
+        assert!(serde_json::from_value::<EvmConfig>(value).is_err());
+    }
+
+    #[test]
+    fn preinstalls_are_included_in_the_chainspec_hash() {
+        let mut chainspec = crate::Chainspec::default();
+        let empty_hash = chainspec.hash();
+        let address = crate::evm::Address::new([1; 20]);
+        chainspec
+            .evm_config
+            .preinstalls
+            .push((address, crate::evm::Hash::new([0; 32])));
+        let installed_hash = chainspec.hash();
+        assert_ne!(empty_hash, installed_hash);
+        chainspec.evm_config.preinstalls[0].1 = crate::evm::Hash::new([1; 32]);
+        assert_ne!(installed_hash, chainspec.hash());
+        chainspec.evm_config.preinstalls[0] = (
+            crate::evm::Address::new([2; 20]),
+            crate::evm::Hash::new([0; 32]),
+        );
+        assert_ne!(installed_hash, chainspec.hash());
+    }
+
+    #[test]
+    fn preinstall_serialization_preserves_input_order() {
+        let mut chainspec = crate::Chainspec::default();
+        chainspec.evm_config.preinstalls = vec![
+            (
+                crate::evm::Address::new([1; 20]),
+                crate::evm::Hash::new([0; 32]),
+            ),
+            (
+                crate::evm::Address::new([2; 20]),
+                crate::evm::Hash::new([1; 32]),
+            ),
+        ];
+        let first = chainspec.evm_config.to_bytes().unwrap();
+        let hash = chainspec.hash();
+        chainspec.evm_config.preinstalls.reverse();
+        let value = serde_json::to_value(&chainspec.evm_config).unwrap();
+        let decoded: EvmConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, chainspec.evm_config);
+        assert_ne!(first, decoded.to_bytes().unwrap());
+        assert_ne!(hash, chainspec.hash());
+    }
+
+    #[test]
+    fn binary_preinstalls_reject_truncated_hash() {
+        let mut config = EvmConfig::default();
+        config.preinstalls.push((
+            crate::evm::Address::new([1; 20]),
+            crate::evm::Hash::new([2; 32]),
+        ));
+        let mut bytes = config.to_bytes().unwrap();
+        bytes.pop();
+        assert!(EvmConfig::from_bytes(&bytes).is_err());
+    }
+
+    #[test]
+    fn osaka_gas_boundaries_and_error_order() {
+        let config = EvmConfig::default();
+        for gas in [EVM_TRANSACTION_GAS_LIMIT - 1, EVM_TRANSACTION_GAS_LIMIT] {
+            assert_eq!(config.validate_transaction_gas_limit(gas), Ok(()));
+        }
+        let lower_block_limit = EvmConfig {
+            block_gas_limit: 100_000,
+            ..config
+        };
+        assert!(
+            matches!(lower_block_limit.validate_transaction_gas_limit(EVM_TRANSACTION_GAS_LIMIT + 1),
+            Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit { gas_limit, transaction_gas_limit })
+            if gas_limit == EVM_TRANSACTION_GAS_LIMIT + 1 && transaction_gas_limit == EVM_TRANSACTION_GAS_LIMIT)
+        );
+        assert!(matches!(
+            lower_block_limit.validate_transaction_gas_limit(100_001),
+            Err(EvmTransactionError::GasLimitExceedsBlockGasLimit { .. })
+        ));
+        assert_eq!(
+            lower_block_limit.validate_transaction_gas_limit(100_000),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn osaka_keeps_binary_tag_and_rejects_prague_configuration() {
+        assert_eq!(EvmSpec::Osaka.to_bytes().unwrap(), vec![0]);
+        assert_eq!(EvmSpec::from_bytes(&[0]).unwrap().0, EvmSpec::Osaka);
+        assert_eq!(serde_json::to_string(&EvmSpec::Osaka).unwrap(), "\"osaka\"");
+        assert!(serde_json::from_str::<EvmSpec>("\"prague\"").is_err());
+    }
 
     #[test]
     fn should_scale_base_fee_to_wei() {

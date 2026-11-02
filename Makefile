@@ -69,7 +69,7 @@ setup-evm:
 
 build-contract-evm/%: setup-evm
 	mkdir -p $(EVM_CONTRACT_TARGET_DIR)
-	solc --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
+	solc --evm-version osaka --optimize --abi --bin --overwrite -o $(EVM_CONTRACT_TARGET_DIR) smart_contracts/evm_contracts/$*.sol
 
 .PHONY: build-contracts-evm
 build-contracts-evm: $(patsubst %, build-contract-evm/%, $(EVM_CONTRACTS))
@@ -165,7 +165,12 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 # The remaining advisories need incompatible updates or replacements.
+# RUSTSEC-2026-0344: Wasmer 6.1 uses object::write; object's default
+# features pull in ruzstd, but no zstd decompression APIs are called.
+# Remove this exception when Wasmer drops the affected ruzstd dependency.
 # RUSTSEC-2026-0387: elliptic-curve 0.13 requires crypto-bigint 0.5.
+# Fixing this requires a RustCrypto migration to crypto-bigint >=0.7.6.
+# Remove this exception once that migration is complete.
 # RUSTSEC-2026-0186: Wasmer 6 requires memmap2 0.6.
 # RUSTSEC-2022-0092: the node uses rmp-serde 0.14.
 # Other informational advisories cover unmaintained dependencies and atty.

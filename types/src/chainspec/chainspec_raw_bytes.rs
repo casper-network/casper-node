@@ -84,14 +84,16 @@ impl Debug for ChainspecRawBytes {
         f.debug_struct("ChainspecRawBytes")
             .field(
                 "chainspec_bytes",
-                &self.chainspec_bytes[0..16].to_ascii_uppercase(),
+                &self.chainspec_bytes[..self.chainspec_bytes.len().min(16)].to_ascii_uppercase(),
             )
             .field(
                 "maybe_genesis_accounts_bytes",
                 match self.maybe_genesis_accounts_bytes.as_ref() {
                     Some(genesis_accounts_bytes) => {
-                        genesis_accounts_bytes_owned =
-                            genesis_accounts_bytes[0..16].to_ascii_uppercase().into();
+                        genesis_accounts_bytes_owned = genesis_accounts_bytes
+                            [..genesis_accounts_bytes.len().min(16)]
+                            .to_ascii_uppercase()
+                            .into();
                         &genesis_accounts_bytes_owned
                     }
                     None => &self.maybe_genesis_accounts_bytes,
@@ -101,8 +103,10 @@ impl Debug for ChainspecRawBytes {
                 "maybe_global_state_bytes",
                 match self.maybe_global_state_bytes.as_ref() {
                     Some(global_state_bytes) => {
-                        global_state_bytes_owned =
-                            global_state_bytes[0..16].to_ascii_uppercase().into();
+                        global_state_bytes_owned = global_state_bytes
+                            [..global_state_bytes.len().min(16)]
+                            .to_ascii_uppercase()
+                            .into();
                         &global_state_bytes_owned
                     }
                     None => &self.maybe_global_state_bytes,
@@ -192,5 +196,17 @@ mod tests {
 
         let val = ChainspecRawBytes::random(rng);
         bytesrepr::test_serialization_roundtrip(&val);
+    }
+
+    #[test]
+    fn debug_accepts_empty_and_short_source_documents() {
+        for length in 0..=16 {
+            let val = ChainspecRawBytes::new(
+                vec![b'a'; length].into(),
+                Some(vec![b'b'; length].into()),
+                Some(vec![b'c'; length].into()),
+            );
+            assert!(format!("{val:?}").starts_with("ChainspecRawBytes"));
+        }
     }
 }

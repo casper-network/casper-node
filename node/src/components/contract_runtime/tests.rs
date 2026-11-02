@@ -156,6 +156,7 @@ impl reactor::Reactor for Reactor {
 
         let contract_runtime = ContractRuntime::new(
             storage.root_path(),
+            &RESOURCES_PATH.join("local"),
             contract_runtime_block_store,
             &config.config,
             chainspec,
@@ -1228,6 +1229,7 @@ mod test_mod {
         };
         let block_store = LmdbBlockStore::new(temp_dir.path(), 64 * 1024 * 1024).unwrap();
         let contract_runtime = ContractRuntime::new(
+            temp_dir.path(),
             temp_dir.path(),
             block_store,
             &ContractRuntimeConfig::default(),

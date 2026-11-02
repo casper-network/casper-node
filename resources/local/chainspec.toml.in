@@ -504,10 +504,10 @@ min_gas_price = 1
 [evm]
 enabled = false
 # EVM chain IDs use 0x435350NN ("CSP" + network namespace) as EIP-155 replay domains.
-# Namespaces: mainnet=0x01, testnet=0x02, integration=0x03, devnet=0x04, local=0xFF.
+# Namespaces: mainnet=0x01, testnet=0x02, integration=0x04, devnet=0x05, local=0xFF.
 # All local chainspecs use namespace 0xFF; decimal 1129533695.
 chain_id = 1_129_533_695
-spec = 'prague'
+spec = 'osaka'
 block_gas_limit = 30_000_000
 # Base fee is denominated in motes per EVM gas. A standard 21,000-gas
 # transfer costs 0.105 CSPR, and a full 30,000,000-gas block costs 150 CSPR.

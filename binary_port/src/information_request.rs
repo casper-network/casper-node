@@ -11,7 +11,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractHash, ContractPackageHash},
     system::auction::DelegatorKind,
-    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, PublicKey, TransactionHash,
+    BlockIdentifier, EntityAddr, GlobalStateIdentifier, PackageAddr, ProtocolVersion, PublicKey,
+    TransactionHash,
 };
 
 /// Request for information from the node.
@@ -84,6 +85,13 @@ pub enum InformationRequest {
         /// Whether to return the bytecode with the entity.
         include_bytecode: bool,
     },
+    /// Returns complete source documents for the requested staged protocol version.
+    FutureChainspec {
+        /// Protocol version of the staged chainspec to retrieve.
+        protocol_version: ProtocolVersion,
+    },
+    /// Returns all currently staged protocol versions in ascending order.
+    StagedProtocolVersions,
 }
 
 impl InformationRequest {
@@ -118,6 +126,10 @@ impl InformationRequest {
             InformationRequest::ProtocolVersion => InformationRequestTag::ProtocolVersion,
             InformationRequest::Package { .. } => InformationRequestTag::Package,
             InformationRequest::Entity { .. } => InformationRequestTag::Entity,
+            InformationRequest::FutureChainspec { .. } => InformationRequestTag::FutureChainspec,
+            InformationRequest::StagedProtocolVersions => {
+                InformationRequestTag::StagedProtocolVersions
+            }
         }
     }
 
@@ -149,6 +161,12 @@ impl InformationRequest {
             InformationRequestTag::NextUpgrade => InformationRequest::NextUpgrade,
             InformationRequestTag::ConsensusStatus => InformationRequest::ConsensusStatus,
             InformationRequestTag::ChainspecRawBytes => InformationRequest::ChainspecRawBytes,
+            InformationRequestTag::FutureChainspec => InformationRequest::FutureChainspec {
+                protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+            },
+            InformationRequestTag::StagedProtocolVersions => {
+                InformationRequest::StagedProtocolVersions
+            }
             InformationRequestTag::NodeStatus => InformationRequest::NodeStatus,
             InformationRequestTag::LatestSwitchBlockHeader => {
                 InformationRequest::LatestSwitchBlockHeader
@@ -211,9 +229,13 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
+            | InformationRequest::StagedProtocolVersions
             | InformationRequest::NodeStatus
             | InformationRequest::LatestSwitchBlockHeader
             | InformationRequest::ProtocolVersion => Ok(()),
+            InformationRequest::FutureChainspec { protocol_version } => {
+                protocol_version.write_bytes(writer)
+            }
             InformationRequest::Reward {
                 era_identifier,
                 validator,
@@ -266,9 +288,13 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
+            | InformationRequest::StagedProtocolVersions
             | InformationRequest::NodeStatus
             | InformationRequest::LatestSwitchBlockHeader
             | InformationRequest::ProtocolVersion => 0,
+            InformationRequest::FutureChainspec { protocol_version } => {
+                protocol_version.serialized_length()
+            }
             InformationRequest::Reward {
                 era_identifier,
                 validator,
@@ -342,6 +368,16 @@ impl TryFrom<(InformationRequestTag, &[u8])> for InformationRequest {
             }
             InformationRequestTag::ChainspecRawBytes => {
                 (InformationRequest::ChainspecRawBytes, key_bytes)
+            }
+            InformationRequestTag::StagedProtocolVersions => {
+                (InformationRequest::StagedProtocolVersions, key_bytes)
+            }
+            InformationRequestTag::FutureChainspec => {
+                let (protocol_version, remainder) = ProtocolVersion::from_bytes(key_bytes)?;
+                (
+                    InformationRequest::FutureChainspec { protocol_version },
+                    remainder,
+                )
             }
             InformationRequestTag::NodeStatus => (InformationRequest::NodeStatus, key_bytes),
             InformationRequestTag::LatestSwitchBlockHeader => {
@@ -450,12 +486,16 @@ pub enum InformationRequestTag {
     Package = 18,
     /// Addressable entity request.
     Entity = 19,
+    /// Complete source documents for a staged protocol version.
+    FutureChainspec = 20,
+    /// Currently staged protocol versions.
+    StagedProtocolVersions = 21,
 }
 
 impl InformationRequestTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..20) {
+        match rng.gen_range(0..22) {
             0 => InformationRequestTag::BlockHeader,
             1 => InformationRequestTag::BlockWithSignatures,
             2 => InformationRequestTag::Transaction,
@@ -476,6 +516,8 @@ impl InformationRequestTag {
             17 => InformationRequestTag::ProtocolVersion,
             18 => InformationRequestTag::Package,
             19 => InformationRequestTag::Entity,
+            20 => InformationRequestTag::FutureChainspec,
+            21 => InformationRequestTag::StagedProtocolVersions,
             _ => unreachable!(),
         }
     }
@@ -506,6 +548,8 @@ impl TryFrom<u16> for InformationRequestTag {
             17 => Ok(InformationRequestTag::ProtocolVersion),
             18 => Ok(InformationRequestTag::Package),
             19 => Ok(InformationRequestTag::Entity),
+            20 => Ok(InformationRequestTag::FutureChainspec),
+            21 => Ok(InformationRequestTag::StagedProtocolVersions),
             _ => Err(UnknownInformationRequestTag(value)),
         }
     }

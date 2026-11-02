@@ -1,5 +1,7 @@
 //! Public executor entry point.
 
+use std::collections::BTreeMap;
+
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -8,12 +10,9 @@ use casper_storage::{
 use casper_types::{EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError, Key, StoredValue};
 use revm::{
     context::CfgEnv,
-    context_interface::result::{
-        EVMError, ExecutionResult as RevmExecutionResult,
-        InvalidTransaction as RevmInvalidTransaction, ResultGas,
-    },
+    context_interface::result::{EVMError, InvalidTransaction as RevmInvalidTransaction},
     handler::{Handler, MainnetHandler},
-    primitives::{hardfork::SpecId, Bytes, U256},
+    primitives::{hardfork::SpecId, Bytes},
     Context, ExecuteEvm, MainBuilder, MainContext, SystemCallEvm,
 };
 
@@ -92,16 +91,23 @@ impl EvmExecutor {
             .build_mainnet()
             .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
 
-        // Use revm's own validation phases so this stays in sync as Ethereum
-        // transaction preconditions grow. Journal mutations made while loading
-        // and checking the caller are discarded with this temporary EVM.
+        // revm's validate() includes the caller state phase. Running that phase
+        // again would bump a call transaction's nonce twice in this journal.
+        // The journal is discarded with this temporary EVM.
         let handler = MainnetHandler::default();
-        let mut initial_gas = handler
-            .validate(&mut evm)
-            .map_err(map_revm_validation_error)?;
         handler
-            .validate_against_state_and_deduct_caller(&mut evm, &mut initial_gas)
+            .validate(&mut evm)
+            .map(|_| ())
             .map_err(map_revm_validation_error)
+    }
+
+    /// Names and addresses from this executor's selected precompile provider.
+    /// Disabled EVM configurations expose no active precompiles.
+    pub fn precompile_addresses(&self) -> BTreeMap<String, casper_types::evm::Address> {
+        if !self.config.enabled {
+            return BTreeMap::new();
+        }
+        CasperEvmPrecompiles::new(spec_id(self.config.spec)).addresses()
     }
 
     /// Executes an EVM transaction or call against the supplied tracking copy.
@@ -157,13 +163,11 @@ impl EvmExecutor {
             evm.transact(tx_env).map_err(map_revm_error)?
         };
 
-        let mut state = result_and_state.state;
-        // revm skips the upfront fee debit but still applies the
-        // post-execution gas reimbursement and beneficiary reward.
-        let disabled_fee_transfers =
-            disabled_fee_transfers(&self.config, &request, &result_and_state.result);
-        state::remove_disabled_fee_transfers(&mut state, disabled_fee_transfers)?;
-        let balance_losses = state::apply(tracking_copy, state, self.config.wei_per_mote)?;
+        let balance_losses = state::apply(
+            tracking_copy,
+            result_and_state.state,
+            self.config.wei_per_mote,
+        )?;
         Ok(ExecutionOutcome::from_revm_result(
             &result_and_state.result,
             balance_losses,
@@ -229,6 +233,9 @@ fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmEx
     cfg.spec = spec_id(config.spec);
     cfg.chain_id = config.chain_id;
     cfg.tx_chain_id_check = matches!(execution_mode, EvmExecutionMode::Checked);
+    // Read-only simulations may consume the block budget, following eth_call.
+    // All checked execution retains revm's Osaka transaction cap.
+    cfg.tx_gas_limit_cap = skip_validation.then_some(u64::MAX);
     cfg.disable_block_gas_limit = matches!(execution_mode, EvmExecutionMode::SystemCall);
     cfg.disable_base_fee = skip_validation;
     cfg.disable_balance_check = skip_validation;
@@ -236,55 +243,9 @@ fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmEx
     cfg.disable_fee_charge = true;
 }
 
-fn disabled_fee_transfers(
-    config: &EvmConfig,
-    request: &ExecuteRequest,
-    result: &RevmExecutionResult,
-) -> state::DisabledFeeTransfers {
-    let gas = result_gas(result);
-    let base_fee = request
-        .block
-        .base_fee
-        .unwrap_or_else(|| config.base_fee_wei());
-    let (caller, gas_limit, effective_gas_price) = match &request.kind {
-        ExecuteKind::Transaction(transaction) => (
-            tx::to_revm_address(transaction.from()),
-            transaction.gas_limit(),
-            transaction.effective_gas_price(base_fee),
-        ),
-        ExecuteKind::Call(call) => (
-            tx::to_revm_address(call.from),
-            call.gas_limit,
-            call.gas_price,
-        ),
-    };
-
-    // `tx_gas_used` applies both refunds and the EIP-7623 calldata floor, matching
-    // the amount revm uses when reimbursing the caller after execution.
-    let reimbursed_gas = gas_limit.saturating_sub(gas.tx_gas_used());
-    let caller_reimbursement = U256::from(effective_gas_price) * U256::from(reimbursed_gas);
-    let coinbase_gas_price = effective_gas_price.saturating_sub(base_fee);
-    let beneficiary_reward = U256::from(coinbase_gas_price) * U256::from(gas.tx_gas_used());
-
-    state::DisabledFeeTransfers {
-        caller,
-        caller_reimbursement,
-        beneficiary: tx::to_revm_address(request.block.beneficiary),
-        beneficiary_reward,
-    }
-}
-
-fn result_gas(result: &RevmExecutionResult) -> &ResultGas {
-    match result {
-        RevmExecutionResult::Success { gas, .. }
-        | RevmExecutionResult::Revert { gas, .. }
-        | RevmExecutionResult::Halt { gas, .. } => gas,
-    }
-}
-
 fn spec_id(spec: EvmSpec) -> SpecId {
     match spec {
-        EvmSpec::Prague => SpecId::PRAGUE,
+        EvmSpec::Osaka => SpecId::OSAKA,
     }
 }
 

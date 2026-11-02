@@ -134,6 +134,7 @@ dist
 resources/production/*.wasm
 resources/node-storage/*
 resources/local/chainspec.toml
+resources/local/preinstalls/
 
 execution_engine_testing/test_support/resources/chainspec.toml
 

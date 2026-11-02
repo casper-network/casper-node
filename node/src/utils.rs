@@ -6,6 +6,7 @@ pub(crate) mod chain_specification;
 pub(crate) mod config_specification;
 mod display_error;
 pub(crate) mod ds;
+pub(crate) mod evm_preinstalls;
 mod external;
 pub(crate) mod fmt_limit;
 pub(crate) mod opt_display;

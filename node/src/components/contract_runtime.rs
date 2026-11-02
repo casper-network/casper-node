@@ -16,7 +16,7 @@ use std::{
     cmp::Ordering,
     convert::TryInto,
     fmt::{self, Debug, Formatter},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -102,6 +102,8 @@ pub(crate) struct ContractRuntime {
     #[data_size(skip)]
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
     current_gas_price: EraPrice,
+    /// Selected protocol package directory, separate from the global-state database.
+    protocol_dir: PathBuf,
 }
 
 impl Debug for ContractRuntime {
@@ -113,6 +115,7 @@ impl Debug for ContractRuntime {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_dir: &Path,
+        protocol_dir: &Path,
         block_store: LmdbBlockStore,
         contract_runtime_config: &Config,
         chainspec: Arc<Chainspec>,
@@ -183,6 +186,7 @@ impl ContractRuntime {
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
+            protocol_dir: protocol_dir.to_path_buf(),
             state: ComponentState::Initialized,
             execution_pre_state,
             execution_engine_v1,
@@ -266,7 +270,18 @@ impl ContractRuntime {
         let start = Instant::now();
         let protocol_version = chainspec.protocol_config.version;
         let chainspec_hash = chainspec.hash();
-        let genesis_config = chainspec.into();
+        let bytecodes = match crate::utils::evm_preinstalls::load_preinstall_bytecodes(
+            &self.protocol_dir,
+            chainspec.evm_config.enabled,
+            &chainspec.evm_config.preinstalls,
+        ) {
+            Ok(bytecodes) => bytecodes,
+            Err(error) => {
+                return GenesisResult::Failure(GenesisError::EvmPreinstall(error.to_string()))
+            }
+        };
+        let genesis_config =
+            casper_types::GenesisConfig::from(chainspec).with_evm_preinstall_bytecodes(bytecodes);
         let account_bytes = match chainspec_raw_bytes.maybe_genesis_accounts_bytes() {
             Some(bytes) => bytes,
             None => {
@@ -315,11 +330,20 @@ impl ContractRuntime {
     ) -> Result<Digest, String> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+        let protocol_dir = self.protocol_dir.clone();
 
         let data_access_layer = Arc::clone(&self.data_access_layer);
         let metrics = Arc::clone(&self.metrics);
         run_intensive_task(move || {
+            let bytecodes = crate::utils::evm_preinstalls::load_preinstall_bytecodes(
+                &protocol_dir,
+                upgrade_config.evm_config().enabled,
+                &upgrade_config.evm_config().preinstalls,
+            )
+            .map_err(|error| error.to_string())?;
+            let upgrade_request = ProtocolUpgradeRequest::new(
+                upgrade_config.with_evm_preinstall_bytecodes(bytecodes),
+            );
             let result = data_access_layer.protocol_upgrade(upgrade_request);
             if result.is_success() {
                 info!("committed upgrade");

@@ -11,6 +11,7 @@ mod evm_addr;
 mod fee_config;
 mod hash;
 mod receipt;
+mod registry;
 mod topic;
 mod transaction;
 
@@ -18,6 +19,7 @@ pub use account::{deterministic_purse, StorageAddr, EMPTY_CODE_HASH};
 pub use address::{Address, ADDRESS_LENGTH};
 pub use hash::{Hash, HASH_LENGTH};
 pub use receipt::{HaltReason, Log, OutOfGasError, Receipt, ReceiptStatus};
+pub use registry::{BEACON_ROOTS_ADDRESS, HISTORY_STORAGE_ADDRESS};
 pub use topic::Topic;
 pub use transaction::{
     SetCodeAuthorization, EIP1559_TRANSACTION_TYPE_ID, EIP2930_TRANSACTION_TYPE_ID,
@@ -32,5 +34,5 @@ pub use evm_addr::EvmAddr;
 pub use fee_config::EvmFeeConfig;
 pub use transaction::{
     EvmAccessListItem, EvmApproval, EvmTransaction, EvmTransactionError, EvmTransactionHash,
-    EvmTransactionKind,
+    EvmTransactionKind, EVM_TRANSACTION_GAS_LIMIT,
 };

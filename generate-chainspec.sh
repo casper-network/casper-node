@@ -26,6 +26,9 @@ generate_chainspec() {
 
     echo "Generating chainspec..."
     envsubst < ${SOURCE} > ${TARGET}
+
+    # Keep the local protocol package self-contained, including runtime attribution.
+    cp -R "${BASEDIR}/resources/evm/preinstalls" "${BASEDIR}/resources/local/"
 }
 
 main() {

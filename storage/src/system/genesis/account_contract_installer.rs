@@ -11,7 +11,7 @@ use std::{
 use crate::{
     global_state::state::StateProvider,
     system::{
-        evm::{should_upsert_prague_predeploys, upsert_prague_predeploys},
+        evm::{should_upsert_system_predeploys, upsert_preinstalls, upsert_system_predeploys},
         genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
         protocol_upgrade::ProtocolUpgradeError,
     },
@@ -799,9 +799,21 @@ where
     }
 
     fn create_evm_predeploys(&self) -> Result<(), Box<GenesisError>> {
-        if should_upsert_prague_predeploys(self.config.evm_config()) {
-            upsert_prague_predeploys(&mut self.tracking_copy.borrow_mut())
+        if should_upsert_system_predeploys(self.config.evm_config()) {
+            upsert_system_predeploys(&mut self.tracking_copy.borrow_mut())
                 .map_err(|error| GenesisError::EvmPredeploy(error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    fn create_evm_preinstalls(&self) -> Result<(), Box<GenesisError>> {
+        if self.config.evm_config().enabled {
+            upsert_preinstalls(
+                &mut self.tracking_copy.borrow_mut(),
+                &self.config.evm_config().preinstalls,
+                self.config.evm_preinstall_bytecodes(),
+            )
+            .map_err(|error| GenesisError::EvmPreinstall(error.to_string()))?;
         }
         Ok(())
     }
@@ -864,6 +876,9 @@ where
 
         // Create EVM predeploys.
         self.create_evm_predeploys()?;
+
+        // Create EVM preinstalls.
+        self.create_evm_preinstalls()?;
 
         // Write block time to global state
         self.store_block_time()?;

@@ -121,6 +121,8 @@ pub enum ResponseType {
     AddressableEntityInformation,
     /// Result of the EVM speculative execution.
     EvmSpeculativeExecutionResult,
+    /// Currently staged protocol versions, in ascending order.
+    StagedProtocolVersions,
 }
 
 impl ResponseType {
@@ -147,7 +149,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..45)).unwrap()
+        Self::try_from(rng.gen_range(0..=ResponseType::StagedProtocolVersions as u8)).unwrap()
     }
 }
 
@@ -233,6 +235,9 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::EvmSpeculativeExecutionResult as u8 => {
                 Ok(ResponseType::EvmSpeculativeExecutionResult)
             }
+            x if x == ResponseType::StagedProtocolVersions as u8 => {
+                Ok(ResponseType::StagedProtocolVersions)
+            }
             _ => Err(()),
         }
     }
@@ -298,6 +303,7 @@ impl fmt::Display for ResponseType {
             ResponseType::EvmSpeculativeExecutionResult => {
                 write!(f, "EvmSpeculativeExecutionResult")
             }
+            ResponseType::StagedProtocolVersions => write!(f, "StagedProtocolVersions"),
         }
     }
 }
@@ -442,6 +448,10 @@ impl PayloadEntity for RewardResponse {
 
 impl PayloadEntity for ProtocolVersion {
     const RESPONSE_TYPE: ResponseType = ResponseType::ProtocolVersion;
+}
+
+impl PayloadEntity for Vec<ProtocolVersion> {
+    const RESPONSE_TYPE: ResponseType = ResponseType::StagedProtocolVersions;
 }
 
 impl PayloadEntity for ValueWithProof<ContractPackage> {
