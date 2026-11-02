@@ -17,7 +17,7 @@ activation_point = 22690
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casper-test'
+name = 'casper-evm'
 # The maximum size of an acceptable networking message in bytes.  Any message larger than this will
 # be rejected at the networking level.
 maximum_net_message_size = 25_165_824
@@ -515,8 +515,8 @@ min_gas_price = 1
 enabled = true
 # EVM chain IDs use 0x435350NN ("CSP" + network namespace) as EIP-155 replay domains.
 # Namespaces: mainnet=0x01, testnet=0x02, integration=0x04, devnet=0x05, local=0xFF.
-# This chainspec uses namespace 0x01; decimal 1129533441.
-chain_id = 1_129_533_441
+# This chainspec uses namespace 0x05 (devnet); decimal 1129533445.
+chain_id = 1_129_533_445
 spec = 'osaka'
 block_gas_limit = 30_000_000
 # Base fee is denominated in motes per EVM gas. A standard 21,000-gas
@@ -525,3 +525,13 @@ base_fee = 5_000
 # Number of wei represented by one mote. EVM gas prices are denominated in wei,
 # while Casper fee accounting is denominated in motes.
 wei_per_mote = 1_000_000_000
+# EVM transaction lanes, structured identically to [transactions.v1] wasm_lanes:
+# [0] -> lane id (unique among themselves and against all native/wasm lane ids)
+# [1] -> max serialized length of the RLP-encoded EVM transaction, in bytes
+# [2] -> max calldata (input) length, in bytes
+# [3] -> max EVM gas limit for a transaction in this lane
+# [4] -> max number of transactions this lane can hold in a block
+transaction_lanes = [
+    [100, 131_072, 1024, 1_000_000, 50],
+    [101, 262_144, 65_536, 15_000_000, 5],
+]

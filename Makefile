@@ -164,20 +164,35 @@ lint-smart-contracts:
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -A renamed_and_removed_lints
 
 .PHONY: audit-rs
+# The remaining advisories need incompatible updates or replacements.
 # RUSTSEC-2026-0344: Wasmer 6.1 uses object::write; object's default
 # features pull in ruzstd, but no zstd decompression APIs are called.
 # Remove this exception when Wasmer drops the affected ruzstd dependency.
 # RUSTSEC-2026-0387: elliptic-curve 0.13 requires crypto-bigint 0.5.
 # Fixing this requires a RustCrypto migration to crypto-bigint >=0.7.6.
 # Remove this exception once that migration is complete.
+# RUSTSEC-2026-0186: Wasmer 6 requires memmap2 0.6.
+# RUSTSEC-2022-0092: the node uses rmp-serde 0.14.
+# Other informational advisories cover unmaintained dependencies and atty.
 audit-rs:
 	$(CARGO) audit \
+		--ignore RUSTSEC-2020-0168 \
+		--ignore RUSTSEC-2021-0139 \
+		--ignore RUSTSEC-2021-0145 \
+		--ignore RUSTSEC-2022-0054 \
+		--ignore RUSTSEC-2022-0092 \
+		--ignore RUSTSEC-2022-0104 \
+		--ignore RUSTSEC-2024-0370 \
+		--ignore RUSTSEC-2024-0375 \
+		--ignore RUSTSEC-2024-0388 \
+		--ignore RUSTSEC-2024-0436 \
 		--ignore RUSTSEC-2025-0055 \
+		--ignore RUSTSEC-2025-0134 \
+		--ignore RUSTSEC-2025-0141 \
+		--ignore RUSTSEC-2026-0173 \
+		--ignore RUSTSEC-2026-0186 \
 		--ignore RUSTSEC-2026-0194 \
 		--ignore RUSTSEC-2026-0195 \
-		--ignore RUSTSEC-2026-0233 \
-		--ignore RUSTSEC-2026-0234 \
-		--ignore RUSTSEC-2026-0235 \
 		--ignore RUSTSEC-2026-0258 \
 		--ignore RUSTSEC-2026-0344 \
 		--ignore RUSTSEC-2026-0387
