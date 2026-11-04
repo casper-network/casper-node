@@ -435,13 +435,11 @@ where
 struct UpgradePoint {
     #[serde(rename = "protocol")]
     pub(crate) protocol_config: ProtocolConfig,
-    #[serde(default)]
     evm: UpgradeEvmConfig,
 }
 
 /// Reads the activation flag and asset manifest, allowing unrelated future EVM fields.
-#[derive(Default, Deserialize)]
-#[serde(default)]
+#[derive(Deserialize)]
 struct UpgradeEvmConfig {
     enabled: bool,
     preinstalls: Vec<(evm::Address, evm::Hash)>,

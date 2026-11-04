@@ -545,3 +545,6 @@ max_nonce_gap = 16
 transaction_lanes = [
     [100, 262_144, 65_536, 15_000_000, 50],
 ]
+
+# Utility contract address and runtime hash pairs installed when EVM is enabled.
+preinstalls = []
