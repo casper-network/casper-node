@@ -540,6 +540,12 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         Effects::new()
     }
 
+    /// The number of items this gossiper has started gossiping.
+    #[cfg(test)]
+    pub(crate) fn items_received(&self) -> u64 {
+        self.metrics.items_received.get()
+    }
+
     /// Updates the gossiper metrics from the state of the gossip table.
     fn update_gossip_table_metrics(&self) {
         self.metrics

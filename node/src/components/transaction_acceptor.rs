@@ -600,12 +600,32 @@ impl TransactionAcceptor {
         // EVM nonce validation is independent of the identity pointer. Linking
         // an EVM address to a Casper account does not change the EVM replay
         // counter.
-        if actual != expected {
+        //
+        // Nonces ahead of the current one (up to `evm.max_nonce_gap`) are
+        // admitted so a sender can queue consecutive transactions before the
+        // earlier ones execute. This check runs against the latest executed
+        // state only: it cannot see the sender's other pending transactions, so
+        // it admits gaps and duplicate nonces. The final check happens on execution
+        if actual < expected {
             return self.reject_transaction(
                 effect_builder,
                 *event_metadata,
                 Error::InvalidTransaction(InvalidTransaction::Evm(
                     EvmTransactionError::InvalidNonce { expected, actual },
+                )),
+            );
+        }
+        let max_nonce_gap = self.chainspec.evm_config.max_nonce_gap;
+        if actual - expected > max_nonce_gap {
+            return self.reject_transaction(
+                effect_builder,
+                *event_metadata,
+                Error::InvalidTransaction(InvalidTransaction::Evm(
+                    EvmTransactionError::NonceTooFarAhead {
+                        current: expected,
+                        actual,
+                        max_nonce_gap,
+                    },
                 )),
             );
         }

@@ -43,7 +43,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeTransactionAcceptor,
     },
-    types::NodeId,
+    types::{EvmTransactionBatchId, NodeId},
     utils::WithDir,
 };
 
@@ -130,6 +130,8 @@ enum Event {
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignatureV2>),
     #[from]
     GossiperIncomingGossipedAddress(GossiperIncoming<GossipedAddress>),
+    #[from]
+    GossiperIncomingEvmTransactionBatch(GossiperIncoming<EvmTransactionBatchId>),
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
@@ -223,11 +225,12 @@ impl ReactorTrait for Reactor {
             }
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
+                source,
                 responder,
             }) => {
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
-                    source: Source::Client,
+                    source,
                     maybe_responder: Some(responder),
                 };
                 reactor::wrap_effects(
@@ -260,6 +263,7 @@ impl ReactorTrait for Reactor {
             | Event::GossiperIncomingBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)
+            | Event::GossiperIncomingEvmTransactionBatch(_)
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)

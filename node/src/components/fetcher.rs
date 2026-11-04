@@ -131,7 +131,7 @@ where
                 ),
             },
             Event::GotRemotely { item, source } => match source {
-                Source::PeerGossiped(peer) | Source::Peer(peer) => {
+                Source::PeerGossiped(peer) | Source::PeerBatched(peer) | Source::Peer(peer) => {
                     self.got_from_peer(effect_builder, peer, item)
                 }
                 Source::Client | Source::Ourself => Effects::new(),

@@ -52,6 +52,7 @@ pub mod consensus;
 pub mod contract_runtime;
 pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
+pub(crate) mod evm_transaction_batcher;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod transaction_buffer;

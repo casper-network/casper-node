@@ -13,7 +13,7 @@ use crate::{
         binary_port, block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, consensus, contract_runtime, diagnostics_port, event_stream_server,
-        fetcher, gossiper,
+        evm_transaction_batcher, fetcher, gossiper,
         network::{self, GossipedAddress},
         rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
         transaction_buffer, upgrade_watcher,
@@ -21,11 +21,11 @@ use crate::{
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
-            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            NonExecutableBlockAnnouncement, PeerBehaviorAnnouncement,
-            TransactionAcceptorAnnouncement, TransactionBufferAnnouncement,
-            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            ControlAnnouncement, EvmTransactionBatcherAnnouncement, FatalAnnouncement,
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
+            GossiperAnnouncement, MetaBlockAnnouncement, NonExecutableBlockAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
+            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -45,7 +45,10 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{
+        BatchedTransaction, BlockExecutionResultsOrChunk, EvmTransactionBatchId, LegacyDeploy,
+        SyncLeap, TrieOrChunk,
+    },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 
@@ -194,6 +197,18 @@ pub(crate) enum MainEvent {
     #[from]
     TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
+    EvmTransactionBatcher(#[serde(skip_serializing)] evm_transaction_batcher::Event),
+    #[from]
+    EvmTransactionBatcherAnnouncement(#[serde(skip_serializing)] EvmTransactionBatcherAnnouncement),
+    #[from]
+    EvmTransactionBatchGossiper(#[serde(skip_serializing)] gossiper::Event<EvmTransactionBatchId>),
+    #[from]
+    EvmTransactionBatchGossiperIncoming(GossiperIncoming<EvmTransactionBatchId>),
+    #[from]
+    EvmTransactionBatchGossiperAnnouncement(
+        #[serde(skip_serializing)] GossiperAnnouncement<EvmTransactionBatchId>,
+    ),
+    #[from]
     TransactionBuffer(#[serde(skip_serializing)] transaction_buffer::Event),
     #[from]
     TransactionBufferAnnouncement(#[serde(skip_serializing)] TransactionBufferAnnouncement),
@@ -205,6 +220,10 @@ pub(crate) enum MainEvent {
     TransactionFetcher(#[serde(skip_serializing)] fetcher::Event<Transaction>),
     #[from]
     TransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Transaction>),
+    #[from]
+    BatchedTransactionFetcher(#[serde(skip_serializing)] fetcher::Event<BatchedTransaction>),
+    #[from]
+    BatchedTransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BatchedTransaction>),
     #[from]
     TransactionBufferRequest(TransactionBufferRequest),
     #[from]
@@ -279,7 +298,17 @@ impl ReactorEvent for MainEvent {
             MainEvent::AcceptTransactionRequest(_) => "AcceptTransactionRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::TransactionFetcher(_) => "TransactionFetcher",
+            MainEvent::BatchedTransactionFetcher(_) => "BatchedTransactionFetcher",
             MainEvent::TransactionGossiper(_) => "TransactionGossiper",
+            MainEvent::EvmTransactionBatcher(_) => "EvmTransactionBatcher",
+            MainEvent::EvmTransactionBatcherAnnouncement(_) => "EvmTransactionBatcherAnnouncement",
+            MainEvent::EvmTransactionBatchGossiper(_) => "EvmTransactionBatchGossiper",
+            MainEvent::EvmTransactionBatchGossiperIncoming(_) => {
+                "EvmTransactionBatchGossiperIncoming"
+            }
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(_) => {
+                "EvmTransactionBatchGossiperAnnouncement"
+            }
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
@@ -303,6 +332,7 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::LegacyDeployFetcherRequest(_) => "LegacyDeployFetcherRequest",
             MainEvent::TransactionFetcherRequest(_) => "TransactionFetcherRequest",
+            MainEvent::BatchedTransactionFetcherRequest(_) => "BatchedTransactionFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
@@ -386,7 +416,23 @@ impl Display for MainEvent {
             MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::TransactionFetcher(event) => write!(f, "transaction fetcher: {}", event),
+            MainEvent::BatchedTransactionFetcher(event) => {
+                write!(f, "batched transaction fetcher: {}", event)
+            }
             MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
+            MainEvent::EvmTransactionBatcher(event) => {
+                write!(f, "EVM transaction batcher: {}", event)
+            }
+            MainEvent::EvmTransactionBatcherAnnouncement(ann) => {
+                write!(f, "EVM transaction batcher announcement: {}", ann)
+            }
+            MainEvent::EvmTransactionBatchGossiper(event) => {
+                write!(f, "EVM transaction batch gossiper: {}", event)
+            }
+            MainEvent::EvmTransactionBatchGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::EvmTransactionBatchGossiperAnnouncement(ann) => {
+                write!(f, "EVM transaction batch gossiper announcement: {}", ann)
+            }
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -462,6 +508,9 @@ impl Display for MainEvent {
             }
             MainEvent::TransactionFetcherRequest(request) => {
                 write!(f, "transaction fetcher request: {}", request)
+            }
+            MainEvent::BatchedTransactionFetcherRequest(request) => {
+                write!(f, "batched transaction fetcher request: {}", request)
             }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
                 write!(f, "finality signature fetcher request: {}", request)
@@ -597,6 +646,12 @@ impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
 
 impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
     fn from(request: NetworkRequest<gossiper::Message<Transaction>>) -> Self {
+        MainEvent::NetworkRequest(request.map_payload(Message::from))
+    }
+}
+
+impl From<NetworkRequest<gossiper::Message<EvmTransactionBatchId>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<EvmTransactionBatchId>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

@@ -1,11 +1,11 @@
 use crate::types::MetaTransaction;
-#[cfg(test)]
-use casper_types::{testing::TestRng, U512};
 use casper_types::{
-    Approval, Chainspec, Digest, Gas, InvalidTransaction, InvalidTransactionV1, TimeDiff,
+    evm, Approval, Chainspec, Digest, Gas, InvalidTransaction, InvalidTransactionV1, TimeDiff,
     Timestamp, Transaction, TransactionHash, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
     MINT_LANE_ID,
 };
+#[cfg(test)]
+use casper_types::{testing::TestRng, U512};
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
@@ -34,6 +34,9 @@ pub(crate) struct TransactionFootprint {
     ttl: TimeDiff,
     /// The approvals.
     approvals: BTreeSet<Approval>,
+    /// The sender and nonce of an EVM transaction, used to keep a sender's transactions in
+    /// nonce order when assembling a proposal.
+    evm_sender_nonce: Option<(evm::Address, u64)>,
 }
 
 impl TransactionFootprint {
@@ -74,6 +77,9 @@ impl TransactionFootprint {
         let timestamp = transaction.timestamp();
         let ttl = transaction.ttl();
         let approvals = transaction.approvals();
+        let evm_sender_nonce = transaction
+            .as_evm()
+            .map(|evm_transaction| (evm_transaction.from(), evm_transaction.nonce()));
         Ok(TransactionFootprint {
             transaction_hash,
             payload_hash,
@@ -84,6 +90,7 @@ impl TransactionFootprint {
             timestamp,
             ttl,
             approvals,
+            evm_sender_nonce,
         })
     }
 
@@ -131,6 +138,11 @@ impl TransactionFootprint {
     /// The approvals.
     pub(crate) fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
+    }
+
+    /// The sender and nonce, if this is an EVM transaction.
+    pub(crate) fn evm_sender_nonce(&self) -> Option<(evm::Address, u64)> {
+        self.evm_sender_nonce
     }
 
     /// The approval count, if known.
@@ -207,6 +219,20 @@ impl TransactionFootprint {
             timestamp,
             ttl,
             approvals,
+            evm_sender_nonce: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random_evm(
+        lane_id: u8,
+        sender: evm::Address,
+        nonce: u64,
+        rng: &mut TestRng,
+    ) -> Self {
+        let mut footprint = Self::random_of_lane(lane_id, rng);
+        footprint.gas_price_tolerance = u8::MAX;
+        footprint.evm_sender_nonce = Some((sender, nonce));
+        footprint
     }
 }

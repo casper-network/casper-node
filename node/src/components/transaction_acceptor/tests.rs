@@ -204,7 +204,8 @@ enum TxnType {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum TestScenario {
-    FromPeerEvmInvalidNonce,
+    FromPeerEvmStaleNonce,
+    FromPeerEvmFutureNonce,
     FromPeerInvalidTransaction(TxnType),
     FromPeerInvalidTransactionZeroPayment(TxnType),
     FromPeerExpired(TxnType),
@@ -218,7 +219,9 @@ enum TestScenario {
     FromPeerSessionContract(TxnType, ContractScenario),
     FromPeerSessionContractPackage(TxnType, ContractPackageScenario),
     FromClientInvalidTransaction(TxnType),
-    FromClientEvmInvalidNonce,
+    FromClientEvmStaleNonce,
+    FromClientEvmFutureNonce,
+    FromClientEvmNonceTooFarAhead,
     FromClientEvmMissingIdentityWithCodeHash,
     FromClientInvalidTransactionZeroPayment(TxnType),
     FromClientSlightlyFutureDatedTransaction(TxnType),
@@ -269,7 +272,8 @@ impl TestScenario {
     fn source(&self, rng: &mut NodeRng) -> Source {
         match self {
             TestScenario::FromPeerInvalidTransaction(_)
-            | TestScenario::FromPeerEvmInvalidNonce
+            | TestScenario::FromPeerEvmStaleNonce
+            | TestScenario::FromPeerEvmFutureNonce
             | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
             | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
@@ -284,7 +288,9 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContractPackage(..)
             | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
-            | TestScenario::FromClientEvmInvalidNonce
+            | TestScenario::FromClientEvmStaleNonce
+            | TestScenario::FromClientEvmFutureNonce
+            | TestScenario::FromClientEvmNonceTooFarAhead
             | TestScenario::FromClientEvmMissingIdentityWithCodeHash
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
@@ -345,8 +351,11 @@ impl TestScenario {
                 txn.invalidate();
                 Transaction::from(txn)
             }
-            TestScenario::FromPeerEvmInvalidNonce
-            | TestScenario::FromClientEvmInvalidNonce
+            TestScenario::FromPeerEvmStaleNonce
+            | TestScenario::FromClientEvmStaleNonce
+            | TestScenario::FromPeerEvmFutureNonce
+            | TestScenario::FromClientEvmFutureNonce
+            | TestScenario::FromClientEvmNonceTooFarAhead
             | TestScenario::FromClientEvmMissingIdentityWithCodeHash => {
                 Transaction::from(signed_evm_legacy_transaction(1, evm_gas_price))
             }
@@ -901,14 +910,17 @@ impl TestScenario {
                     | TestScenario::FromClientValidTransaction(_)
                     | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
                     | TestScenario::FromClientEvmMissingIdentityWithCodeHash
+                    | TestScenario::FromPeerEvmFutureNonce
+                    | TestScenario::FromClientEvmFutureNonce
                     | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
-                    | TestScenario::FromPeerEvmInvalidNonce
+                    | TestScenario::FromPeerEvmStaleNonce
                     | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientInsufficientBalance(_)
                     | TestScenario::FromClientMissingAccount(_)
                     | TestScenario::FromClientInvalidTransaction(_)
-                    | TestScenario::FromClientEvmInvalidNonce
+                    | TestScenario::FromClientEvmStaleNonce
+                    | TestScenario::FromClientEvmNonceTooFarAhead
                     | TestScenario::FromClientInvalidTransactionZeroPayment(_)
                     | TestScenario::FromClientFutureDatedTransaction(_)
                     | TestScenario::FromClientAccountWithInsufficientWeight(_)
@@ -996,8 +1008,11 @@ impl TestScenario {
     fn is_evm(&self) -> bool {
         matches!(
             self,
-            TestScenario::FromPeerEvmInvalidNonce
-                | TestScenario::FromClientEvmInvalidNonce
+            TestScenario::FromPeerEvmStaleNonce
+                | TestScenario::FromClientEvmStaleNonce
+                | TestScenario::FromPeerEvmFutureNonce
+                | TestScenario::FromClientEvmFutureNonce
+                | TestScenario::FromClientEvmNonceTooFarAhead
                 | TestScenario::FromClientEvmMissingIdentityWithCodeHash
         )
     }
@@ -1187,13 +1202,12 @@ impl reactor::Reactor for Reactor {
                             ),
                         }
                     } else if let Key::Evm(EvmAddr::Nonce(_)) = query_request.key() {
-                        let nonce = if matches!(
-                            self.test_scenario,
-                            TestScenario::FromClientEvmMissingIdentityWithCodeHash
-                        ) {
-                            1u64
-                        } else {
-                            0u64
+                        // Every EVM scenario submits nonce 1.
+                        let nonce = match self.test_scenario {
+                            TestScenario::FromClientEvmMissingIdentityWithCodeHash => 1u64,
+                            TestScenario::FromPeerEvmStaleNonce
+                            | TestScenario::FromClientEvmStaleNonce => 2u64,
+                            _ => 0u64,
                         };
                         QueryResult::Success {
                             value: Box::new(StoredValue::CLValue(CLValue::from_t(nonce).unwrap())),
@@ -1577,6 +1591,14 @@ async fn run_transaction_acceptor_without_timeout(
         test_scenario if test_scenario.is_evm() => {
             chainspec.evm_config.enabled = true;
             chainspec.evm_config.chain_id = EVM_TEST_CHAIN_ID;
+            // Every EVM scenario submits nonce 1 against a stored nonce of 0 unless stated
+            // otherwise, so a gap of 1 is exactly at the limit.
+            chainspec.evm_config.max_nonce_gap =
+                if matches!(test_scenario, TestScenario::FromClientEvmNonceTooFarAhead) {
+                    0
+                } else {
+                    1
+                };
             chainspec
         }
         _ => chainspec,
@@ -1663,7 +1685,8 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a client raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromClientInvalidTransaction(_)
-            | TestScenario::FromClientEvmInvalidNonce
+            | TestScenario::FromClientEvmStaleNonce
+            | TestScenario::FromClientEvmNonceTooFarAhead
             | TestScenario::FromClientInvalidTransactionZeroPayment(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
             | TestScenario::FromClientMissingAccount(_)
@@ -1752,7 +1775,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a peer raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromPeerInvalidTransaction(_)
-            | TestScenario::FromPeerEvmInvalidNonce
+            | TestScenario::FromPeerEvmStaleNonce
             | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
             | TestScenario::BalanceCheckForDeploySentByPeer
             | TestScenario::InvalidFieldsFromPeer => {
@@ -1769,6 +1792,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that a new and valid, transaction sent by a peer raises an
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromPeerValidTransaction(_)
+            | TestScenario::FromPeerEvmFutureNonce
             | TestScenario::FromPeerMissingAccount(_)
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_)
             | TestScenario::FromPeerAccountWithInsufficientWeight(_)
@@ -1796,6 +1820,7 @@ async fn run_transaction_acceptor_without_timeout(
             TestScenario::FromClientValidTransaction(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientEvmMissingIdentityWithCodeHash
+            | TestScenario::FromClientEvmFutureNonce
             | TestScenario::FromClientSignedByAdmin(_) => {
                 matches!(
                     event,
@@ -1971,13 +1996,13 @@ async fn should_reject_invalid_transaction_v1_from_peer() {
 }
 
 #[tokio::test]
-async fn should_reject_evm_transaction_with_invalid_nonce_from_peer() {
-    let result = run_transaction_acceptor(TestScenario::FromPeerEvmInvalidNonce).await;
+async fn should_reject_evm_transaction_with_stale_nonce_from_peer() {
+    let result = run_transaction_acceptor(TestScenario::FromPeerEvmStaleNonce).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
             EvmTransactionError::InvalidNonce {
-                expected: 0,
+                expected: 2,
                 actual: 1
             }
         )))
@@ -2085,14 +2110,41 @@ async fn should_reject_invalid_transaction_v1_from_client() {
 }
 
 #[tokio::test]
-async fn should_reject_evm_transaction_with_invalid_nonce_from_client() {
-    let result = run_transaction_acceptor(TestScenario::FromClientEvmInvalidNonce).await;
+async fn should_reject_evm_transaction_with_stale_nonce_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientEvmStaleNonce).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
             EvmTransactionError::InvalidNonce {
-                expected: 0,
+                expected: 2,
                 actual: 1
+            }
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_accept_evm_transaction_with_future_nonce_from_peer() {
+    let result = run_transaction_acceptor(TestScenario::FromPeerEvmFutureNonce).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_evm_transaction_with_future_nonce_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientEvmFutureNonce).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_evm_transaction_with_nonce_too_far_ahead_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientEvmNonceTooFarAhead).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::Evm(
+            EvmTransactionError::NonceTooFarAhead {
+                current: 0,
+                actual: 1,
+                max_nonce_gap: 0
             }
         )))
     ))

@@ -259,6 +259,9 @@ impl<T> WithDir<T> {
 pub(crate) enum Source {
     /// A peer with the wrapped ID.
     PeerGossiped(NodeId),
+    /// A peer with the wrapped ID, which gossiped the item as part of an EVM transaction batch.
+    /// The batch is gossiped onwards as a whole, so the item is not gossiped on its own.
+    PeerBatched(NodeId),
     /// A peer with the wrapped ID.
     Peer(NodeId),
     /// A client.
@@ -272,14 +275,19 @@ impl Source {
     pub(crate) fn is_client(&self) -> bool {
         match self {
             Source::Client => true,
-            Source::PeerGossiped(_) | Source::Peer(_) | Source::Ourself => false,
+            Source::PeerGossiped(_)
+            | Source::PeerBatched(_)
+            | Source::Peer(_)
+            | Source::Ourself => false,
         }
     }
 
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
-            Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
+            Source::Peer(node_id)
+            | Source::PeerGossiped(node_id)
+            | Source::PeerBatched(node_id) => Some(*node_id),
             Source::Client | Source::Ourself => None,
         }
     }
@@ -288,9 +296,9 @@ impl Source {
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Source::PeerGossiped(node_id) | Source::Peer(node_id) => {
-                Display::fmt(node_id, formatter)
-            }
+            Source::PeerGossiped(node_id)
+            | Source::PeerBatched(node_id)
+            | Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
             Source::Ourself => write!(formatter, "ourself"),
         }

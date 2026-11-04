@@ -975,6 +975,29 @@ fn get_vec_of_non_existing_transaction_returns_nones() {
 }
 
 #[test]
+fn should_get_transactions_by_id_in_request_order() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let first = Transaction::random(&mut harness.rng);
+    let missing = Transaction::random(&mut harness.rng);
+    let second = Transaction::random(&mut harness.rng);
+    put_transaction(&mut harness, &mut storage, &first);
+    put_transaction(&mut harness, &mut storage, &second);
+
+    let transaction_ids = vec![second.fetch_id(), missing.fetch_id(), first.fetch_id()];
+    let response = harness.send_request(&mut storage, move |responder| {
+        StorageRequest::GetTransactionsById {
+            transaction_ids,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    assert_eq!(response, vec![Some(second), None, Some(first)]);
+}
+
+#[test]
 fn can_retrieve_store_and_load_transactions() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);

@@ -91,9 +91,9 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap, SyncLeapIdentifier,
-        TransactionHeader, VariantMismatch,
+        BatchedTransaction, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockWithMetadata, ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap,
+        SyncLeapIdentifier, TransactionHeader, VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -808,6 +808,18 @@ impl Storage {
                     fetch_response,
                 )?)
             }
+            NetRequest::BatchedTransaction(ref serialized_id) => {
+                let id = decode_item_id::<BatchedTransaction>(serialized_id)?;
+                let opt_item = self.get_transaction_by_id(id)?.map(BatchedTransaction::new);
+                let fetch_response = FetchResponse::from_opt(id, opt_item);
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    fetch_response,
+                )?)
+            }
         }
     }
 
@@ -937,21 +949,21 @@ impl Storage {
                 responder,
             } => {
                 let ro_txn = self.block_store.checkout_ro()?;
-                let maybe_transaction = match Self::get_transaction_with_finalized_approvals(
-                    &ro_txn,
-                    &transaction_id.transaction_hash(),
-                )? {
-                    None => None,
-                    Some((transaction, maybe_approvals)) => {
-                        let transaction = if let Some(approvals) = maybe_approvals {
-                            transaction.with_approvals(approvals)
-                        } else {
-                            transaction
-                        };
-                        (transaction.fetch_id() == transaction_id).then_some(transaction)
-                    }
-                };
+                let maybe_transaction = Self::get_transaction_matching_id(&ro_txn, transaction_id)?;
                 responder.respond(maybe_transaction).ignore()
+            }
+            StorageRequest::GetTransactionsById {
+                transaction_ids,
+                responder,
+            } => {
+                let ro_txn = self.block_store.checkout_ro()?;
+                let transactions = transaction_ids
+                    .into_iter()
+                    .map(|transaction_id| {
+                        Self::get_transaction_matching_id(&ro_txn, transaction_id)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                responder.respond(transactions).ignore()
             }
             StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash,
@@ -1936,6 +1948,24 @@ impl Storage {
                 }
             }
         }
+    }
+
+    /// Returns the stored transaction, with its finalized approvals if any, provided it matches
+    /// `transaction_id`.
+    fn get_transaction_matching_id(
+        txn: &LmdbBlockStoreReadTransaction<'_>,
+        transaction_id: TransactionId,
+    ) -> Result<Option<Transaction>, FatalStorageError> {
+        let maybe_transaction = Self::get_transaction_with_finalized_approvals(
+            txn,
+            &transaction_id.transaction_hash(),
+        )?
+        .map(|(transaction, maybe_approvals)| match maybe_approvals {
+            Some(approvals) => transaction.with_approvals(approvals),
+            None => transaction,
+        })
+        .filter(|transaction| transaction.fetch_id() == transaction_id);
+        Ok(maybe_transaction)
     }
 
     /// Retrieves a single transaction along with its finalized approvals.

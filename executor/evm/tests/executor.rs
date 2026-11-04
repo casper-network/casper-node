@@ -123,6 +123,7 @@ fn executor_with_base_fee(spec: EvmSpec, base_fee: u64) -> EvmExecutor {
         block_gas_limit: 30_000_000,
         base_fee,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: Vec::new(),
         preinstalls: Default::default(),
     })
@@ -1925,6 +1926,7 @@ fn whole_mote_value_executes_in_wei_and_persists_without_dust() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: Vec::new(),
         preinstalls: Default::default(),
     });
@@ -3244,6 +3246,7 @@ fn unchecked_call_with_calldata_does_not_underflow_unfunded_sender() {
         block_gas_limit: 30_000_000,
         base_fee: 1_000_000,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: Vec::new(),
         preinstalls: Default::default(),
     };
@@ -3432,6 +3435,7 @@ fn signed_transactions_require_configured_chain_id() {
         block_gas_limit: 30_000_000,
         base_fee: 0,
         wei_per_mote: DEFAULT_WEI_PER_MOTE,
+        max_nonce_gap: 0,
         transaction_lanes: Vec::new(),
         preinstalls: Default::default(),
     });

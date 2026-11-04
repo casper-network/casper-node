@@ -410,6 +410,11 @@ pub(crate) enum StorageRequest {
         transaction_id: TransactionId,
         responder: Responder<Option<Transaction>>,
     },
+    /// Retrieve the transactions with the given IDs in a single read, in the order given.
+    GetTransactionsById {
+        transaction_ids: Vec<TransactionId>,
+        responder: Responder<Vec<Option<Transaction>>>,
+    },
     IsTransactionStored {
         transaction_id: TransactionId,
         responder: Responder<bool>,
@@ -593,6 +598,15 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetTransaction { transaction_id, .. } => {
                 write!(formatter, "get transaction {}", transaction_id)
+            }
+            StorageRequest::GetTransactionsById {
+                transaction_ids, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transactions {}",
+                    DisplayIter::new(transaction_ids.iter())
+                )
             }
             StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash, ..
@@ -1220,6 +1234,9 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
+    /// Where the transaction came from: a client, or a peer which gossiped it as part of a batch.
+    #[data_size(skip)]
+    pub(crate) source: Source,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 

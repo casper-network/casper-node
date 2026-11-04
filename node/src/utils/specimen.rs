@@ -40,8 +40,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
-        LegacyDeploy, SyncLeap, TrieOrChunk,
+        BatchedTransaction, BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock,
+        InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;
@@ -1197,6 +1197,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::BlockExecutionResults => Message::new_get_request::<BlockExecutionResultsOrChunk>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
+            Tag::BatchedTransaction => Message::new_get_request::<BatchedTransaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
         }
         .expect("did not expect new_get_request from largest deploy to fail")
     })
@@ -1235,6 +1238,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
                     &LargestSpecimen::largest_specimen(estimator, cache),
                 )
             }
+            Tag::BatchedTransaction => Message::new_get_response::<BatchedTransaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
         }
         .expect("did not expect new_get_response from largest deploy to fail")
     })
