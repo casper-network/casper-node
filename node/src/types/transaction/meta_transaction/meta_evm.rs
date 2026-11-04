@@ -20,6 +20,13 @@ impl MetaEvmTransaction {
         transaction: &EvmTransaction,
         evm_config: &EvmConfig,
     ) -> Result<Self, InvalidTransaction> {
+        // Check protocol limits before lane selection so an over-cap transaction reports the
+        // correct error even when no lane can accommodate it. The sidecar represents eth_call
+        // and eth_estimateGas as unsigned calls, which skip this early transaction-limit check.
+        // Lane selection and subsequent compliance checks still apply to those simulations.
+        if !transaction.is_unsigned_call() {
+            evm_config.validate_transaction_gas_limit(transaction.gas_limit())?;
+        }
         let lane_id = evm_config
             .get_evm_lane_id(
                 transaction.gas_limit(),
@@ -199,16 +206,13 @@ impl Display for MetaEvmTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::TransactionFootprint;
+    use crate::{types::TransactionFootprint, utils::Loadable};
     use alloy_consensus::{
         SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
     };
     use alloy_eips::{eip2718::Encodable2718, eip7702::Authorization};
     use alloy_primitives::{Address, Signature, TxKind, U256};
-    use casper_types::{
-        testing::TestRng, EvmConfig, Transaction, TransactionLaneDefinition,
-        EVM_TRANSACTION_GAS_LIMIT,
-    };
+    use casper_types::{ChainspecRawBytes, EvmConfig, Transaction, EVM_TRANSACTION_GAS_LIMIT};
 
     fn transaction(kind: EvmTransactionKind, gas_limit: u64) -> EvmTransaction {
         let to = TxKind::Call(Address::from([0x44; 20]));
@@ -269,72 +273,71 @@ mod tests {
 
     #[test]
     fn osaka_admission_and_received_block_footprints_validate_all_envelopes() {
-        let mut chainspec = Chainspec::random(&mut TestRng::new());
-        chainspec.evm_config = EvmConfig {
-            enabled: true,
-            chain_id: 7,
-            transaction_lanes: vec![TransactionLaneDefinition::new(
-                100,
-                u64::MAX,
-                u64::MAX,
-                u64::MAX,
-                100,
-            )],
-            ..Default::default()
-        };
-        // Received block validation and packing both construct this same footprint.
-        for kind in [
-            EvmTransactionKind::Legacy,
-            EvmTransactionKind::Eip2930,
-            EvmTransactionKind::Eip1559,
-            EvmTransactionKind::Eip7702,
-        ] {
-            for gas_limit in [
-                EVM_TRANSACTION_GAS_LIMIT - 1,
-                EVM_TRANSACTION_GAS_LIMIT,
-                EVM_TRANSACTION_GAS_LIMIT + 1,
+        for resource in ["evm", "local"] {
+            let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources(resource);
+            // Match the signed fixtures while keeping the shipped lane configuration.
+            chainspec.evm_config.enabled = true;
+            chainspec.evm_config.chain_id = 7;
+            chainspec.evm_config.base_fee = 0;
+            // Received block validation and packing both construct this same footprint.
+            for kind in [
+                EvmTransactionKind::Legacy,
+                EvmTransactionKind::Eip2930,
+                EvmTransactionKind::Eip1559,
+                EvmTransactionKind::Eip7702,
             ] {
-                let tx = transaction(kind, gas_limit);
-                let meta =
-                    MetaEvmTransaction::from_evm_transaction(&tx, &chainspec.evm_config).unwrap();
-                let admission = meta.is_config_compliant(&chainspec);
-                let footprint =
-                    TransactionFootprint::new(&chainspec, &Transaction::Evm(Box::new(tx)));
-                if gas_limit <= EVM_TRANSACTION_GAS_LIMIT {
-                    assert_eq!(admission, Ok(()), "kind {kind}");
-                    assert!(footprint.is_ok(), "kind {kind}: {footprint:?}");
-                } else {
-                    assert!(matches!(
-                        admission,
-                        Err(EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. })
-                    ));
-                    assert!(matches!(
-                        footprint,
-                        Err(InvalidTransaction::Evm(
-                            EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. }
-                        ))
-                    ));
+                for gas_limit in [
+                    EVM_TRANSACTION_GAS_LIMIT - 1,
+                    EVM_TRANSACTION_GAS_LIMIT,
+                    EVM_TRANSACTION_GAS_LIMIT + 1,
+                ] {
+                    let tx = transaction(kind, gas_limit);
+                    let meta = MetaEvmTransaction::from_evm_transaction(&tx, &chainspec.evm_config);
+                    let footprint =
+                        TransactionFootprint::new(&chainspec, &Transaction::Evm(Box::new(tx)));
+                    if gas_limit <= EVM_TRANSACTION_GAS_LIMIT {
+                        let admission = meta.unwrap().is_config_compliant(&chainspec);
+                        assert_eq!(admission, Ok(()), "resource {resource}, kind {kind}");
+                        assert!(
+                            footprint.is_ok(),
+                            "resource {resource}, kind {kind}: {footprint:?}"
+                        );
+                    } else {
+                        assert!(matches!(
+                            meta,
+                            Err(InvalidTransaction::Evm(
+                                EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. }
+                            ))
+                        ));
+                        assert!(matches!(
+                            footprint,
+                            Err(InvalidTransaction::Evm(
+                                EvmTransactionError::GasLimitExceedsTransactionGasLimit { .. }
+                            ))
+                        ));
+                    }
                 }
+                let tx = transaction(kind, 100_001);
+                let lower = Chainspec {
+                    evm_config: EvmConfig {
+                        block_gas_limit: 100_000,
+                        ..chainspec.evm_config.clone()
+                    },
+                    ..chainspec.clone()
+                };
+                assert!(matches!(
+                    MetaEvmTransaction::from_evm_transaction(&tx, &lower.evm_config),
+                    Err(InvalidTransaction::Evm(
+                        EvmTransactionError::GasLimitExceedsBlockGasLimit { .. }
+                    ))
+                ));
+                assert!(matches!(
+                    TransactionFootprint::new(&lower, &Transaction::Evm(Box::new(tx))),
+                    Err(InvalidTransaction::Evm(
+                        EvmTransactionError::GasLimitExceedsBlockGasLimit { .. }
+                    ))
+                ));
             }
-            let tx = transaction(kind, 100_001);
-            let lower = Chainspec {
-                evm_config: EvmConfig {
-                    block_gas_limit: 100_000,
-                    ..chainspec.evm_config.clone()
-                },
-                ..chainspec.clone()
-            };
-            let meta = MetaEvmTransaction::from_evm_transaction(&tx, &lower.evm_config).unwrap();
-            assert!(matches!(
-                meta.is_config_compliant(&lower),
-                Err(EvmTransactionError::GasLimitExceedsBlockGasLimit { .. })
-            ));
-            assert!(matches!(
-                TransactionFootprint::new(&lower, &Transaction::Evm(Box::new(tx))),
-                Err(InvalidTransaction::Evm(
-                    EvmTransactionError::GasLimitExceedsBlockGasLimit { .. }
-                ))
-            ));
         }
     }
 }

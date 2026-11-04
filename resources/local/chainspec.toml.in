@@ -528,6 +528,7 @@ max_nonce_gap = 16
 # It is highly recommended to keep a single EVM transaction lane, and the node refuses to start with
 # more than one: blocks execute lane by lane, so with several EVM lanes a sender's transactions
 # could execute out of nonce order.
+# The lane reaches the EIP-7825 per-transaction gas cap of 2^24.
 transaction_lanes = [
-    [100, 262_144, 65_536, 15_000_000, 50],
+    [100, 262_144, 65_536, 16_777_216, 50],
 ]
