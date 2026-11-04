@@ -106,8 +106,8 @@ pub struct EvmConfig {
     /// Keccak-256 hashes of runtime bytecode installed at genesis and upgrades.
     ///
     /// Each entry is an address and code hash, both 0x-prefixed hexadecimal
-    /// strings in TOML. Addresses must be unique. An omitted list is empty.
-    #[serde(default)]
+    /// strings in TOML. Addresses must be unique. Use an empty list to install
+    /// no utility contracts.
     pub preinstalls: Vec<(crate::evm::Address, crate::evm::Hash)>,
 }
 
@@ -422,11 +422,13 @@ mod tests {
     }
 
     #[test]
-    fn omitted_preinstalls_default_to_empty() {
+    fn preinstalls_must_be_present_even_when_empty() {
         let mut value = serde_json::to_value(EvmConfig::default()).unwrap();
-        value.as_object_mut().unwrap().remove("preinstalls");
-        let config: EvmConfig = serde_json::from_value(value).unwrap();
+        let config: EvmConfig = serde_json::from_value(value.clone()).unwrap();
         assert!(config.preinstalls.is_empty());
+        value.as_object_mut().unwrap().remove("preinstalls");
+        let error = serde_json::from_value::<EvmConfig>(value).unwrap_err();
+        assert!(error.to_string().contains("missing field `preinstalls`"));
     }
 
     #[test]

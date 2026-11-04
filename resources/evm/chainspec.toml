@@ -546,3 +546,36 @@ max_nonce_gap = 16
 transaction_lanes = [
     [100, 262_144, 65_536, 16_777_216, 50],
 ]
+
+# Utility contract address and runtime Keccak-256 hash pairs. Runtime bytecode
+# files and license notices are in the preinstalls directory beside this chainspec.
+preinstalls = [
+    # Multicall3: runtime from its official signed deployment transaction.
+    # https://github.com/mds1/multicall3/blob/b667d67ecfa5361a81e8f110234ce242613b0012/README.md#new-deployments
+    ["0xcA11bde05977b3631167028862bE2a173976CA11", "0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891"],
+
+    # Arachnid CREATE2 deployer: runtime from the signed proxy deployment.
+    # https://github.com/Arachnid/deterministic-deployment-proxy/blob/be3c5974db5028d502537209329ff2e730ed336c/README.md#deployment-transaction
+    ["0x4e59b44847b379578588920cA78FbF26c0B4956C", "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"],
+
+    # Safe Singleton Factory: runtime from Safe's Ethereum deployment.
+    # https://github.com/safe-fndn/safe-singleton-factory/blob/e550557e891dc0418c46daf785198dc05df6645c/artifacts/1/deployment.json
+    ["0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7", "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"],
+
+    # ERC-2470 Singleton Factory: runtime from the ERC's signed deployment.
+    # https://github.com/ethereum/ercs/blob/8dd085d159cb123f545c272c0d871a5339550e79/ERCS/erc-2470.md#deployment-transaction
+    ["0xce0042B868300000d44A59004Da54A005ffdcf9f", "0xc4d5542b53a8b779595a20a8ddd60e58a6c49d3c3decc2df83ced1c69c8ca807"],
+
+    # Uniswap Permit2: Ethereum mainnet runtime at block 26,104,339.
+    # https://github.com/Uniswap/permit2/blob/cc56ad0f3439c502c246fc5cfcc3db92bb8b7219/test/utils/DeployPermit2.sol
+    ["0x000000000022D473030F116dDEE9F6B43aC78BA3", "0xc67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131"],
+
+    # SenderCreator v0.8: Ethereum mainnet runtime at block 26,104,339;
+    # deploy together with the matching EntryPoint v0.8 below.
+    # https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/EntryPoint.json
+    ["0x449ED7C3e6Fee6a97311d4b55475DF59C44AdD33", "0xc69a1b3a000d570bc86eb096ee63a9014a17951ad616d720882ec61432b00fcf"],
+
+    # EntryPoint v0.8: Ethereum mainnet runtime at block 26,104,339.
+    # https://github.com/eth-infinitism/account-abstraction/blob/4cbc06072cdc19fd60f285c5997f4f7f57a588de/deployments/ethereum/EntryPoint.json
+    ["0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108", "0x44e632a24c6f2600cbd5b5b8b4c2d372359112c8b5774297f5fd0a9e64f11f86"],
+]
