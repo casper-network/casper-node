@@ -16,9 +16,7 @@ mod tx;
 pub use error::{DbError, Error, Result};
 pub use executor::EvmExecutor;
 pub use outcome::{ExecutionOutcome, ExecutionStatus};
-pub use request::{
-    BlockContext, CallRequest, CallValidation, ExecuteKind, ExecuteRequest, SystemCallRequest,
-};
+pub use request::{BlockContext, CallRequest, CallValidation, ExecuteKind, ExecuteRequest};
 
 use casper_types::evm;
 

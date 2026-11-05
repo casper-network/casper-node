@@ -13,7 +13,7 @@ use alloy_eips::{
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, CallRequest, CallValidation, DbError, Error, EvmExecutor, ExecuteKind,
-    ExecuteRequest, ExecutionStatus, SystemCallRequest, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
+    ExecuteRequest, ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
@@ -1192,36 +1192,6 @@ fn missing_bytecode_rejects_delegated_call() {
             ),
         )
         .expect_err("missing delegated bytecode must abort execution");
-
-    assert!(matches!(
-        error,
-        Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
-    ));
-}
-
-#[test]
-fn missing_bytecode_rejects_system_call() {
-    let executor = executor(EvmSpec::Osaka);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let target = evm::Address::new([0xa1; 20]);
-    seed_evm_code(&mut tracking_copy, target, reverting_runtime());
-    let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(
-        &mut tracking_copy,
-        target,
-    )));
-    tracking_copy.prune(missing_key);
-
-    let error = executor
-        .execute_system_call(
-            &data_access_layer,
-            &mut tracking_copy,
-            SystemCallRequest {
-                block: block(),
-                target,
-                input: Vec::new(),
-            },
-        )
-        .expect_err("missing system-call bytecode must abort execution");
 
     assert!(matches!(
         error,
@@ -2841,31 +2811,6 @@ fn invalid_wei_per_mote_is_rejected() {
         ),
         Err(Error::InvalidWeiPerMote)
     ));
-}
-
-#[test]
-fn system_call_reports_zero_dust_for_whole_mote_state() {
-    let executor = executor(EvmSpec::Osaka);
-    let target = evm::Address::new([0x3b; 20]);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    seed_evm_balance(&mut tracking_copy, target, U512::one());
-    seed_evm_code(&mut tracking_copy, target, vec![opcode::STOP]);
-
-    let outcome = executor
-        .execute_system_call(
-            &data_access_layer,
-            &mut tracking_copy,
-            SystemCallRequest {
-                block: block(),
-                target,
-                input: Vec::new(),
-            },
-        )
-        .expect("system call should execute");
-
-    assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
-    assert_eq!(read_balance(&mut tracking_copy, target), U512::one());
 }
 
 #[test]
