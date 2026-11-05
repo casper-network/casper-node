@@ -1554,6 +1554,83 @@ where
 
                 Ok(Some(RuntimeValue::I32(0)))
             }
+            FunctionIndex::AltBn128Add => {
+                // args(0) = pointer to fixed-width little-endian input bytes
+                // args(1) = length of input in bytes (no count prefix)
+                // args(2) = pointer to the fixed-size output buffer
+                let (input_ptr, input_size, output_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_add,
+                    [input_ptr, input_size, output_ptr],
+                )?;
+                let result = self.checked_memory_slice(
+                    input_ptr as usize,
+                    input_size as usize,
+                    cryptography::alt_bn128::add,
+                )?;
+                let result = match result {
+                    Ok(output) => {
+                        self.try_get_memory()?
+                            .set(output_ptr, &output)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                };
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+
+            FunctionIndex::AltBn128Mul => {
+                // args(0) = pointer to fixed-width little-endian input bytes
+                // args(1) = length of input in bytes (no count prefix)
+                // args(2) = pointer to the fixed-size output buffer
+                let (input_ptr, input_size, output_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_mul,
+                    [input_ptr, input_size, output_ptr],
+                )?;
+                let result = self.checked_memory_slice(
+                    input_ptr as usize,
+                    input_size as usize,
+                    cryptography::alt_bn128::mul,
+                )?;
+                let result = match result {
+                    Ok(output) => {
+                        self.try_get_memory()?
+                            .set(output_ptr, &output)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                };
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+
+            FunctionIndex::AltBn128Pairing => {
+                // args(0) = pointer to fixed-width little-endian input bytes
+                // args(1) = length of input in bytes (no count prefix)
+                // args(2) = pointer to the fixed-size output buffer
+                let (input_ptr, input_size, output_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_pairing,
+                    [input_ptr, input_size, output_ptr],
+                )?;
+                let result =
+                    self.checked_memory_slice(input_ptr as usize, input_size as usize, |input| {
+                        cryptography::alt_bn128::pairing(input).map(|value| [u8::from(value)])
+                    })?;
+                let result = match result {
+                    Ok(output) => {
+                        self.try_get_memory()?
+                            .set(output_ptr, &output)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                };
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+
             FunctionIndex::CallPackageVersion => {
                 // args(0) = pointer to contract_package_hash where contract is at in global state
                 // args(1) = size of contract_package_hash

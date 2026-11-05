@@ -1,0 +1,15 @@
+[package]
+name = "alt-bn128"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "alt_bn128"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { version = "5.1.1", path = "../../../contract" }
+casper-types = { version = "7.0.0", path = "../../../../types" }

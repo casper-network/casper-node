@@ -950,6 +950,42 @@ extern "C" {
         public_key_ptr: *const u8,
         public_key_size: usize,
     ) -> i32;
+    /// Adds two alt_bn128 G1 points. Input is exactly 128 bytes containing
+    /// `[x1, y1, x2, y2]`, each a 32-byte little-endian integer. On success,
+    /// writes 64 bytes containing little-endian `[x, y]` to `output_ptr`.
+    /// Returns zero on success or an ApiError status; invalid input returns
+    /// InvalidArgument without writing output. Memory accesses must be in bounds.
+    pub fn casper_alt_bn128_add(
+        input_ptr: *const u8,
+        input_byte_len: usize,
+        output_ptr: *mut u8,
+    ) -> i32;
+
+    /// Multiplies an alt_bn128 G1 point by a scalar. Input is exactly 96 bytes
+    /// containing `[x, y, scalar]`, each a 32-byte little-endian integer. The
+    /// scalar is reduced modulo the group order. On success, writes 64 bytes
+    /// containing little-endian `[x, y]` to `output_ptr`.
+    /// Returns zero on success or an ApiError status; invalid input returns
+    /// InvalidArgument without writing output. Memory accesses must be in bounds.
+    pub fn casper_alt_bn128_mul(
+        input_ptr: *const u8,
+        input_byte_len: usize,
+        output_ptr: *mut u8,
+    ) -> i32;
+
+    /// Checks a product of alt_bn128 pairings. Input is a concatenation of
+    /// 192-byte entries `[ax, ay, bax, bay, bbx, bby]`, with 32-byte little-endian
+    /// coordinates and no count prefix. G2 coordinates are
+    /// `(Fq2(bax, bay), Fq2(bbx, bby))`, ordered `(real, imaginary)`.
+    /// Writes one byte (0 for false, 1 for true) on success. Empty input returns
+    /// true. Returns zero on success or an ApiError status; invalid input returns
+    /// InvalidArgument without writing output. Memory accesses must be in bounds.
+    pub fn casper_alt_bn128_pairing(
+        input_ptr: *const u8,
+        input_byte_len: usize,
+        output_ptr: *mut u8,
+    ) -> i32;
+
     /// Calls a contract by its package hash. Requires both a major and contract version. Requires
     /// an entry point name registered in a given version of contract. Returns a standard error
     /// code in case of failure, otherwise a successful execution returns zero. Bytes returned
