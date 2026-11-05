@@ -32,9 +32,9 @@ use casper_storage::{
 use casper_types::{
     contracts::NamedKeys, evm, AccessRights, Account, BlockHash, BlockHeader, BlockHeaderV2,
     ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, EvmSpec,
-    EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
+    EvmTransaction, EvmTransactionError, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key,
+    Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
 use once_cell::sync::OnceCell;
 use revm::bytecode::opcode;
@@ -3415,19 +3415,38 @@ fn selfdestruct_preserves_account_on_osaka() {
 }
 
 #[test]
-fn signed_transactions_require_configured_chain_id() {
+fn signed_transactions_allow_unprotected_legacy_envelopes() {
     let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let missing_chain_id = legacy_transaction_without_chain_id();
+    let transaction = legacy_transaction_without_chain_id();
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000u64),
+    );
+    executor
+        .validate_transaction(
+            &data_access_layer,
+            &mut tracking_copy,
+            block(),
+            &transaction,
+        )
+        .expect("Osaka permits unprotected legacy transactions");
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 0);
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(Box::new(missing_chain_id)),
+        kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
-    assert!(matches!(
-        executor.execute(&data_access_layer, &mut tracking_copy, request),
-        Err(Error::MissingChainId)
-    ));
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, request)
+        .expect("unprotected legacy transaction should execute");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
+}
 
+#[test]
+fn signed_transactions_reject_mismatched_chain_id() {
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let wrong_chain_executor = EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 8,
@@ -3440,16 +3459,23 @@ fn signed_transactions_require_configured_chain_id() {
         preinstalls: Default::default(),
     });
     let transaction = legacy_transaction(Some(7));
+    assert!(matches!(
+        wrong_chain_executor.validate_transaction(
+            &data_access_layer,
+            &mut tracking_copy,
+            block(),
+            &transaction,
+        ),
+        Err(Error::InvalidTransaction(EvmTransactionError::Validation(message)))
+            if message == "invalid chain ID"
+    ));
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(Box::new(transaction)),
     };
     assert!(matches!(
         wrong_chain_executor.execute(&data_access_layer, &mut tracking_copy, request),
-        Err(Error::ChainIdMismatch {
-            expected: 8,
-            actual: 7
-        })
+        Err(Error::Revm(message)) if message.contains("invalid chain ID")
     ));
 }
 

@@ -22,7 +22,7 @@ pub(crate) fn build_tx_env(config: &EvmConfig, kind: &ExecuteKind) -> Result<TxE
                 .value(to_revm_u256(transaction.value()))
                 .data(Bytes::from(transaction.input().to_vec()))
                 .nonce(transaction.nonce())
-                .chain_id(transaction.chain_id().or(Some(config.chain_id)))
+                .chain_id(transaction.chain_id())
                 .access_list(to_revm_access_list(transaction.access_list()));
 
             builder = match transaction.kind() {

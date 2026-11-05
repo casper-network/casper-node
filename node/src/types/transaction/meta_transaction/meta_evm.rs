@@ -105,11 +105,13 @@ impl MetaEvmTransaction {
         }
 
         let expected = evm_config.chain_id;
-        let actual = transaction
-            .chain_id()
-            .ok_or(EvmTransactionError::MissingChainId)?;
-        if actual != expected {
-            return Err(EvmTransactionError::ChainIdMismatch { expected, actual });
+        // Follow Osaka's chain-ID semantics: unprotected legacy transactions may omit the ID;
+        // when present, it must match the network. Typed envelopes require it during verification.
+        // https://ethereum.github.io/execution-specs/src/ethereum/forks/osaka/fork.py.html#check_transaction
+        if let Some(actual) = transaction.chain_id() {
+            if actual != expected {
+                return Err(EvmTransactionError::ChainIdMismatch { expected, actual });
+            }
         }
 
         let gas_limit = transaction.gas_limit();
