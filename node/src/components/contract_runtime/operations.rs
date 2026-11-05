@@ -189,8 +189,10 @@ where
     let result = EvmExecutor::new(chainspec.evm_config.clone()).validate_transaction(
         data_access_layer,
         tracking_copy,
-        block_context,
-        evm_transaction,
+        EvmExecuteRequest {
+            block: block_context,
+            kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
+        },
     );
     let invalid_request = match result {
         Ok(()) => return Ok(None),

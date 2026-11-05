@@ -3424,19 +3424,14 @@ fn signed_transactions_allow_unprotected_legacy_envelopes() {
         transaction.from(),
         U512::from(1_000_000u64),
     );
-    executor
-        .validate_transaction(
-            &data_access_layer,
-            &mut tracking_copy,
-            block(),
-            &transaction,
-        )
-        .expect("Osaka permits unprotected legacy transactions");
-    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 0);
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
+    executor
+        .validate_transaction(&data_access_layer, &mut tracking_copy, request.clone())
+        .expect("Osaka permits unprotected legacy transactions");
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 0);
     let outcome = executor
         .execute(&data_access_layer, &mut tracking_copy, request)
         .expect("unprotected legacy transaction should execute");
@@ -3459,20 +3454,19 @@ fn signed_transactions_reject_mismatched_chain_id() {
         preinstalls: Default::default(),
     });
     let transaction = legacy_transaction(Some(7));
-    assert!(matches!(
-        wrong_chain_executor.validate_transaction(
-            &data_access_layer,
-            &mut tracking_copy,
-            block(),
-            &transaction,
-        ),
-        Err(Error::InvalidTransaction(EvmTransactionError::Validation(message)))
-            if message == "invalid chain ID"
-    ));
     let request = ExecuteRequest {
         block: block(),
         kind: ExecuteKind::Transaction(Box::new(transaction)),
     };
+    assert!(matches!(
+        wrong_chain_executor.validate_transaction(
+            &data_access_layer,
+            &mut tracking_copy,
+            request.clone(),
+        ),
+        Err(Error::InvalidTransaction(EvmTransactionError::Validation(message)))
+            if message == "invalid chain ID"
+    ));
     assert!(matches!(
         wrong_chain_executor.execute(&data_access_layer, &mut tracking_copy, request),
         Err(Error::Revm(message)) if message.contains("invalid chain ID")
