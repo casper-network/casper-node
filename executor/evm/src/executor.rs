@@ -13,13 +13,13 @@ use revm::{
     context_interface::result::{EVMError, InvalidTransaction as RevmInvalidTransaction},
     handler::{instructions::EthInstructions, EthFrame, Handler, MainnetContext, MainnetHandler},
     interpreter::interpreter::EthInterpreter,
-    primitives::{hardfork::SpecId, Bytes},
-    Context, ExecuteEvm, MainBuilder, MainContext, SystemCallEvm,
+    primitives::hardfork::SpecId,
+    Context, ExecuteEvm, MainBuilder, MainContext,
 };
 
 use crate::{
-    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, DbError, Error, ExecuteKind,
-    ExecuteRequest, ExecutionOutcome, Result, SystemCallRequest,
+    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, CallValidation, DbError, Error,
+    ExecuteKind, ExecuteRequest, ExecutionOutcome, Result,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -30,13 +30,6 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct EvmExecutor {
     config: EvmConfig,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EvmExecutionMode {
-    Checked,
-    UncheckedSimulation,
-    SystemCall,
 }
 
 type CasperEvm<CTX> = Evm<
@@ -134,88 +127,33 @@ impl EvmExecutor {
 
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
         let block = request.block.to_revm_block(&self.config)?;
-        let execution_mode = match &request.kind {
-            ExecuteKind::Transaction(_) => EvmExecutionMode::Checked,
-            ExecuteKind::Call(call) if call.validation.is_unchecked_simulation() => {
-                EvmExecutionMode::UncheckedSimulation
-            }
-            ExecuteKind::Call(_) => EvmExecutionMode::Checked,
+        let validation = match &request.kind {
+            ExecuteKind::Transaction(_) => CallValidation::Checked,
+            ExecuteKind::Call(call) => call.validation,
         };
-
         let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
         Ok(Context::mainnet()
             .with_db(db)
             .with_block(block)
             .with_tx(tx_env)
             .modify_cfg_chained(|cfg| {
-                configure_evm_cfg(cfg, &self.config, execution_mode);
+                configure_evm_cfg(cfg, &self.config, validation);
             })
             .build_mainnet()
             .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec))))
     }
-
-    /// Executes a system call against the supplied tracking copy.
-    pub fn execute_system_call<R, S>(
-        &self,
-        data_access_layer: &DataAccessLayer<S>,
-        tracking_copy: &mut TrackingCopy<R>,
-        request: SystemCallRequest,
-    ) -> Result<ExecutionOutcome>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
-        if !self.config.enabled {
-            return Err(Error::Disabled);
-        }
-        if self.config.wei_per_mote == 0 {
-            return Err(Error::InvalidWeiPerMote);
-        }
-
-        let block = request.block.to_revm_block(&self.config)?;
-        let result_and_state = {
-            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
-            let mut evm = Context::mainnet()
-                .with_db(db)
-                .with_block(block)
-                .modify_cfg_chained(|cfg| {
-                    configure_evm_cfg(cfg, &self.config, EvmExecutionMode::SystemCall);
-                })
-                .build_mainnet()
-                .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
-
-            evm.system_call(
-                tx::to_revm_address(request.target),
-                Bytes::from(request.input),
-            )
-            .map_err(map_revm_error)?
-        };
-
-        let balance_losses = state::apply(
-            tracking_copy,
-            result_and_state.state,
-            self.config.wei_per_mote,
-        )?;
-        Ok(ExecutionOutcome::from_revm_result(
-            &result_and_state.result,
-            balance_losses,
-            self.config.wei_per_mote,
-        ))
-    }
 }
 
-fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, execution_mode: EvmExecutionMode) {
-    let skip_validation = matches!(
-        execution_mode,
-        EvmExecutionMode::UncheckedSimulation | EvmExecutionMode::SystemCall
-    );
+fn configure_evm_cfg(cfg: &mut CfgEnv, config: &EvmConfig, validation: CallValidation) {
+    let skip_validation = validation.is_unchecked_simulation();
 
     cfg.spec = spec_id(config.spec);
     cfg.chain_id = config.chain_id;
-    cfg.tx_chain_id_check = matches!(execution_mode, EvmExecutionMode::Checked);
+    cfg.tx_chain_id_check = !skip_validation;
     // Read-only simulations may consume the block budget, following eth_call.
     // All checked execution retains revm's Osaka transaction cap.
     cfg.tx_gas_limit_cap = skip_validation.then_some(u64::MAX);
-    cfg.disable_block_gas_limit = matches!(execution_mode, EvmExecutionMode::SystemCall);
+    cfg.disable_block_gas_limit = false;
     cfg.disable_base_fee = skip_validation;
     cfg.disable_balance_check = skip_validation;
     cfg.disable_nonce_check = skip_validation;

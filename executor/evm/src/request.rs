@@ -13,17 +13,6 @@ pub struct ExecuteRequest {
     pub kind: ExecuteKind,
 }
 
-/// Request passed to [`crate::EvmExecutor::execute_system_call`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SystemCallRequest {
-    /// Block context available to EVM opcodes.
-    pub block: BlockContext,
-    /// System contract address.
-    pub target: evm::Address,
-    /// System call input bytes.
-    pub input: Vec<u8>,
-}
-
 /// EVM work item to execute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecuteKind {
@@ -35,8 +24,8 @@ pub enum ExecuteKind {
 
 /// Unsigned EVM call request.
 ///
-/// Calls are useful for views, simulations, tests, and controlled system
-/// execution. They still write effects into the supplied tracking copy, so
+/// Calls are useful for views, simulations, and tests.
+/// They still write effects into the supplied tracking copy, so
 /// callers should pass a fork when they want to discard the result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CallRequest {
