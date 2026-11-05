@@ -442,6 +442,9 @@ impl From<InvalidTransaction> for ErrorCode {
             InvalidTransaction::Evm(EvmTransactionError::IntrinsicGasExceedsGasLimit {
                 ..
             }) => ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit,
+            InvalidTransaction::Evm(EvmTransactionError::MissingTransactionLane) => {
+                ErrorCode::InvalidTransactionNoLaneMatches
+            }
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
         }
     }
@@ -762,6 +765,15 @@ mod tests {
             ErrorCode::InvalidTransactionEvmIntrinsicGasExceedsGasLimit
         );
         assert_eq!(code as u16, 123);
+    }
+
+    #[test]
+    fn evm_missing_lane_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::MissingTransactionLane);
+        assert_eq!(
+            ErrorCode::from(error),
+            ErrorCode::InvalidTransactionNoLaneMatches
+        );
     }
 
     #[test]
