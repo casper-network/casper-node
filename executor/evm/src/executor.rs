@@ -7,18 +7,19 @@ use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     TrackingCopy,
 };
-use casper_types::{EvmConfig, EvmSpec, EvmTransaction, EvmTransactionError, Key, StoredValue};
+use casper_types::{EvmConfig, EvmSpec, EvmTransactionError, Key, StoredValue};
 use revm::{
-    context::CfgEnv,
+    context::{CfgEnv, Evm},
     context_interface::result::{EVMError, InvalidTransaction as RevmInvalidTransaction},
-    handler::{Handler, MainnetHandler},
+    handler::{instructions::EthInstructions, EthFrame, Handler, MainnetContext, MainnetHandler},
+    interpreter::interpreter::EthInterpreter,
     primitives::{hardfork::SpecId, Bytes},
     Context, ExecuteEvm, MainBuilder, MainContext, SystemCallEvm,
 };
 
 use crate::{
-    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, BlockContext, DbError, Error,
-    ExecuteKind, ExecuteRequest, ExecutionOutcome, Result, SystemCallRequest,
+    db::CasperDb, precompiles::CasperEvmPrecompiles, state, tx, DbError, Error, ExecuteKind,
+    ExecuteRequest, ExecutionOutcome, Result, SystemCallRequest,
 };
 
 /// Executes EVM transactions and calls against a Casper tracking copy.
@@ -38,6 +39,14 @@ enum EvmExecutionMode {
     SystemCall,
 }
 
+type CasperEvm<CTX> = Evm<
+    CTX,
+    (),
+    EthInstructions<EthInterpreter, CTX>,
+    CasperEvmPrecompiles,
+    EthFrame<EthInterpreter>,
+>;
+
 impl EvmExecutor {
     /// Creates a new executor from chainspec EVM configuration.
     pub fn new(config: EvmConfig) -> Self {
@@ -49,37 +58,17 @@ impl EvmExecutor {
         &self.config
     }
 
-    /// Validates an EVM transaction without executing it or applying state changes.
+    /// Validates an EVM transaction or call without executing it or applying state changes.
     pub fn validate_transaction<R, S>(
         &self,
         data_access_layer: &DataAccessLayer<S>,
         tracking_copy: &mut TrackingCopy<R>,
-        block_context: BlockContext,
-        transaction: &EvmTransaction,
+        request: ExecuteRequest,
     ) -> Result<()>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        if !self.config.enabled {
-            return Err(Error::Disabled);
-        }
-        if self.config.wei_per_mote == 0 {
-            return Err(Error::InvalidWeiPerMote);
-        }
-
-        let kind = ExecuteKind::Transaction(Box::new(transaction.clone()));
-        let tx_env = tx::build_tx_env(&self.config, &kind)?;
-        let block = block_context.to_revm_block(&self.config)?;
-        let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
-        let mut evm = Context::mainnet()
-            .with_db(db)
-            .with_block(block)
-            .with_tx(tx_env)
-            .modify_cfg_chained(|cfg| {
-                configure_evm_cfg(cfg, &self.config, EvmExecutionMode::Checked);
-            })
-            .build_mainnet()
-            .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
+        let mut evm = self.prepare_evm(data_access_layer, tracking_copy, &request)?;
 
         // revm's validate() includes the caller state phase. Running that phase
         // again would bump a call transaction's nonce twice in this journal.
@@ -110,6 +99,32 @@ impl EvmExecutor {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
+        let result_and_state = {
+            let mut evm = self.prepare_evm(data_access_layer, tracking_copy, &request)?;
+            evm.replay().map_err(map_revm_error)?
+        };
+
+        let balance_losses = state::apply(
+            tracking_copy,
+            result_and_state.state,
+            self.config.wei_per_mote,
+        )?;
+        Ok(ExecutionOutcome::from_revm_result(
+            &result_and_state.result,
+            balance_losses,
+            self.config.wei_per_mote,
+        ))
+    }
+
+    fn prepare_evm<'a, R, S>(
+        &self,
+        data_access_layer: &'a DataAccessLayer<S>,
+        tracking_copy: &'a mut TrackingCopy<R>,
+        request: &ExecuteRequest,
+    ) -> Result<CasperEvm<MainnetContext<CasperDb<'a, R, S>>>>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
         if !self.config.enabled {
             return Err(Error::Disabled);
         }
@@ -127,30 +142,16 @@ impl EvmExecutor {
             ExecuteKind::Call(_) => EvmExecutionMode::Checked,
         };
 
-        let result_and_state = {
-            let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
-            let mut evm = Context::mainnet()
-                .with_db(db)
-                .with_block(block)
-                .modify_cfg_chained(|cfg| {
-                    configure_evm_cfg(cfg, &self.config, execution_mode);
-                })
-                .build_mainnet()
-                .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec)));
-
-            evm.transact(tx_env).map_err(map_revm_error)?
-        };
-
-        let balance_losses = state::apply(
-            tracking_copy,
-            result_and_state.state,
-            self.config.wei_per_mote,
-        )?;
-        Ok(ExecutionOutcome::from_revm_result(
-            &result_and_state.result,
-            balance_losses,
-            self.config.wei_per_mote,
-        ))
+        let db = CasperDb::new(data_access_layer, tracking_copy, self.config.wei_per_mote);
+        Ok(Context::mainnet()
+            .with_db(db)
+            .with_block(block)
+            .with_tx(tx_env)
+            .modify_cfg_chained(|cfg| {
+                configure_evm_cfg(cfg, &self.config, execution_mode);
+            })
+            .build_mainnet()
+            .with_precompiles(CasperEvmPrecompiles::new(spec_id(self.config.spec))))
     }
 
     /// Executes a system call against the supplied tracking copy.

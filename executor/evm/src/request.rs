@@ -4,7 +4,7 @@ use casper_types::{evm, EvmConfig, EvmTransaction, U256};
 
 use crate::{tx, Error};
 
-/// Request passed to [`crate::EvmExecutor::execute`].
+/// Request passed to [`crate::EvmExecutor::validate_transaction`] or [`crate::EvmExecutor::execute`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecuteRequest {
     /// Block context available to EVM opcodes and validation.
