@@ -397,6 +397,12 @@ pub enum ErrorCode {
     /// EVM transaction nonce is further ahead of the account nonce than the chainspec allows.
     #[error("the EVM transaction nonce is too far ahead of the account nonce")]
     InvalidTransactionEvmNonceTooFarAhead = 126,
+    /// EVM transaction gas price is below the configured base fee.
+    #[error("the EVM transaction gas price is below the base fee")]
+    InvalidTransactionEvmGasPriceBelowBaseFee = 127,
+    /// EVM transaction does not include a chain ID.
+    #[error("the EVM transaction is missing a chain ID")]
+    InvalidTransactionEvmMissingChainId = 128,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -429,6 +435,12 @@ impl From<InvalidTransaction> for ErrorCode {
             }
             InvalidTransaction::Evm(EvmTransactionError::NonceTooFarAhead { .. }) => {
                 ErrorCode::InvalidTransactionEvmNonceTooFarAhead
+            }
+            InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee { .. }) => {
+                ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee
+            }
+            InvalidTransaction::Evm(EvmTransactionError::MissingChainId) => {
+                ErrorCode::InvalidTransactionEvmMissingChainId
             }
             InvalidTransaction::Evm(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
                 ..
@@ -636,6 +648,34 @@ mod tests {
         EvmTransactionError, InvalidDeploy, InvalidTransaction, InvalidTransactionV1,
     };
     use strum::IntoEnumIterator;
+
+    #[test]
+    fn evm_missing_chain_id_has_specific_error_code() {
+        assert_eq!(
+            ErrorCode::from(InvalidTransaction::Evm(EvmTransactionError::MissingChainId)),
+            ErrorCode::InvalidTransactionEvmMissingChainId
+        );
+        assert_eq!(
+            ErrorCode::try_from(128u16).unwrap(),
+            ErrorCode::InvalidTransactionEvmMissingChainId
+        );
+    }
+
+    #[test]
+    fn evm_gas_price_below_base_fee_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
+            gas_price: 100,
+            base_fee: 5_000,
+        });
+        assert_eq!(
+            ErrorCode::from(error),
+            ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee
+        );
+        assert_eq!(
+            ErrorCode::try_from(127u16).unwrap(),
+            ErrorCode::InvalidTransactionEvmGasPriceBelowBaseFee
+        );
+    }
 
     #[test]
     fn osaka_transaction_cap_error_code_is_appended() {

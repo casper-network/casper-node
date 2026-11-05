@@ -195,10 +195,6 @@ where
     let invalid_request = match result {
         Ok(()) => return Ok(None),
         Err(EvmExecutorError::Disabled) => CasperEvmTransactionError::Disabled,
-        Err(EvmExecutorError::MissingChainId) => CasperEvmTransactionError::MissingChainId,
-        Err(EvmExecutorError::ChainIdMismatch { expected, actual }) => {
-            CasperEvmTransactionError::ChainIdMismatch { expected, actual }
-        }
         Err(EvmExecutorError::InvalidTransaction(error)) => error,
         Err(EvmExecutorError::Transaction(error)) => CasperEvmTransactionError::Validation(error),
         Err(error) => {

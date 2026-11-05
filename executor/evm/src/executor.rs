@@ -67,16 +67,6 @@ impl EvmExecutor {
             return Err(Error::InvalidWeiPerMote);
         }
 
-        let Some(actual) = transaction.chain_id() else {
-            return Err(Error::MissingChainId);
-        };
-        if actual != self.config.chain_id {
-            return Err(Error::ChainIdMismatch {
-                expected: self.config.chain_id,
-                actual,
-            });
-        }
-
         let kind = ExecuteKind::Transaction(Box::new(transaction.clone()));
         let tx_env = tx::build_tx_env(&self.config, &kind)?;
         let block = block_context.to_revm_block(&self.config)?;
@@ -125,18 +115,6 @@ impl EvmExecutor {
         }
         if self.config.wei_per_mote == 0 {
             return Err(Error::InvalidWeiPerMote);
-        }
-
-        if let ExecuteKind::Transaction(transaction) = &request.kind {
-            let Some(actual) = transaction.chain_id() else {
-                return Err(Error::MissingChainId);
-            };
-            if actual != self.config.chain_id {
-                return Err(Error::ChainIdMismatch {
-                    expected: self.config.chain_id,
-                    actual,
-                });
-            }
         }
 
         let tx_env = tx::build_tx_env(&self.config, &request.kind)?;
