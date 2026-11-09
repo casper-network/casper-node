@@ -1318,6 +1318,7 @@ impl reactor::Reactor for MainReactor {
         let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
             "address_gossiper",
             config.gossip,
+            config.gossip.max_rounds().address,
             registry,
         )?;
 
@@ -1350,11 +1351,13 @@ impl reactor::Reactor for MainReactor {
         let block_gossiper = Gossiper::<{ BlockV2::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
+            config.gossip.max_rounds().block,
             registry,
         )?;
         let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
             "transaction_gossiper",
             config.gossip,
+            config.gossip.max_rounds().transaction,
             registry,
         )?;
         // A batch's transactions are fetched before they are validated and stored, so the batch
@@ -1369,6 +1372,9 @@ impl reactor::Reactor for MainReactor {
             Gossiper::<{ EvmTransactionBatchId::ID_IS_COMPLETE_ITEM }, _>::new(
                 "evm_transaction_batch_gossiper",
                 evm_transaction_batch_gossip_config,
+                evm_transaction_batch_gossip_config
+                    .max_rounds()
+                    .evm_transaction_batch,
                 registry,
             )?;
         let evm_transaction_batcher = EvmTransactionBatcher::new(
@@ -1376,12 +1382,13 @@ impl reactor::Reactor for MainReactor {
             Arc::clone(&chainspec),
             evm_batch_fetch_deadline.into(),
         );
-        let finality_signature_gossiper = Gossiper::<
-            { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
-            _,
-        >::new(
-            "finality_signature_gossiper", config.gossip, registry
-        )?;
+        let finality_signature_gossiper =
+            Gossiper::<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, _>::new(
+                "finality_signature_gossiper",
+                config.gossip,
+                config.gossip.max_rounds().finality_signature,
+                registry,
+            )?;
 
         // consensus
         let consensus = EraSupervisor::new(
