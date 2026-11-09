@@ -190,6 +190,7 @@ impl reactor::Reactor for Reactor {
         let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
             "transaction_gossiper",
             config,
+            config.max_rounds().transaction,
             registry,
         )?;
 

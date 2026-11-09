@@ -86,6 +86,20 @@ impl Display for ShouldGossip {
     }
 }
 
+/// Limits governing when gossiping of a single item finishes.
+#[derive(Copy, Clone, DataSize, Debug)]
+pub(super) struct GossipLimits {
+    /// See `Config::infection_target`.  Applies per round.
+    infection_target: usize,
+    /// Derived from `Config::saturation_limit_percent` - within a round, we gossip data while the
+    /// number of attempts to infect in that round doesn't exceed `attempted_to_infect_limit`.
+    attempted_to_infect_limit: usize,
+    /// See `Config::next_round_success_threshold`.
+    next_round_success_threshold: usize,
+    /// The maximum number of rounds, always at least 1.
+    max_rounds: usize,
+}
+
 #[derive(DataSize, Debug, Default)]
 pub(super) struct State {
     /// The peers excluding us which hold the data.
@@ -97,8 +111,14 @@ pub(super) struct State {
     in_flight_count: usize,
     /// The relevant target for this data, if known yet.
     target: Option<GossipTarget>,
-    /// The set of peers we attempted to infect.
+    /// The set of peers we attempted to infect, across all rounds.
     attempted_to_infect: HashSet<NodeId>,
+    /// The number of rounds completed so far.  The current round is `completed_rounds + 1`.
+    completed_rounds: usize,
+    /// The subset of `attempted_to_infect` attempted during the current round.
+    round_attempted_to_infect: HashSet<NodeId>,
+    /// The subset of `infected_by_us` infected during the current round.
+    round_infected_by_us: HashSet<NodeId>,
 }
 
 impl State {
@@ -107,27 +127,65 @@ impl State {
         self.target.is_some()
     }
 
-    /// Returns whether we should finish gossiping this data.
-    fn is_finished(&self, infection_target: usize, attempted_to_infect_limit: usize) -> bool {
-        self.infected_by_us.len() >= infection_target
-            || self.attempted_to_infect.len() >= attempted_to_infect_limit
+    /// Returns whether the current round has reached one of its termination conditions.
+    fn is_round_complete(&self, limits: &GossipLimits) -> bool {
+        self.round_infected_by_us.len() >= limits.infection_target
+            || self.round_attempted_to_infect.len() >= limits.attempted_to_infect_limit
+    }
+
+    /// Records that we attempted to infect the given peer.
+    fn register_infection_attempt(&mut self, peer: NodeId) {
+        if self.attempted_to_infect.insert(peer) {
+            let _ = self.round_attempted_to_infect.insert(peer);
+        }
+    }
+
+    /// Records that we infected the given peer.
+    fn register_infected_by_us(&mut self, peer: NodeId) {
+        let _ = self.infected_by_us.insert(peer);
+        // A late response from a peer attempted in an earlier round doesn't count towards the
+        // current round.
+        let attempted_in_earlier_round = self.attempted_to_infect.contains(&peer)
+            && !self.round_attempted_to_infect.contains(&peer);
+        if !attempted_in_earlier_round {
+            let _ = self.round_infected_by_us.insert(peer);
+        }
+    }
+
+    /// Moves on to further rounds while the current one is complete and was successful enough to
+    /// warrant another one.  Returns whether we should finish gossiping this data.
+    fn advance_rounds(&mut self, limits: &GossipLimits) -> bool {
+        while self.is_round_complete(limits) {
+            let round = self.completed_rounds + 1;
+            if round >= limits.max_rounds
+                || self.round_infected_by_us.len() < limits.next_round_success_threshold
+            {
+                return true;
+            }
+            trace!(
+                completed_round = round,
+                newly_infected = self.round_infected_by_us.len(),
+                attempted = self.round_attempted_to_infect.len(),
+                "starting next gossip round"
+            );
+            self.completed_rounds = round;
+            self.round_attempted_to_infect.clear();
+            self.round_infected_by_us.clear();
+        }
+        false
     }
 
     /// Returns a `GossipAction` derived from the given state.
-    fn action(
-        &mut self,
-        infection_target: usize,
-        attempted_to_infect_limit: usize,
-        is_new: bool,
-    ) -> GossipAction {
-        if self.is_finished(infection_target, attempted_to_infect_limit) {
+    fn action(&mut self, limits: &GossipLimits, is_new: bool) -> GossipAction {
+        if self.advance_rounds(limits) {
             return GossipAction::Noop;
         }
 
         if let Some(target) = self.target {
             // The item is held by us, decide whether we should gossip it or not.
-            let count =
-                infection_target.saturating_sub(self.in_flight_count + self.infected_by_us.len());
+            let count = limits
+                .infection_target
+                .saturating_sub(self.in_flight_count + self.round_infected_by_us.len());
             if count > 0 {
                 self.in_flight_count += count;
                 return GossipAction::ShouldGossip(ShouldGossip {
@@ -192,11 +250,8 @@ pub(super) struct GossipTable<T> {
     finished: HashSet<T>,
     /// Timeouts for removal of items from the `finished` cache.
     timeouts: Timeouts<T>,
-    /// See `Config::infection_target`.
-    infection_target: usize,
-    /// Derived from `Config::saturation_limit_percent` - we gossip data while the number of
-    /// attempts to infect doesn't exceed `attempted_to_infect_limit`.
-    attempted_to_infect_limit: usize,
+    /// Limits governing when gossiping of a single item finishes.
+    limits: GossipLimits,
     /// See `Config::finished_entry_duration`.
     finished_entry_duration: Duration,
 }
@@ -214,16 +269,22 @@ impl<T> GossipTable<T> {
 }
 
 impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
-    /// Returns a new `GossipTable` using the provided configuration.
-    pub(super) fn new(config: Config) -> Self {
+    /// Returns a new `GossipTable` using the provided configuration, allowing at most
+    /// `max_rounds` gossip rounds per item (a value of 0 is treated as 1).
+    pub(super) fn new(config: Config, max_rounds: u8) -> Self {
         let attempted_to_infect_limit = (100 * usize::from(config.infection_target()))
             / (100 - usize::from(config.saturation_limit_percent()));
+        let limits = GossipLimits {
+            infection_target: usize::from(config.infection_target()),
+            attempted_to_infect_limit,
+            next_round_success_threshold: usize::from(config.next_round_success_threshold()),
+            max_rounds: usize::from(max_rounds.max(1)),
+        };
         GossipTable {
             current: HashMap::new(),
             finished: HashSet::new(),
             timeouts: Timeouts::new(),
-            infection_target: usize::from(config.infection_target()),
-            attempted_to_infect_limit,
+            limits,
             finished_entry_duration: config.finished_entry_duration().into(),
         }
     }
@@ -258,11 +319,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         let mut state = State::default();
         update(&mut state);
         let is_new = true;
-        let action = state.action(
-            self.infection_target,
-            self.attempted_to_infect_limit,
-            is_new,
-        );
+        let action = state.action(&self.limits, is_new);
         let _ = self.current.insert(data_id.clone(), state);
         trace!(item=%data_id, %action, "gossiping new item should begin");
         action
@@ -303,11 +360,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         let mut state = State::default();
         update(&mut state);
         let is_new = true;
-        let action = state.action(
-            self.infection_target,
-            self.attempted_to_infect_limit,
-            is_new,
-        );
+        let action = state.action(&self.limits, is_new);
         let _ = self.current.insert(data_id.clone(), state);
         trace!(item=%data_id, %action, "gossiping new item should begin");
         action
@@ -319,7 +372,9 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
         peers: impl Iterator<Item = &'a NodeId>,
     ) {
         if let Some(state) = self.current.get_mut(item_id) {
-            state.attempted_to_infect.extend(peers);
+            for peer in peers {
+                state.register_infection_attempt(*peer);
+            }
         }
     }
 
@@ -356,7 +411,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
             }
             let _ = state.holders.insert(peer);
             if by_us {
-                let _ = state.infected_by_us.insert(peer);
+                state.register_infected_by_us(peer);
             }
             state.in_flight_count = state.in_flight_count.saturating_sub(1);
         };
@@ -444,11 +499,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
                 }
             }
             let is_new = !state.held_by_us();
-            let action = state.action(
-                self.infection_target,
-                self.attempted_to_infect_limit,
-                is_new,
-            );
+            let action = state.action(&self.limits, is_new);
             let _ = self.current.insert(data_id.clone(), state);
             trace!(item=%data_id, %action, "assuming peer response did not timeout");
             return action;
@@ -502,16 +553,12 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     ) -> Option<GossipAction> {
         let mut state = self.current.remove(data_id)?;
         update(&mut state);
-        if state.is_finished(self.infection_target, self.attempted_to_infect_limit) {
+        if state.advance_rounds(&self.limits) {
             self.insert_to_finished(data_id);
             return Some(GossipAction::AnnounceFinished);
         }
         let is_new = false;
-        let action = state.action(
-            self.infection_target,
-            self.attempted_to_infect_limit,
-            is_new,
-        );
+        let action = state.action(&self.limits, is_new);
         let _ = self.current.insert(data_id.clone(), state);
         Some(action)
     }
@@ -578,14 +625,14 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
         assert_eq!(
             EXPECTED_DEFAULT_INFECTION_TARGET,
-            gossip_table.infection_target
+            gossip_table.limits.infection_target
         );
         assert_eq!(
             EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT,
-            gossip_table.attempted_to_infect_limit
+            gossip_table.limits.attempted_to_infect_limit
         );
 
         // Check new data ID causes `GetRemainder` to be returned.
@@ -639,7 +686,7 @@ mod tests {
         let node_id = NodeId::random(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         let _ = gossip_table.new_data_id(&data_id, node_id);
 
@@ -657,7 +704,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Check new complete data from us causes `ShouldGossip` to be returned.
         let action = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
@@ -731,7 +778,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new complete data from us and check two infections doesn't cause us to stop
         // gossiping.
@@ -772,7 +819,7 @@ mod tests {
         let data_id1: u64 = rng.gen();
         let data_id2: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Take the two items close to the termination condition of holder count by simulating
         // receiving several incoming gossip requests.  Each should remain unfinished.
@@ -810,7 +857,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Take the item close to the termination condition of holder count by simulating receiving
         // several incoming gossip requests.  It should remain unfinished.
@@ -841,7 +888,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Take the item close to the termination condition of in-flight count reaching 0.  It
         // should remain unfinished.
@@ -867,7 +914,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new complete data with 14 non-infections and check this doesn't cause us to stop
         // gossiping.
@@ -910,7 +957,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new complete data with 2 infections and 11 non-infections.
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
@@ -942,6 +989,182 @@ mod tests {
         assert_eq!(expected, action);
     }
 
+    fn config_with_threshold(next_round_success_threshold: u8) -> Config {
+        Config {
+            next_round_success_threshold,
+            ..Config::default()
+        }
+    }
+
+    /// Registers infection attempts to `peers` and reports each as newly infected, returning the
+    /// action from the final report.
+    fn infect_all(
+        gossip_table: &mut GossipTable<u64>,
+        data_id: &u64,
+        peers: &[NodeId],
+    ) -> GossipAction {
+        let mut last_action = GossipAction::Noop;
+        for peer in peers {
+            gossip_table.register_infection_attempt(data_id, iter::once(peer));
+            last_action = gossip_table.we_infected(data_id, *peer);
+        }
+        last_action
+    }
+
+    #[test]
+    fn should_start_new_rounds_while_successful_up_to_max_rounds() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+        let target = EXPECTED_DEFAULT_INFECTION_TARGET;
+
+        let mut gossip_table = GossipTable::new(config_with_threshold(target as u8), 3);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+
+        // Completing rounds 1 and 2 successfully should each start a new round targeting a fresh
+        // set of peers.
+        for round in 1..=2 {
+            let action = infect_all(
+                &mut gossip_table,
+                &data_id,
+                &node_ids[((round - 1) * target)..(round * target)],
+            );
+            let expected = GossipAction::ShouldGossip(ShouldGossip {
+                count: target,
+                target: GossipTarget::All,
+                exclude_peers: node_ids[..(round * target)].iter().cloned().collect(),
+                is_already_held: true,
+            });
+            assert_eq!(expected, action, "round {}", round);
+            assert!(!gossip_table.finished.contains(&data_id));
+        }
+
+        // Completing the final round should finish gossiping.
+        let action = infect_all(
+            &mut gossip_table,
+            &data_id,
+            &node_ids[(2 * target)..(3 * target)],
+        );
+        assert_eq!(GossipAction::AnnounceFinished, action);
+        assert!(gossip_table.finished.contains(&data_id));
+    }
+
+    #[test]
+    fn should_not_start_new_round_below_success_threshold() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+        let target = EXPECTED_DEFAULT_INFECTION_TARGET;
+        let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT;
+
+        let mut gossip_table = GossipTable::new(config_with_threshold(target as u8), 3);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+
+        // Round 1 saturates with only `target - 1` new infections, below the threshold.
+        let _ = infect_all(&mut gossip_table, &data_id, &node_ids[..(target - 1)]);
+        let mut action = GossipAction::Noop;
+        for node_id in &node_ids[(target - 1)..limit] {
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
+            action = gossip_table.already_infected(&data_id, *node_id);
+        }
+        assert_eq!(GossipAction::AnnounceFinished, action);
+        assert!(gossip_table.finished.contains(&data_id));
+    }
+
+    #[test]
+    fn should_start_new_round_after_saturation_at_success_threshold() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+        let target = EXPECTED_DEFAULT_INFECTION_TARGET;
+        let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT;
+
+        let mut gossip_table = GossipTable::new(config_with_threshold(target as u8 - 1), 2);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+
+        // Round 1 saturates with `target - 1` new infections, meeting the threshold.
+        let _ = infect_all(&mut gossip_table, &data_id, &node_ids[..(target - 1)]);
+        let mut action = GossipAction::Noop;
+        for node_id in &node_ids[(target - 1)..limit] {
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
+            action = gossip_table.already_infected(&data_id, *node_id);
+        }
+        // A fresh round targets `infection_target` new peers.
+        let expected = GossipAction::ShouldGossip(ShouldGossip {
+            count: target,
+            target: GossipTarget::All,
+            exclude_peers: node_ids[..limit].iter().cloned().collect(),
+            is_already_held: true,
+        });
+        assert_eq!(expected, action);
+        assert!(!gossip_table.finished.contains(&data_id));
+        assert_eq!(1, gossip_table.current[&data_id].completed_rounds);
+    }
+
+    #[test]
+    fn late_response_from_earlier_round_should_not_count_towards_current_round() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+        let target = EXPECTED_DEFAULT_INFECTION_TARGET;
+
+        let mut gossip_table = GossipTable::new(config_with_threshold(1), 2);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+
+        // Round 1: one infection, plus one attempt still awaiting a response, and the rest
+        // already infected until saturation.
+        let late_peer = node_ids[0];
+        gossip_table.register_infection_attempt(&data_id, iter::once(&late_peer));
+        let _ = infect_all(&mut gossip_table, &data_id, &node_ids[1..2]);
+        for node_id in &node_ids[2..EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT] {
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
+            let _ = gossip_table.already_infected(&data_id, *node_id);
+        }
+        assert_eq!(1, gossip_table.current[&data_id].completed_rounds);
+
+        // The late response from round 1 must not count as an infection in round 2.
+        let _ = gossip_table.we_infected(&data_id, late_peer);
+        let state = &gossip_table.current[&data_id];
+        assert!(state.infected_by_us.contains(&late_peer));
+        assert!(state.round_infected_by_us.is_empty());
+
+        // Round 2 still needs `target` fresh infections to finish.
+        let start = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT;
+        let _ = infect_all(
+            &mut gossip_table,
+            &data_id,
+            &node_ids[start..(start + target - 1)],
+        );
+        assert!(!gossip_table.finished.contains(&data_id));
+        let action = infect_all(
+            &mut gossip_table,
+            &data_id,
+            &node_ids[(start + target - 1)..(start + target)],
+        );
+        assert_eq!(GossipAction::AnnounceFinished, action);
+    }
+
+    #[test]
+    fn zero_max_rounds_should_behave_as_single_round() {
+        let _ = logging::init();
+        let mut rng = crate::new_rng();
+        let node_ids = random_node_ids(&mut rng);
+        let data_id: u64 = rng.gen();
+
+        let mut gossip_table = GossipTable::new(config_with_threshold(0), 0);
+        let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
+        let action = infect_all(
+            &mut gossip_table,
+            &data_id,
+            &node_ids[..EXPECTED_DEFAULT_INFECTION_TARGET],
+        );
+        assert_eq!(GossipAction::AnnounceFinished, action);
+    }
+
     #[test]
     fn check_timeout_should_detect_holder() {
         let _ = logging::init();
@@ -949,7 +1172,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new complete data and get a response from node 0 only.
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
@@ -985,7 +1208,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
         let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
         let _ = gossip_table.check_timeout(&data_id, node_ids[0]);
     }
@@ -997,7 +1220,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new data ID from nodes 0 and 1.
         let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
@@ -1027,7 +1250,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new data ID from node 0 and record that we have received the full data from it.
         let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
@@ -1047,7 +1270,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new data ID from node 0, then forcibly finish gossiping.
         let _ = gossip_table.new_data_id(&data_id, node_ids[0]);
@@ -1065,7 +1288,7 @@ mod tests {
         let node_ids = random_node_ids(&mut rng);
         let data_id: u64 = rng.gen();
 
-        let mut gossip_table = GossipTable::new(Config::default());
+        let mut gossip_table = GossipTable::new(Config::default(), 1);
 
         // Add new complete data and finish via infection limit.
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
