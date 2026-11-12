@@ -1,6 +1,8 @@
 use casper_types::bytesrepr;
 use thiserror::Error;
 
+use super::transfer_guard::TransferViolation;
+
 #[derive(Debug, Error)]
 pub(crate) enum Error {
     #[error(transparent)]
@@ -9,4 +11,6 @@ pub(crate) enum Error {
     NoPayload,
     #[error(transparent)]
     BinaryPort(#[from] casper_binary_port::Error),
+    #[error("dropping connection: {0}")]
+    TransferViolation(TransferViolation),
 }

@@ -345,6 +345,11 @@ max_message_size_bytes = 134_217_728
 # Maximum number of connections to the server.
 max_connections = 5
 
+# If true, a client may send multiple requests over a single TCP connection (subject to
+# `initial_connection_lifetime` and the `*_termination_delay` settings). If false, the connection
+# is closed right after the response to the first request (request -> response -> close).
+keep_long_lived_tcp_connections = true
+
 # The global max rate of requests (per second) before they are limited.
 # The implementation uses a sliding window algorithm.
 qps_limit = 110
@@ -375,6 +380,26 @@ accept_transaction_request_termination_delay = '24 seconds'
 #The amount of time which is given to a connection to extend it's lifetime when a valid
 #[`Command::TrySpeculativeExec`] is sent to the node
 speculative_exec_request_termination_delay = '0 seconds'
+
+# Minimum rate (bytes per second) at which a transfer in progress - receiving a message or sending
+# a response - must proceed once the grace period has passed. Measured over consecutive windows of
+# `throughput_grace_period` length. Protects against peers holding connection slots by stalling or
+# trickling data, or by not reading responses. Has no effect between messages - the lifetime of a
+# silent connection is governed by `initial_connection_lifetime` and the `*_termination_delay`
+# settings. 0 disables the check, leaving transfers bounded only by the connection lifetime.
+min_transfer_throughput_bytes_per_second = 10_240
+
+# Time, counted from the start of each transfer - receiving a message or sending a response - during
+# which throughput is measured but the connection is never dropped (the minimum throughput is not
+# enforced). Also the length of the window over which the throughput is measured, and it
+# determines how often the checks run (twice per grace period, at most every 250ms).
+#
+# Operator note: the grace period is also the tolerance for network hiccups. A small request must
+# arrive in full within roughly the grace period of its first bytes, so a single lost TCP segment
+# (a retransmit takes at least 200ms) can get a remote client disconnected if the grace period is
+# too short. The default of '1 second' suits remote clients. If only clients on the same host or LAN
+# connect (e.g. the sidecar), it can be lowered (e.g. to '200 ms') to drop slow peers sooner.
+throughput_grace_period = '1 second'
 
 #The amount of time which is given to a connection to extend it's lifetime when a valid
 
