@@ -32,6 +32,12 @@ const DEFAULT_ACCEPT_TRANSACTION_REQUEST_TERMINATION_DELAY: &str = "24 seconds";
 // Default amount of time which is given to a connection to extend it's lifetime when a valid
 // [`Command::TrySpeculativeExec`] is sent to the node
 const DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
+/// Default minimum rate (bytes per second) at which a transfer in progress (receiving a message
+/// or sending a response) must proceed.
+const DEFAULT_MIN_TRANSFER_THROUGHPUT_BYTES_PER_SECOND: u32 = 10 * 1024;
+/// Default grace period at the start of each transfer (in either direction) during which
+/// throughput is measured but not enforced.
+const DEFAULT_THROUGHPUT_GRACE_PERIOD: &str = "1 second";
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -54,6 +60,12 @@ pub struct Config {
     pub max_message_size_bytes: u32,
     /// Maximum number of connections to the server.
     pub max_connections: usize,
+    /// If `true`, a client may send any number of requests over a single TCP connection (subject
+    /// to `initial_connection_lifetime` and the `*_termination_delay` settings). If `false`, the
+    /// connection is closed right after the response to the first request has been sent
+    /// (request -> response -> close).
+    #[serde(default = "default_keep_long_lived_tcp_connections")]
+    pub keep_long_lived_tcp_connections: bool,
     /// Maximum number of requests per second.
     pub qps_limit: usize,
     // Initial time given to a connection before it expires
@@ -76,6 +88,39 @@ pub struct Config {
     // The amount of time which is given to a connection to extend it's lifetime when a valid
     // [`Command::TrySpeculativeExec`] is sent to the node
     pub speculative_exec_request_termination_delay: TimeDiff,
+    /// Minimum rate (in bytes per second) at which a transfer in progress must proceed once the
+    /// grace period has passed - applies both to a partially received message and to a response
+    /// the peer must read (accept). Measured over consecutive windows of `throughput_grace_period`
+    /// length. Has no effect between messages - the lifetime of a silent connection is governed
+    /// by `initial_connection_lifetime` and the `*_termination_delay` settings. `0` disables the
+    /// check, leaving transfers bounded only by the connection lifetime.
+    #[serde(default = "default_min_transfer_throughput_bytes_per_second")]
+    pub min_transfer_throughput_bytes_per_second: u32,
+    /// Time, counted from the start of each transfer - receiving a message or sending a
+    /// response - during which throughput is measured but the connection is never dropped
+    /// (the minimum throughput is not enforced). Also the length of the window over which
+    /// throughput is measured, and it determines how often the checks run (twice per grace
+    /// period, at most every 250ms).
+    ///
+    /// This is also the tolerance for network hiccups: a small request must arrive in full within
+    /// roughly the grace period of its first bytes, so a single lost TCP segment can get a remote
+    /// client disconnected if the grace period is too short. The default of 1 second suits remote
+    /// clients; if only clients on the same host or LAN connect (e.g. the sidecar), it can be
+    /// lowered (e.g. to 200 ms) to drop slow peers sooner.
+    #[serde(default = "default_throughput_grace_period")]
+    pub throughput_grace_period: TimeDiff,
+}
+
+fn default_keep_long_lived_tcp_connections() -> bool {
+    true
+}
+
+fn default_min_transfer_throughput_bytes_per_second() -> u32 {
+    DEFAULT_MIN_TRANSFER_THROUGHPUT_BYTES_PER_SECOND
+}
+
+fn default_throughput_grace_period() -> TimeDiff {
+    TimeDiff::from_str(DEFAULT_THROUGHPUT_GRACE_PERIOD).unwrap()
 }
 
 impl Config {
@@ -89,6 +134,7 @@ impl Config {
             allow_request_speculative_exec: false,
             max_message_size_bytes: DEFAULT_MAX_MESSAGE_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            keep_long_lived_tcp_connections: default_keep_long_lived_tcp_connections(),
             qps_limit: DEFAULT_QPS_LIMIT,
             initial_connection_lifetime: TimeDiff::from_str(DEFAULT_INITIAL_CONNECTION_LIFETIME)
                 .unwrap(),
@@ -116,6 +162,9 @@ impl Config {
                 DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
+            min_transfer_throughput_bytes_per_second:
+                default_min_transfer_throughput_bytes_per_second(),
+            throughput_grace_period: default_throughput_grace_period(),
         }
     }
 }

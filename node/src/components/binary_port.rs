@@ -7,8 +7,16 @@ mod metrics;
 mod rate_limiter;
 #[cfg(test)]
 mod tests;
+mod transfer_guard;
 
-use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
+use std::{
+    convert::TryFrom,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
@@ -58,8 +66,12 @@ use tokio::{
     select,
     sync::{Mutex, Notify, OwnedSemaphorePermit, Semaphore},
 };
-use tokio_util::codec::{Encoder, Framed};
+use tokio_util::{
+    codec::{Encoder, Framed},
+    sync::CancellationToken,
+};
 use tracing::{debug, error, info, trace, warn};
+use transfer_guard::{CountingStream, Direction, ThroughputGuard, TransferLimits};
 
 #[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
@@ -1447,13 +1459,27 @@ where
         + Send,
 {
     let codec = BinaryMessageCodec::new(config.max_message_size_bytes);
-    let mut framed = Framed::new(stream, codec);
+    let mut framed = Framed::new(CountingStream::new(stream), codec);
+    let bytes_written = framed.get_ref().bytes_written_counter();
     monitor
         .terminate_at(Timestamp::now() + config.initial_connection_lifetime)
         .await;
     let cancellation_token = monitor.get_cancellation_token();
+    let mut receive_check = tokio::time::interval(transfer_guard::check_interval(
+        config.throughput_grace_period.into(),
+    ));
+    receive_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let receive_limits = transfer_limits(&config);
+    // Guards the message currently being received, if any (bytes of an incomplete message are
+    // buffered). Between messages there's nothing to guard.
+    let mut receive_guard: Option<ThroughputGuard> = None;
     loop {
         select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                debug!("Binary port connection stale - closing.");
+                return Ok(());
+            }
             maybe_bytes = framed.next() => {
                 let Some(result) = maybe_bytes else {
                     debug!("remote party closed the connection");
@@ -1476,17 +1502,110 @@ where
                     Bytes::from(bytes_buf.freeze().to_vec()),
                     config.max_message_size_bytes,
                 );
-                framed
-                    .send(BinaryMessage::new(
-                        response.to_bytes()?,
-                    ))
-                    .await?
+                let delivered = send_response(
+                    &mut framed,
+                    BinaryMessage::new(response.to_bytes()?),
+                    &bytes_written,
+                    &config,
+                    &cancellation_token,
+                )
+                .await?;
+                if !delivered {
+                    debug!("Binary port connection stale while sending a response - closing.");
+                    return Ok(());
+                }
+                // The next message (possibly already partially buffered) is a new transfer.
+                receive_guard = None;
+                if !config.keep_long_lived_tcp_connections {
+                    // Single request per connection: flush and gracefully shut down the write side.
+                    // Any further (pipelined) requests from the peer are not served.
+                    framed.close().await?;
+                    debug!("Binary port request served, closing short-lived connection.");
+                    return Ok(());
+                }
             }
-            _ = cancellation_token.cancelled() => {
-                debug!("Binary port connection stale - closing.");
-                return Ok(());
+            _ = receive_check.tick() => {
+                let pending_bytes = framed.read_buffer().len() as u64;
+                if pending_bytes == 0 {
+                    receive_guard = None;
+                    continue;
+                }
+                let now = tokio::time::Instant::now();
+                let total_bytes_read = framed.get_ref().total_bytes_read();
+                let guard = receive_guard.get_or_insert_with(|| {
+                    // Bytes already buffered for this message count towards its throughput.
+                    ThroughputGuard::new(
+                        Direction::Receive,
+                        receive_limits,
+                        now,
+                        total_bytes_read.saturating_sub(pending_bytes),
+                    )
+                });
+                if let Err(violation) = guard.check(now, total_bytes_read) {
+                    debug!(%violation, "binary port peer too slow - closing.");
+                    return Err(Error::TransferViolation(violation));
+                }
             }
         }
+    }
+}
+
+/// Sends `message` to the peer, dropping the connection if the peer doesn't read it fast enough
+/// (see [`ThroughputGuard`]). The grace period starts once the message is encoded.
+///
+/// Returns `Ok(false)` if the connection's lifetime ran out (`cancellation_token` was cancelled)
+/// before the response was fully sent.
+async fn send_response(
+    framed: &mut Framed<CountingStream<TcpStream>, BinaryMessageCodec>,
+    message: BinaryMessage,
+    bytes_written: &AtomicU64,
+    config: &Config,
+    cancellation_token: &CancellationToken,
+) -> Result<bool, Error> {
+    // Encode into the write buffer first. This is local CPU work which doesn't depend on the
+    // peer, so it must not eat into the peer's grace period. Encoding directly (rather than via
+    // `Sink::feed`) guarantees no socket I/O happens before the guard is armed.
+    let mut codec = *framed.codec();
+    codec.encode(message, framed.write_buffer_mut())?;
+
+    let mut send_guard = ThroughputGuard::new(
+        Direction::Send,
+        transfer_limits(config),
+        tokio::time::Instant::now(),
+        bytes_written.load(Ordering::Relaxed),
+    );
+    let mut send_check = tokio::time::interval(transfer_guard::check_interval(
+        config.throughput_grace_period.into(),
+    ));
+    send_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let flush = framed.flush();
+    tokio::pin!(flush);
+    loop {
+        select! {
+            biased;
+            _ = cancellation_token.cancelled() => return Ok(false),
+            result = &mut flush => {
+                result?;
+                return Ok(true);
+            }
+            _ = send_check.tick() => {
+                if let Err(violation) = send_guard
+                    .check(tokio::time::Instant::now(), bytes_written.load(Ordering::Relaxed))
+                {
+                    debug!(%violation, "binary port peer too slow - closing.");
+                    return Err(Error::TransferViolation(violation));
+                }
+            }
+        }
+    }
+}
+
+/// Limits for transfers. Both directions (receiving a message, sending a response) are treated
+/// identically.
+fn transfer_limits(config: &Config) -> TransferLimits {
+    TransferLimits {
+        min_bytes_per_second: config.min_transfer_throughput_bytes_per_second,
+        grace_period: config.throughput_grace_period.into(),
     }
 }
 

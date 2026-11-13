@@ -63,8 +63,9 @@ impl codec::Encoder<BinaryMessage> for BinaryMessageCodec {
                 got: length,
             });
         }
-        let length_bytes = length.to_le_bytes();
-        dst.extend(length_bytes.iter().chain(item.0.iter()));
+        dst.reserve(LENGTH_ENCODING_SIZE_BYTES + item.0.len());
+        dst.extend_from_slice(&length.to_le_bytes());
+        dst.extend_from_slice(&item.0);
         Ok(())
     }
 }
