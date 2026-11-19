@@ -1344,6 +1344,77 @@ fn eip2935_reverts_for_invalid_requests() {
 }
 
 #[test]
+fn blockhash_and_eip2935_share_recent_hashes_across_tracking_copies() {
+    let executor = executor(EvmSpec::Osaka);
+    let from = evm::Address::new([1; 20]);
+    let (mut base, mut data, _tempdir) = tracking_copy();
+    let contract = execute_call(
+        &executor,
+        &data,
+        &mut base,
+        from,
+        None,
+        blockhash_contract_init_code(),
+    )
+    .created_contract_address
+    .unwrap();
+    seed_evm_code(
+        &mut base,
+        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
+        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
+    );
+
+    let header = block_header(1);
+    write_block_header(&data, &header);
+    let cached_store = data.block_store.clone();
+
+    // A newer header that shares the slot evicts height 1 from the ring.
+    let mut indexed_store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+    indexed_store
+        .put_block_headers(&[
+            header.clone(),
+            block_header(eip2935::HISTORY_BUFFER_LENGTH + 2),
+        ])
+        .unwrap();
+    data.block_store = indexed_store;
+
+    let mut blockhash_request = call_request(from, Some(contract), Vec::new(), CasperU256::zero());
+    blockhash_request.block.number = 2;
+    let mut native_request = call_request(
+        from,
+        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
+        word(1).to_vec(),
+        CasperU256::zero(),
+    );
+    native_request.block.number = 2;
+    let requests = [blockhash_request, native_request];
+    let expected: Vec<_> = requests
+        .iter()
+        .map(|request| {
+            let mut state = base.fork2();
+            let outcome = executor
+                .execute(&data, &mut state, request.clone())
+                .unwrap();
+            assert_eq!(outcome.output.as_slice(), header.block_hash().as_ref());
+            (outcome, state.effects())
+        })
+        .collect();
+
+    data.block_store = cached_store;
+    for (request, (expected_outcome, expected_effects)) in requests.into_iter().zip(expected) {
+        let mut state = base.fork2();
+        let actual = executor.execute(&data, &mut state, request).unwrap();
+        assert_eq!(actual, expected_outcome);
+        // Account effects can be emitted in hash-map iteration order.
+        let mut actual_transforms = state.effects().transforms().to_vec();
+        let mut expected_transforms = expected_effects.transforms().to_vec();
+        actual_transforms.sort_by(|a, b| a.key().cmp(b.key()));
+        expected_transforms.sort_by(|a, b| a.key().cmp(b.key()));
+        assert_eq!(actual_transforms, expected_transforms);
+    }
+}
+
+#[test]
 fn blockhash_reads_indexed_header_from_data_access_layer() {
     let executor = executor(EvmSpec::Osaka);
     let from = evm::Address::new([1; 20]);
