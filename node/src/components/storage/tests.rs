@@ -15,25 +15,23 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_storage::block_store::{
-    types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers},
-    BlockStoreTransaction,
-};
+use casper_storage::block_store::types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers};
 use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     generate_ed25519_keypair,
+    global_state::TrieMerkleProof,
     testing::TestRng,
     ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithSignatures,
-    BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes,
-    Deploy, DeployHash, Digest, EraId, EvmConfig, ExecutionInfo, FinalitySignature,
-    FinalitySignatureV2, Gas, InitiatorAddr, ProtocolVersion, PublicKey, SecretKey,
-    TestBlockBuilder, TestBlockV1Builder, TimeDiff, Timestamp, Transaction, TransactionConfig,
-    TransactionHash, TransactionV1Hash, Transfer, TransferV2, U512,
+    BlockSignatures, BlockSignaturesV2, BlockV2, CLValue, ChainNameDigest, Chainspec,
+    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, EvmConfig, ExecutionInfo,
+    FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionHash, TransactionV1Hash, Transfer, TransferV2, U512,
 };
 use tempfile::tempdir;
 
 use super::{
-    move_storage_files_to_network_subdir, open_block_store, prune_block_store,
+    move_storage_files_to_network_subdir, open_block_store,
     should_move_storage_files_to_network_subdir, Config, Storage, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
@@ -191,7 +189,8 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
     let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
     let (root, mut block_store) =
         open_block_store(&cfg, "test").expect("could not open block store fixture");
-    prune_block_store(&mut block_store, None, protocol_version)
+    block_store
+        .prune_for_hard_reset(None, protocol_version)
         .expect("could not prune block store fixture");
     let mut storage = Storage::new(
         &cfg,
@@ -233,12 +232,9 @@ fn storage_fixture_from_parts(
     let protocol_version = protocol_version.unwrap_or(ProtocolVersion::V1_0_0);
     let (root, mut block_store) =
         open_block_store(&cfg, network_name).expect("could not open block store fixture");
-    prune_block_store(
-        &mut block_store,
-        hard_reset_to_start_of_era,
-        protocol_version,
-    )
-    .expect("could not prune block store fixture");
+    block_store
+        .prune_for_hard_reset(hard_reset_to_start_of_era, protocol_version)
+        .expect("could not prune block store fixture");
     let mut storage = Storage::new(
         &cfg,
         root,
@@ -269,7 +265,8 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
     let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
     let (root, mut block_store) =
         open_block_store(cfg, "test").expect("could not open block store fixture");
-    prune_block_store(&mut block_store, None, protocol_version)
+    block_store
+        .prune_for_hard_reset(None, protocol_version)
         .expect("could not prune block store fixture");
     let mut storage = Storage::new(
         cfg,
@@ -425,12 +422,20 @@ fn get_naive_transactions(
 ///
 /// Any potential finalized approvals are discarded.
 fn get_naive_transaction_and_execution_info(
+    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     transaction_hash: TransactionHash,
 ) -> Option<(Transaction, Option<ExecutionInfo>)> {
-    let transaction = storage.get_transaction_by_hash(transaction_hash)?;
-    let execution_info = storage.read_execution_info(transaction.hash());
-    Some((transaction, execution_info))
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetTransactionAndExecutionInfo {
+            transaction_hash,
+            with_finalized_approvals: false,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
 }
 
 /// Requests the highest complete block from a storage component.
@@ -998,6 +1003,48 @@ fn should_get_transactions_by_id_in_request_order() {
 }
 
 #[test]
+fn executable_block_requires_every_transaction_in_block_order() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+    let transactions = [
+        Deploy::random_valid_native_transfer(&mut harness.rng).into(),
+        Deploy::random_valid_native_transfer(&mut harness.rng).into(),
+    ];
+    let block = TestBlockBuilder::new()
+        .transactions(&transactions)
+        .build_versioned(&mut harness.rng);
+    let hash = *block.hash();
+    storage.block_store.put_block(&block).unwrap();
+
+    storage
+        .block_store
+        .put_transaction(&transactions[1])
+        .unwrap();
+    assert!(storage.make_executable_block(&hash).unwrap().is_none());
+
+    storage
+        .block_store
+        .put_transaction(&transactions[0])
+        .unwrap();
+    let approvals_hashes = transactions
+        .iter()
+        .map(|transaction| transaction.compute_approvals_hash().unwrap())
+        .collect();
+    let proof = TrieMerkleProof::new(
+        Key::ChecksumRegistry,
+        StoredValue::CLValue(CLValue::from_t(()).unwrap()),
+        Default::default(),
+    );
+    storage
+        .block_store
+        .put_approvals_hashes(&ApprovalsHashes::new(hash, approvals_hashes, proof))
+        .unwrap();
+
+    let executable = storage.make_executable_block(&hash).unwrap().unwrap();
+    assert_eq!(executable.transactions, transactions);
+}
+
+#[test]
 fn can_retrieve_store_and_load_transactions() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
@@ -1043,7 +1090,7 @@ fn can_retrieve_store_and_load_transactions() {
     // Finally try to get the execution info as well. Since we did not store any, we expect to get
     // the block hash and height from the indices.
     let (transaction_response, exec_info_response) =
-        get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction.hash())
             .expect("no transaction with execution info returned");
 
     assert_eq!(transaction_response, transaction);
@@ -1074,7 +1121,7 @@ fn can_retrieve_store_and_load_transactions() {
     // Don't insert to the transaction hash index. Since we have no execution results
     // either, we should receive a `None` execution info response.
     let (transaction_response, exec_info_response) =
-        get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction.hash())
             .expect("no transaction with execution info returned");
 
     assert_eq!(transaction_response, transaction);
@@ -1349,7 +1396,7 @@ fn store_random_execution_results() {
     // see if its execution-data-per-block matches our expectations.
     for (txn_hash, expected_exec_info) in expected_outcome.into_iter() {
         let (transaction, maybe_exec_info) =
-            get_naive_transaction_and_execution_info(&mut storage, txn_hash)
+            get_naive_transaction_and_execution_info(&mut harness, &mut storage, txn_hash)
                 .expect("missing transaction");
 
         assert_eq!(txn_hash, transaction.hash());
@@ -1401,7 +1448,7 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     );
 
     let (returned_transaction, returned_exec_info) =
-        get_naive_transaction_and_execution_info(&mut storage, transaction_hash)
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction_hash)
             .expect("missing deploy");
     let expected_exec_info = Some(ExecutionInfo {
         block_hash,
@@ -1535,8 +1582,7 @@ fn should_provide_transfers_if_not_stored() {
     assert!(retrieved_transfers.is_empty());
 
     // Check the empty collection has been stored.
-    let reader = storage.block_store.checkout_rw().unwrap();
-    let maybe_transfers = reader.read_transfers(block_hash).unwrap();
+    let maybe_transfers = storage.block_store.read_transfers(block_hash).unwrap();
     assert_eq!(Some(vec![]), maybe_transfers);
 }
 
@@ -1576,16 +1622,14 @@ fn should_provide_transfers_after_emptied() {
     );
 
     // Replace the valid collection with an empty one.
-    let mut writer = storage.block_store.checkout_rw().unwrap();
     let empty_transfers = BlockTransfers {
         block_hash,
         transfers: Vec::<Transfer>::new(),
     };
     assert_eq!(
-        writer.write_transfers(&empty_transfers).unwrap(),
+        storage.block_store.put_transfers(&empty_transfers).unwrap(),
         block_hash
     );
-    writer.commit().unwrap();
 
     // Check the correct value is returned.
     let retrieved_transfers =
@@ -1594,8 +1638,7 @@ fn should_provide_transfers_after_emptied() {
     assert_eq!(retrieved_transfers[0], transfer);
 
     // Check the correct value has been stored.
-    let reader = storage.block_store.checkout_rw().unwrap();
-    let maybe_transfers = reader.read_transfers(block_hash).unwrap();
+    let maybe_transfers = storage.block_store.read_transfers(block_hash).unwrap();
     assert_eq!(Some(vec![transfer]), maybe_transfers);
 }
 
@@ -1672,7 +1715,7 @@ fn persist_blocks_txns_and_execution_info_across_instantiations() {
     assert_eq!(actual_txns, vec![Some(transaction.clone())]);
 
     let (_, maybe_exec_info) =
-        get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction.hash())
             .expect("missing deploy we stored earlier");
 
     let retrieved_execution_result = maybe_exec_info
@@ -1809,8 +1852,12 @@ fn should_hard_reset() {
 
         // Check execution results in deleted blocks have been removed.
         for (index, transaction) in transactions.iter().enumerate() {
-            let (_, maybe_exec_info) =
-                get_naive_transaction_and_execution_info(&mut storage, transaction.hash()).unwrap();
+            let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
+                &mut harness,
+                &mut storage,
+                transaction.hash(),
+            )
+            .unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
             match maybe_exec_info {
                 Some(ExecutionInfo {
@@ -1840,7 +1887,9 @@ fn should_create_subdir_named_after_network() {
     let with_dir = WithDir::new(harness.tmp.path(), cfg.clone());
     let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
     let (root, mut block_store) = open_block_store(&with_dir, network_name).unwrap();
-    prune_block_store(&mut block_store, None, protocol_version).unwrap();
+    block_store
+        .prune_for_hard_reset(None, protocol_version)
+        .unwrap();
     let storage = Storage::new(
         &with_dir,
         root,
@@ -1996,14 +2045,14 @@ fn should_get_trusted_ancestor_headers() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let txn = storage.block_store.checkout_ro().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
-        storage
-            .get_trusted_ancestor_headers(&txn, &requested_block_header)
-            .unwrap()
-            .unwrap()
+        let hash = *blocks[requested_height].hash();
+        let request = SyncLeapIdentifier::sync_to_historical(hash);
+        let FetchResponse::Fetched(leap) = storage.get_sync_leap(request).unwrap() else {
+            panic!("expected a sync leap for height {requested_height}");
+        };
+        leap.trusted_ancestor_headers
             .iter()
-            .map(|block_header| block_header.height())
+            .map(|header| header.height())
             .collect()
     };
 
@@ -2017,24 +2066,14 @@ fn should_get_block_headers_with_signatures() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let txn = storage.block_store.checkout_ro().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
-        let highest_block_header_with_sufficient_signatures = storage
-            .get_highest_complete_block_header_with_signatures(&txn)
-            .unwrap()
-            .unwrap();
-        storage
-            .get_block_headers_with_signatures(
-                &txn,
-                &requested_block_header,
-                &highest_block_header_with_sufficient_signatures,
-            )
-            .unwrap()
-            .unwrap()
+        let hash = *blocks[requested_height].hash();
+        let request = SyncLeapIdentifier::sync_to_tip(hash);
+        let FetchResponse::Fetched(leap) = storage.get_sync_leap(request).unwrap() else {
+            panic!("expected a sync leap for height {requested_height}");
+        };
+        leap.block_headers_with_signatures
             .iter()
-            .map(|block_header_with_signatures| {
-                block_header_with_signatures.block_header().height()
-            })
+            .map(|header| header.block_header().height())
             .collect()
     };
 
@@ -2062,25 +2101,14 @@ fn should_get_block_headers_with_signatures_when_no_sufficient_finality_in_most_
     let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let txn = storage.block_store.checkout_ro().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
-        let highest_block_header_with_sufficient_signatures = storage
-            .get_highest_complete_block_header_with_signatures(&txn)
-            .unwrap()
-            .unwrap();
-
-        storage
-            .get_block_headers_with_signatures(
-                &txn,
-                &requested_block_header,
-                &highest_block_header_with_sufficient_signatures,
-            )
-            .unwrap()
-            .unwrap()
+        let hash = *blocks[requested_height].hash();
+        let request = SyncLeapIdentifier::sync_to_tip(hash);
+        let FetchResponse::Fetched(leap) = storage.get_sync_leap(request).unwrap() else {
+            panic!("expected a sync leap for height {requested_height}");
+        };
+        leap.block_headers_with_signatures
             .iter()
-            .map(|block_header_with_signatures| {
-                block_header_with_signatures.block_header().height()
-            })
+            .map(|header| header.block_header().height())
             .collect()
     };
 
@@ -2434,9 +2462,10 @@ fn store_and_purge_signatures() {
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging for block_1 should leave sigs for block_2 and block_3 intact.
-    let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = writer.delete_block_signatures(*block_1.hash());
-    writer.commit().unwrap();
+    storage
+        .block_store
+        .delete_block_signatures(&[*block_1.hash()])
+        .unwrap();
     assert_signatures(&storage, *block_1.hash(), vec![]);
     assert_signatures(
         &storage,
@@ -2451,9 +2480,10 @@ fn store_and_purge_signatures() {
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging for block_4 (which has no signatures) should not modify state.
-    let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = writer.delete_block_signatures(*block_4.hash());
-    writer.commit().unwrap();
+    storage
+        .block_store
+        .delete_block_signatures(&[*block_4.hash()])
+        .unwrap();
     assert_signatures(&storage, *block_1.hash(), vec![]);
     assert_signatures(
         &storage,
@@ -2468,12 +2498,15 @@ fn store_and_purge_signatures() {
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging for all blocks should leave no signatures.
-    let mut writer = storage.block_store.checkout_rw().unwrap();
-    let _ = writer.delete_block_signatures(*block_1.hash());
-    let _ = writer.delete_block_signatures(*block_2.hash());
-    let _ = writer.delete_block_signatures(*block_3.hash());
-    let _ = writer.delete_block_signatures(*block_4.hash());
-    writer.commit().unwrap();
+    storage
+        .block_store
+        .delete_block_signatures(&[
+            *block_1.hash(),
+            *block_2.hash(),
+            *block_3.hash(),
+            *block_4.hash(),
+        ])
+        .unwrap();
 
     assert_signatures(&storage, *block_1.hash(), vec![]);
     assert_signatures(&storage, *block_2.hash(), vec![]);

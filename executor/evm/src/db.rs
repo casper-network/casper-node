@@ -56,12 +56,9 @@ where
     }
 
     fn block_hash_at_height(&self, height: u64) -> Result<B256, DbError> {
-        let transaction = self
+        let maybe_header = self
             .data_access_layer
             .block_store
-            .checkout_ro()
-            .map_err(|error| DbError::BlockHash { height, error })?;
-        let maybe_header = transaction
             .read_block_header_at_height(height)
             .map_err(|error| DbError::BlockHash { height, error })?;
         Ok(maybe_header

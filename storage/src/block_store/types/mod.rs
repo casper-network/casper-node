@@ -57,12 +57,3 @@ impl StateStoreKey {
         StateStoreKey(key)
     }
 }
-
-/// Block tip anchor.
-pub(crate) struct Tip;
-
-/// Latest switch block anchor.
-pub(crate) struct LatestSwitchBlock;
-
-/// Block height.
-pub(crate) type BlockHeight = u64;

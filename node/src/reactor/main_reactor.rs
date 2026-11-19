@@ -1246,11 +1246,9 @@ impl reactor::Reactor for MainReactor {
         // as possible, before anything else touches disk-backed state.
         let (storage_root, mut block_store) =
             storage::open_block_store(&storage_config, &chainspec.network_config.name)?;
-        storage::prune_block_store(
-            &mut block_store,
-            chainspec.hard_reset_to_start_of_era(),
-            protocol_version,
-        )?;
+        block_store
+            .prune_for_hard_reset(chainspec.hard_reset_to_start_of_era(), protocol_version)
+            .map_err(storage::FatalStorageError::from)?;
 
         let contract_runtime = ContractRuntime::new(
             &storage_root,
@@ -1265,14 +1263,9 @@ impl reactor::Reactor for MainReactor {
         // synchronously now. The resulting immediate switch block is *not* produced yet: that's
         // deferred until the node can actually sign and gossip it
         // (see `MainReactor::maybe_finish_pending_upgrade`).
-        let local_tip = {
-            let ro_txn = block_store
-                .checkout_ro()
-                .map_err(storage::FatalStorageError::from)?;
-            ro_txn
-                .read_tip_block_header()
-                .map_err(storage::FatalStorageError::from)?
-        };
+        let local_tip = block_store
+            .read_tip_block_header()
+            .map_err(storage::FatalStorageError::from)?;
 
         // config.node.skip_protocol_upgrade allows to skip the protocol upgrade. In this flow we
         // rely that the node will sync_leap the immediate switch blocks from peers.

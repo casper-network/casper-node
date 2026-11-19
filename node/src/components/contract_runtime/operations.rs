@@ -107,10 +107,7 @@ fn speculative_evm_prevrandao(
     }
 
     let parent_hash = *block_header.parent_hash();
-    let transaction = block_store
-        .checkout_ro()
-        .map_err(|error| format!("failed to open block store for PREVRANDAO: {error}"))?;
-    let parent_header = transaction
+    let parent_header = block_store
         .read_block_header_by_hash(parent_hash)
         .map_err(|error| format!("failed to read PREVRANDAO parent {parent_hash}: {error}"))?
         .ok_or_else(|| format!("PREVRANDAO parent block {parent_hash} not found"))?;
@@ -2562,7 +2559,6 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_storage::block_store::BlockStoreTransaction;
     use casper_types::{BlockHeaderV2, EvmConfig, EvmSpec, Timestamp, DEFAULT_WEI_PER_MOTE};
 
     #[test]
@@ -2748,13 +2744,9 @@ mod tests {
         ));
         let mut block_store =
             LmdbBlockStore::new_temporary(64 * 1024 * 1024).expect("should create block store");
-        let mut transaction = block_store
-            .checkout_rw()
-            .expect("should check out write transaction");
-        transaction
-            .write_block_header(&parent_header)
+        block_store
+            .put_block_header(&parent_header)
             .expect("should write parent header");
-        transaction.commit().expect("should commit parent header");
 
         let prevrandao = speculative_evm_prevrandao(&block_store, &block_header, true)
             .expect("should resolve parent seed");
