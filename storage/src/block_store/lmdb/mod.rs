@@ -1,4 +1,5 @@
 mod lmdb_ext;
+mod recent_block_hashes;
 mod versioned_databases;
 
 mod lmdb_block_store;
