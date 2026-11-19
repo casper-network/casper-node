@@ -56,14 +56,12 @@ where
     }
 
     fn block_hash_at_height(&self, height: u64) -> Result<B256, DbError> {
-        let maybe_header = self
+        let maybe_hash = self
             .data_access_layer
             .block_store
-            .read_block_header_at_height(height)
+            .read_recent_block_hash(height)
             .map_err(|error| DbError::BlockHash { height, error })?;
-        Ok(maybe_header
-            .map(|header| tx::to_revm_block_hash(header.block_hash()))
-            .unwrap_or(B256::ZERO))
+        Ok(maybe_hash.map(tx::to_revm_block_hash).unwrap_or(B256::ZERO))
     }
 
     /// Executes the native EIP-2935 block hash lookup.
