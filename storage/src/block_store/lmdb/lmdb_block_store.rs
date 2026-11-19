@@ -20,8 +20,8 @@ use casper_types::{
 use super::{
     lmdb_ext::{
         append_by_be_u64_key, append_value_bytesrepr, delete_by_be_u64_key, delete_value_bytesrepr,
-        get_by_be_u64_key, get_last_by_be_u64_key, put_by_be_u64_key, LmdbExtError, TransactionExt,
-        WriteTransactionExt,
+        deserialize_bytesrepr, get_by_be_u64_key, get_last_by_be_u64_key, put_by_be_u64_key,
+        LmdbExtError, TransactionExt, WriteTransactionExt,
     },
     versioned_databases::VersionedDatabases,
     DbTableId,
@@ -35,7 +35,7 @@ use crate::block_store::{
     DbRawBytesSpec,
 };
 use lmdb::{
-    Database, DatabaseFlags, Environment, EnvironmentFlags, RwCursor, RwTransaction,
+    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwCursor, RwTransaction,
     Transaction as LmdbTransaction, WriteFlags,
 };
 
@@ -307,17 +307,23 @@ impl LmdbBlockStore {
             return Ok(());
         }
 
+        // Keep bodies available until we have read the transaction hashes for each pruned block.
+        let mut blocks_without_bodies = HashSet::new();
         for hash in blocks_to_delete {
             if let Some(block) = self.get_single_block(&txn, &hash)? {
                 self.delete_transaction_execution_records(
                     &mut txn,
                     block.all_transaction_hashes(),
                 )?;
-                self.delete_block_header_and_signatures(&mut txn, &hash)?;
-                self.block_body_dbs
-                    .delete(&mut txn, block.body_hash())
-                    .map_err(internal_storage)?;
+            } else {
+                blocks_without_bodies.insert(hash);
             }
+            self.delete_block_header_and_signatures(&mut txn, &hash)?;
+        }
+        if !blocks_without_bodies.is_empty() {
+            // Execution results can be stored before their block body arrives.
+            let hashes = self.indexed_transaction_hashes(&txn, &blocks_without_bodies)?;
+            self.delete_transaction_execution_records(&mut txn, hashes)?;
         }
         for (body_hash, retained) in body_hash_retained {
             if !retained {
@@ -1705,6 +1711,26 @@ impl LmdbBlockStore {
         Ok(())
     }
 
+    fn indexed_transaction_hashes(
+        &self,
+        txn: &impl LmdbTransaction,
+        blocks: &HashSet<BlockHash>,
+    ) -> Result<Vec<TransactionHash>, BlockStoreError> {
+        let mut cursor = txn
+            .open_ro_cursor(self.transaction_hash_index_db)
+            .map_err(internal_storage)?;
+        let mut hashes = Vec::new();
+        for row in cursor.iter() {
+            let (key, value) = row.map_err(internal_storage)?;
+            let block_info: BlockHashHeightAndEra =
+                deserialize_bytesrepr(value).map_err(internal_storage)?;
+            if blocks.contains(&block_info.block_hash) {
+                hashes.push(deserialize_bytesrepr(key).map_err(internal_storage)?);
+            }
+        }
+        Ok(hashes)
+    }
+
     fn delete_transaction_execution_records(
         &self,
         txn: &mut RwTransaction<'_>,
@@ -2299,6 +2325,43 @@ mod tests {
                 .block_hash(),
             headers[1].block_hash()
         );
+    }
+
+    #[test]
+    fn hard_reset_prunes_headers_and_preserves_shared_bodies() {
+        let mut rng = TestRng::new();
+        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let era = EraId::new(1);
+        let full = TestBlockBuilder::new()
+            .era(era)
+            .height(5)
+            .switch_block(false)
+            .build_versioned(&mut rng);
+        let header_only = TestBlockBuilder::new()
+            .era(era)
+            .height(6)
+            .switch_block(false)
+            .random_transactions(1, &mut rng)
+            .build_versioned(&mut rng)
+            .clone_header();
+        let retained = TestBlockBuilder::new()
+            .era(era)
+            .height(7)
+            .switch_block(false)
+            .protocol_version(ProtocolVersion::V2_0_0)
+            .build_versioned(&mut rng);
+        assert_eq!(full.body_hash(), retained.body_hash());
+        assert_ne!(full.body_hash(), header_only.body_hash());
+        store.put_block(&full).unwrap();
+        store.put_block_header(&header_only).unwrap();
+        store.put_block(&retained).unwrap();
+
+        store
+            .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
+            .unwrap();
+        assert_eq!(store.read_block_header_at_height(5).unwrap(), None);
+        assert_eq!(store.read_block_header_at_height(6).unwrap(), None);
+        assert!(store.block_exists_by_hash(*retained.hash()).unwrap());
     }
 
     #[test]
