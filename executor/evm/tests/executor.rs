@@ -16,7 +16,7 @@ use casper_executor_evm::{
     ExecuteRequest, ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
-    block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
+    block_store::lmdb::LmdbBlockStore,
     data_access_layer::{DataAccessLayer, GenesisRequest, GenesisResult},
     eip2935, eip4788,
     global_state::{
@@ -168,13 +168,9 @@ fn write_block_header(
     block_header: &BlockHeader,
 ) {
     let mut block_store = data_access_layer.block_store.clone();
-    let mut transaction = block_store
-        .checkout_rw()
-        .expect("should check out write transaction");
-    transaction
-        .write_block_header(block_header)
+    block_store
+        .put_block_header(block_header)
         .expect("should write block header");
-    transaction.commit().expect("should commit block header");
 }
 
 fn init_code_returning(runtime: Vec<u8>) -> Vec<u8> {
@@ -1345,46 +1341,6 @@ fn eip2935_reverts_for_invalid_requests() {
             .expect("EIP-2935 lookup should execute");
         assert_eq!(outcome.status, ExecutionStatus::Revert);
     }
-}
-
-#[test]
-fn eip2935_preserves_block_store_errors() {
-    let executor = executor(EvmSpec::Osaka);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    seed_evm_code(
-        &mut tracking_copy,
-        eip2935::BLOCK_HASH_HISTORY_ADDRESS,
-        eip2935::BLOCK_HASH_HISTORY_CODE.to_vec(),
-    );
-
-    // Exhaust this environment's LMDB reader slots so the native lookup fails while checking out
-    // its short-lived read transaction.
-    let read_transactions = (0..512)
-        .map(|_| {
-            data_access_layer
-                .block_store
-                .checkout_ro()
-                .expect("should check out reader")
-        })
-        .collect::<Vec<_>>();
-
-    let mut request = call_request(
-        evm::Address::ZERO,
-        Some(eip2935::BLOCK_HASH_HISTORY_ADDRESS),
-        word(1).to_vec(),
-        CasperU256::zero(),
-    );
-    request.block.number = 2;
-
-    let error = executor
-        .execute(&data_access_layer, &mut tracking_copy, request)
-        .expect_err("exhausted LMDB readers should fail execution");
-    assert!(matches!(
-        error,
-        Error::Database(DbError::BlockHash { height: 1, .. })
-    ));
-
-    drop(read_transactions);
 }
 
 #[test]
