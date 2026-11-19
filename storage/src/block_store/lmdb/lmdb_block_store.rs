@@ -2300,4 +2300,62 @@ mod tests {
             headers[1].block_hash()
         );
     }
+
+    #[test]
+    fn hard_reset_prunes_execution_records_without_a_block_body() {
+        let mut rng = TestRng::new();
+        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let era = EraId::new(1);
+        let height = 5;
+        let transaction = Transaction::random(&mut rng);
+        let transaction_hash = transaction.hash();
+        let old_block = TestBlockBuilder::new()
+            .era(era)
+            .height(height)
+            .switch_block(false)
+            .protocol_version(ProtocolVersion::V1_0_0)
+            .transactions([&transaction])
+            .build_versioned(&mut rng);
+        let old_hash = *old_block.hash();
+
+        store.put_block_header(&old_block.clone_header()).unwrap();
+        let result = ExecutionResult::random(&mut rng);
+        let stored_block = store
+            .put_execution_results(&BlockExecutionResults {
+                block_info: BlockHashHeightAndEra::new(old_hash, height, era),
+                exec_results: HashMap::from([(transaction_hash, result.clone())]),
+            })
+            .unwrap();
+        assert!(stored_block.is_none(), "the block body must be missing");
+        assert_eq!(
+            store.read_execution_info(transaction_hash).unwrap(),
+            Some(ExecutionInfo {
+                block_hash: old_hash,
+                block_height: height,
+                execution_result: Some(result),
+            })
+        );
+
+        store
+            .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
+            .unwrap();
+        assert!(
+            store
+                .read_execution_info(transaction_hash)
+                .unwrap()
+                .is_none(),
+            "the pruned block's transaction index entry must be removed"
+        );
+        assert_eq!(store.read_execution_result(transaction_hash).unwrap(), None);
+        assert_eq!(store.read_block_header_by_hash(old_hash).unwrap(), None);
+
+        let replacement = TestBlockBuilder::new()
+            .era(era)
+            .height(height)
+            .switch_block(false)
+            .protocol_version(ProtocolVersion::V2_0_0)
+            .transactions([&transaction])
+            .build_versioned(&mut rng);
+        assert_eq!(store.put_block(&replacement).unwrap(), *replacement.hash());
+    }
 }
