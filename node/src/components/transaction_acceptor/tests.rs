@@ -1439,12 +1439,9 @@ impl reactor::Reactor for Reactor {
         let protocol_version = ProtocolVersion::from_parts(1, 0, 0);
         let (storage_root, mut storage_block_store) =
             storage::open_block_store(&storage_with_dir, "test").unwrap();
-        storage::prune_block_store(
-            &mut storage_block_store,
-            chainspec.hard_reset_to_start_of_era(),
-            protocol_version,
-        )
-        .unwrap();
+        storage_block_store
+            .prune_for_hard_reset(chainspec.hard_reset_to_start_of_era(), protocol_version)
+            .unwrap();
         let mut storage = Storage::new(
             &storage_with_dir,
             storage_root,

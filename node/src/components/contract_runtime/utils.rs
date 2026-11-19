@@ -229,13 +229,9 @@ pub(super) async fn exec_and_check_next<REv>(
         let block_height = executable_block.height;
         let block_history_range = block_hash_history_range(block_height);
         let block_history_start = block_history_range.start;
-        let first_missing_block_header_height = {
-            // Keep the read transaction out of the async announcement and fatal paths below.
-            match data_access_layer.block_store.checkout_ro() {
-                Ok(txn) => txn.first_missing_block_header_height(block_history_range),
-                Err(error) => Err(error),
-            }
-        };
+        let first_missing_block_header_height = data_access_layer
+            .block_store
+            .first_missing_block_header_height(block_history_range);
 
         match first_missing_block_header_height {
             Ok(Some(missing_block_height)) => {

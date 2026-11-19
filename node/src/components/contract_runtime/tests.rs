@@ -1,9 +1,6 @@
 use std::{collections::BTreeMap, iter, path::PathBuf, sync::Arc, time::Duration};
 
-use casper_storage::{
-    block_store::BlockStoreTransaction,
-    data_access_layer::{QueryRequest, QueryResult},
-};
+use casper_storage::data_access_layer::{QueryRequest, QueryResult};
 use derive_more::{Display, From};
 use fs_extra::dir;
 use prometheus::Registry;
@@ -130,12 +127,12 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let (storage_root, mut storage_block_store) =
             storage::open_block_store(&storage_withdir, "test").unwrap();
-        storage::prune_block_store(
-            &mut storage_block_store,
-            chainspec.hard_reset_to_start_of_era(),
-            chainspec.protocol_version(),
-        )
-        .unwrap();
+        storage_block_store
+            .prune_for_hard_reset(
+                chainspec.hard_reset_to_start_of_era(),
+                chainspec.protocol_version(),
+            )
+            .unwrap();
         let contract_runtime_block_store = storage_block_store.clone();
         let mut storage = Storage::new(
             &storage_withdir,
@@ -319,17 +316,15 @@ async fn block_hash_history_guard_only_applies_to_evm_blocks() {
             .data_access_layer
             .block_store
             .clone();
-        let mut transaction = block_store
-            .checkout_rw()
-            .expect("should check out block-store write transaction");
-        for height in 2..=256 {
-            let block = TestBlockBuilder::new().height(height).build(&mut rng);
-            let header = BlockHeader::V2(block.header().clone());
-            transaction
-                .write_block_header(&header)
-                .expect("should store block header");
-        }
-        transaction.commit().expect("should commit block headers");
+        let headers: Vec<_> = (2..=256)
+            .map(|height| {
+                let block = TestBlockBuilder::new().height(height).build(&mut rng);
+                BlockHeader::V2(block.header().clone())
+            })
+            .collect();
+        block_store
+            .put_block_headers(&headers)
+            .expect("should store block headers");
     }
     runner
         .reactor_mut()
