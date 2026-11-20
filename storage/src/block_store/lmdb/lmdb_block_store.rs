@@ -268,8 +268,7 @@ impl LmdbBlockStore {
         txn: RwTransaction<'_>,
         hashes: impl IntoIterator<Item = (u64, BlockHash)>,
     ) -> Result<(), BlockStoreError> {
-        // Serialize cache publication with pruning, which also locks the
-        // cache before committing.
+        // Keep LMDB commits and their cache updates in the same order.
         let mut recent = self.recent_block_hashes.write();
         txn.commit().map_err(commit_error)?;
         for (height, hash) in hashes {
@@ -328,7 +327,7 @@ impl LmdbBlockStore {
     }
 
     /// Prunes blocks from earlier protocol versions at or after the hard-reset era.
-    /// Run at startup before warming the recent history cache.
+    /// Run on a freshly opened store before warming the recent history cache.
     pub fn prune_for_hard_reset(
         &mut self,
         hard_reset_to_start_of_era: Option<EraId>,
@@ -400,9 +399,7 @@ impl LmdbBlockStore {
             }
         }
 
-        let mut recent = self.recent_block_hashes.write();
         txn.commit().map_err(commit_error)?;
-        recent.clear();
         info!(blocks_to_delete_count, "block store pruning complete");
         Ok(())
     }
@@ -2615,10 +2612,10 @@ mod tests {
     }
 
     #[test]
-    fn hard_reset_prunes_cached_headers_and_preserves_shared_bodies() {
+    fn startup_prunes_before_warming_recent_hashes() {
         let mut rng = TestRng::new();
-        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
-        let shared = store.clone();
+        let dir = TempDir::new().unwrap();
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
         let era = EraId::new(1);
         let full = TestBlockBuilder::new()
             .era(era)
@@ -2643,16 +2640,23 @@ mod tests {
         store.put_block(&full).unwrap();
         store.put_block_header(&header_only).unwrap();
         store.put_block(&retained).unwrap();
+        drop(store);
 
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+        store.init().unwrap();
         store
             .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
             .unwrap();
-        assert_eq!(shared.read_recent_block_hash(5).unwrap(), None);
-        assert_eq!(shared.read_recent_block_hash(6).unwrap(), None);
-        assert!(shared.block_exists_by_hash(*retained.hash()).unwrap());
         store.initialize_recent_history().unwrap();
+
+        assert_eq!(store.read_recent_block_hash(full.height()).unwrap(), None);
         assert_eq!(
-            store.read_recent_block_hash(7).unwrap(),
+            store.read_recent_block_hash(header_only.height()).unwrap(),
+            None
+        );
+        assert!(store.block_exists_by_hash(*retained.hash()).unwrap());
+        assert_eq!(
+            store.recent_block_hashes.read().get(retained.height()),
             Some(*retained.hash())
         );
     }
@@ -2660,7 +2664,8 @@ mod tests {
     #[test]
     fn hard_reset_prunes_execution_records_without_a_block_body() {
         let mut rng = TestRng::new();
-        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let dir = TempDir::new().unwrap();
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
         let era = EraId::new(1);
         let height = 5;
         let transaction = Transaction::random(&mut rng);
@@ -2691,10 +2696,14 @@ mod tests {
                 execution_result: Some(result),
             })
         );
+        drop(store);
 
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+        store.init().unwrap();
         store
             .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
             .unwrap();
+        store.initialize_recent_history().unwrap();
         assert!(
             store
                 .read_execution_info(transaction_hash)
