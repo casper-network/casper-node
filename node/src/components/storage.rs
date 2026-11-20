@@ -160,10 +160,9 @@ pub struct Storage {
     force_resync: bool,
 }
 
-#[allow(clippy::large_enum_variant)]
 pub(crate) enum HighestOrphanedBlockResult {
     MissingHighestSequence,
-    Orphan(BlockHeader),
+    Orphan(Box<BlockHeader>),
     MissingHeader(u64),
 }
 
@@ -1365,7 +1364,9 @@ impl Storage {
             Some(seq) => {
                 let low = seq.low();
                 match self.block_store.read_block_at_height(low) {
-                    Ok(Some(block)) => HighestOrphanedBlockResult::Orphan(block.clone_header()),
+                    Ok(Some(block)) => {
+                        HighestOrphanedBlockResult::Orphan(Box::new(block.take_header()))
+                    }
                     Ok(None) | Err(_) => HighestOrphanedBlockResult::MissingHeader(low),
                 }
             }
