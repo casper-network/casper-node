@@ -30,7 +30,7 @@ use crate::block_store::{
     error::BlockStoreError,
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockTransfers, StateStore,
-        StateStoreKey, Transfers,
+        StateStoreKey, TransactionHeader, Transfers,
     },
     DbRawBytesSpec,
 };
@@ -58,10 +58,15 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 
-type TransactionWithApprovals = (Transaction, Option<BTreeSet<Approval>>);
+/// A transaction paired with its finalized approvals, if any.
+pub type TransactionWithApprovals = (Transaction, Option<BTreeSet<Approval>>);
+
 type BlockWithOptionalSignatures = (Block, Option<BlockSignatures>);
 type BlockForExecution = (BlockV2, Vec<Transaction>, Option<ApprovalsHashes>);
-type TransactionExecutionRecord = (TransactionHash, Transaction, ExecutionResult);
+
+/// A transaction hash, its header, and its execution result.
+pub type ExecutionResultWithTransactionHeader =
+    (TransactionHash, TransactionHeader, ExecutionResult);
 
 /// Stored data needed to build a sync leap response.
 pub enum SyncLeapLookup {
@@ -959,11 +964,11 @@ impl LmdbBlockStore {
         self.block_execution_results(&txn, &block)
     }
 
-    /// Reads the transactions and execution results in the block's transaction order.
-    pub fn read_block_transactions_and_results(
+    /// Reads transaction headers and execution results in the block's transaction order.
+    pub fn read_block_execution_results_with_transaction_headers(
         &self,
         hash: BlockHash,
-    ) -> Result<Option<Vec<TransactionExecutionRecord>>, BlockStoreError> {
+    ) -> Result<Option<Vec<ExecutionResultWithTransactionHeader>>, BlockStoreError> {
         let txn = self.env.begin_ro_txn().map_err(internal_storage)?;
         let Some(block) = self.get_single_block(&txn, &hash)? else {
             return Ok(None);
@@ -977,7 +982,12 @@ impl LmdbBlockStore {
                 error!(%hash, "missing transaction");
                 return Ok(None);
             };
-            records.push((hash, transaction, result));
+            let header = match transaction {
+                Transaction::Deploy(deploy) => deploy.take_header().into(),
+                Transaction::V1(transaction) => (&transaction).into(),
+                Transaction::Evm(transaction) => transaction.as_ref().into(),
+            };
+            records.push((hash, header, result));
         }
         Ok(Some(records))
     }

@@ -71,7 +71,6 @@ use casper_types::{
 use datasize::DataSize;
 use num_rational::Ratio;
 use prometheus::Registry;
-use smallvec::SmallVec;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -90,7 +89,7 @@ use crate::{
     types::{
         BatchedTransaction, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
         BlockWithMetadata, ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap,
-        SyncLeapIdentifier, TransactionHeader, VariantMismatch,
+        SyncLeapIdentifier, VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -770,7 +769,10 @@ impl Storage {
                 transaction_hashes,
                 responder,
             } => responder
-                .respond(self.get_transactions_with_finalized_approvals(transaction_hashes.iter())?)
+                .respond(
+                    self.block_store
+                        .read_transactions_with_finalized_approvals(transaction_hashes)?,
+                )
                 .ignore(),
             StorageRequest::GetLegacyDeploy {
                 deploy_hash,
@@ -820,7 +822,10 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder
-                .respond(self.get_execution_results_with_transaction_headers(block_hash)?)
+                .respond(
+                    self.block_store
+                        .read_block_execution_results_with_transaction_headers(block_hash)?,
+                )
                 .ignore(),
             StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
                 .respond(self.read_block_execution_results_or_chunk(&id)?)
@@ -1030,20 +1035,6 @@ impl Storage {
         self.block_store
             .read_switch_block_by_era(*era_id)
             .map_err(FatalStorageError::from)
-    }
-
-    /// Retrieves a set of transactions, along with their potential finalized approvals.
-    #[allow(clippy::type_complexity)]
-    fn get_transactions_with_finalized_approvals<'a>(
-        &self,
-        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
-    ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
-    {
-        Ok(self
-            .block_store
-            .read_transactions_with_finalized_approvals(transaction_hashes.copied())?
-            .into_iter()
-            .collect())
     }
 
     pub(crate) fn put_executed_block(
@@ -1444,32 +1435,6 @@ impl Storage {
             .map_err(FatalStorageError::from)
     }
 
-    #[allow(clippy::type_complexity)]
-    fn get_execution_results_with_transaction_headers(
-        &self,
-        block_hash: BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
-    {
-        let Some(records) = self
-            .block_store
-            .read_block_transactions_and_results(block_hash)?
-        else {
-            return Ok(None);
-        };
-        let records = records
-            .into_iter()
-            .map(|(hash, transaction, result)| {
-                let header = match transaction {
-                    Transaction::Deploy(deploy) => deploy.take_header().into(),
-                    Transaction::V1(transaction) => (&transaction).into(),
-                    Transaction::Evm(transaction) => transaction.as_ref().into(),
-                };
-                (hash, header, result)
-            })
-            .collect();
-        Ok(Some(records))
-    }
-
     fn get_era_utilization_score(
         &mut self,
         era_id: EraId,
@@ -1701,20 +1666,6 @@ impl Storage {
         self.do_initialize()
             .expect("storage initialization should succeed");
         self.state = ComponentState::Initialized;
-    }
-
-    /// Directly returns a transaction with finalized approvals from internal store.
-    ///
-    /// # Panics
-    ///
-    /// Panics if an IO error occurs.
-    pub(crate) fn get_transaction_with_finalized_approvals_by_hash(
-        &self,
-        transaction_hash: &TransactionHash,
-    ) -> Option<(Transaction, Option<BTreeSet<Approval>>)> {
-        self.block_store
-            .read_transaction_with_finalized_approvals(*transaction_hash)
-            .expect("could not retrieve a transaction with finalized approvals from storage")
     }
 
     /// Directly returns an execution result from internal store.

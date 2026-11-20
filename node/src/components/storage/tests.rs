@@ -15,7 +15,10 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_storage::block_store::types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers};
+use casper_storage::block_store::{
+    lmdb::{ExecutionResultWithTransactionHeader, TransactionWithApprovals},
+    types::{ApprovalsHashes, BlockHashHeightAndEra, BlockTransfers},
+};
 use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     generate_ed25519_keypair,
@@ -40,7 +43,6 @@ use crate::{
         requests::{MarkBlockCompletedRequest, StorageRequest},
         Multiple,
     },
-    storage::TransactionHeader,
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData,
@@ -52,6 +54,22 @@ use crate::{
 
 const RECENT_ERA_COUNT: u64 = 7;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+
+impl Storage {
+    /// Directly returns a transaction with its finalized approvals.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an I/O error occurs.
+    pub(crate) fn get_transaction_with_finalized_approvals_by_hash(
+        &self,
+        transaction_hash: &TransactionHash,
+    ) -> Option<TransactionWithApprovals> {
+        self.block_store
+            .read_transaction_with_finalized_approvals(*transaction_hash)
+            .expect("could not retrieve a transaction with finalized approvals from storage")
+    }
+}
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -693,7 +711,7 @@ fn get_execution_results(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
-) -> Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>> {
+) -> Option<Vec<ExecutionResultWithTransactionHeader>> {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetExecutionResults {
             block_hash,
