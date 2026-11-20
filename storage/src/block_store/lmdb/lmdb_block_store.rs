@@ -2071,11 +2071,11 @@ mod tests {
 
         let txn = store.env.begin_ro_txn().unwrap();
         assert_eq!(
-            store.get_single_block(&txn, &*first.hash()).unwrap(),
+            store.get_single_block(&txn, first.hash()).unwrap(),
             Some(first.clone())
         );
         assert_eq!(
-            store.read_approvals_hashes(&txn, &*first.hash()).unwrap(),
+            store.read_approvals_hashes(&txn, first.hash()).unwrap(),
             Some(first_approvals)
         );
         assert_eq!(
@@ -2083,11 +2083,11 @@ mod tests {
             Some(result)
         );
         assert!(store
-            .get_single_block(&txn, &*second.hash())
+            .get_single_block(&txn, second.hash())
             .unwrap()
             .is_none());
         assert!(store
-            .read_approvals_hashes(&txn, &*second.hash())
+            .read_approvals_hashes(&txn, second.hash())
             .unwrap()
             .is_none());
         assert_eq!(
