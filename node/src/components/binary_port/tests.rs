@@ -339,6 +339,619 @@ async fn oversized_future_chainspec_returns_an_error_and_keeps_connection_open()
     server_result.unwrap();
 }
 
+/// Runs `handle_client_loop` against `peer`, answering every request with the protocol
+/// version. Returns the server's result and how long the connection stayed open.
+async fn run_peer_test<F, Fut>(
+    config: BinaryPortConfig,
+    peer: F,
+) -> (Result<super::ConnectionClosed, super::Error>, Duration)
+where
+    F: FnOnce(tokio::net::TcpStream) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    run_peer_test_with_reply(
+        config,
+        || BinaryResponse::from_value(ProtocolVersion::V2_0_0),
+        peer,
+    )
+    .await
+}
+
+/// Like [`run_peer_test`], answering every request with `reply()`.
+async fn run_peer_test_with_reply<F, Fut>(
+    config: BinaryPortConfig,
+    reply: impl Fn() -> BinaryResponse,
+    peer: F,
+) -> (Result<super::ConnectionClosed, super::Error>, Duration)
+where
+    F: FnOnce(tokio::net::TcpStream) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        sync::Mutex,
+    };
+
+    use crate::{
+        reactor::{main_reactor::MainEvent, Scheduler},
+        utils,
+    };
+
+    let config = Arc::new(config);
+    let scheduler = utils::leak(Scheduler::<MainEvent>::new(QueueKind::weights(), None));
+    let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (client, server) = futures::join!(
+        TcpStream::connect(listener.local_addr().unwrap()),
+        listener.accept(),
+    );
+    let started = std::time::Instant::now();
+    let server = super::handle_client_loop(
+        server.unwrap().0,
+        effect_builder,
+        config.clone(),
+        Arc::new(Mutex::new(
+            super::RateLimiter::new(config.qps_limit, casper_types::TimeDiff::from_seconds(1))
+                .unwrap(),
+        )),
+        super::ConnectionTerminator::new(),
+        super::BinaryRequestTerminationDelayValues::from_config(&config),
+    );
+    let respond = async {
+        loop {
+            let ((_, event), _) = scheduler.pop().await;
+            let MainEvent::BinaryPort(BinaryPortEvent::HandleRequest { responder, .. }) = event
+            else {
+                panic!("unexpected binary port event: {event:?}");
+            };
+            responder.respond(reply()).await;
+        }
+    };
+    let server = async {
+        let result = server.await;
+        (result, started.elapsed())
+    };
+    // Peers are expected to run until the server closes the connection.
+    let peer = peer(client.unwrap());
+    tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::select! {
+            ((result, elapsed), ()) = async { futures::join!(server, peer) } => (result, elapsed),
+            _ = respond => unreachable!(),
+        }
+    })
+    .await
+    .expect("server should close the connection")
+}
+
+/// Reads until the server closes the connection. Returns `true` if it was closed gracefully.
+async fn wait_until_closed(client: &mut tokio::net::TcpStream) -> bool {
+    use tokio::io::AsyncReadExt;
+
+    let mut buf = [0; 1024];
+    loop {
+        match client.read(&mut buf).await {
+            Ok(0) => return true,
+            Ok(_) => continue,
+            Err(_) => return false,
+        }
+    }
+}
+
+async fn read_response(client: &mut tokio::net::TcpStream) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+
+    let mut response_len = [0; 4];
+    client.read_exact(&mut response_len).await.unwrap();
+    let mut response = vec![0; u32::from_le_bytes(response_len) as usize];
+    client.read_exact(&mut response).await.unwrap();
+    response
+}
+
+fn encoded_protocol_version_request() -> Vec<u8> {
+    use casper_binary_port::{
+        BinaryMessage, BinaryMessageCodec, CommandHeader, InformationRequest,
+    };
+    use casper_types::bytesrepr::ToBytes;
+    use tokio_util::codec::Encoder;
+
+    let command = Command::Get(InformationRequest::ProtocolVersion.try_into().unwrap());
+    let mut payload = CommandHeader::new(command.tag(), 1).to_bytes().unwrap();
+    command.write_bytes(&mut payload).unwrap();
+    let mut encoded = bytes::BytesMut::new();
+    BinaryMessageCodec::new(u32::MAX)
+        .encode(BinaryMessage::new(payload), &mut encoded)
+        .unwrap();
+    encoded.to_vec()
+}
+
+fn assert_dropped_as_incomplete(
+    result: Result<super::ConnectionClosed, super::Error>,
+    elapsed: Duration,
+) {
+    assert!(
+        matches!(result, Err(super::Error::TransferViolation(_))),
+        "{result:?}"
+    );
+    assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(3), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_drop_peer_that_sends_only_frame_header() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(60),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        client.write_all(&1024u32.to_le_bytes()).await.unwrap();
+        wait_until_closed(&mut client).await;
+    })
+    .await;
+    // Throughput check kicks in right after the grace period.
+    assert_dropped_as_incomplete(result, elapsed);
+}
+
+#[tokio::test]
+async fn should_leave_stalled_message_to_connection_terminator_when_rate_check_disabled() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(3),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        min_transfer_throughput_bytes_per_second: 0,
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        client.write_all(&1024u32.to_le_bytes()).await.unwrap();
+        client.write_all(&[0; 16]).await.unwrap();
+        wait_until_closed(&mut client).await;
+    })
+    .await;
+    // No transfer guard; the connection lives out its lifetime.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert!(elapsed >= Duration::from_secs(3), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_drop_peer_trickling_frame_body() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(60),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        client.write_all(&1024u32.to_le_bytes()).await.unwrap();
+        // One byte every 200ms is always some progress, but far below the minimum rate.
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            if client.write_all(&[0]).await.is_err() {
+                break;
+            }
+        }
+        wait_until_closed(&mut client).await;
+    })
+    .await;
+    assert_dropped_as_incomplete(result, elapsed);
+}
+
+#[tokio::test]
+async fn should_leave_silent_connection_to_connection_terminator() {
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(3),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        // Keep the socket open without sending anything.
+        assert!(wait_until_closed(&mut client).await);
+    })
+    .await;
+    // Closed gracefully by the terminator after the initial lifetime, not by the receive guard.
+    result.unwrap();
+    assert!(elapsed >= Duration::from_secs(3), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_close_connection_flooded_with_frames_at_end_of_lifetime() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(2),
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |client| async move {
+        let (mut reader, mut writer) = client.into_split();
+        // Minimal malformed frames (a 1-byte payload is too short for a header), sent back to
+        // back so a complete frame is always waiting. They never extend the connection lifetime.
+        let frames = [1u8, 0, 0, 0, 0].repeat(1024);
+        let flood = async move { while writer.write_all(&frames).await.is_ok() {} };
+        // Keep reading the error responses, so sending them never blocks the server.
+        let drain = async move {
+            let mut buf = vec![0; 64 * 1024];
+            while matches!(reader.read(&mut buf).await, Ok(read) if read > 0) {}
+        };
+        tokio::select! {
+            _ = flood => {}
+            _ = drain => {}
+        }
+    })
+    .await;
+    // Closed by the connection terminator, not kept alive by the steady stream of frames.
+    result.unwrap();
+    assert!(elapsed >= Duration::from_secs(2), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(4), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_honour_termination_delay_after_completed_request() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(1),
+        get_information_request_termination_delay: casper_types::TimeDiff::from_seconds(4),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        client
+            .write_all(&encoded_protocol_version_request())
+            .await
+            .unwrap();
+        read_response(&mut client).await;
+        // Stay silent, far longer than the incomplete message timeout.
+        assert!(wait_until_closed(&mut client).await);
+    })
+    .await;
+    // The extension granted by the request is honoured; the receive guard doesn't cut it short.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert!(elapsed >= Duration::from_secs(4), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(6), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_serve_multiple_requests_on_long_lived_connection_by_default() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(2),
+        ..Default::default()
+    };
+    assert!(config.keep_long_lived_tcp_connections);
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        for _ in 0..3 {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            read_response(&mut client).await;
+        }
+        assert!(wait_until_closed(&mut client).await);
+    })
+    .await;
+    // Closed by the connection terminator, not after the first response.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert!(elapsed >= Duration::from_secs(2), "{elapsed:?}");
+}
+
+/// Large enough to fill the kernel socket buffers on both ends.
+const LARGE_RESPONSE_SIZE: usize = 16 * 1024 * 1024;
+
+fn large_response_config() -> BinaryPortConfig {
+    BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(60),
+        max_message_size_bytes: 2 * LARGE_RESPONSE_SIZE as u32,
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        ..Default::default()
+    }
+}
+
+fn large_response() -> BinaryResponse {
+    BinaryResponse::from_raw_bytes(
+        casper_binary_port::ResponseType::ProtocolVersion,
+        vec![0; LARGE_RESPONSE_SIZE],
+    )
+}
+
+#[tokio::test]
+async fn should_drop_peer_that_does_not_read_response() {
+    use tokio::io::AsyncWriteExt;
+
+    let (result, elapsed) = run_peer_test_with_reply(
+        large_response_config(),
+        large_response,
+        |mut client| async move {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            // Never read the response. Keep poking the server until it drops the connection
+            // (writes fail once the server has reset it).
+            loop {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                if client.write_all(&[0]).await.is_err() {
+                    break;
+                }
+            }
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            result,
+            Err(super::Error::TransferViolation(
+                super::transfer_guard::TransferViolation {
+                    direction: super::transfer_guard::Direction::Send,
+                    ..
+                }
+            ))
+        ),
+        "{result:?}"
+    );
+    assert_eq!(
+        result.unwrap_err().drop_reason(),
+        super::DropReason::SendTooSlow
+    );
+    // Dropped after the grace period - the connection lifetime (60s) didn't save the peer.
+    assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(4), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_leave_unread_response_to_connection_terminator_when_rate_check_disabled() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(3),
+        get_information_request_termination_delay: casper_types::TimeDiff::from_seconds(0),
+        min_transfer_throughput_bytes_per_second: 0,
+        ..large_response_config()
+    };
+    let (result, elapsed) =
+        run_peer_test_with_reply(config, large_response, |mut client| async move {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            // Never read the response; poke the server until it drops the connection.
+            loop {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                if client.write_all(&[0]).await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+    // No transfer guard; the connection lives out its lifetime.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpiredWhileSendingResponse)
+    );
+    assert!(elapsed >= Duration::from_secs(3), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_send_large_response_to_reading_peer() {
+    use tokio::io::AsyncWriteExt;
+
+    let (result, _) = run_peer_test_with_reply(
+        large_response_config(),
+        large_response,
+        |mut client| async move {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            let response = read_response(&mut client).await;
+            assert!(response.len() > LARGE_RESPONSE_SIZE);
+            // Close from the client side.
+        },
+    )
+    .await;
+    // The server observes the client closing the connection.
+    assert_eq!(result.unwrap(), super::ConnectionClosed::ByPeer);
+}
+
+/// Reads a response like [`read_response`], but at most `chunk` bytes at a time with a `pause`
+/// after each read, i.e. at a bounded rate.
+async fn read_response_slowly(
+    client: &mut tokio::net::TcpStream,
+    chunk: usize,
+    pause: Duration,
+) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+
+    let mut response_len = [0; 4];
+    client.read_exact(&mut response_len).await.unwrap();
+    let mut response = vec![0; u32::from_le_bytes(response_len) as usize];
+    let mut read = 0;
+    while read < response.len() {
+        let end = response.len().min(read + chunk);
+        let just_read = client.read(&mut response[read..end]).await.unwrap();
+        assert!(just_read > 0, "connection closed mid-response");
+        read += just_read;
+        tokio::time::sleep(pause).await;
+    }
+    response
+}
+
+#[tokio::test]
+async fn should_drop_connection_whose_lifetime_expires_while_receiving_request() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(1),
+        throughput_grace_period: casper_types::TimeDiff::from_seconds(1),
+        // Slow, but enough for the byte-per-100ms request below.
+        min_transfer_throughput_bytes_per_second: 4,
+        ..Default::default()
+    };
+    let request = encoded_protocol_version_request();
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        // Start the request shortly before the lifetime runs out and finish it well after. Only a
+        // response in flight outlives the lifetime, a request being received doesn't.
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        for byte in &request {
+            if client.write_all(&[*byte]).await.is_err() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        wait_until_closed(&mut client).await;
+    })
+    .await;
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
+    assert!(elapsed < Duration::from_millis(1500), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_not_drop_connection_whose_lifetime_expires_while_sending_response() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(1),
+        // The request doesn't extend the lifetime.
+        get_information_request_termination_delay: casper_types::TimeDiff::from_seconds(0),
+        ..large_response_config()
+    };
+    let (result, elapsed) =
+        run_peer_test_with_reply(config, large_response, |mut client| async move {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            // ~6.5 MB/s: far above the minimum throughput, yet the response takes well over the
+            // connection's lifetime to read.
+            let started = std::time::Instant::now();
+            let response =
+                read_response_slowly(&mut client, 64 * 1024, Duration::from_millis(10)).await;
+            assert!(
+                started.elapsed() > Duration::from_millis(1500),
+                "the response must still be in flight when the lifetime runs out"
+            );
+            assert!(response.len() > LARGE_RESPONSE_SIZE);
+            assert!(wait_until_closed(&mut client).await);
+        })
+        .await;
+    // The response was sent in full; only then did the expired lifetime close the connection.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert!(elapsed > Duration::from_millis(1500), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_not_serve_request_sent_after_lifetime_expired_while_sending_response() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(1),
+        // The first request extends the lifetime to ~1.5s, which runs out mid-response.
+        get_information_request_termination_delay: casper_types::TimeDiff::from_seconds(1),
+        ..large_response_config()
+    };
+    let handled = AtomicUsize::new(0);
+    let reply = || {
+        handled.fetch_add(1, Ordering::SeqCst);
+        large_response()
+    };
+    let (result, elapsed) = run_peer_test_with_reply(config, reply, |mut client| async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        client
+            .write_all(&encoded_protocol_version_request())
+            .await
+            .unwrap();
+        let (mut reader, mut writer) = client.into_split();
+        let send_second_request = async move {
+            // Well after the lifetime ran out, while the first response is still in flight.
+            tokio::time::sleep(Duration::from_millis(1200)).await;
+            writer
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            writer
+        };
+        // Read (slowly) until the connection is closed. The server closes it with the second
+        // request unread, so the kernel may reset the connection and discard the tail of the
+        // first response - hence errors are tolerated.
+        let read_until_closed = async {
+            let mut received = Vec::new();
+            let mut buf = vec![0; 64 * 1024];
+            while let Ok(read @ 1..) = reader.read(&mut buf).await {
+                received.extend_from_slice(&buf[..read]);
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            received
+        };
+        let (_writer, received) = futures::join!(send_second_request, read_until_closed);
+        // At most the first response, never a second one.
+        let first_response_len = u32::from_le_bytes(received[..4].try_into().unwrap()) as usize + 4;
+        assert!(first_response_len > LARGE_RESPONSE_SIZE);
+        assert!(received.len() <= first_response_len, "{}", received.len());
+    })
+    .await;
+    // The first response was sent in full (as far as the server is concerned), then the expired
+    // lifetime closed the connection without the second request being read.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::Dropped(super::DropReason::LifetimeExpired)
+    );
+    assert_eq!(handled.load(Ordering::SeqCst), 1);
+    assert!(elapsed > Duration::from_millis(1700), "{elapsed:?}");
+}
+
+#[tokio::test]
+async fn should_close_connection_after_first_response_when_long_lived_disabled() {
+    use tokio::io::AsyncWriteExt;
+
+    let config = BinaryPortConfig {
+        initial_connection_lifetime: casper_types::TimeDiff::from_seconds(60),
+        keep_long_lived_tcp_connections: false,
+        ..Default::default()
+    };
+    let (result, elapsed) = run_peer_test(config, |mut client| async move {
+        client
+            .write_all(&encoded_protocol_version_request())
+            .await
+            .unwrap();
+        let response = read_response(&mut client).await;
+        let response: casper_binary_port::BinaryResponseAndRequest =
+            casper_types::bytesrepr::deserialize_from_slice(response).unwrap();
+        assert!(response.is_success());
+        // The server closes the connection gracefully right after the response.
+        assert!(wait_until_closed(&mut client).await);
+    })
+    .await;
+    // Not a drop: the connection is closed because it isn't long-lived.
+    assert_eq!(
+        result.unwrap(),
+        super::ConnectionClosed::AfterShortLivedRequest
+    );
+    assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+}
+
 struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
