@@ -29,6 +29,7 @@ pub(crate) use block::{
     InvalidProposalError, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
 pub use block::{BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport};
+pub(crate) use casper_storage::block_store::types::TransactionHeader;
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 #[cfg(test)]
@@ -44,9 +45,7 @@ pub use node_config::{NodeConfig, SyncHandling};
 pub(crate) use node_id::NodeId;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
-pub(crate) use transaction::{
-    LegacyDeploy, MetaTransaction, TransactionFootprint, TransactionHeader,
-};
+pub(crate) use transaction::{LegacyDeploy, MetaTransaction, TransactionFootprint};
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,

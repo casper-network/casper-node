@@ -4,7 +4,10 @@ mod versioned_databases;
 mod lmdb_block_store;
 
 use core::convert::TryFrom;
-pub use lmdb_block_store::{EraExecutionGap, LmdbBlockStore, SyncLeapLookup};
+pub use lmdb_block_store::{
+    EraExecutionGap, ExecutionResultWithTransactionHeader, LmdbBlockStore, SyncLeapLookup,
+    TransactionWithApprovals,
+};
 
 #[cfg(test)]
 use rand::Rng;
