@@ -69,6 +69,15 @@ impl Storage {
             .read_transaction_with_finalized_approvals(*transaction_hash)
             .expect("could not retrieve a transaction with finalized approvals from storage")
     }
+
+    pub(crate) fn read_execution_info(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Option<ExecutionInfo> {
+        self.block_store
+            .read_execution_info(transaction_hash)
+            .expect("should read execution info")
+    }
 }
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {

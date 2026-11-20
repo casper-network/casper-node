@@ -65,8 +65,8 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV1},
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, DeployHash, EraId, EvmConfig,
-    ExecutionInfo, FinalitySignature, ProtocolVersion, Transaction, TransactionConfig,
-    TransactionHash, TransactionId, U512,
+    FinalitySignature, ProtocolVersion, Transaction, TransactionConfig, TransactionHash,
+    TransactionId, U512,
 };
 use datasize::DataSize;
 use num_rational::Ratio;
@@ -1800,15 +1800,6 @@ impl Storage {
             .expect("should read block and signatures")?;
         let signatures = signatures.unwrap_or_else(|| self.get_default_block_signatures(&block));
         Some(BlockWithSignatures::new(block, signatures))
-    }
-
-    pub(crate) fn read_execution_info(
-        &self,
-        transaction_hash: TransactionHash,
-    ) -> Option<ExecutionInfo> {
-        self.block_store
-            .read_execution_info(transaction_hash)
-            .expect("should read execution info")
     }
 
     pub(crate) fn delete_block_utilization_score_by_block_hash(&mut self, block_hash: BlockHash) {
