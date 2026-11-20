@@ -38,7 +38,4 @@ pub enum BlockStoreError {
     /// Internal error.
     #[error("internal database error: {0}")]
     InternalStorage(Box<dyn std::error::Error + Send + Sync>),
-    /// The operation is unsupported.
-    #[error("unsupported operation")]
-    UnsupportedOperation,
 }
