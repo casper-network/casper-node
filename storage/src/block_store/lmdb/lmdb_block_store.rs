@@ -470,11 +470,6 @@ impl LmdbBlockStore {
         )
     }
 
-    /// Reads a state-store value.
-    pub fn read_state_store(&self, key: StateStoreKey) -> Result<Option<Vec<u8>>, BlockStoreError> {
-        self.load_state_store(&self.env.begin_ro_txn().map_err(internal_storage)?, &key.0)
-    }
-
     /// Reads a block by height.
     pub fn read_block_at_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
         self.block_at_height(&self.env.begin_ro_txn().map_err(internal_storage)?, height)
