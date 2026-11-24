@@ -90,17 +90,20 @@ pub struct Config {
     pub speculative_exec_request_termination_delay: TimeDiff,
     /// Minimum rate (in bytes per second) at which a transfer in progress must proceed once the
     /// grace period has passed - applies both to a partially received message and to a response
-    /// the peer must read (accept). Measured over consecutive windows of `throughput_grace_period`
-    /// length. Has no effect between messages - the lifetime of a silent connection is governed
-    /// by `initial_connection_lifetime` and the `*_termination_delay` settings. `0` disables the
-    /// check, leaving transfers bounded only by the connection lifetime.
+    /// the peer must read (accept). When receiving, measured over consecutive windows of
+    /// `throughput_grace_period` length. When sending, measured as an average, as socket buffers
+    /// make progress uneven; data sent faster than the minimum rate lets the peer fall behind it
+    /// for at most 30 seconds (or the grace period, if longer). Has no effect between messages -
+    /// the lifetime of a silent connection is governed by `initial_connection_lifetime` and the
+    /// `*_termination_delay` settings. `0` disables the check, leaving transfers bounded only by
+    /// the connection lifetime.
     #[serde(default = "default_min_transfer_throughput_bytes_per_second")]
     pub min_transfer_throughput_bytes_per_second: u32,
     /// Time, counted from the start of each transfer - receiving a message or sending a
     /// response - during which throughput is measured but the connection is never dropped
     /// (the minimum throughput is not enforced). Also the length of the window over which
-    /// throughput is measured, and it determines how often the checks run (twice per grace
-    /// period, at most every 250ms).
+    /// throughput is measured when receiving, and it determines how often the checks run (twice
+    /// per grace period, at most every 250ms).
     ///
     /// This is also the tolerance for network hiccups: a small request must arrive in full within
     /// roughly the grace period of its first bytes, so a single lost TCP segment can get a remote

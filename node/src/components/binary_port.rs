@@ -1640,8 +1640,7 @@ async fn send_response(
     }
 }
 
-/// Limits for transfers. Both directions (receiving a message, sending a response) are treated
-/// identically.
+/// Limits for transfers, the same for both directions (receiving a message, sending a response).
 fn transfer_limits(config: &Config) -> TransferLimits {
     TransferLimits {
         min_bytes_per_second: config.min_transfer_throughput_bytes_per_second,

@@ -672,10 +672,13 @@ fn large_response() -> BinaryResponse {
 async fn should_drop_peer_that_does_not_read_response() {
     use tokio::io::AsyncWriteExt;
 
-    let (result, elapsed) = run_peer_test_with_reply(
-        large_response_config(),
-        large_response,
-        |mut client| async move {
+    let config = BinaryPortConfig {
+        // High enough for the data absorbed by the socket buffers to buy the peer little time.
+        min_transfer_throughput_bytes_per_second: 8 * 1024 * 1024,
+        ..large_response_config()
+    };
+    let (result, elapsed) =
+        run_peer_test_with_reply(config, large_response, |mut client| async move {
             client
                 .write_all(&encoded_protocol_version_request())
                 .await
@@ -688,9 +691,8 @@ async fn should_drop_peer_that_does_not_read_response() {
                     break;
                 }
             }
-        },
-    )
-    .await;
+        })
+        .await;
     assert!(
         matches!(
             result,
@@ -766,6 +768,35 @@ async fn should_send_large_response_to_reading_peer() {
     .await;
     // The server observes the client closing the connection.
     assert_eq!(result.unwrap(), super::ConnectionClosed::ByPeer);
+}
+
+#[tokio::test]
+async fn should_not_drop_peer_reading_response_slowly_but_above_minimum_rate() {
+    use tokio::io::AsyncWriteExt;
+
+    let reading_time = Duration::from_secs(6);
+    let (result, elapsed) = run_peer_test_with_reply(
+        large_response_config(),
+        large_response,
+        |mut client| async move {
+            client
+                .write_all(&encoded_protocol_version_request())
+                .await
+                .unwrap();
+            // ~20 KB/s, twice the minimum. The response doesn't fit in the socket buffers, which
+            // drain so slowly that the server can't write anything for seconds at a time.
+            let read = read_response_slowly(&mut client, 2 * 1024, Duration::from_millis(100));
+            // Give up (closing the connection) well before the response is complete.
+            assert!(tokio::time::timeout(reading_time, read).await.is_err());
+        },
+    )
+    .await;
+    // Closed by the peer (seen as a failed write), not dropped by the server for being too slow.
+    assert!(
+        !matches!(result, Err(super::Error::TransferViolation(_))),
+        "{result:?}"
+    );
+    assert!(elapsed >= reading_time, "{elapsed:?}");
 }
 
 /// Reads a response like [`read_response`], but at most `chunk` bytes at a time with a `pause`
