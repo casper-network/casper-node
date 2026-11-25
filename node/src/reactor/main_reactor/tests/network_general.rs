@@ -52,6 +52,21 @@ async fn run_network() {
 }
 
 #[tokio::test]
+async fn block_height_wait_accepts_already_completed_blocks() {
+    let initial_stakes = InitialStakes::AllEqual {
+        count: 2,
+        stake: 100,
+    };
+    let mut fixture = TestFixture::new(initial_stakes, None).await;
+    fixture.run_until_block_height(1, ONE_MIN).await;
+
+    fixture
+        .try_run_until_block_height(0, Duration::from_millis(100))
+        .await
+        .expect("nodes past block 0 have already completed it");
+}
+
+#[tokio::test]
 async fn historical_sync_with_era_height_1() {
     let initial_stakes = InitialStakes::Random { count: 5 };
     let spec_override = ConfigsOverride {

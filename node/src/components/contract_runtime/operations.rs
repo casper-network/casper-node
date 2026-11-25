@@ -189,16 +189,14 @@ where
     let result = EvmExecutor::new(chainspec.evm_config.clone()).validate_transaction(
         data_access_layer,
         tracking_copy,
-        block_context,
-        evm_transaction,
+        EvmExecuteRequest {
+            block: block_context,
+            kind: EvmExecuteKind::Transaction(Box::new(evm_transaction.clone())),
+        },
     );
     let invalid_request = match result {
         Ok(()) => return Ok(None),
         Err(EvmExecutorError::Disabled) => CasperEvmTransactionError::Disabled,
-        Err(EvmExecutorError::MissingChainId) => CasperEvmTransactionError::MissingChainId,
-        Err(EvmExecutorError::ChainIdMismatch { expected, actual }) => {
-            CasperEvmTransactionError::ChainIdMismatch { expected, actual }
-        }
         Err(EvmExecutorError::InvalidTransaction(error)) => error,
         Err(EvmExecutorError::Transaction(error)) => CasperEvmTransactionError::Validation(error),
         Err(error) => {

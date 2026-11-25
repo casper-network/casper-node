@@ -17,17 +17,6 @@ pub enum Error {
     /// EVM wei-to-mote conversion ratio is invalid.
     #[error("EVM wei_per_mote must be greater than zero")]
     InvalidWeiPerMote,
-    /// Signed EVM transaction does not include an EIP-155 replay-protection chain id.
-    #[error("EVM transaction is missing replay-protection chain id")]
-    MissingChainId,
-    /// Transaction chain id does not match the executor configuration.
-    #[error("EVM transaction chain id {actual} does not match configured chain id {expected}")]
-    ChainIdMismatch {
-        /// Chain id configured in the chainspec.
-        expected: u64,
-        /// Chain id recovered from the signed transaction.
-        actual: u64,
-    },
     /// Failed to read from the Casper tracking copy as a revm database.
     #[error(transparent)]
     Database(#[from] DbError),

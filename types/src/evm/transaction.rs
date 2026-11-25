@@ -628,8 +628,6 @@ pub enum EvmTransactionError {
     HashMismatch,
     /// The sender address could not be recovered from the signature.
     SenderRecovery(String),
-    /// Reconstructing the signed envelope produced metadata different from this transaction.
-    InconsistentEnvelope,
 }
 
 impl Display for EvmTransactionError {
@@ -779,9 +777,6 @@ impl Display for EvmTransactionError {
             }
             EvmTransactionError::SenderRecovery(error) => {
                 write!(formatter, "EVM transaction sender recovery error: {error}")
-            }
-            EvmTransactionError::InconsistentEnvelope => {
-                formatter.write_str("EVM transaction fields do not match signed envelope")
             }
         }
     }

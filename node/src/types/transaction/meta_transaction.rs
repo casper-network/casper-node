@@ -655,45 +655,47 @@ mod tests {
     }
 
     #[test]
-    fn evm_config_compliance_rejects_missing_chain_id() {
+    fn evm_config_compliance_accepts_unprotected_legacy_transaction() {
         let chainspec = chainspec();
         let meta = evm_meta(&chainspec, legacy_transaction(None, BASE_FEE_WEI, 21_000));
-        assert!(matches!(
-            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(EvmTransactionError::MissingChainId))
-        ));
+        meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero())
+            .expect("Osaka permits unprotected legacy transactions");
     }
 
     #[test]
     fn evm_config_compliance_rejects_mismatched_chain_id() {
         let chainspec = chainspec();
-        let meta = evm_meta(
-            &chainspec,
-            legacy_transaction(Some(CHAIN_ID + 1), BASE_FEE_WEI, 21_000),
-        );
-        assert!(matches!(
-            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
-                expected: CHAIN_ID,
-                actual
-            })) if actual == CHAIN_ID + 1
-        ));
+        for gas_price in [BASE_FEE_WEI, BASE_FEE_WEI - 1] {
+            let meta = evm_meta(
+                &chainspec,
+                legacy_transaction(Some(CHAIN_ID + 1), gas_price, 21_000),
+            );
+            assert!(matches!(
+                meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+                Err(InvalidTransaction::Evm(EvmTransactionError::ChainIdMismatch {
+                    expected: CHAIN_ID,
+                    actual
+                })) if actual == CHAIN_ID + 1
+            ));
+        }
     }
 
     #[test]
     fn evm_config_compliance_rejects_gas_price_below_base_fee() {
         let chainspec = chainspec();
-        let meta = evm_meta(
-            &chainspec,
-            legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI - 1, 21_000),
-        );
-        assert!(matches!(
-            meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
-            Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
-                gas_price,
-                base_fee
-            })) if gas_price == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
-        ));
+        for chain_id in [Some(CHAIN_ID), None] {
+            let meta = evm_meta(
+                &chainspec,
+                legacy_transaction(chain_id, BASE_FEE_WEI - 1, 21_000),
+            );
+            assert!(matches!(
+                meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
+                Err(InvalidTransaction::Evm(EvmTransactionError::GasPriceBelowBaseFee {
+                    gas_price,
+                    base_fee
+                })) if gas_price == BASE_FEE_WEI - 1 && base_fee == BASE_FEE_WEI
+            ));
+        }
     }
 
     #[test]

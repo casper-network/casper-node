@@ -616,7 +616,7 @@ impl TestFixture {
             .await
     }
 
-    /// Runs the network until all nodes reach the given completed block height.
+    /// Runs the network until all nodes reach at least the given completed block height.
     ///
     /// Returns an error if the condition isn't met in time.
     pub(crate) async fn try_run_until_block_height(
@@ -627,13 +627,13 @@ impl TestFixture {
         self.try_run_until(
             move |nodes: &Nodes| {
                 nodes.values().all(|runner| {
+                    // One node can pass the target before the others reach it.
                     runner
                         .main_reactor()
                         .storage()
                         .get_highest_complete_block()
                         .expect("should not error reading db")
-                        .map(|block| block.height())
-                        == Some(block_height)
+                        .is_some_and(|block| block.height() >= block_height)
                 })
             },
             within,
@@ -641,7 +641,7 @@ impl TestFixture {
         .await
     }
 
-    /// Runs the network until all nodes reach the given completed block height.
+    /// Runs the network until all nodes reach at least the given completed block height.
     ///
     /// Panics if the condition isn't met in time.
     pub(crate) async fn run_until_block_height(&mut self, block_height: u64, within: Duration) {

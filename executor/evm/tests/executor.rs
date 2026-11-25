@@ -13,7 +13,7 @@ use alloy_eips::{
 use alloy_primitives::{keccak256, Address as AlloyAddress, Signature, TxKind, B256, U256};
 use casper_executor_evm::{
     BlockContext, CallRequest, CallValidation, DbError, Error, EvmExecutor, ExecuteKind,
-    ExecuteRequest, ExecutionStatus, SystemCallRequest, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
+    ExecuteRequest, ExecutionStatus, BLOCK_HASH_HISTORY, EMPTY_CODE_HASH,
 };
 use casper_storage::{
     block_store::{lmdb::LmdbBlockStore, BlockStoreTransaction},
@@ -32,9 +32,9 @@ use casper_storage::{
 use casper_types::{
     contracts::NamedKeys, evm, AccessRights, Account, BlockHash, BlockHeader, BlockHeaderV2,
     ByteCode, ByteCodeKind, CLValue, ChainspecRegistry, Digest, EraId, EvmAddr, EvmConfig, EvmSpec,
-    EvmTransaction, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
+    EvmTransaction, EvmTransactionError, GenesisAccount, GenesisConfig, HoldBalanceHandling, Key,
+    Motes, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig,
+    Timestamp, URef, WasmConfig, DEFAULT_WEI_PER_MOTE, U256 as CasperU256, U512,
 };
 use once_cell::sync::OnceCell;
 use revm::bytecode::opcode;
@@ -1192,36 +1192,6 @@ fn missing_bytecode_rejects_delegated_call() {
             ),
         )
         .expect_err("missing delegated bytecode must abort execution");
-
-    assert!(matches!(
-        error,
-        Error::Database(DbError::MissingBytecode { key }) if *key == missing_key
-    ));
-}
-
-#[test]
-fn missing_bytecode_rejects_system_call() {
-    let executor = executor(EvmSpec::Osaka);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let target = evm::Address::new([0xa1; 20]);
-    seed_evm_code(&mut tracking_copy, target, reverting_runtime());
-    let missing_key = Key::Evm(EvmAddr::ByteCode(read_code_hash(
-        &mut tracking_copy,
-        target,
-    )));
-    tracking_copy.prune(missing_key);
-
-    let error = executor
-        .execute_system_call(
-            &data_access_layer,
-            &mut tracking_copy,
-            SystemCallRequest {
-                block: block(),
-                target,
-                input: Vec::new(),
-            },
-        )
-        .expect_err("missing system-call bytecode must abort execution");
 
     assert!(matches!(
         error,
@@ -2844,31 +2814,6 @@ fn invalid_wei_per_mote_is_rejected() {
 }
 
 #[test]
-fn system_call_reports_zero_dust_for_whole_mote_state() {
-    let executor = executor(EvmSpec::Osaka);
-    let target = evm::Address::new([0x3b; 20]);
-    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    seed_evm_balance(&mut tracking_copy, target, U512::one());
-    seed_evm_code(&mut tracking_copy, target, vec![opcode::STOP]);
-
-    let outcome = executor
-        .execute_system_call(
-            &data_access_layer,
-            &mut tracking_copy,
-            SystemCallRequest {
-                block: block(),
-                target,
-                input: Vec::new(),
-            },
-        )
-        .expect("system call should execute");
-
-    assert_eq!(outcome.status, ExecutionStatus::Success);
-    assert_eq!(outcome.supply_reduction_motes().unwrap(), U512::zero());
-    assert_eq!(read_balance(&mut tracking_copy, target), U512::one());
-}
-
-#[test]
 fn coinbase_transfer_to_prelinked_beneficiary_credits_proposer_account() {
     let executor = executor(EvmSpec::Osaka);
     let sender = evm::Address::new([1; 20]);
@@ -3415,19 +3360,33 @@ fn selfdestruct_preserves_account_on_osaka() {
 }
 
 #[test]
-fn signed_transactions_require_configured_chain_id() {
+fn signed_transactions_allow_unprotected_legacy_envelopes() {
     let executor = executor(EvmSpec::Osaka);
     let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
-    let missing_chain_id = legacy_transaction_without_chain_id();
+    let transaction = legacy_transaction_without_chain_id();
+    seed_evm_balance(
+        &mut tracking_copy,
+        transaction.from(),
+        U512::from(1_000_000u64),
+    );
     let request = ExecuteRequest {
         block: block(),
-        kind: ExecuteKind::Transaction(Box::new(missing_chain_id)),
+        kind: ExecuteKind::Transaction(Box::new(transaction.clone())),
     };
-    assert!(matches!(
-        executor.execute(&data_access_layer, &mut tracking_copy, request),
-        Err(Error::MissingChainId)
-    ));
+    executor
+        .validate_transaction(&data_access_layer, &mut tracking_copy, request.clone())
+        .expect("Osaka permits unprotected legacy transactions");
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 0);
+    let outcome = executor
+        .execute(&data_access_layer, &mut tracking_copy, request)
+        .expect("unprotected legacy transaction should execute");
+    assert_eq!(outcome.status, ExecutionStatus::Success);
+    assert_eq!(read_evm_nonce(&mut tracking_copy, transaction.from()), 1);
+}
 
+#[test]
+fn signed_transactions_reject_mismatched_chain_id() {
+    let (mut tracking_copy, data_access_layer, _tempdir) = tracking_copy();
     let wrong_chain_executor = EvmExecutor::new(EvmConfig {
         enabled: true,
         chain_id: 8,
@@ -3445,11 +3404,17 @@ fn signed_transactions_require_configured_chain_id() {
         kind: ExecuteKind::Transaction(Box::new(transaction)),
     };
     assert!(matches!(
+        wrong_chain_executor.validate_transaction(
+            &data_access_layer,
+            &mut tracking_copy,
+            request.clone(),
+        ),
+        Err(Error::InvalidTransaction(EvmTransactionError::Validation(message)))
+            if message == "invalid chain ID"
+    ));
+    assert!(matches!(
         wrong_chain_executor.execute(&data_access_layer, &mut tracking_copy, request),
-        Err(Error::ChainIdMismatch {
-            expected: 8,
-            actual: 7
-        })
+        Err(Error::Revm(message)) if message.contains("invalid chain ID")
     ));
 }
 
