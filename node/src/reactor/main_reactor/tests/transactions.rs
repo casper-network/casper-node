@@ -4,6 +4,7 @@ use crate::{
     components::contract_runtime::ExecutionPreState,
     testing::LARGE_WASM_LANE_ID,
     types::{transaction::calculate_transaction_lane_for_transaction, MetaTransaction},
+    utils::Loadable,
 };
 use alloy_consensus::{SignableTransaction, TxEip1559, TxEnvelope, TxLegacy};
 use alloy_eips::Encodable2718;
@@ -40,7 +41,8 @@ use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     evm,
     execution::ExecutionResultV1,
-    EvmAddr, EvmConfig, EvmSpec, EvmTransaction, TransactionLaneDefinition, DEFAULT_WEI_PER_MOTE,
+    ChainspecRawBytes, EvmAddr, EvmConfig, EvmSpec, EvmTransaction, TransactionLaneDefinition,
+    DEFAULT_WEI_PER_MOTE, EVM_TRANSACTION_GAS_LIMIT,
 };
 
 pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
@@ -1346,6 +1348,70 @@ fn evm_test_config(chain_id: u64) -> EvmConfig {
             u64::MAX,
             50,
         )],
+    }
+}
+
+#[tokio::test]
+async fn evm_transactions_at_and_above_osaka_gas_cap() {
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("evm");
+    let evm_config = chainspec.evm_config;
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_evm_config(evm_config.clone())
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::Burn);
+    let mut test = SingleTransactionTestCase::new(
+        Arc::clone(&ALICE_SECRET_KEY),
+        Arc::clone(&BOB_SECRET_KEY),
+        Arc::clone(&CHARLIE_SECRET_KEY),
+        Some(config),
+    )
+    .await;
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let transaction = signed_evm_eip1559_value_transfer_transaction(
+        evm_config.chain_id,
+        evm::Address::new([0x22; evm::ADDRESS_LENGTH]),
+        EVM_TRANSACTION_GAS_LIMIT,
+        2 * evm_config.base_fee_wei(),
+        0,
+        0,
+    );
+    seed_evm_account(
+        &mut test.fixture,
+        transaction.from(),
+        U512::from(EVM_INITIAL_BALANCE),
+    );
+    let (_, block_height, result) = test.send_transaction(Transaction::from(transaction)).await;
+    let ExecutionResult::Evm(result) = result else {
+        panic!("expected an EVM execution result");
+    };
+    assert_eq!(result.receipt.status, evm::ReceiptStatus::Success);
+    assert_eq!(result.receipt.gas_used, 21_000);
+
+    let over_cap = signed_evm_legacy_transaction(TxLegacy {
+        chain_id: Some(evm_config.chain_id),
+        nonce: 1,
+        gas_price: evm_config.base_fee_wei(),
+        gas_limit: EVM_TRANSACTION_GAS_LIMIT + 1,
+        to: TxKind::Call(AlloyAddress::repeat_byte(0x22)),
+        value: U256::ZERO,
+        input: AlloyBytes::new(),
+    });
+    let over_cap_hash = TransactionHash::from(over_cap.hash());
+    test.fixture
+        .inject_transaction(Transaction::from(over_cap))
+        .await;
+    test.fixture
+        .run_until_block_height(block_height + 2, ONE_MIN)
+        .await;
+    for runner in test.fixture.network.nodes().values() {
+        assert!(runner
+            .main_reactor()
+            .storage()
+            .read_execution_info(over_cap_hash)
+            .is_none());
     }
 }
 

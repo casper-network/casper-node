@@ -1029,13 +1029,13 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_gas_limit_above_block_limit() {
         let mut chainspec = chainspec();
-        // Exercise the block check below Osaka's protocol transaction cap.
-        chainspec.evm_config.block_gas_limit = 100_000;
-        let gas_limit = chainspec.evm_config.block_gas_limit + 1;
+        let gas_limit = 100_001;
         let meta = evm_meta(
             &chainspec,
             legacy_transaction(Some(CHAIN_ID), BASE_FEE_WEI, gas_limit),
         );
+        // Exercise the block check below Osaka's protocol transaction cap.
+        chainspec.evm_config.block_gas_limit = 100_000;
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsBlockGasLimit {
@@ -1048,13 +1048,13 @@ mod tests {
     #[test]
     fn evm_config_compliance_rejects_eip7702_gas_limit_above_block_limit() {
         let mut chainspec = chainspec();
-        // Exercise the block check below Osaka's protocol transaction cap.
-        chainspec.evm_config.block_gas_limit = 100_000;
-        let gas_limit = chainspec.evm_config.block_gas_limit + 1;
+        let gas_limit = 100_001;
         let meta = evm_meta(
             &chainspec,
             eip7702_transaction(CHAIN_ID, BASE_FEE_WEI, 0, gas_limit),
         );
+        // Exercise the block check below Osaka's protocol transaction cap.
+        chainspec.evm_config.block_gas_limit = 100_000;
         assert!(matches!(
             meta.is_config_compliant(&chainspec, TimeDiff::from_seconds(0), Timestamp::zero()),
             Err(InvalidTransaction::Evm(EvmTransactionError::GasLimitExceedsBlockGasLimit {
