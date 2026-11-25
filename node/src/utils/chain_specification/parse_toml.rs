@@ -77,7 +77,6 @@ pub(super) struct TomlChainspec {
     network: TomlNetwork,
     core: CoreConfig,
     transactions: TransactionConfig,
-    #[serde(default)]
     evm: EvmConfig,
     highway: HighwayConfig,
     wasm: WasmConfig,

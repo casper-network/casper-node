@@ -312,7 +312,7 @@ preinstalls = [
 ]
 ```
 
-An omitted or empty list installs no utility contracts. The node has no
+The list is required; an empty list installs no utility contracts. The node has no
 compiled preinstall registry. Addresses must contain exactly 20 bytes and
 checksums exactly 32 bytes; when EVM is enabled, duplicate addresses, including
 differences in hex case, are rejected during chainspec validation and upgrade
@@ -351,8 +351,9 @@ rollout requirement: the generic installer accepts an empty list and does
 not populate the expected list automatically.
 
 The [local chainspec template](resources/local/chainspec.toml.in) configures no
-utility preinstalls. The [integration tests](executor/evm/tests/preinstalls.rs)
-pin the initial rollout list below, each contract under its upstream license:
+utility preinstalls. The [EVM devnet chainspec](resources/evm/chainspec.toml)
+and [integration tests](executor/evm/tests/preinstalls.rs) use the initial
+rollout list below, each contract under its upstream license:
 
 | Preinstall | License | Canonical address | Ethereum mainnet reference |
 | --- | --- | --- | --- |
