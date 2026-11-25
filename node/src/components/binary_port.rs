@@ -7,8 +7,16 @@ mod metrics;
 mod rate_limiter;
 #[cfg(test)]
 mod tests;
+mod transfer_guard;
 
-use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
+use std::{
+    convert::TryFrom,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
@@ -58,8 +66,12 @@ use tokio::{
     select,
     sync::{Mutex, Notify, OwnedSemaphorePermit, Semaphore},
 };
-use tokio_util::codec::{Encoder, Framed};
+use tokio_util::{
+    codec::{Encoder, Framed},
+    sync::CancellationToken,
+};
 use tracing::{debug, error, info, trace, warn};
+use transfer_guard::{CountingStream, Direction, ThroughputGuard, TransferLimits};
 
 #[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
@@ -79,6 +91,7 @@ use crate::{
     types::NodeRng,
     utils::{display_error, ListeningError},
 };
+use metrics::DropReason;
 pub(crate) use metrics::Metrics;
 
 use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
@@ -1425,6 +1438,17 @@ where
     }
 }
 
+/// Why a client connection was closed without an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectionClosed {
+    /// The peer closed the connection.
+    ByPeer,
+    /// The single request of a short-lived connection was served.
+    AfterShortLivedRequest,
+    /// The node dropped the connection.
+    Dropped(DropReason),
+}
+
 async fn handle_client_loop<REv>(
     stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
@@ -1432,7 +1456,7 @@ async fn handle_client_loop<REv>(
     rate_limiter: Arc<Mutex<RateLimiter>>,
     monitor: ConnectionTerminator,
     life_extensions_config: BinaryRequestTerminationDelayValues,
-) -> Result<(), Error>
+) -> Result<ConnectionClosed, Error>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -1447,17 +1471,36 @@ where
         + Send,
 {
     let codec = BinaryMessageCodec::new(config.max_message_size_bytes);
-    let mut framed = Framed::new(stream, codec);
+    let mut framed = Framed::new(CountingStream::new(stream), codec);
+    let bytes_written = framed.get_ref().bytes_written_counter();
     monitor
         .terminate_at(Timestamp::now() + config.initial_connection_lifetime)
         .await;
     let cancellation_token = monitor.get_cancellation_token();
+    let mut receive_check = tokio::time::interval(transfer_guard::clamp_interval(
+        config.throughput_grace_period.into(),
+    ));
+    receive_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let receive_limits = transfer_limits(&config);
+    // A response in flight is governed by the send throughput guard alone: the connection lifetime
+    // doesn't interrupt it, the connection is closed once it has been sent. Without a throughput
+    // guard (minimum throughput `0`) nothing else would bound a stalled send, so the lifetime then
+    // interrupts responses in flight too.
+    let lifetime_interrupts_response = receive_limits.min_bytes_per_second == 0;
+    // Guards the message currently being received, if any (bytes of an incomplete message are
+    // buffered). Between messages there's nothing to guard.
+    let mut receive_guard: Option<ThroughputGuard> = None;
     loop {
         select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                debug!("Binary port connection stale - closing.");
+                return Ok(ConnectionClosed::Dropped(DropReason::LifetimeExpired));
+            }
             maybe_bytes = framed.next() => {
                 let Some(result) = maybe_bytes else {
                     debug!("remote party closed the connection");
-                    return Ok(());
+                    return Ok(ConnectionClosed::ByPeer);
                 };
                 let limiter_response = rate_limiter.lock().await.throttle();
                 let binary_message = result?;
@@ -1476,17 +1519,132 @@ where
                     Bytes::from(bytes_buf.freeze().to_vec()),
                     config.max_message_size_bytes,
                 );
-                framed
-                    .send(BinaryMessage::new(
-                        response.to_bytes()?,
-                    ))
-                    .await?
+                let delivered = send_response(
+                    &mut framed,
+                    BinaryMessage::new(response.to_bytes()?),
+                    &bytes_written,
+                    &config,
+                    lifetime_interrupts_response.then_some(&cancellation_token),
+                )
+                .await?;
+                if !delivered {
+                    return Ok(ConnectionClosed::Dropped(
+                        DropReason::LifetimeExpiredWhileSendingResponse,
+                    ));
+                }
+                // The lifetime may have run out while the response was being sent. Checked here
+                // rather than left to the next iteration, so that a peer with further messages
+                // already buffered can't keep the connection alive past its lifetime.
+                if cancellation_token.is_cancelled() {
+                    debug!("Binary port connection lifetime expired - closing after response.");
+                    return Ok(ConnectionClosed::Dropped(DropReason::LifetimeExpired));
+                }
+                // The next message (possibly already partially buffered) is a new transfer.
+                receive_guard = None;
+                if !config.keep_long_lived_tcp_connections {
+                    // Single request per connection: flush and gracefully shut down the write side.
+                    // Any further (pipelined) requests from the peer are not served.
+                    // A failure to shut down cleanly doesn't make this a drop: the connection is
+                    // being closed because it's short-lived either way.
+                    if let Err(error) = framed.close().await {
+                        trace!(%error, "failed to gracefully close short-lived binary port connection");
+                    }
+                    debug!("Binary port request served, closing short-lived connection.");
+                    return Ok(ConnectionClosed::AfterShortLivedRequest);
+                }
             }
-            _ = cancellation_token.cancelled() => {
-                debug!("Binary port connection stale - closing.");
-                return Ok(());
+            _ = receive_check.tick() => {
+                let pending_bytes = framed.read_buffer().len() as u64;
+                if pending_bytes == 0 {
+                    receive_guard = None;
+                    continue;
+                }
+                let now = tokio::time::Instant::now();
+                let total_bytes_read = framed.get_ref().total_bytes_read();
+                let guard = receive_guard.get_or_insert_with(|| {
+                    // Bytes already buffered for this message count towards its throughput.
+                    ThroughputGuard::new(
+                        Direction::Receive,
+                        receive_limits,
+                        now,
+                        total_bytes_read.saturating_sub(pending_bytes),
+                    )
+                });
+                if let Err(violation) = guard.check(now, total_bytes_read) {
+                    debug!(%violation, "binary port peer too slow - closing.");
+                    return Err(Error::TransferViolation(violation));
+                }
             }
         }
+    }
+}
+
+/// Sends `message` to the peer, dropping the connection if the peer doesn't read it fast enough
+/// (see [`ThroughputGuard`]). The grace period starts once the message is encoded.
+///
+/// `lifetime_token` is the connection lifetime's cancellation token if it may interrupt the send,
+/// i.e. only when there is no throughput guard to bound the transfer. Otherwise (`None`) the
+/// response is sent in full for as long as the peer reads it fast enough.
+///
+/// Returns `Ok(false)` if the connection's lifetime ran out (`lifetime_token` was cancelled)
+/// before the response was fully sent.
+async fn send_response(
+    framed: &mut Framed<CountingStream<TcpStream>, BinaryMessageCodec>,
+    message: BinaryMessage,
+    bytes_written: &AtomicU64,
+    config: &Config,
+    lifetime_token: Option<&CancellationToken>,
+) -> Result<bool, Error> {
+    // Encode into the write buffer first. This is local CPU work which doesn't depend on the
+    // peer, so it must not eat into the peer's grace period. Encoding directly (rather than via
+    // `Sink::feed`) guarantees no socket I/O happens before the guard is armed.
+    let mut codec = *framed.codec();
+    codec.encode(message, framed.write_buffer_mut())?;
+
+    let mut send_guard = ThroughputGuard::new(
+        Direction::Send,
+        transfer_limits(config),
+        tokio::time::Instant::now(),
+        bytes_written.load(Ordering::Relaxed),
+    );
+    let mut send_check = tokio::time::interval(transfer_guard::clamp_interval(
+        config.throughput_grace_period.into(),
+    ));
+    send_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let lifetime_expired = async {
+        match lifetime_token {
+            Some(token) => token.cancelled().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(lifetime_expired);
+    let flush = framed.flush();
+    tokio::pin!(flush);
+    loop {
+        select! {
+            biased;
+            _ = &mut lifetime_expired => return Ok(false),
+            result = &mut flush => {
+                result?;
+                return Ok(true);
+            }
+            _ = send_check.tick() => {
+                if let Err(violation) = send_guard
+                    .check(tokio::time::Instant::now(), bytes_written.load(Ordering::Relaxed))
+                {
+                    debug!(%violation, "binary port peer too slow - closing.");
+                    return Err(Error::TransferViolation(violation));
+                }
+            }
+        }
+    }
+}
+
+/// Limits for transfers, the same for both directions (receiving a message, sending a response).
+fn transfer_limits(config: &Config) -> TransferLimits {
+    TransferLimits {
+        min_bytes_per_second: config.min_transfer_throughput_bytes_per_second,
+        grace_period: config.throughput_grace_period.into(),
     }
 }
 
@@ -1582,6 +1740,7 @@ async fn handle_client<REv>(
     config: Arc<Config>,
     _permit: OwnedSemaphorePermit,
     rate_limiter: Arc<Mutex<RateLimiter>>,
+    metrics: Arc<Metrics>,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -1597,7 +1756,7 @@ async fn handle_client<REv>(
 {
     let keep_alive_monitor = ConnectionTerminator::new();
     let life_extensions_config = BinaryRequestTerminationDelayValues::from_config(&config);
-    if let Err(err) = handle_client_loop(
+    let result = handle_client_loop(
         stream,
         effect_builder,
         config,
@@ -1605,11 +1764,17 @@ async fn handle_client<REv>(
         keep_alive_monitor,
         life_extensions_config,
     )
-    .await
-    {
-        // Low severity is used to prevent malicious clients from causing log floods.
-        trace!(%addr, err=display_error(&err), "binary port client handler error");
-    }
+    .await;
+    let drop_reason = match result {
+        Ok(ConnectionClosed::Dropped(reason)) => reason,
+        Ok(ConnectionClosed::ByPeer | ConnectionClosed::AfterShortLivedRequest) => return,
+        Err(err) => {
+            // Low severity is used to prevent malicious clients from causing log floods.
+            trace!(%addr, err=display_error(&err), "binary port client handler error");
+            err.drop_reason()
+        }
+    };
+    metrics.record_dropped_connection(drop_reason);
 }
 
 async fn run_server<REv>(
@@ -1892,8 +2057,11 @@ where
                             config,
                             permit,
                             rate_limiter,
+                            Arc::clone(&self.metrics),
                         ));
                     } else {
+                        self.metrics
+                            .record_dropped_connection(DropReason::ConnectionLimitReached);
                         warn!(
                             "connection limit reached, dropping connection from {}",
                             peer
