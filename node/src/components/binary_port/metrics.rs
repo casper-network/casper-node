@@ -1,4 +1,5 @@
-use prometheus::{IntCounter, Registry};
+use prometheus::{IntCounter, IntCounterVec, Opts, Registry};
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::unregister_metric;
 
@@ -29,6 +30,59 @@ const BINARY_PORT_CONNECTIONS_COUNT_HELP: &str =
 const BINARY_PORT_TRIE_COUNT_NAME: &str = "binary_port_get_trie_count";
 const BINARY_PORT_TRIE_COUNT_HELP: &str = "number of Get queries received for the trie state";
 
+const BINARY_PORT_DROPPED_CONNECTIONS_COUNT_NAME: &str = "binary_port_dropped_connections_count";
+const BINARY_PORT_DROPPED_CONNECTIONS_COUNT_HELP: &str =
+    "number of binary port connections dropped by the node, by reason";
+const BINARY_PORT_DROPPED_CONNECTIONS_REASON_LABEL: &str = "reason";
+
+/// Reason for which the node dropped a binary port connection.
+///
+/// Connections closed by the peer, or closed after serving the single request of a short-lived
+/// connection, are not drops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub(crate) enum DropReason {
+    /// The connection limit was reached when the connection was accepted.
+    ConnectionLimitReached,
+    /// The connection's lifetime ran out while waiting for or receiving a request.
+    LifetimeExpired,
+    /// The connection's lifetime ran out while a response was being sent.
+    LifetimeExpiredWhileSendingResponse,
+    /// The peer sent a request too slowly.
+    ReceiveTooSlow,
+    /// The peer read a response too slowly.
+    SendTooSlow,
+    /// The peer sent a request exceeding the maximum message size.
+    RequestTooLarge,
+    /// The peer sent a request without a payload.
+    EmptyRequest,
+    /// The peer sent a request which couldn't be decoded.
+    InvalidRequest,
+    /// A response couldn't be serialized.
+    ResponseSerializationFailed,
+    /// An I/O error occurred on the connection.
+    Io,
+}
+
+impl DropReason {
+    /// Value of the `reason` label.
+    fn label(self) -> &'static str {
+        match self {
+            DropReason::ConnectionLimitReached => "connection_limit_reached",
+            DropReason::LifetimeExpired => "lifetime_expired",
+            DropReason::LifetimeExpiredWhileSendingResponse => {
+                "lifetime_expired_while_sending_response"
+            }
+            DropReason::ReceiveTooSlow => "receive_too_slow",
+            DropReason::SendTooSlow => "send_too_slow",
+            DropReason::RequestTooLarge => "request_too_large",
+            DropReason::EmptyRequest => "empty_request",
+            DropReason::InvalidRequest => "invalid_request",
+            DropReason::ResponseSerializationFailed => "response_serialization_failed",
+            DropReason::Io => "io_error",
+        }
+    }
+}
+
 /// Metrics.
 #[derive(Debug)]
 pub(crate) struct Metrics {
@@ -46,6 +100,8 @@ pub(crate) struct Metrics {
     pub(super) binary_port_connections_count: IntCounter,
     /// Number of `Get::Trie` queries received.
     pub(super) binary_port_get_trie_count: IntCounter,
+    /// Number of connections dropped by the node, labeled by [`DropReason`].
+    binary_port_dropped_connections_count: IntCounterVec,
 
     registry: Registry,
 }
@@ -88,6 +144,18 @@ impl Metrics {
             BINARY_PORT_TRIE_COUNT_HELP.to_string(),
         )?;
 
+        let binary_port_dropped_connections_count = IntCounterVec::new(
+            Opts::new(
+                BINARY_PORT_DROPPED_CONNECTIONS_COUNT_NAME,
+                BINARY_PORT_DROPPED_CONNECTIONS_COUNT_HELP,
+            ),
+            &[BINARY_PORT_DROPPED_CONNECTIONS_REASON_LABEL],
+        )?;
+        // Export every reason, including those which never occurred, as 0.
+        for reason in DropReason::iter() {
+            binary_port_dropped_connections_count.with_label_values(&[reason.label()]);
+        }
+
         registry.register(Box::new(binary_port_try_accept_transaction_count.clone()))?;
         registry.register(Box::new(binary_port_try_speculative_exec_count.clone()))?;
         registry.register(Box::new(binary_port_get_record_count.clone()))?;
@@ -95,6 +163,7 @@ impl Metrics {
         registry.register(Box::new(binary_port_get_state_count.clone()))?;
         registry.register(Box::new(binary_port_connections_count.clone()))?;
         registry.register(Box::new(binary_port_get_trie_count.clone()))?;
+        registry.register(Box::new(binary_port_dropped_connections_count.clone()))?;
 
         Ok(Metrics {
             binary_port_try_accept_transaction_count,
@@ -104,8 +173,18 @@ impl Metrics {
             binary_port_get_state_count,
             binary_port_connections_count,
             binary_port_get_trie_count,
+            binary_port_dropped_connections_count,
             registry: registry.clone(),
         })
+    }
+}
+
+impl Metrics {
+    /// Records that the node dropped a connection for the given reason.
+    pub(super) fn record_dropped_connection(&self, reason: DropReason) {
+        self.binary_port_dropped_connections_count
+            .with_label_values(&[reason.label()])
+            .inc();
     }
 }
 
@@ -117,5 +196,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.binary_port_get_info_count);
         unregister_metric!(self.registry, self.binary_port_get_state_count);
         unregister_metric!(self.registry, self.binary_port_connections_count);
+        unregister_metric!(self.registry, self.binary_port_get_trie_count);
+        unregister_metric!(self.registry, self.binary_port_dropped_connections_count);
     }
 }
