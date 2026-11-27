@@ -403,6 +403,9 @@ pub enum ErrorCode {
     /// EVM transaction does not include a chain ID.
     #[error("the EVM transaction is missing a chain ID")]
     InvalidTransactionEvmMissingChainId = 128,
+    /// EVM transaction value cannot be represented in whole motes.
+    #[error("the EVM transaction value must be a whole number of motes")]
+    InvalidTransactionEvmValueNotRepresentable = 129,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -441,6 +444,9 @@ impl From<InvalidTransaction> for ErrorCode {
             }
             InvalidTransaction::Evm(EvmTransactionError::MissingChainId) => {
                 ErrorCode::InvalidTransactionEvmMissingChainId
+            }
+            InvalidTransaction::Evm(EvmTransactionError::ValueNotRepresentable { .. }) => {
+                ErrorCode::InvalidTransactionEvmValueNotRepresentable
             }
             InvalidTransaction::Evm(EvmTransactionError::PositiveEffectivePriorityFeePerGas {
                 ..
@@ -658,6 +664,19 @@ mod tests {
         assert_eq!(
             ErrorCode::try_from(128u16).unwrap(),
             ErrorCode::InvalidTransactionEvmMissingChainId
+        );
+    }
+
+    #[test]
+    fn evm_value_not_representable_has_specific_error_code() {
+        let error = InvalidTransaction::Evm(EvmTransactionError::ValueNotRepresentable {
+            value: 1_000u64.into(),
+            wei_per_mote: 1_000_000_000,
+        });
+        assert_eq!(ErrorCode::from(error) as u16, 129);
+        assert_eq!(
+            ErrorCode::try_from(129u16).unwrap(),
+            ErrorCode::InvalidTransactionEvmValueNotRepresentable
         );
     }
 
