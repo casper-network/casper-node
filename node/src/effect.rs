@@ -118,7 +118,10 @@ use casper_binary_port::{
     ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
 use casper_storage::{
-    block_store::types::ApprovalsHashes,
+    block_store::{
+        lmdb::{ExecutionResultWithTransactionHeader, TransactionWithApprovals},
+        types::ApprovalsHashes,
+    },
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
@@ -158,7 +161,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        InvalidProposalError, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
+        InvalidProposalError, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1288,7 +1291,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>
+    ) -> Option<Vec<ExecutionResultWithTransactionHeader>>
     where
         REv: From<StorageRequest>,
     {
@@ -1576,7 +1579,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transactions_from_storage(
         self,
         transaction_hashes: Vec<TransactionHash>,
-    ) -> SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>
+    ) -> Vec<Option<TransactionWithApprovals>>
     where
         REv: From<StorageRequest>,
     {

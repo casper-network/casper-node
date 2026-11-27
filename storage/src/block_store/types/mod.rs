@@ -1,6 +1,7 @@
 mod approvals_hashes;
 mod block_hash_height_and_era;
 mod deploy_metadata_v1;
+mod transaction_header;
 mod transfers;
 
 use std::{
@@ -14,6 +15,7 @@ use casper_types::{execution::ExecutionResult, Approval, BlockHash, TransactionH
 
 pub(crate) use approvals_hashes::LegacyApprovalsHashes;
 pub(crate) use deploy_metadata_v1::DeployMetadataV1;
+pub use transaction_header::{EvmTransactionMetadata, TransactionHeader, TransactionMetadata};
 pub(in crate::block_store) use transfers::Transfers;
 
 /// Transaction finalized approvals.
@@ -57,12 +59,3 @@ impl StateStoreKey {
         StateStoreKey(key)
     }
 }
-
-/// Block tip anchor.
-pub(crate) struct Tip;
-
-/// Latest switch block anchor.
-pub(crate) struct LatestSwitchBlock;
-
-/// Block height.
-pub(crate) type BlockHeight = u64;

@@ -1,27 +1,32 @@
+use core::fmt::{self, Display, Formatter};
+
 use casper_types::{
     DeployHeader, EvmTransaction, InitiatorAddr, TimeDiff, Timestamp, Transaction, TransactionV1,
 };
-use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use serde::Serialize;
 
+/// Metadata carried by a version 1 transaction header.
 #[derive(Debug, Clone, DataSize, PartialEq, Eq, Serialize)]
-pub(crate) struct TransactionMetadata {
+pub struct TransactionMetadata {
     initiator_addr: InitiatorAddr,
     timestamp: Timestamp,
     ttl: TimeDiff,
 }
 
 impl TransactionMetadata {
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+    /// Returns the transaction initiator.
+    pub fn initiator_addr(&self) -> &InitiatorAddr {
         &self.initiator_addr
     }
 
-    pub(crate) fn timestamp(&self) -> Timestamp {
+    /// Returns the transaction timestamp.
+    pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 
-    pub(crate) fn ttl(&self) -> TimeDiff {
+    /// Returns the transaction's time to live.
+    pub fn ttl(&self) -> TimeDiff {
         self.ttl
     }
 }
@@ -46,32 +51,39 @@ impl Display for EvmTransactionMetadata {
     }
 }
 
+/// Metadata carried by an EVM transaction header.
 #[derive(Debug, Clone, DataSize, PartialEq, Eq, Serialize)]
-pub(crate) struct EvmTransactionMetadata {
+pub struct EvmTransactionMetadata {
     initiator_addr: InitiatorAddr,
     timestamp: Timestamp,
     ttl: TimeDiff,
 }
 
 impl EvmTransactionMetadata {
-    pub(crate) fn initiator_addr(&self) -> &InitiatorAddr {
+    /// Returns the transaction initiator.
+    pub fn initiator_addr(&self) -> &InitiatorAddr {
         &self.initiator_addr
     }
 
-    pub(crate) fn timestamp(&self) -> Timestamp {
+    /// Returns the transaction timestamp.
+    pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 
-    pub(crate) fn ttl(&self) -> TimeDiff {
+    /// Returns the transaction's time to live.
+    pub fn ttl(&self) -> TimeDiff {
         self.ttl
     }
 }
 
-#[derive(Debug, Clone, DataSize, Serialize, PartialEq, Eq)]
 /// A versioned wrapper for a transaction header or deploy header.
-pub(crate) enum TransactionHeader {
+#[derive(Debug, Clone, DataSize, Serialize, PartialEq, Eq)]
+pub enum TransactionHeader {
+    /// A legacy deploy header.
     Deploy(DeployHeader),
+    /// A version 1 transaction header.
     V1(TransactionMetadata),
+    /// An EVM transaction header.
     Evm(EvmTransactionMetadata),
 }
 

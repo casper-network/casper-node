@@ -5,7 +5,7 @@ mod transaction_footprint;
 pub(crate) use deploy::LegacyDeploy;
 #[cfg(test)]
 pub(crate) use meta_transaction::calculate_transaction_lane_for_transaction;
-pub(crate) use meta_transaction::{MetaTransaction, TransactionHeader};
+pub(crate) use meta_transaction::MetaTransaction;
 pub(crate) use transaction_footprint::TransactionFootprint;
 #[cfg(test)]
 pub(crate) mod fields_container;

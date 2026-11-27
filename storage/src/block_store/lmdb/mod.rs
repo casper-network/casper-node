@@ -5,7 +5,8 @@ mod lmdb_block_store;
 
 use core::convert::TryFrom;
 pub use lmdb_block_store::{
-    LmdbBlockStore, LmdbBlockStoreReadTransaction, LmdbBlockStoreReadWriteTransaction,
+    EraExecutionGap, ExecutionResultWithTransactionHeader, LmdbBlockStore, SyncLeapLookup,
+    TransactionWithApprovals,
 };
 
 #[cfg(test)]

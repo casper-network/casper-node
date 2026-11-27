@@ -1,7 +1,6 @@
 mod meta_deploy;
 mod meta_evm;
 mod meta_transaction_v1;
-mod transaction_header;
 use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, SessionInputData};
 #[cfg(test)]
 use casper_types::InvalidTransactionV1;
@@ -18,7 +17,6 @@ use meta_evm::MetaEvmTransaction;
 pub(crate) use meta_transaction_v1::MetaTransactionV1;
 use serde::Serialize;
 use std::{borrow::Cow, collections::BTreeSet};
-pub(crate) use transaction_header::*;
 
 #[cfg(test)]
 use super::fields_container::{ARGS_MAP_KEY, ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY};
@@ -551,6 +549,7 @@ pub(crate) fn calculate_transaction_lane_for_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TransactionHeader;
     use alloy_consensus::{
         SignableTransaction, TxEip1559, TxEip2930, TxEip7702, TxEnvelope, TxLegacy,
     };

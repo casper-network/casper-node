@@ -12,14 +12,16 @@ use std::{
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use serde::Serialize;
-use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_binary_port::{
     ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
 use casper_storage::{
-    block_store::types::ApprovalsHashes,
+    block_store::{
+        lmdb::{ExecutionResultWithTransactionHeader, TransactionWithApprovals},
+        types::ApprovalsHashes,
+    },
     data_access_layer::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
@@ -57,7 +59,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, InvalidProposalError,
-        LegacyDeploy, MetaBlockState, NodeId, StatusFeed, TransactionHeader,
+        LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
     },
     utils::Source,
 };
@@ -398,8 +400,7 @@ pub(crate) enum StorageRequest {
     /// Retrieve transaction with given hashes.
     GetTransactions {
         transaction_hashes: Vec<TransactionHash>,
-        #[allow(clippy::type_complexity)]
-        responder: Responder<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>>,
+        responder: Responder<Vec<Option<TransactionWithApprovals>>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -443,7 +444,7 @@ pub(crate) enum StorageRequest {
     },
     GetExecutionResults {
         block_hash: BlockHash,
-        responder: Responder<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>>,
+        responder: Responder<Option<Vec<ExecutionResultWithTransactionHeader>>>,
     },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.

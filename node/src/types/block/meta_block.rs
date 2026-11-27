@@ -3,13 +3,11 @@ mod state;
 
 use std::{convert::TryFrom, sync::Arc};
 
-use crate::types::TransactionHeader;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::{
-    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, EraId, TransactionHash,
-};
+use casper_storage::block_store::lmdb::ExecutionResultWithTransactionHeader;
+use casper_types::{ActivationPoint, Block, BlockHash, BlockV2, EraId};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -44,7 +42,7 @@ impl MetaBlock {
 
     pub(crate) fn new_historical(
         block: Arc<Block>,
-        execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
+        execution_results: Vec<ExecutionResultWithTransactionHeader>,
         state: State,
     ) -> Self {
         Self::Historical(HistoricalMetaBlock {
@@ -107,7 +105,7 @@ pub(crate) struct ForwardMetaBlock {
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct HistoricalMetaBlock {
     pub(crate) block: Arc<Block>,
-    pub(crate) execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<ExecutionResultWithTransactionHeader>,
     pub(crate) state: State,
 }
 
@@ -172,7 +170,9 @@ mod tests {
     use std::convert::TryInto;
 
     use casper_types::{
-        execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder, TransactionV1,
+        execution::{ExecutionResult, ExecutionResultV2},
+        testing::TestRng,
+        TestBlockBuilder, TransactionHash, TransactionV1,
     };
 
     use super::*;
