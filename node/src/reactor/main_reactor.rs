@@ -1249,6 +1249,9 @@ impl reactor::Reactor for MainReactor {
         block_store
             .prune_for_hard_reset(chainspec.hard_reset_to_start_of_era(), protocol_version)
             .map_err(storage::FatalStorageError::from)?;
+        block_store
+            .initialize_recent_history()
+            .map_err(storage::FatalStorageError::from)?;
 
         let contract_runtime = ContractRuntime::new(
             &storage_root,

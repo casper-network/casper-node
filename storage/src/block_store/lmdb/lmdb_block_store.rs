@@ -6,6 +6,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use parking_lot::RwLock;
 use tempfile::TempDir;
 use tracing::{debug, error, info, warn};
 
@@ -23,6 +24,7 @@ use super::{
         deserialize_bytesrepr, get_by_be_u64_key, get_last_by_be_u64_key, put_by_be_u64_key,
         LmdbExtError, TransactionExt, WriteTransactionExt,
     },
+    recent_block_hashes::{RecentBlockHashes, HISTORY_CACHE_SIZE},
     versioned_databases::VersionedDatabases,
     DbTableId,
 };
@@ -131,6 +133,9 @@ pub struct LmdbBlockStore {
     /// it.
     #[data_size(skip)]
     transaction_hash_index_db: Database,
+    /// Recent committed hashes, shared by all cloned store handles.
+    #[data_size(skip)]
+    recent_block_hashes: Arc<RwLock<RecentBlockHashes>>,
     /// Keeps a temporary storage directory alive for stores created by [`Self::new_temporary`].
     ///
     /// The `Arc` ensures shallow-cloned store handles retain the directory until the last handle
@@ -196,6 +201,7 @@ impl LmdbBlockStore {
             block_height_index_db,
             switch_block_era_id_index_db,
             transaction_hash_index_db,
+            recent_block_hashes: Arc::new(RwLock::new(RecentBlockHashes::default())),
             temporary_directory: None,
         })
     }
@@ -208,29 +214,34 @@ impl LmdbBlockStore {
         Ok(block_store)
     }
 
-    /// Stores a block.
+    /// Stores a block and publishes its hash to the recent history cache.
     pub fn put_block(&mut self, block: &Block) -> Result<BlockHash, BlockStoreError> {
         let mut txn = self.env.begin_rw_txn().map_err(internal_storage)?;
         let hash = self.write_block(&mut txn, block)?;
-        txn.commit().map_err(commit_error)?;
+        self.commit_with_recent_hashes(txn, [(block.height(), hash)])?;
         Ok(hash)
     }
 
-    /// Stores a header.
+    /// Stores a header and publishes its hash to the recent history cache.
     pub fn put_block_header(&mut self, header: &BlockHeader) -> Result<BlockHash, BlockStoreError> {
         let mut txn = self.env.begin_rw_txn().map_err(internal_storage)?;
         let hash = self.write_block_header(&mut txn, header)?;
-        txn.commit().map_err(commit_error)?;
+        self.commit_with_recent_hashes(txn, [(header.height(), hash)])?;
         Ok(hash)
     }
 
-    /// Stores a batch of headers atomically.
+    /// Stores a batch of headers atomically and publishes their hashes after commit.
     pub fn put_block_headers(&mut self, headers: &[BlockHeader]) -> Result<(), BlockStoreError> {
         let mut txn = self.env.begin_rw_txn().map_err(internal_storage)?;
         for header in headers {
             self.write_block_header(&mut txn, header)?;
         }
-        txn.commit().map_err(commit_error)
+        self.commit_with_recent_hashes(
+            txn,
+            headers
+                .iter()
+                .map(|header| (header.height(), header.block_hash())),
+        )
     }
 
     /// Stores the block, approvals and execution results in one transaction.
@@ -248,8 +259,57 @@ impl LmdbBlockStore {
             BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id()),
             &execution_results,
         )?;
-        txn.commit().map_err(commit_error)?;
+        self.commit_with_recent_hashes(txn, [(block.height(), block_hash)])?;
         Ok(block_hash)
+    }
+
+    fn commit_with_recent_hashes(
+        &self,
+        txn: RwTransaction<'_>,
+        hashes: impl IntoIterator<Item = (u64, BlockHash)>,
+    ) -> Result<(), BlockStoreError> {
+        // Keep LMDB commits and their cache updates in the same order.
+        let mut recent = self.recent_block_hashes.write();
+        txn.commit().map_err(commit_error)?;
+        for (height, hash) in hashes {
+            recent.insert(height, hash);
+        }
+        Ok(())
+    }
+
+    /// Loads available recent hashes after startup pruning. Missing heights remain cache misses.
+    ///
+    /// The cache lock spans the read snapshot and publication, so a concurrent header commit
+    /// cannot be lost while the cache is initialized. Ordinary transaction reads remain backed
+    /// by their own LMDB snapshots.
+    pub fn initialize_recent_history(&self) -> Result<(), BlockStoreError> {
+        let mut loaded = RecentBlockHashes::default();
+        let mut recent = self.recent_block_hashes.write();
+        let txn = self.env.begin_ro_txn().map_err(internal_storage)?;
+        if let Some(tip) = self.tip_header(&txn)? {
+            let height = tip.height();
+            let start = height.saturating_sub((HISTORY_CACHE_SIZE - 1) as u64);
+            for height in start..=height {
+                if let Some(hash) = self.block_hash_at_height(&txn, height)? {
+                    loaded.insert(height, hash);
+                }
+            }
+        }
+        *recent = loaded;
+        Ok(())
+    }
+
+    /// Returns a recent committed block hash, falling back to the indexed block store on a miss.
+    ///
+    /// This reads the latest committed hash. Grouped reads use their own LMDB snapshot.
+    pub fn read_recent_block_hash(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHash>, BlockStoreError> {
+        if let Some(hash) = self.recent_block_hashes.read().get(height) {
+            return Ok(Some(hash));
+        }
+        self.read_block_hash_at_height(height)
     }
 
     /// Checks the persisted index for the first missing header in the range.
@@ -267,6 +327,7 @@ impl LmdbBlockStore {
     }
 
     /// Prunes blocks from earlier protocol versions at or after the hard-reset era.
+    /// Run on a freshly opened store before warming the recent history cache.
     pub fn prune_for_hard_reset(
         &mut self,
         hard_reset_to_start_of_era: Option<EraId>,
@@ -483,6 +544,18 @@ impl LmdbBlockStore {
         self.header_at_height(&self.env.begin_ro_txn().map_err(internal_storage)?, height)
     }
 
+    /// Reads the indexed hash of a stored block header without deserializing the header.
+    ///
+    /// Returns `None` when the height is not indexed or the indexed header is absent. Checking
+    /// both in the same read transaction preserves header availability semantics for callers
+    /// that have not run a separate history preflight, such as speculative EVM execution.
+    pub fn read_block_hash_at_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHash>, BlockStoreError> {
+        self.block_hash_at_height(&self.env.begin_ro_txn().map_err(internal_storage)?, height)
+    }
+
     /// Reads a switch block by era ID.
     pub fn read_switch_block_by_era(
         &self,
@@ -542,6 +615,30 @@ impl LmdbBlockStore {
             }
         };
         result.map_err(internal_storage)
+    }
+
+    /// Reads indexed hashes in one snapshot, preserving the input order.
+    pub fn read_block_hashes_at_heights(
+        &self,
+        heights: &[u64],
+    ) -> Result<Vec<Option<BlockHash>>, BlockStoreError> {
+        let txn = self.env.begin_ro_txn().map_err(internal_storage)?;
+        heights
+            .iter()
+            .map(|&height| self.block_hash_at_height(&txn, height))
+            .collect()
+    }
+
+    /// Reads headers in one snapshot, preserving the input order.
+    pub fn read_block_headers_at_heights(
+        &self,
+        heights: &[u64],
+    ) -> Result<Vec<Option<BlockHeader>>, BlockStoreError> {
+        let txn = self.env.begin_ro_txn().map_err(internal_storage)?;
+        heights
+            .iter()
+            .map(|&height| self.header_at_height(&txn, height))
+            .collect()
     }
 
     /// Stores approvals hashes.
@@ -1186,7 +1283,10 @@ impl LmdbBlockStore {
             .map_err(internal_storage)?;
         }
 
+        // Rebuilding the height index invalidates cached entries.
+        let mut recent = self.recent_block_hashes.write();
         txn.commit().map_err(internal_storage)?;
+        recent.clear();
 
         info!("block store reindexing complete");
         Ok(())
@@ -2027,7 +2127,7 @@ mod tests {
     }
 
     #[test]
-    fn put_executed_block_commits_all_records_or_rolls_back() {
+    fn put_executed_block_commits_all_records_before_publishing_the_hash() {
         fn approvals(block: &Block) -> ApprovalsHashes {
             let proof = TrieMerkleProof::new(
                 Key::ChecksumRegistry,
@@ -2077,6 +2177,10 @@ mod tests {
             store.get_execution_result(&txn, transaction_hash).unwrap(),
             Some(result)
         );
+        assert_eq!(
+            store.recent_block_hashes.read().get(first.height()),
+            Some(*first.hash())
+        );
         assert!(store
             .get_single_block(&txn, second.hash())
             .unwrap()
@@ -2089,6 +2193,7 @@ mod tests {
             store.block_hash_at_height(&txn, second.height()).unwrap(),
             None
         );
+        assert_eq!(store.recent_block_hashes.read().get(second.height()), None);
     }
 
     #[test]
@@ -2138,6 +2243,87 @@ mod tests {
     }
 
     #[test]
+    fn reads_block_hash_at_height_from_the_persisted_index() {
+        let rng = &mut TestRng::new();
+        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let proposer = PublicKey::from(&SecretKey::random(rng));
+        let headers: Vec<_> = [0, 1, 255, 256, 8191, u64::MAX]
+            .iter()
+            .copied()
+            .map(|height| header_at_height(rng, height, &proposer))
+            .collect();
+        store.put_block_headers(&headers).unwrap();
+        for header in &headers {
+            assert_eq!(
+                store.read_block_hash_at_height(header.height()).unwrap(),
+                Some(header.block_hash())
+            );
+        }
+        assert_eq!(store.read_block_hash_at_height(2).unwrap(), None);
+    }
+
+    #[test]
+    fn block_hash_at_height_requires_the_indexed_header_to_exist() {
+        let rng = &mut TestRng::new();
+        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let proposer = PublicKey::from(&SecretKey::random(rng));
+        let header = header_at_height(rng, 10, &proposer);
+        store.put_block_header(&header).unwrap();
+        assert_eq!(
+            store.recent_block_hashes.read().get(10),
+            Some(header.block_hash())
+        );
+        // Simulate a dangling index entry without using the normal index-maintaining deletion.
+        {
+            let mut txn = store.env.begin_rw_txn().unwrap();
+            store
+                .block_header_dbs
+                .delete(&mut txn, &header.block_hash())
+                .unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = store.env.begin_ro_txn().unwrap();
+        assert_eq!(
+            store
+                .indexed_hash(&txn, store.block_height_index_db, Some(10))
+                .unwrap(),
+            Some(header.block_hash())
+        );
+        assert_eq!(store.block_hash_at_height(&txn, 10).unwrap(), None);
+        // Even an out-of-band corruption that leaves a stale cache entry must
+        // be detected by the database-backed preflight.
+        assert_eq!(
+            store.recent_block_hashes.read().get(10),
+            Some(header.block_hash())
+        );
+        assert_eq!(
+            store.first_missing_block_header_height(10..11).unwrap(),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn block_hash_at_height_preserves_malformed_index_errors() {
+        let store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        {
+            let mut txn = store.env.begin_rw_txn().unwrap();
+            txn.put(
+                store.block_height_index_db,
+                &10u64.to_be_bytes(),
+                &[0u8; 1],
+                WriteFlags::empty(),
+            )
+            .unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = store.env.begin_ro_txn().unwrap();
+        assert!(matches!(
+            store.block_hash_at_height(&txn, 10),
+            Err(BlockStoreError::InternalStorage(_))
+        ));
+    }
+
+    #[test]
     fn finds_first_missing_block_header_height() {
         let rng = &mut TestRng::new();
         let mut store =
@@ -2178,7 +2364,16 @@ mod tests {
             .collect();
         store.put_block_headers(&headers).unwrap();
 
+        assert_eq!(
+            store.recent_block_hashes.read().get(0),
+            Some(headers[0].block_hash())
+        );
         store.reindex().expect("reindex should succeed");
+        assert_eq!(store.recent_block_hashes.read().get(0), None);
+        assert_eq!(
+            store.read_recent_block_hash(0).unwrap(),
+            Some(headers[0].block_hash())
+        );
 
         let ro_txn = store.env.begin_ro_txn().expect("should checkout ro");
 
@@ -2332,10 +2527,95 @@ mod tests {
         );
     }
 
+    fn block(rng: &mut TestRng, height: u64) -> Block {
+        TestBlockBuilder::new()
+            .height(height)
+            .switch_block(false)
+            .build(rng)
+            .into()
+    }
+
     #[test]
-    fn hard_reset_prunes_headers_and_preserves_shared_bodies() {
+    fn commits_are_shared_but_failed_batches_are_invisible() {
         let mut rng = TestRng::new();
         let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let shared = store.clone();
+        let first = block(&mut rng, 1).clone_header();
+        let second = block(&mut rng, 2).clone_header();
+        let conflicting = block(&mut rng, 1).clone_header();
+        let old_view = shared.env.begin_ro_txn().unwrap();
+
+        store.put_block_header(&first).unwrap();
+        assert_eq!(
+            shared.read_recent_block_hash(1).unwrap(),
+            Some(first.block_hash())
+        );
+        assert_eq!(shared.block_hash_at_height(&old_view, 1).unwrap(), None);
+        drop(old_view);
+
+        assert!(matches!(
+            store.put_block_headers(&[second, conflicting]),
+            Err(BlockStoreError::DuplicateBlock { height: 1, .. })
+        ));
+        assert_eq!(shared.read_recent_block_hash(2).unwrap(), None);
+
+        // Exhaust the block-store reader slots. A committed cache hit must still
+        // work, while an uncached lookup must take the LMDB fallback and fail.
+        let readers: Vec<_> = (0..512)
+            .map(|_| shared.env.begin_ro_txn().unwrap())
+            .collect();
+        assert_eq!(
+            shared.read_recent_block_hash(1).unwrap(),
+            Some(first.block_hash())
+        );
+        assert!(shared.read_recent_block_hash(2).is_err());
+        drop(readers);
+    }
+
+    #[test]
+    fn startup_warms_existing_headers_and_leaves_gaps_and_old_heights_to_lmdb() {
+        let dir = TempDir::new().unwrap();
+        let mut rng = TestRng::new();
+        let first = block(&mut rng, 1).clone_header();
+        let second = block(&mut rng, 2).clone_header();
+        let tip = block(&mut rng, HISTORY_CACHE_SIZE as u64 + 1).clone_header();
+        {
+            let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+            store
+                .put_block_headers(&[first.clone(), second.clone(), tip.clone()])
+                .unwrap();
+        }
+
+        let mut reopened = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+        reopened.init().unwrap();
+        reopened.initialize_recent_history().unwrap();
+        assert_eq!(
+            reopened.read_recent_block_hash(1).unwrap(),
+            Some(first.block_hash())
+        );
+        assert_eq!(reopened.read_recent_block_hash(3).unwrap(), None);
+
+        let readers: Vec<_> = (0..512)
+            .map(|_| reopened.env.begin_ro_txn().unwrap())
+            .collect();
+        assert_eq!(
+            reopened.read_recent_block_hash(2).unwrap(),
+            Some(second.block_hash())
+        );
+        assert_eq!(
+            reopened.read_recent_block_hash(tip.height()).unwrap(),
+            Some(tip.block_hash())
+        );
+        assert!(reopened.read_recent_block_hash(1).is_err()); // stored, but outside the window
+        assert!(reopened.read_recent_block_hash(3).is_err()); // an uncached gap
+        drop(readers);
+    }
+
+    #[test]
+    fn startup_prunes_before_warming_recent_hashes() {
+        let mut rng = TestRng::new();
+        let dir = TempDir::new().unwrap();
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
         let era = EraId::new(1);
         let full = TestBlockBuilder::new()
             .era(era)
@@ -2360,19 +2640,32 @@ mod tests {
         store.put_block(&full).unwrap();
         store.put_block_header(&header_only).unwrap();
         store.put_block(&retained).unwrap();
+        drop(store);
 
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+        store.init().unwrap();
         store
             .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
             .unwrap();
-        assert_eq!(store.read_block_header_at_height(5).unwrap(), None);
-        assert_eq!(store.read_block_header_at_height(6).unwrap(), None);
+        store.initialize_recent_history().unwrap();
+
+        assert_eq!(store.read_recent_block_hash(full.height()).unwrap(), None);
+        assert_eq!(
+            store.read_recent_block_hash(header_only.height()).unwrap(),
+            None
+        );
         assert!(store.block_exists_by_hash(*retained.hash()).unwrap());
+        assert_eq!(
+            store.recent_block_hashes.read().get(retained.height()),
+            Some(*retained.hash())
+        );
     }
 
     #[test]
     fn hard_reset_prunes_execution_records_without_a_block_body() {
         let mut rng = TestRng::new();
-        let mut store = LmdbBlockStore::new_temporary(64 * 1024 * 1024).unwrap();
+        let dir = TempDir::new().unwrap();
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
         let era = EraId::new(1);
         let height = 5;
         let transaction = Transaction::random(&mut rng);
@@ -2403,10 +2696,14 @@ mod tests {
                 execution_result: Some(result),
             })
         );
+        drop(store);
 
+        let mut store = LmdbBlockStore::new(dir.path(), 64 * 1024 * 1024).unwrap();
+        store.init().unwrap();
         store
             .prune_for_hard_reset(Some(era), ProtocolVersion::V2_0_0)
             .unwrap();
+        store.initialize_recent_history().unwrap();
         assert!(
             store
                 .read_execution_info(transaction_hash)
