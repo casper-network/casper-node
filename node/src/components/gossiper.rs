@@ -59,13 +59,17 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
     ///
     /// Must be supplied with a name, which should be a snake-case identifier to disambiguate the
     /// specific gossiper from other potentially present gossipers.
+    ///
+    /// `max_rounds` is the maximum number of gossip rounds per item for this gossiper; it should
+    /// be taken from the field of `Config::max_rounds` relevant to the gossiped item kind.
     pub(crate) fn new(
         name: &'static str,
         config: Config,
+        max_rounds: u8,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(Gossiper {
-            table: GossipTable::new(config),
+            table: GossipTable::new(config, max_rounds),
             gossip_timeout: config.gossip_request_timeout().into(),
             get_from_peer_timeout: config.get_remainder_timeout().into(),
             validate_and_store_timeout: config.validate_and_store_timeout().into(),

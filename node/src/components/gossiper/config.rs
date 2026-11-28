@@ -14,6 +14,12 @@ use super::error::Error;
 
 const DEFAULT_INFECTION_TARGET: u8 = 3;
 const DEFAULT_SATURATION_LIMIT_PERCENT: u8 = 80;
+const DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD: u8 = DEFAULT_INFECTION_TARGET;
+const DEFAULT_MAX_ROUNDS_ADDRESS: u8 = 1;
+const DEFAULT_MAX_ROUNDS_TRANSACTION: u8 = 3;
+const DEFAULT_MAX_ROUNDS_EVM_TRANSACTION_BATCH: u8 = 3;
+const DEFAULT_MAX_ROUNDS_BLOCK: u8 = 3;
+const DEFAULT_MAX_ROUNDS_FINALITY_SIGNATURE: u8 = 2;
 pub(super) const MAX_SATURATION_LIMIT_PERCENT: u8 = 99;
 pub(super) const DEFAULT_FINISHED_ENTRY_DURATION: &str = "60sec";
 const DEFAULT_GOSSIP_REQUEST_TIMEOUT: &str = "10sec";
@@ -56,6 +62,51 @@ pub struct Config {
     /// The timeout duration for a newly-received, gossiped item to be validated and stored by
     /// another component before the gossiper abandons waiting to gossip the item onwards.
     pub validate_and_store_timeout: TimeDiff,
+    /// The number of peers newly infected by us during a gossip round at or above which we start
+    /// another round, targeting peers not attempted in any earlier round.
+    ///
+    /// A round ends once `infection_target` peers have been newly infected in it, or once the
+    /// saturation limit has been reached for the peers attempted in it.  A value greater than
+    /// `infection_target` effectively disables additional rounds.
+    #[serde(default = "default_next_round_success_threshold")]
+    pub next_round_success_threshold: u8,
+    /// The maximum number of gossip rounds per item, configured per kind of gossiped item.
+    #[serde(default)]
+    pub max_rounds: MaxGossipRounds,
+}
+
+/// The maximum number of gossip rounds for each kind of gossiped item.
+///
+/// A value of 1 (or 0, which is treated as 1) means no additional rounds will be started.
+#[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct MaxGossipRounds {
+    /// Maximum number of rounds for gossiping peer addresses.
+    pub address: u8,
+    /// Maximum number of rounds for gossiping transactions.
+    pub transaction: u8,
+    /// Maximum number of rounds for gossiping EVM transaction batches.
+    pub evm_transaction_batch: u8,
+    /// Maximum number of rounds for gossiping blocks.
+    pub block: u8,
+    /// Maximum number of rounds for gossiping finality signatures.
+    pub finality_signature: u8,
+}
+
+impl Default for MaxGossipRounds {
+    fn default() -> Self {
+        MaxGossipRounds {
+            address: DEFAULT_MAX_ROUNDS_ADDRESS,
+            transaction: DEFAULT_MAX_ROUNDS_TRANSACTION,
+            evm_transaction_batch: DEFAULT_MAX_ROUNDS_EVM_TRANSACTION_BATCH,
+            block: DEFAULT_MAX_ROUNDS_BLOCK,
+            finality_signature: DEFAULT_MAX_ROUNDS_FINALITY_SIGNATURE,
+        }
+    }
+}
+
+fn default_next_round_success_threshold() -> u8 {
+    DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD
 }
 
 impl Config {
@@ -78,6 +129,8 @@ impl Config {
             gossip_request_timeout,
             get_remainder_timeout,
             validate_and_store_timeout,
+            next_round_success_threshold: DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD,
+            max_rounds: MaxGossipRounds::default(),
         })
     }
 
@@ -121,6 +174,14 @@ impl Config {
     pub(crate) fn validate_and_store_timeout(&self) -> TimeDiff {
         self.validate_and_store_timeout
     }
+
+    pub(crate) fn next_round_success_threshold(&self) -> u8 {
+        self.next_round_success_threshold
+    }
+
+    pub(crate) fn max_rounds(&self) -> MaxGossipRounds {
+        self.max_rounds
+    }
 }
 
 impl Default for Config {
@@ -133,6 +194,8 @@ impl Default for Config {
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
             validate_and_store_timeout: TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT)
                 .unwrap(),
+            next_round_success_threshold: DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD,
+            max_rounds: MaxGossipRounds::default(),
         }
     }
 }
@@ -172,6 +235,8 @@ mod tests {
             get_remainder_timeout: TimeDiff::from_str(DEFAULT_GET_REMAINDER_TIMEOUT).unwrap(),
             validate_and_store_timeout: TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT)
                 .unwrap(),
+            next_round_success_threshold: DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD,
+            max_rounds: MaxGossipRounds::default(),
         };
 
         // Parsing should fail.
@@ -188,5 +253,48 @@ mod tests {
             TimeDiff::from_str(DEFAULT_VALIDATE_AND_STORE_TIMEOUT).unwrap()
         )
         .is_err())
+    }
+
+    #[test]
+    fn config_without_round_settings_should_use_defaults() {
+        let toml = r#"
+            infection_target = 3
+            saturation_limit_percent = 80
+            finished_entry_duration = '1 minute'
+            gossip_request_timeout = '10 seconds'
+            get_remainder_timeout = '5 seconds'
+            validate_and_store_timeout = '1 minute'
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.next_round_success_threshold,
+            DEFAULT_NEXT_ROUND_SUCCESS_THRESHOLD
+        );
+        assert_eq!(config.max_rounds, MaxGossipRounds::default());
+    }
+
+    #[test]
+    fn partial_max_rounds_should_use_defaults_for_missing_kinds() {
+        let toml = r#"
+            infection_target = 3
+            saturation_limit_percent = 80
+            finished_entry_duration = '1 minute'
+            gossip_request_timeout = '10 seconds'
+            get_remainder_timeout = '5 seconds'
+            validate_and_store_timeout = '1 minute'
+            next_round_success_threshold = 2
+
+            [max_rounds]
+            block = 5
+        "#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.next_round_success_threshold, 2);
+        assert_eq!(
+            config.max_rounds,
+            MaxGossipRounds {
+                block: 5,
+                ..MaxGossipRounds::default()
+            }
+        );
     }
 }

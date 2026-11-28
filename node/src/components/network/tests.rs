@@ -265,6 +265,7 @@ impl Reactor for TestReactor {
         let address_gossiper = Gossiper::<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, _>::new(
             "address_gossiper",
             gossiper_config,
+            gossiper_config.max_rounds().address,
             registry,
         )?;
 
